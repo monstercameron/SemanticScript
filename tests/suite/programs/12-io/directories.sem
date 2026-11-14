@@ -144,7 +144,7 @@ fileAccess is capability
 fileAccess purpose "Authority over the suite-dir directory"
 fileAccess grants read fs.files
 fileAccess grants write fs.files
-fileAccess scope "suite-dir"
+fileAccess scope "suite-dir/"
 
 main is operation
 main purpose "Run the case and print what it computes"

@@ -38,7 +38,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Uninitialized variables | rejected | `var-uninitialized-path` |   |
 | Type inference | rejected | `var-no-inference` | Every `let` states its type; leaving it out is a shape error. |
 | Type annotations | tested | [variables](../tests/suite/programs/01-variables/variables.sem), `var-annotation-mismatch` |   |
-| Variable lifetime | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem) | A value lives for the operation that declares it; a region-owned value lives until its region is released (`released atReturn`). |
+| Variable lifetime | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `region-escape-none` | A value lives for the operation that declares it; a region-owned value lives until its region is released (`released atReturn`). |
 | Multiple assignments | by design | [shapes](../tests/suite/programs/02-types/shapes.sem) | One `set` row assigns one name. Two results come back as a record (see `Point` in the shapes case). |
 | Destructuring | by design | [shapes](../tests/suite/programs/02-types/shapes.sem) | Fields are read one at a time with `<Record>.<field>` calls; an enum payload is bound by `case ... bind`. |
 
@@ -88,8 +88,8 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Bitwise operators | tested | [operators](../tests/suite/programs/03-operators/operators.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Bit shifting | tested | [operators](../tests/suite/programs/03-operators/operators.sem), [trap-shift-too-far](../tests/suite/programs/03-operators/trap-shift-too-far.sem) |   |
 | Unary operators | tested | [operators](../tests/suite/programs/03-operators/operators.sem), [trap-negate-minimum](../tests/suite/programs/03-operators/trap-negate-minimum.sem) |   |
-| Operator precedence | by design | `operator-missing-operand` | No infix operators, so no precedence: every operation is a call with named slots `left` and `right`. |
-| Operator associativity | by design | `operator-wrong-slot` | No infix operators: grouping is the order of the steps. |
+| Operator precedence | by design |   | No infix operators, so no precedence: every operation is a call with named slots `left` and `right`. |
+| Operator associativity | by design |   | No infix operators: grouping is the order of the steps. |
 | Short-circuit evaluation | by design | [control](../tests/suite/programs/04-control-flow/control.sem) | There are no nested expressions: each operand is a named value computed by an earlier step, so nothing is skipped implicitly. Conditional work is written as branches (control case). |
 | Compound assignment | by design | `compound-assignment` | No `+=`: compute with a call, then `set` (and only a mutable let). |
 | Expression evaluation order | tested | [operators](../tests/suite/programs/03-operators/operators.sem) |   |
@@ -129,7 +129,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | --- | --- | --- | --- |
 | Function declaration | tested | [functions](../tests/suite/programs/05-functions/functions.sem) |   |
 | Function invocation | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `call-unknown-operation`, `call-never-activated` |   |
-| Function parameters | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `default-argument` |   |
+| Function parameters | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `operator-missing-operand`, `default-argument` |   |
 | Return values | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `return-wrong-type` |   |
 | Multiple return values | tested | [shapes](../tests/suite/programs/02-types/shapes.sem) |   |
 | Default arguments | by design | `record-missing-field`, `default-argument` | Every slot is passed on every call; leaving one out is R405. |
@@ -137,17 +137,17 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Variadic arguments | by design | `operator-extra-operand` | A target has a fixed list of slots; pass a list for many values. |
 | Function overloading | by design | `overloading` | One name, one operation (R203). Generic operations cover one body for many types. |
 | Nested functions | by design |   | Entities are flat: an `is` row always starts a new top-level entity, and a call belongs to its operation by its `in` row. |
-| Anonymous functions | by design | `reference-not-an-operation` | Every operation is named; references point at named operations. |
-| Lambdas | by design | `reference-not-an-operation` | No lambdas: pass a named operation through an `operationType` value. |
-| Closures | by design | `reference-not-an-operation` | No captured environment: an operation sees only its inputs and lets. |
-| Higher-order functions | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `reference-not-an-operation` |   |
-| Function references | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `reference-signature-mismatch` |   |
+| Anonymous functions | by design |   | Every operation is named; references point at named operations. |
+| Lambdas | by design |   | No lambdas: pass a named operation through an `operationType` value. |
+| Closures | by design |   | No captured environment: an operation sees only its inputs and lets. |
+| Higher-order functions | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `reference-not-an-operation`, `recursion-through-reference` |   |
+| Function references | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `reference-signature-mismatch`, `reference-not-an-operation`, `effect-laundering-ref` |   |
 | Pure functions | tested | [functions](../tests/suite/programs/05-functions/functions.sem), [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
 | Impure functions | tested | [functions](../tests/suite/programs/05-functions/functions.sem), [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
 | Tail calls | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) | Tail recursion runs (fibonacci in the recursion case) but is not guaranteed to reuse the frame; `maxRecursion` bounds the depth either way. |
 | Function composition | tested | [functions](../tests/suite/programs/05-functions/functions.sem) |   |
 | Parameter passing by value | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `operator-wrong-mode` |   |
-| Parameter passing by reference | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `change-through-read-loan`, `by-reference-needs-mutable-loan` |   |
+| Parameter passing by reference | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `change-through-read-loan`, `by-reference-needs-mutable-loan`, `task-wrong-loan-mode` |   |
 
 ## 6. Recursion
 
@@ -160,7 +160,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Nested recursion | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
 | Recursive data structures | rejected | `recursive-type-by-value` |   |
 | Base-case termination | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
-| Maximum recursion depth | tested | [trap-recursion-depth](../tests/suite/programs/06-recursion/trap-recursion-depth.sem), `recursion-undeclared` |   |
+| Maximum recursion depth | tested | [trap-recursion-depth](../tests/suite/programs/06-recursion/trap-recursion-depth.sem), `recursion-undeclared`, `recursion-through-reference` |   |
 | Stack overflow detection | tested | [trap-recursion-depth](../tests/suite/programs/06-recursion/trap-recursion-depth.sem), `test_stress_stack_exhaustion_traps` |   |
 | Recursion with local variables | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
 | Recursion with mutable state | tested | [sorting](../tests/suite/programs/08-strings-collections/sorting.sem) |   |
@@ -179,23 +179,23 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Deallocation | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem) |   |
 | Ownership | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `region-value-without-owner` |   |
 | Ownership transfer | tested | [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `double-give` |   |
-| Borrowing | rejected | `give-borrowed` |   |
-| Mutable borrowing | rejected | `by-reference-needs-mutable-loan` |   |
+| Borrowing | rejected | `give-borrowed`, `return-borrowed-resource` |   |
+| Mutable borrowing | rejected | `by-reference-needs-mutable-loan`, `alias-same-call`, `append-during-foreach` |   |
 | Immutable borrowing | rejected | `change-through-read-loan`, `mutable-loan-of-read-loan` |   |
 | Reference counting | by design |   | Single owners and regions: a value has one owner (`ownedBy`), and region-owned values are freed with their region. |
 | Garbage collection (if supported) | by design |   | No garbage collector; release points are explicit (regions, cleanups, `give`). |
-| Memory lifetime tracking | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `string-borrow-undeclared` |   |
-| Memory leak detection | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `owned-never-released` |   |
-| Double-free prevention | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `double-give` |   |
-| Use-after-free prevention | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `double-give` |   |
-| Dangling references | rejected | `double-give` |   |
+| Memory lifetime tracking | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `string-borrow-undeclared`, `region-escape-none` |   |
+| Memory leak detection | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `owned-never-released`, `leak-on-error-path` |   |
+| Double-free prevention | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `double-give`, `give-deferred` |   |
+| Use-after-free prevention | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `double-give`, `use-after-give` |   |
+| Dangling references | rejected | `double-give`, `use-after-give`, `give-while-lent-to-task`, `return-borrowed-resource` |   |
 | Null pointer handling | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), `option-wrong-payload` | No null: absence is `option.Option` with `absent`, matched explicitly. |
 | Out-of-bounds memory access | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem) |   |
 | Buffer overflow protection | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem) |   |
 | Memory alignment | n/a |   | Handled by the backend's LLVM data layout and the host allocator; not observable in the language. |
 | Memory fragmentation | by design |   | Region values are released all at once with their region, so programs do not free individual values. |
 | Circular references | rejected | `recursive-type-by-value` | A type cannot contain itself by value (R403); single ownership leaves no owner cycles; graphs refer to nodes by list index (LR-25 rule 5). |
-| Resource cleanup | tested | [recursive-cleanup](../tests/suite/programs/06-recursion/recursive-cleanup.sem), [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred`, `cleanup-wrong-value` |   |
+| Resource cleanup | tested | [recursive-cleanup](../tests/suite/programs/06-recursion/recursive-cleanup.sem), [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred`, `cleanup-wrong-value`, `cleanup-suppress-without-reason`, `cleanup-before-acquire` |   |
 | Deterministic destruction | tested | [recursive-cleanup](../tests/suite/programs/06-recursion/recursive-cleanup.sem), [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [region-list](../tests/suite/programs/07-memory/region-list.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred` |   |
 | Memory exhaustion | tested | [trap-region-exhausted](../tests/suite/programs/07-memory/trap-region-exhausted.sem) |   |
 
@@ -217,7 +217,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Array bounds checking | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), `list-index-unchecked` |   |
 | Array resizing | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem) |   |
 | Multidimensional arrays | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
-| Collection iteration | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [table](../tests/suite/programs/08-strings-collections/table.sem) |   |
+| Collection iteration | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), `append-during-foreach` |   |
 | Collection insertion | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `list-wrong-item-type` |   |
 | Collection removal | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
 | Collection sorting | tested | [sorting](../tests/suite/programs/08-strings-collections/sorting.sem) |   |
@@ -231,16 +231,16 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
 | Module declaration | tested | [path-mismatch](../tests/suite/programs/09-modules/path-mismatch.sem), [project](../tests/suite/programs/09-modules/project), `module-path-mismatch` |   |
-| Module imports | tested | [project](../tests/suite/programs/09-modules/project), `module-missing-import` |   |
+| Module imports | tested | [project](../tests/suite/programs/09-modules/project), `module-missing-import`, `module-unused-import` |   |
 | Module exports | tested | [project](../tests/suite/programs/09-modules/project) |   |
-| Module aliases | by design | [project](../tests/suite/programs/09-modules/project), `module-unknown-standard` | A module is always referred to by its last path segment; there is no `as`. |
+| Module aliases | by design | [project](../tests/suite/programs/09-modules/project) | A module is always referred to by its last path segment; there is no `as`. |
 | Nested modules | tested | [project](../tests/suite/programs/09-modules/project), `module-path-mismatch` |   |
 | Circular imports | rejected | `module-cycle` |   |
-| Import resolution | tested | [project](../tests/suite/programs/09-modules/project), `module-missing-import`, `module-file-missing` |   |
+| Import resolution | tested | [project](../tests/suite/programs/09-modules/project), `module-missing-import`, `module-file-missing`, `module-unknown-standard` |   |
 | Namespace collisions | tested | [standard-name](../tests/suite/programs/09-modules/standard-name.sem), [project](../tests/suite/programs/09-modules/project) |   |
 | Visibility / Access modifiers | tested | [project](../tests/suite/programs/09-modules/project), `module-private-symbol` |   |
 | Public / Private symbols | tested | [project](../tests/suite/programs/09-modules/project), `module-private-symbol` |   |
-| Dependency management | tested | [package](../tests/suite/programs/09-modules/package), [project](../tests/suite/programs/09-modules/project), `module-unused-import`, `test_stress_large_dependency_graph` |   |
+| Dependency management | tested | [package](../tests/suite/programs/09-modules/package), [project](../tests/suite/programs/09-modules/project), `test_stress_large_dependency_graph` |   |
 | Module initialization | by design |   | Modules run no code when loaded and hold no mutable state; tables are constant data. |
 | Module cleanup | by design |   | Nothing to clean: modules own no resources. Operations clean up what they own. |
 | Cross-module function calls | tested | [project](../tests/suite/programs/09-modules/project) |   |
@@ -262,11 +262,11 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Assertion failures | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem) |   |
 | Nested error handling | tested | [errors](../tests/suite/programs/10-errors/errors.sem) |   |
 | Error handling during recursion | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
-| Cleanup after errors | tested | [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-not-deferred` |   |
+| Cleanup after errors | tested | [cleanup-on-error](../tests/suite/programs/07-memory/cleanup-on-error.sem), [resources](../tests/suite/programs/07-memory/resources.sem), `leak-on-error-path` |   |
 | Error context preservation | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [errors](../tests/suite/programs/10-errors/errors.sem) |   |
 | Stack traces | tested | [trap-stack-trace](../tests/suite/programs/10-errors/trap-stack-trace.sem) | A trap prints the operations it passed through, innermost first, with repeated frames collapsed into a count. |
 | Unhandled errors | rejected | `error-not-passed-up`, `catch-missing` |   |
-| Errors during resource cleanup | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `cleanup-suppress-without-reason` |   |
+| Errors during resource cleanup | tested | [resources](../tests/suite/programs/07-memory/resources.sem) |   |
 | Exit codes | tested | [errors](../tests/suite/programs/10-errors/errors.sem), [exit-status](../tests/suite/programs/16-runtime/exit-status.sem) |   |
 
 ## 11. Concurrency & Parallelism
@@ -274,26 +274,26 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
 | Thread creation | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem) |   |
-| Thread termination | tested | [cancellation](../tests/suite/programs/11-concurrency/cancellation.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `task-not-joined` |   |
-| Async functions | tested | [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `async-undeclared` |   |
-| Await | tested | [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `async-undeclared` |   |
-| Futures / Promises | tested | [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `wait-without-task` |   |
+| Thread termination | tested | [cancellation](../tests/suite/programs/11-concurrency/cancellation.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `task-not-joined`, `start-in-loop-join-after` |   |
+| Async functions | tested | [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `async-undeclared`, `wait-without-task` |   |
+| Await | tested | [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `async-undeclared`, `join-twice` |   |
+| Futures / Promises | tested | [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem) |   |
 | Task scheduling | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `group-not-joined` |   |
 | Parallel execution | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem) | Each task runs on its own thread (D-31); the parallel case measures two pauses overlapping and a group of two running four tasks in two waves. |
-| Shared mutable state | rejected | `shared-mutable-to-task` |   |
-| Mutexes | by design | `shared-mutable-to-task` | No shared mutable state between tasks: values are copied, lent read-only, or given. Coordination is by channels. |
-| Locks | by design | `shared-mutable-to-task` | See mutexes: no shared mutable state, so no locks. |
-| Atomic operations | by design | `shared-mutable-to-task` | See mutexes: no shared mutable state, so no atomics. |
+| Shared mutable state | rejected | `give-while-lent-to-task`, `two-tasks-lendMutable` |   |
+| Mutexes | by design |   | No shared mutable state between tasks: values are copied, lent read-only, or given. Coordination is by channels. |
+| Locks | by design |   | See mutexes: no shared mutable state, so no locks. |
+| Atomic operations | by design |   | See mutexes: no shared mutable state, so no atomics. |
 | Channels | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), [trap-channel-deadlock](../tests/suite/programs/11-concurrency/trap-channel-deadlock.sem) |   |
 | Message passing | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem) |   |
-| Race-condition detection | rejected | `shared-mutable-to-task` |   |
+| Race-condition detection | rejected | `two-tasks-lendMutable`, `task-lendMutable-then-read` |   |
 | Deadlock detection | tested | [trap-channel-deadlock](../tests/suite/programs/11-concurrency/trap-channel-deadlock.sem) | The checker proves every task and group is joined or cancelled on every path (R512). At run time, when every task waits on another with no deadline, the program traps and names each wait (D-31). |
 | Task cancellation | tested | [cancellation](../tests/suite/programs/11-concurrency/cancellation.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem) |   |
-| Timeouts | tested | [cancellation](../tests/suite/programs/11-concurrency/cancellation.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `wait-without-task` |   |
+| Timeouts | tested | [cancellation](../tests/suite/programs/11-concurrency/cancellation.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem) |   |
 | Thread-local storage | by design |   | No globals, so nothing to make thread-local: a task receives what it needs as arguments. |
 | Producer-consumer patterns | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem) |   |
 | Concurrent recursion | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem) | Recursion runs inside tasks with its depth and stack checked per thread. |
-| Structured concurrency | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `task-not-joined`, `group-not-joined` |   |
+| Structured concurrency | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `task-not-joined`, `group-not-joined`, `start-in-loop-join-after` |   |
 
 ## 12. Input / Output
 
@@ -326,11 +326,11 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | --- | --- | --- | --- |
 | Capability declaration | tested | [console](../tests/suite/programs/12-io/console.sem), `capability-wrong-grant` |   |
 | Capability granting | tested | [console](../tests/suite/programs/12-io/console.sem), `capability-wrong-grant` |   |
-| Capability restriction | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), `capability-unused` |   |
+| Capability restriction | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), `capability-unused`, `allows-missing`, `ffi-symbol-grant-missing` |   |
 | Capability propagation | tested | [console](../tests/suite/programs/12-io/console.sem) |   |
 | Capability revocation | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
-| Capability scoping | tested | [resources](../tests/suite/programs/07-memory/resources.sem), [arguments](../tests/suite/programs/12-io/arguments.sem), [clock](../tests/suite/programs/12-io/clock.sem), [environment](../tests/suite/programs/12-io/environment.sem), [file-read](../tests/suite/programs/12-io/file-read.sem), [file-write](../tests/suite/programs/12-io/file-write.sem), [network-connect](../tests/suite/programs/12-io/network-connect.sem), [process-run](../tests/suite/programs/12-io/process-run.sem), [stdin](../tests/suite/programs/12-io/stdin.sem) |   |
-| Unauthorized capability access | rejected | `secret-reveal-without-capability`, `capability-missing` |   |
+| Capability scoping | tested | [resources](../tests/suite/programs/07-memory/resources.sem), [file-read](../tests/suite/programs/12-io/file-read.sem), [file-write](../tests/suite/programs/12-io/file-write.sem), [network-connect](../tests/suite/programs/12-io/network-connect.sem), [process-run](../tests/suite/programs/12-io/process-run.sem), `allows-scope-narrower`, `allows-scope-on-unscoped`, `allows-unscoped-file-access`, `fs-scope-without-form` |   |
+| Unauthorized capability access | rejected | `secret-reveal-without-capability`, `capability-missing`, `capability-missing-isolated`, `ffi-symbol-not-granted` |   |
 | Effect declaration | tested | [console](../tests/suite/programs/12-io/console.sem), `effect-declared-not-performed` |   |
 | Effect validation | tested | [console](../tests/suite/programs/12-io/console.sem), `effect-undeclared` |   |
 | Effect inference | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
@@ -338,10 +338,10 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Nested operation effects | tested | [console](../tests/suite/programs/12-io/console.sem), `effect-undeclared` |   |
 | Cross-module effects | tested | [project](../tests/suite/programs/09-modules/project) |   |
 | Resource access permissions | tested | [file-read](../tests/suite/programs/12-io/file-read.sem), [trap-computed-program](../tests/suite/programs/17-security/trap-computed-program.sem), `capability-scope-program` |   |
-| File-system capability enforcement | tested | [resources](../tests/suite/programs/07-memory/resources.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `capability-scope-dotdot`, `capability-scope-escape` |   |
-| Network capability enforcement | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem), `capability-scope-host` |   |
+| File-system capability enforcement | tested | [resources](../tests/suite/programs/07-memory/resources.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `capability-scope-dotdot`, `capability-scope-escape`, `fs-prefix-sibling`, `allows-scope-narrower` |   |
+| Network capability enforcement | tested | [network-connect](../tests/suite/programs/12-io/network-connect.sem), `capability-scope-host`, `host-prefix` |   |
 | Console capability enforcement | tested | [console](../tests/suite/programs/12-io/console.sem), `capability-missing` |   |
-| Capability escalation prevention | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), [trap-computed-program](../tests/suite/programs/17-security/trap-computed-program.sem), `capability-scope-escape`, `test_symlink_out_of_scope_traps` |   |
+| Capability escalation prevention | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), [trap-computed-program](../tests/suite/programs/17-security/trap-computed-program.sem), `capability-scope-escape`, `effect-laundering-ref`, `test_symlink_out_of_scope_traps` |   |
 | Effect polymorphism | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem) |   |
 
 ## 14. Type System & Generics
@@ -355,12 +355,12 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Explicit conversions | tested | [integers](../tests/suite/programs/02-types/integers.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Generic functions | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-called-directly` |   |
 | Generic structures | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `generic-instance-arity` |   |
-| Generic constraints | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-wrong-argument` |   |
+| Generic constraints | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-wrong-argument`, `generic-constraint-isolated` |   |
 | Type parameter inference | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-called-directly` |   |
 | Nested generics | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
 | Recursive generics | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem) |   |
 | Trait / Interface implementation | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem) |   |
-| Trait bounds | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-wrong-argument` |   |
+| Trait bounds | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-wrong-argument`, `generic-constraint-isolated` |   |
 | Polymorphism | tested | [functions](../tests/suite/programs/05-functions/functions.sem) |   |
 | Subtyping | rejected | `alias-is-distinct` |   |
 | Variance | rejected | `reference-signature-mismatch` |   |
@@ -428,8 +428,8 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Stack overflow protection | tested | [trap-recursion-depth](../tests/suite/programs/06-recursion/trap-recursion-depth.sem), `test_stress_stack_exhaustion_traps` |   |
 | Integer overflow protection | tested | [trap-add-overflow](../tests/suite/programs/03-operators/trap-add-overflow.sem) |   |
 | Resource exhaustion protection | tested | [trap-region-exhausted](../tests/suite/programs/07-memory/trap-region-exhausted.sem) |   |
-| Sandboxing | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `capability-scope-escape`, `test_symlink_out_of_scope_traps` |   |
-| Capability isolation | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem) |   |
+| Sandboxing | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `capability-scope-escape`, `fs-scope-without-form`, `test_symlink_out_of_scope_traps` |   |
+| Capability isolation | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `allows-missing` |   |
 | Privilege separation | tested | [process-run](../tests/suite/programs/12-io/process-run.sem), [trap-computed-program](../tests/suite/programs/17-security/trap-computed-program.sem), `capability-scope-program` |   |
 | Input validation | tested | [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
 | Injection resistance | tested | [trap-computed-path-escape](../tests/suite/programs/17-security/trap-computed-path-escape.sem), `capability-scope-dotdot`, `capability-scope-escape` |   |
@@ -443,7 +443,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
-| Foreign function interface (FFI) | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
+| Foreign function interface (FFI) | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem), `ffi-symbol-not-granted`, `ffi-symbol-grant-missing` | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
 | C interoperability | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
 | Native library loading | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
 | Dynamic linking | tested | [foreign](../tests/suite/programs/18-interop/foreign.sem) | `ffi.open` loads a shared library under a capability scoped to its name; `ffi.Function.bind` gives a C symbol a declared operation type over numbers and `Bool`, called with the C calling convention. No pointers cross, so no memory is shared; a missing library or symbol is an error value. |
@@ -481,7 +481,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 
 | Item | Status | Evidence | Note |
 | --- | --- | --- | --- |
-| Unit tests | tested | [string-asserts](../tests/suite/programs/20-testing/string-asserts.sem), [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem), `test-verifies-unknown` |   |
+| Unit tests | tested | [string-asserts](../tests/suite/programs/20-testing/string-asserts.sem), [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem), `test-verifies-unknown`, `test-never-calls-verified-op` |   |
 | Integration tests | tested | `test-invoked`, `test_stress_large_dependency_graph` |   |
 | End-to-end tests | tested | `test_every_program_case_runs`, `test_program_case` |   |
 | Regression tests | tested | [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem), `invariant-unverified` |   |
@@ -521,8 +521,8 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Duplicate declarations are rejected | rejected | `var-shadowing`, `overloading` |   |
 | Duplicate symbols are rejected | rejected | `var-shadow-label`, `overloading` |   |
 | Ownership constraints are enforced | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `region-value-without-owner` |   |
-| Borrowing constraints are enforced | rejected | `change-through-read-loan`, `mutable-loan-of-read-loan` |   |
-| Cleanup obligations are enforced | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `owned-never-released` |   |
+| Borrowing constraints are enforced | rejected | `change-through-read-loan`, `mutable-loan-of-read-loan`, `give-while-lent-to-task`, `alias-same-call` |   |
+| Cleanup obligations are enforced | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `owned-never-released`, `return-owned-with-cleanup-none` |   |
 | Declared effects match actual effects | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), `effect-undeclared` |   |
 | Required capabilities are present | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), `capability-missing` |   |
 | Unnecessary capabilities are rejected or reported | tested | [effects](../tests/suite/programs/13-capabilities/effects.sem), `capability-unused` |   |
@@ -530,7 +530,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Heap restrictions are enforced | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `heap-undeclared` |   |
 | Async restrictions are enforced | tested | [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `task-not-joined` |   |
 | Error handling matches declared error types | tested | [errors](../tests/suite/programs/10-errors/errors.sem), `string-slice-unchecked`, `raise-undeclared` |   |
-| Invariants are validated | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem), `test-verifies-unknown`, `invariant-unverified` |   |
+| Invariants are validated | tested | [tests-fail](../tests/suite/programs/20-testing/tests-fail.sem), [tests-pass](../tests/suite/programs/20-testing/tests-pass.sem), `test-verifies-unknown`, `invariant-unverified`, `test-never-calls-verified-op`, `verifies-unknown-additive` |   |
 | Module dependency cycles are handled | rejected | `module-cycle` |   |
 | Invalid operation graphs are rejected | tested | [trap-loop-bound](../tests/suite/programs/04-control-flow/trap-loop-bound.sem), `block-falls-through`, `call-never-activated` |   |
 | Execution order is deterministic where specified | tested | [operators](../tests/suite/programs/03-operators/operators.sem), `call-activated-twice`, `test_run_is_deterministic` |   |
@@ -554,7 +554,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Floating-point extremes | tested | [floats](../tests/suite/programs/02-types/floats.sem) |   |
 | Extremely long strings | tested | `test_stress_extremely_long_string` |   |
 | Invalid Unicode | tested | [strings](../tests/suite/programs/08-strings-collections/strings.sem) |   |
-| Invalid source encoding | tested | `lex-other-whitespace`, `test_check_reports_unreadable_source_encoding` |   |
+| Invalid source encoding | tested | `test_check_reports_unreadable_source_encoding` |   |
 | Repeated allocation/deallocation | tested | `test_stress_very_large_collection` |   |
 | Memory exhaustion | tested | [trap-region-exhausted](../tests/suite/programs/07-memory/trap-region-exhausted.sem) |   |
 | Infinite loops | tested | [trap-loop-bound](../tests/suite/programs/04-control-flow/trap-loop-bound.sem), `cycle-without-header`, `counted-wrong-direction` |   |
@@ -575,7 +575,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Interpreter invocation | by design |   | There is no interpreter: `run` JIT-compiles the project. |
 | REPL behavior | tested | `test_repl_checks_and_runs` | `refined repl`: type rows, then `:check`, `:run`, `:undo`, `:show`. |
 | Package management | tested | [package](../tests/suite/programs/09-modules/package), `package-missing`, `package-not-a-library`, `project-version-format`, `library-with-entry` | Local packages: `requires <name> "<path>" "<constraint>"` in build.sem; there is no registry. |
-| Dependency resolution | tested | [package](../tests/suite/programs/09-modules/package), [project](../tests/suite/programs/09-modules/project), `module-unused-import`, `package-version-unmet`, `package-cycle` |   |
+| Dependency resolution | tested | [package](../tests/suite/programs/09-modules/package), [project](../tests/suite/programs/09-modules/project), `package-version-unmet`, `package-cycle` |   |
 | Version constraints | tested | [package](../tests/suite/programs/09-modules/package), `package-version-unmet`, `package-bad-constraint` | Comparators such as `>=1.0.0 <2.0.0`, `^1.2.0`, `=1.2.3`, or `*`. |
 | Reproducible builds | tested | `test_check_output_is_deterministic`, `test_emitted_ir_is_deterministic` |   |
 | Incremental builds | tested | `test_build_cache_reuses_only_identical_projects` | The build cache skips checking and code generation for an unchanged project. |

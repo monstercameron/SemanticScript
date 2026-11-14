@@ -17,6 +17,7 @@ sys.path.insert(0, SUITE)
 
 import caselib  # noqa: E402
 import sembuild as sb  # noqa: E402
+from caselib import allows_rows  # noqa: E402
 
 CASES = caselib.discover()
 CASE = {c.name: c for c in CASES}
@@ -293,6 +294,7 @@ def test_program_sees_an_interrupt(tmp_path):
     (d / "build.sem").write_text('interruptsProject is project\ninterruptsProject purpose "Wait for an interrupt"\n'
                                  'interruptsProject target console\ninterruptsProject version "0.1.0"\n'
                                  "interruptsProject language refined-1\ninterruptsProject standardLibrary 1\n"
+                                 + "\n".join(allows_rows("interruptsProject", [p.render()])) + "\n"
                                  "interruptsProject requires none\ninterruptsProject module interrupts\n"
                                  "interruptsProject entry interrupts.main\n", encoding="utf-8")
     (d / "interrupts.sem").write_text(p.render(), encoding="utf-8")
@@ -317,18 +319,19 @@ def _has_cc() -> bool:
 def test_standalone_executables_match_the_jit(tmp_path):
     """18 Static linking, 16 Program startup: programs link with the C runtime into executables that run with no
     Python and behave exactly as under `refined run` (output, exit code, traps). Programs that call the host
-    library trap with that target's name instead."""
+    library are refused when they are built (R901), naming the targets, instead of trapping when they run."""
     linked = host_only = 0
     for i, case in enumerate(c for c in CASES if c.mode in ("run", "trap") and not c.args and not c.stdin):
         project = caselib.materialize(case, str(tmp_path / str(i)))
         exe = os.path.join(project, "program.exe")
         built = caselib.refined("build", project, "--kind", "executable", "--output", exe)
-        assert built.returncode == 0, (case.name, built.stdout)
-        proc = subprocess.run([exe], capture_output=True, text=True, cwd=project, timeout=120)
-        if "needs the host library" in proc.stderr:
-            assert proc.returncode == 70
+        if "R901" in built.stdout + built.stderr:
+            assert built.returncode != 0 and "need the host library" in built.stdout + built.stderr, case.name
+            assert not os.path.exists(exe), case.name
             host_only += 1
             continue
+        assert built.returncode == 0, (case.name, built.stdout)
+        proc = subprocess.run([exe], capture_output=True, text=True, cwd=project, timeout=120)
         if case.mode == "run":
             assert proc.returncode == case.exit_code, (case.name, proc.stderr)
             assert case.stdout is None or proc.stdout.splitlines() == case.stdout, case.name
@@ -359,7 +362,7 @@ def test_symlink_out_of_scope_traps(tmp_path):
         link_path = "suite-dir/secret.txt"
     p = sb.Prog("linked", "Read a file through a link", imports=["standard.fs", "standard.time"])
     p.add('fileAccess is capability\nfileAccess purpose "Authority to read files whose names start with suite-"\n'
-          'fileAccess grants read fs.files\nfileAccess scope "suite-"')
+          'fileAccess grants read fs.files\nfileAccess scope "suite-*"')
     p.add(sb.op("main", "Read suite-link.txt",
                 [("begin", "do makeDeadline"), ("begin", "start readIt"), ("begin", "join readIt"),
                  ("begin", "branch ifError readIt goto failed else goto done"),
@@ -376,6 +379,7 @@ def test_symlink_out_of_scope_traps(tmp_path):
     (d / "build.sem").write_text('linkedProject is project\nlinkedProject purpose "Read through a symbolic link"\n'
                                  'linkedProject target console\nlinkedProject version "0.1.0"\n'
                                  "linkedProject language refined-1\nlinkedProject standardLibrary 1\n"
+                                 + "\n".join(allows_rows("linkedProject", [p.render()])) + "\n"
                                  "linkedProject requires none\nlinkedProject module linked\n"
                                  "linkedProject entry linked.main\n", encoding="utf-8")
     (d / "linked.sem").write_text(p.render(), encoding="utf-8")

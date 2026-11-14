@@ -112,12 +112,14 @@ SLOT_CHECKS = {
     "exportName": lambda tok: tok.kind == "word" and (is_name(tok.raw) or bool(UPPER.match(tok.raw))),
     "letValue": lambda tok: is_literal(tok.raw, tok.kind) or (tok.kind == "word" and (is_name(tok.raw) or tok.raw == "unset")),
     "cellValue": lambda tok: is_literal(tok.raw, tok.kind) or (tok.kind == "word" and is_name(tok.raw)),
+    "languageVersion": lambda tok: tok.kind == "word" and bool(re.match(r"[a-z]+-[0-9]+\Z", tok.raw)),
 }
 
 SLOT_LABELS = {
     "name": "<name>", "label": "<label>", "Type": "<Type>", "string": '"<text>"', "int": "<integer>",
     "path": "<dotted.path>", "resource": "<module.resource>", "target": "<target>", "variant": "<Enum.variant>",
     "exportName": "<name>", "letValue": "<literal|name|unset>", "cellValue": "<literal|name>",
+    "languageVersion": "<language>-<version>",
 }
 
 
@@ -212,11 +214,12 @@ KINDS: dict[str, dict] = {
     # the local packages it requires with a version constraint each
     "project": {
         "shapes": {"target": [(kw("console", "library"),)], "version": [("string",)],
-                   "language": [(kw("refined-1"),)], "standardLibrary": [("int",)],
+                   "language": [("languageVersion",)], "standardLibrary": [("int",)],
+                   "allows": [(NONE,), (EFFECT_VERBS, "resource", NONE), (EFFECT_VERBS, "resource", "string")],
                    "requires": [(NONE,), ("name", "string", "string")], "module": [("path",)],
                    "entry": [(NONE,), ("target",)]},
         "skeleton": [("target", "one"), ("version", "one"), ("language", "one"), ("standardLibrary", "one"),
-                     ("requires", "some"), ("module", "some"), ("entry", "one")],
+                     ("allows", "some"), ("requires", "some"), ("module", "some"), ("entry", "one")],
     },
     "module": {
         "shapes": {"path": [("path",)], "imports": [(NONE,), ("path",)], "exports": [(NONE,), ("exportName",)]},

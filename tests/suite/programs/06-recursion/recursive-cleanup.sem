@@ -91,7 +91,7 @@ fileAccess is capability
 fileAccess purpose "Authority over files whose names start with suite-"
 fileAccess grants read fs.files
 fileAccess grants write fs.files
-fileAccess scope "suite-"
+fileAccess scope "suite-*"
 
 nest is operation
 nest purpose "Open the file, recurse until depth reaches zero, and count the levels that held it open"

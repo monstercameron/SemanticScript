@@ -63,6 +63,7 @@ def check_entity(ent: Entity, sink: Sink) -> None:
             rank[p] = base + i
 
     good_rows: list[Row] = []
+    malformed: set[str] = set()  # predicates with a row that broke its shape (already reported)
     for row in ent.rows[1:]:
         pred = row.predicate
         if pred in S.CONTEXT_SHAPES:
@@ -88,6 +89,8 @@ def check_entity(ent: Entity, sink: Sink) -> None:
             continue
         if _match_any(shape, row.args, row, ent, sink, pred):
             good_rows.append(row)
+        else:
+            malformed.add(pred)
 
     # skeleton order (LR-42 A22: context first, then the kind's skeleton)
     last = -1
@@ -103,6 +106,8 @@ def check_entity(ent: Entity, sink: Sink) -> None:
         preds = group.split("|")
         rows = [r for r in good_rows if r.predicate in preds]
         shown = " or ".join(f"`{p}`" for p in preds)
+        if not rows and any(x in malformed for x in preds):
+            continue  # the row is there; its shape error says what is wrong with it
         if card == "one" and len(rows) != 1:
             if rows:
                 sink.error("R302", rows[1].line, f"a {ent.kind} has exactly one {shown} row; this is another")

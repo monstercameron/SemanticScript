@@ -1159,21 +1159,13 @@ def _scoped_params() -> dict[str, int]:
 
 
 SCOPED = _scoped_params()
+SCOPED["ffi.Function.bind"] = 1  # a generic member: its `symbol` slot is scoped by `ffi.symbols`
 
 
 def path_within(path: str, scope: str) -> bool:
-    """A file path is inside a `fs.files` scope when, after resolving `..` and symbolic links, it lies in the
-    scope's directory and its first name there starts with the scope's last part (all of the directory when
-    the scope ends with a separator)."""
-    real = os.path.normcase(os.path.realpath(path))
-    head, tail = os.path.split(scope)
-    base = os.path.normcase(os.path.realpath(head or "."))
-    if real == base:
-        return tail == ""
-    if not real.startswith(base.rstrip(os.sep) + os.sep):
-        return False
-    first = real[len(base.rstrip(os.sep)) + 1:].split(os.sep)[0]
-    return first.startswith(os.path.normcase(tail))
+    """At run time `..` and links are followed before the path is compared with the scope (library.path_within)."""
+    from .library import path_within as within
+    return within(path, scope, resolve=True)
 
 
 def _check_scope(name: str, value, scope_text: str) -> None:
@@ -1192,6 +1184,9 @@ def _check_scope(name: str, value, scope_text: str) -> None:
             allowed = allowed or value == line
         elif resource == "fs.files":
             allowed = allowed or path_within(value, line)
+        elif resource == "net.outbound":
+            from .semantics import address_within
+            allowed = allowed or address_within(str(value), line)
         elif kind == "prefix":
             allowed = allowed or str(value).startswith(line)
     if not allowed:

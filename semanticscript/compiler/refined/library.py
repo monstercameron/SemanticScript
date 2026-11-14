@@ -67,7 +67,8 @@ BUILTINS = {
 INTEGER_RANGES = {
     "Int8": (-2**7, 2**7 - 1), "Int16": (-2**15, 2**15 - 1), "Int32": (-2**31, 2**31 - 1),
     "Int64": (-2**63, 2**63 - 1), "UInt8": (0, 2**8 - 1), "UInt16": (0, 2**16 - 1),
-    "UInt32": (0, 2**32 - 1), "UInt64": (0, 2**64 - 1), "Byte": (0, 255), "ExitCode": (-2**31, 2**31 - 1),
+    "UInt32": (0, 2**32 - 1), "UInt64": (0, 2**64 - 1), "Byte": (0, 255),
+    "ExitCode": (0, 255),  # what every platform delivers to the parent process
 }
 FLOAT_TYPES = {"Float32", "Float64"}
 
@@ -79,7 +80,45 @@ SCOPED_RESOURCES = {
     "fs.files": "prefix",  # scope is a directory prefix; the literal path starts with it
     "process.programs": "exact",  # scope is the program name; the literal equals it
     "ffi.libraries": "exact",  # scope is the shared library's name; the literal equals it
+    "ffi.symbols": "exact",  # scope is one C symbol's name: each foreign function is granted by name (D-41)
 }
+
+
+def path_within(path: str, scope: str, resolve: bool) -> bool:
+    """D-41: an `fs.files` scope is a directory (`"data/"`: anything inside it) or a name pattern
+    (`"suite-*"`: entries of that directory whose name starts with `suite-`). `resolve` follows `..` and
+    links (at run time); without it the path is normalized as written (at check time)."""
+    import os
+    if not scope.endswith(("/", "*")):
+        return False
+    norm = (lambda p: os.path.normcase(os.path.realpath(p))) if resolve else \
+        (lambda p: os.path.normcase(os.path.abspath(os.path.normpath(p))))
+    real = norm(path)
+    if scope.endswith("/"):
+        base = norm(scope[:-1] or ".")
+        return real == base or real.startswith(base.rstrip(os.sep) + os.sep)
+    head, tail = os.path.split(scope[:-1])
+    base = norm(head or ".")
+    if not real.startswith(base.rstrip(os.sep) + os.sep):
+        return False
+    first = real[len(base.rstrip(os.sep)) + 1:].split(os.sep)[0]
+    return first.startswith(os.path.normcase(tail))
+
+
+def scope_within(resource: str, inner: str, outer: str) -> bool:
+    """Whether a capability's scope `inner` is covered by the project's allowed scope `outer`."""
+    kind = SCOPED_RESOURCES.get(resource)
+    if kind is None:
+        return True
+    if inner == outer:
+        return True
+    if resource == "fs.files":
+        if outer.endswith("/"):
+            return path_within(inner.rstrip("/*") or ".", outer, resolve=False)
+        return inner.endswith("*") and inner[:-1].startswith(outer[:-1]) and "/" not in inner[len(outer) - 1:]
+    if resource == "net.outbound":
+        return inner.startswith(outer) and (outer.endswith((":", "/")) or inner[len(outer)] in ":/")
+    return False
 
 # Types that may cross the foreign function interface: numbers and `Bool`, passed by the C ABI as is.
 FOREIGN_TYPES = {"Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Byte", "Float64", "Bool"}
@@ -304,7 +343,8 @@ LIBRARY: dict[str, dict] = {
                         "Bytes", "region", "fs.FileError", E("read fs.files"), waits=True),
             "write": Sig((P("file", "fs.FileHandle", "borrowed"), P("bytes", "Bytes", "borrowed"), _DL),
                          raises="fs.FileError", effects=E("write fs.files"), waits=True),
-            "close": Sig((P("file", "fs.FileHandle", "owned"),), raises="fs.FileError", effects=E("read fs.files")),
+            # closing a handle you own needs no authority beyond holding it
+            "close": Sig((P("file", "fs.FileHandle", "owned"),), raises="fs.FileError"),
             "exists": Sig((P("path", "String", "borrowed"),), "Bool", effects=E("read fs.files"), scoped="path"),
             "remove": Sig((P("path", "String", "borrowed"),), raises="fs.FileError", effects=E("write fs.files"),
                           scoped="path"),
@@ -475,8 +515,10 @@ LIBRARY: dict[str, dict] = {
                                    "environment.MissingError", E("read environment.variables")),
             "reveal": Sig((P("secret", "secret.Secret", "borrowed"), _RG), "String", "region",
                           effects=E("read secret.values")),
-            "matches": Sig((P("secret", "secret.Secret", "borrowed"), P("candidate", "String", "borrowed")), "Bool"),
-            "length": Sig((P("secret", "secret.Secret", "borrowed"),), "Int64"),
+            # comparing or measuring a secret reveals something about it, so it needs the same authority
+            "matches": Sig((P("secret", "secret.Secret", "borrowed"), P("candidate", "String", "borrowed")), "Bool",
+                           effects=E("read secret.values")),
+            "length": Sig((P("secret", "secret.Secret", "borrowed"),), "Int64", effects=E("read secret.values")),
         },
     },
     "signal": {
@@ -546,7 +588,7 @@ def generic_members(generic: str, inst: str, args: list[str], plain) -> dict[str
     if generic == "ffi.Function":
         # `bind` looks a symbol up in a loaded library and gives it the declared operation type
         return {"bind": Sig((P("library", "ffi.Library", "borrowed"), P("symbol", "String", "borrowed")), args[0],
-                            raises="ffi.LoadError", effects=E("load ffi.libraries"))}
+                            raises="ffi.LoadError", effects=E("load ffi.symbols"), scoped="symbol")}
     if generic == "channel.Channel":
         item = args[0]
         return {

@@ -12,7 +12,7 @@ from .flow import check_flow
 from .lexer import lex
 from .library import LIBRARY
 from .model import Entity, SourceFile
-from .semantics import Module, World, check_module, finish_module, index_module
+from .semantics import Module, World, check_module, check_recursion, finish_module, index_module
 
 # Rows from a module's `.test.sem` file are merged into the module. Their line
 # numbers are offset so every diagnostic can be routed back to the right file.
@@ -130,7 +130,7 @@ def check_modules(paths: list[str]) -> Result:
     return _run(World(), modules, sinks)
 
 
-def _load_project(build_path: str, package: str, sinks: list[Sink], stack: list[str]):
+def _load_project(build_path: str, package: str, sinks: list[Sink], stack: list[str], found=None):
     """(project entity, its sink, its modules and those of every project it requires), or (None, sink, [])."""
     bsink = Sink(build_path)
     sinks.append(bsink)
@@ -147,6 +147,8 @@ def _load_project(build_path: str, package: str, sinks: list[Sink], stack: list[
         bsink.error("R601", 1, "build.sem declares exactly one `<name> is project` entity")
         return None, bsink, []
     proj = projects[0]
+    if found is not None:
+        found.append((proj, bsink, package))
     _check_versions(proj, bsink)
     root = os.path.dirname(os.path.abspath(build_path))
     modules = []
@@ -178,7 +180,7 @@ def _load_project(build_path: str, package: str, sinks: list[Sink], stack: list[
             bsink.error("R603", r.line, f"projects require each other in a cycle through `{name}`")
             continue
         dep, _dep_sink, dep_modules = _load_project(dep_build, f"{package}.{name}" if package else name, sinks,
-                                                    stack + [dep_build])
+                                                    stack + [dep_build], found)
         if dep is None:
             continue
         if dep.name != name:
@@ -194,7 +196,8 @@ def _load_project(build_path: str, package: str, sinks: list[Sink], stack: list[
 
 def check_project(build_path: str) -> Result:
     sinks: list[Sink] = []
-    proj, bsink, modules = _load_project(build_path, "", sinks, [os.path.normpath(os.path.abspath(build_path))])
+    found: list = []
+    proj, bsink, modules = _load_project(build_path, "", sinks, [os.path.normpath(os.path.abspath(build_path))], found)
     if proj is None:
         return Result(diagnostics=_collect(sinks))
     root = os.path.dirname(os.path.abspath(build_path))
@@ -204,6 +207,8 @@ def check_project(build_path: str) -> Result:
         world.entry = tuple(entry.split(".", 1))  # type: ignore[assignment]
     res = _run(world, modules, sinks)
     _check_project_entity(world, proj, bsink)
+    for each, each_sink, package in found:
+        _check_allows(world, each, each_sink, package)
     _check_import_cycles(world, bsink)
     res.diagnostics = _collect(sinks)
     res.project, res.root = proj, root
@@ -228,6 +233,7 @@ def _run(world: World, modules: list[Module], sinks: list[Sink]) -> Result:
         for info in m.op_infos.values():
             check_flow(world, m, info)
         finish_module(m)
+    check_recursion(world)
     return Result(diagnostics=_collect(sinks), world=world)
 
 
@@ -334,3 +340,53 @@ def _check_versions(proj: Entity, sink: Sink) -> None:
     if row is not None and row.text(0) != str(STANDARD_LIBRARY_VERSION):
         sink.error("R601", row.line, f"this compiler provides standard library version {STANDARD_LIBRARY_VERSION}, "
                    f"not {row.text(0)}")
+
+
+def _check_allows(world: World, proj: Entity, sink: Sink, package: str) -> None:
+    """D-41: build.sem states the program's whole authority. Every capability of every module (and of every
+    required package) grants only what an `allows` row covers, with a scope inside the allowed one. A required
+    package states what it needs in its own build.sem, and the program that requires it must allow that too."""
+    from .library import SCOPED_RESOURCES, scope_within
+    allowed = []
+    for r in proj.facts("allows"):
+        if r.text(0) == "none":
+            continue
+        scope = r.args[2].value if r.args[2].kind == "string" else None
+        if (r.text(1) in SCOPED_RESOURCES) != (scope is not None):
+            sink.error("R601", r.line, f"`{r.text(1)}` is {'a scoped resource, so the row states its scope' if scope is None else 'not scoped, so the row ends in `none`'}")
+            scope = None  # reported once here; the capabilities it was meant to cover are not reported again
+        allowed.append((r.text(0), r.text(1), scope))
+    for m in world.modules.values():
+        mine = getattr(m, "package", "") or ""
+        if package and not (mine == package or mine.startswith(package + ".")):
+            continue
+        for cap in m.capabilities.values():
+            srow = cap.fact("scope")
+            scope = srow.args[0].value if srow is not None and srow.args and srow.args[0].kind == "string" else None
+            for g in cap.facts("grants"):
+                verb, res = g.text(0), g.text(1)
+                ok = any(v == verb and rr == res and (s is None or (scope is not None and scope_within(res, scope, s)))
+                         for v, rr, s in allowed)
+                if not ok:
+                    m.sink.error("R408", g.line, f"capability `{cap.name}` grants `{verb} {res}`"
+                                 + (f" in {scope!r}" if scope else "") + f", which build.sem does not allow; the project "
+                                 f"states its whole authority with `{proj.name} allows {verb} {res} ...`")
+
+
+def allows_rows(project: str, texts: list[str]) -> list[str]:
+    """The `allows` rows that cover exactly the capabilities written in `texts` (module sources). Tools that
+    generate a build.sem for code they did not write (the REPL, the test harness) use this; a hand-written
+    build.sem states its authority itself."""
+    import re
+    grants, scopes = [], {}
+    for text in texts:
+        for cap, verb, res in re.findall(r"^(\w+) grants (\w+) ([\w.]+)\s*$", text, re.M):
+            grants.append((cap, verb, res))
+        for cap, scope in re.findall(r"^(\w+) scope (none|\"[^\"]*\")\s*$", text, re.M):
+            scopes[cap] = scope
+    rows = []
+    for cap, verb, res in grants:
+        row = f"{project} allows {verb} {res} {scopes.get(cap, 'none')}"
+        if row not in rows:
+            rows.append(row)
+    return rows or [f"{project} allows none"]

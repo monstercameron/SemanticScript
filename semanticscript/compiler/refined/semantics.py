@@ -17,6 +17,7 @@ from typing import Optional
 from . import shapes as S
 from .diagnostics import Sink
 from .library import (BUILTINS, FLOAT_TYPES, INTEGER_RANGES, LIBRARY, SCOPED_RESOURCES, Param, Sig, TypeInfo,
+                      path_within,
                       generic_members, type_param_name)
 from .model import Entity, Row
 
@@ -89,6 +90,9 @@ class World:
     def __init__(self) -> None:
         self.modules: dict[str, Module] = {}
         self.entry: Optional[tuple[str, str]] = None  # (module, operation) named by build.sem
+        # every operation used as a value, by the operationType it was used as: an operation that invokes a
+        # reference of that type may be calling any of them (the recursion check follows these edges)
+        self.taken: dict[str, set[tuple[str, str]]] = {}
 
     # ------------------------------------------------------------ types
 
@@ -436,7 +440,6 @@ def check_module(world: World, m: Module) -> None:
     for name, cap in m.capabilities.items():
         if name not in used_caps:
             sink.error("R408", cap.line, f"capability `{name}` is not used by any operation")
-    _check_recursion(m)
     _check_invariant_coverage(m)
 
 
@@ -466,6 +469,10 @@ def _check_capability(m: Module, cap: Entity) -> None:
                      "of it the capability covers")
     elif not scoped and scope_row.text(0) != "none":
         m.sink.error("R408", scope_row.line, f"nothing `{cap.name}` grants takes a scope; write `{cap.name} scope none`")
+    elif "fs.files" in {r.text(1) for r in cap.facts("grants")} and scope_row.args and \
+            scope_row.args[0].kind == "string" and not scope_row.args[0].value.endswith(("/", "*")):
+        m.sink.error("R408", scope_row.line, f"an `fs.files` scope is a directory ending in `/` (`\"data/\"`) or a name "
+                     f"pattern ending in `*` (`\"suite-*\"`); `{scope_row.args[0].value}` is neither")
 
 
 def _check_op_instance(world: World, m: Module, ent: Entity) -> None:
@@ -555,6 +562,11 @@ def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
                                  f"`plain`; `{a}` is not a plain type")
             if gen == "ffi.Function" and args and args[0] is not None:
                 _check_foreign(world, m, row, args[0])
+            for a in args:
+                ai = world.type_info(a) if a is not None else None
+                if ai is not None and ai.kind == "resource" and gen != "ffi.Function":
+                    m.sink.error("R403", row.line, f"`{a}` is a resource, owned by one operation and released by it; it "
+                                 f"cannot be stored in `{row.text(0)}`, which a region releases without closing it")
 
 
 def _import_paths(target: Module, importer: Module) -> set:
@@ -648,6 +660,7 @@ def _check_op_reference(world: World, m: Module, op_name: str, canon: Optional[s
     if info is None or info.kind != "operationType":
         m.sink.error("R403", line, f"{what} is `{_show(canon)}`, but `{op_name}` is an operation")
         return
+    world.taken.setdefault(canon, set()).add((m.short, op_name))
     want = info.sig
     got = header_sig(world, m, m.ops[op_name], quiet=True)
     if want is None:
@@ -924,6 +937,11 @@ def _check_op(world: World, m: Module, op: OpInfo) -> None:
                 sink.error("R604", r.line, f"`verifies` names `{target}`, which is not an operation of module `{m.short}`")
             elif inv_id not in [x.text(0) for x in tgt.facts("invariant")]:
                 sink.error("R604", r.line, f"operation `{target}` has no invariant `{inv_id}`")
+            elif not any(ci.entity.value("invokes") == target for ci in op.calls.values()):
+                sink.error("R604", r.line, f"test `{ent.name}` verifies `{target}` but never calls it; a test proves "
+                           "an invariant by running the operation")
+        if not any((ci.entity.value("invokes") or "").startswith("test.") for ci in op.calls.values()):
+            sink.error("R604", ent.line, f"test `{ent.name}` asserts nothing; it calls at least one `test.` target")
     for r in ent.facts("let"):
         _check_let(world, m, op, r)
     effective: set = set()
@@ -966,6 +984,9 @@ def _check_let(world: World, m: Module, op: OpInfo, r: Row) -> None:
                              "is not set when the operation starts")
             elif t != b.type:
                 m.sink.error("R403", r.line, f"`{b.name}` is `{_show(b.type)}`, but `{tok.raw}` is `{_show(t)}`")
+            elif not world.plain(b.type):
+                m.sink.error("R514", r.line, f"a let copies only plain values; `{b.name}` would be a second name for "
+                             f"`{tok.raw}` (a `{_show(b.type)}`) and could outlive its loan; use `{tok.raw}` directly")
         else:
             m.sink.error("R401", r.line, f"`{tok.raw}` is not a value in `{op.entity.name}`")
         return
@@ -1099,6 +1120,16 @@ def _check_loans(m: Module, op: OpInfo, ci: CallInfo) -> None:
             m.sink.error("R515", line, f"`{value}` is a view of `{b.view_of}`, so it cannot be lent exclusively")
 
 
+def address_within(address: str, scope: str) -> bool:
+    """A `net.outbound` scope names a host (any port) or a host and port; it never matches a longer name or
+    port that merely starts the same way (`127.0.0.1:80` does not allow `127.0.0.1:8080`)."""
+    if address == scope:
+        return True
+    if not address.startswith(scope):
+        return False
+    return scope.endswith((":", "/")) or address[len(scope)] in ":/"
+
+
 def _check_scope(m: Module, op: OpInfo, ci: CallInfo, sig: Sig, value: str) -> None:
     """LR-34 rule 5: a literal argument outside every granting capability's scope is a check error."""
     b = op.bindings.get(value)
@@ -1124,6 +1155,10 @@ def _check_scope(m: Module, op: OpInfo, ci: CallInfo, sig: Sig, value: str) -> N
         for s in scopes:
             if kind == "port":
                 ok = ok or s.rsplit(":", 1)[-1] == str(lit)
+            elif res == "fs.files":
+                ok = ok or path_within(str(lit), s, resolve=False)
+            elif kind == "prefix" and res == "net.outbound":
+                ok = ok or address_within(str(lit), s)
             elif kind == "prefix":
                 ok = ok or str(lit).startswith(s)
             else:
@@ -1169,6 +1204,12 @@ def _check_cleanups(world: World, m: Module, op: OpInfo) -> None:
                        f"`{op.entity.name}`")
         elif not any(a[2] == cleans and a[3] == "give" for a in w.args):
             sink.error("R409", c.fact("call").line, f"the cleanup's call `{worker}` must take `{cleans}` with `give`")
+        for ci in op.calls.values():
+            if ci.out and ci.out[0] == cleans and ci.entity.value("cleanedBy") != c.name:
+                row = ci.entity.fact("cleanedBy")
+                sink.error("R409", row.line if row is not None else ci.entity.line,
+                           f"cleanup `{c.name}` cleans `{cleans}`, so `{ci.entity.name} cleanedBy` names it, "
+                           f"not `{ci.entity.value('cleanedBy')}`")
 
 
 def _check_uses(m: Module, op: OpInfo, declared: set) -> None:
@@ -1214,13 +1255,41 @@ def _check_exact_facts(world: World, m: Module, op: OpInfo) -> None:
                    f"one as input; `{ent.name}` should state `memory heap {'true' if heap else 'false'}`")
 
 
-def _check_recursion(m: Module) -> None:
-    graph = {n: {ci.callee_op for ci in info.calls.values() if ci.callee_op} for n, info in m.op_infos.items()}
+def check_recursion(world: World) -> None:
+    """LR-12: an operation that can reach itself states `maxRecursion <depth>`, and one that cannot states
+    `maxRecursion none`. Reaching follows direct calls (within a module and across modules) and calls through
+    operation references: invoking a reference of an operationType may call any operation used as a value of
+    that type anywhere in the program, so a cycle through a reference counts."""
+    graph: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for m in world.modules.values():
+        for name, info in m.op_infos.items():
+            out = graph.setdefault((m.short, name), set())
+            for ci in info.calls.values():
+                if ci.callee_op:
+                    out.add((m.short, ci.callee_op))
+                inv = ci.entity.fact("invokes")
+                if inv is not None and inv.text(0).count(".") == 1:
+                    mod, op = inv.text(0).split(".")
+                    other = world.modules.get(mod)
+                    if other is not None and op in other.op_instances:
+                        op = other.op_instances[op].value("instantiates")
+                    if other is not None:
+                        out.add((mod, op))
+                if ci.reference is not None:
+                    b = info.bindings.get(ci.reference)
+                    if b is not None:
+                        out |= world.taken.get(b.type, set())
+    for m in world.modules.values():
+        _check_recursion(world, m, graph)
+
+
+def _check_recursion(world: World, m: Module, graph: dict) -> None:
     for name, info in m.op_infos.items():
-        seen, stack, recursive = set(), list(graph.get(name, ())), False
+        start = (m.short, name)
+        seen, stack, recursive = set(), list(graph.get(start, ())), False
         while stack:
             cur = stack.pop()
-            if cur == name:
+            if cur == start:
                 recursive = True
                 break
             if cur in seen:

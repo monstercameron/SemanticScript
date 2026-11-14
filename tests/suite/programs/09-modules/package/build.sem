@@ -15,6 +15,7 @@ packageDemo target console
 packageDemo version "0.1.0"
 packageDemo language refined-1
 packageDemo standardLibrary 1
+packageDemo allows write console.stdout none
 packageDemo requires geometryKit "packages/geometryKit" ">=1.0.0 <2.0.0"
 packageDemo module app
 packageDemo entry app.main

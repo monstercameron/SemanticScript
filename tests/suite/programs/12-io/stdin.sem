@@ -1,7 +1,6 @@
 # covers: 12 Standard input
 # covers: 12 Stream operations
 # covers: 22 Interrupted I/O operations
-# covers: 13 Capability scoping
 # kind: positive
 # expect: run
 # exit: 0

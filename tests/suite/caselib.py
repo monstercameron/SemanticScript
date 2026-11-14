@@ -17,6 +17,9 @@ must happen; nothing about a case's expectation lives outside the file.
     # exit: <integer>
     # stdout: <one expected line>      (repeat; `# stdout:` alone is an empty line)
     # stderr: <one expected line>      (repeat; checked only when present)
+    # stderr-contains: <text>          (repeat; each must appear in stderr, in this order)
+    # stdout-any: <reason>             (stdout is not checked, and why; otherwise run and trap
+                                        cases with no `# stdout:` rows must print nothing)
     # args: <words>                    (the program's arguments, for `run` and `trap`)
     # stdin: <one input line>          (repeat; fed to standard input, each with a line end)
     # requires: <program>              (the case is skipped where this program is not installed)
@@ -44,6 +47,7 @@ TRAP_EXIT_CODE = 70
 
 sys.path.insert(0, os.path.join(ROOT, "semanticscript", "compiler"))
 from refined import check_path  # noqa: E402
+from refined.check import allows_rows  # noqa: E402,F401
 
 
 @dataclass
@@ -59,6 +63,8 @@ class Case:
     args: list[str] = field(default_factory=list)
     stdin: str = ""
     requires: list[str] = field(default_factory=list)
+    stderr_contains: list[str] = field(default_factory=list)
+    stdout_any: str = ""
 
     def missing_tools(self) -> list[str]:
         return [r for r in self.requires if shutil.which(r) is None]
@@ -72,7 +78,7 @@ class Case:
         return self.expect.split(None, 1)[1] if " " in self.expect else ""
 
 
-_HEADER = re.compile(r"^# (covers|kind|expect|exit|stdout|stderr|args|stdin|requires):(.*)$")
+_HEADER = re.compile(r"^# (covers|kind|expect|exit|stdout|stderr|stderr-contains|stdout-any|args|stdin|requires):(.*)$")
 
 
 def _parse_header(text: str, case: Case) -> None:
@@ -98,6 +104,10 @@ def _parse_header(text: str, case: Case) -> None:
             case.stdout = (case.stdout or []) + [value]
         elif key == "stderr":
             case.stderr = (case.stderr or []) + [value]
+        elif key == "stderr-contains":
+            case.stderr_contains.append(value)
+        elif key == "stdout-any":
+            case.stdout_any = value.strip()
         elif key == "requires":
             case.requires.append(value.strip())
         elif key == "args":
@@ -157,7 +167,8 @@ def materialize(case: Case, workdir: str) -> str:
     project = "case" + module[0].upper() + module[1:] if module else "case"
     rows = [f"{project} is project", f'{project} purpose "Run one test-suite case"',
             f"{project} target {'console' if console else 'library'}", f'{project} version "0.1.0"',
-            f"{project} language refined-1", f"{project} standardLibrary 1", f"{project} requires none",
+            f"{project} language refined-1", f"{project} standardLibrary 1", *allows_rows(project, [text]),
+            f"{project} requires none",
             f"{project} module {dotted}",
             f"{project} entry {module + '.main' if console else 'none'}"]
     with open(os.path.join(dst, "build.sem"), "w", encoding="utf-8", newline="\n") as fh:
@@ -194,6 +205,16 @@ def run_case(case: Case, project: str) -> subprocess.CompletedProcess:
     return refined("run", os.path.abspath(project), *extra, cwd=project, stdin=case.stdin)
 
 
+def _in_order(text: str, wanted: list[str]) -> list[str]:
+    at = 0
+    for w in wanted:
+        found = text.find(w, at)
+        if found < 0:
+            return [f"stderr lacks {w!r} after position {at} (rows of `# stderr-contains:` must appear in order):\n{text}"]
+        at = found + len(w)
+    return []
+
+
 def evaluate(case: Case, workdir: str) -> list[str]:
     """Return a list of problems; empty means the case behaved as its header says."""
     problems: list[str] = []
@@ -216,20 +237,25 @@ def evaluate(case: Case, workdir: str) -> list[str]:
         return problems
     if found:
         return problems + ["expected a clean check before running, got:\n  " + "\n  ".join(diagnostics(project))]
+    expected_stdout = case.stdout if case.stdout is not None else ([] if not case.stdout_any else None)
     if mode == "run":
         proc = run_case(case, project)
-        if case.exit_code is not None and proc.returncode != case.exit_code:
+        if case.exit_code is None:
+            problems.append("a run case states `# exit:`")
+        elif proc.returncode != case.exit_code:
             problems.append(f"exit code {proc.returncode}, expected {case.exit_code}\n{proc.stdout}{proc.stderr}")
-        if case.stdout is not None and proc.stdout.splitlines() != case.stdout:
-            problems.append(f"stdout {proc.stdout.splitlines()!r}, expected {case.stdout!r}\n{proc.stderr}")
+        if expected_stdout is not None and proc.stdout.splitlines() != expected_stdout:
+            problems.append(f"stdout {proc.stdout.splitlines()!r}, expected {expected_stdout!r}\n{proc.stderr}")
         if case.stderr is not None and proc.stderr.splitlines() != case.stderr:
             problems.append(f"stderr {proc.stderr.splitlines()!r}, expected {case.stderr!r}")
+        problems += _in_order(proc.stderr, case.stderr_contains)
     elif mode == "trap":
         proc = run_case(case, project)
         if proc.returncode != TRAP_EXIT_CODE or detail not in proc.stderr:
             problems.append(f"expected a trap containing {detail!r}; exit {proc.returncode}\n{proc.stdout}{proc.stderr}")
-        if case.stdout is not None and proc.stdout.splitlines() != case.stdout:
-            problems.append(f"stdout before the trap {proc.stdout.splitlines()!r}, expected {case.stdout!r}")
+        if expected_stdout is not None and proc.stdout.splitlines() != expected_stdout:
+            problems.append(f"stdout before the trap {proc.stdout.splitlines()!r}, expected {expected_stdout!r}")
+        problems += _in_order(proc.stderr, case.stderr_contains)
     elif mode == "test":
         proc = refined("test", project, "--json")
         try:
@@ -242,11 +268,15 @@ def evaluate(case: Case, workdir: str) -> list[str]:
             bad = [r for r in results if r["status"] != "pass"]
             if bad:
                 problems.append(f"tests did not pass: {bad}")
+            if proc.returncode != 0:
+                problems.append(f"the test runner exited {proc.returncode} although every test passed")
         elif detail.startswith("fail"):
             text = detail[4:].strip()
             bad = [r for r in results if r["status"] in ("fail", "trapped")]
             if not bad or text not in json.dumps(bad):
                 problems.append(f"expected a failing test mentioning {text!r}, got {results}")
+            if proc.returncode != 1:
+                problems.append(f"the test runner exited {proc.returncode}; a failing test makes it exit 1")
         else:
             problems.append(f"unknown test expectation `{detail}`")
     elif mode == "unsupported":

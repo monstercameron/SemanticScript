@@ -25,6 +25,7 @@ sys.path.insert(0, SUITE)
 import caselib  # noqa: E402
 import coverage_map  # noqa: E402
 import sembuild as sb  # noqa: E402
+from caselib import allows_rows  # noqa: E402
 from mutations import MUTATIONS  # noqa: E402
 from refined.diagnostics import CODES  # noqa: E402
 
@@ -54,19 +55,31 @@ def _mutated(m, tmp_path) -> str:
         path = caselib.module_file(project)
     with open(path, encoding="utf-8", newline="") as fh:
         text = fh.read()
+    edited: set[int] = set()
     for old, new in m.edits():
         assert text.count(old) == 1, f"{m.id}: expected exactly one {old[:60]!r}, found {text.count(old)}"
-        text = text.replace(old, new)
+        at = text.index(old)
+        text = text[:at] + new + text[at + len(old):]
+        first = text[:at].count("\n") + 1
+        edited |= set(range(first - 1, first + new.count("\n") + 2))
     with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(text)
-    return project
+    return project, path, edited
 
 
 @pytest.mark.parametrize("m", MUTATIONS, ids=[m.id for m in MUTATIONS])
 def test_mutation(m, tmp_path):
-    project = _mutated(m, tmp_path)
-    got = sorted(set(caselib.codes(project)))
-    assert got == sorted(set(m.codes)), "\n".join(caselib.diagnostics(project))
+    project, path, edited = _mutated(m, tmp_path)
+    diags = caselib.check_path(project).diagnostics
+    shown = "\n".join(d.format() for d in diags)
+    assert sorted({d.code for d in diags}) == sorted(set(m.codes)), shown
+    # the rule under test fired itself: on an edited line, or with its own message
+    rule = m.codes[0]
+    if m.primary is not None:
+        assert any(d.code == rule and m.primary in d.message for d in diags), shown
+    else:
+        here = os.path.normcase(path)
+        assert any(d.code == rule and os.path.normcase(d.file) == here and d.line in edited for d in diags), shown
 
 
 def test_mutation_ids_are_unique_and_cases_exist():
@@ -112,7 +125,7 @@ def test_every_program_case_runs():
 
 @pytest.mark.parametrize("m", MUTATIONS[::4], ids=[m.id for m in MUTATIONS[::4]])
 def test_diagnostics_point_at_real_lines(m, tmp_path):
-    project = _mutated(m, tmp_path)
+    project, _path, _edited = _mutated(m, tmp_path)
     for d in caselib.check_path(project).diagnostics:
         assert os.path.exists(d.file), d.format()
         with open(d.file, encoding="utf-8", errors="replace") as fh:
@@ -136,7 +149,7 @@ def test_a_single_edit_is_reported_on_its_own_line(tmp_path):
 
 def test_check_output_is_deterministic(tmp_path):
     m = next(m for m in MUTATIONS if m.id == "module-cycle")
-    project = _mutated(m, tmp_path)
+    project, _path, _edited = _mutated(m, tmp_path)
     first = caselib.refined("check", project, "--json", "--no-cache").stdout
     second = caselib.refined("check", project, "--json", "--no-cache").stdout
     assert first == second and json.loads(first)["errorCount"] > 0
@@ -202,7 +215,8 @@ def _project(tmp_path, name: str, module_text: str, extra: dict[str, str] | None
     mods = [name] + sorted(extra or {})
     rows = [f"{name}Project is project", f'{name}Project purpose "A generated stress program"',
             f"{name}Project target {'console' if entry else 'library'}", f'{name}Project version "0.1.0"',
-            f"{name}Project language refined-1", f"{name}Project standardLibrary 1", f"{name}Project requires none"]
+            f"{name}Project language refined-1", f"{name}Project standardLibrary 1",
+            *allows_rows(f"{name}Project", [module_text, *(extra or {}).values()]), f"{name}Project requires none"]
     rows += [f"{name}Project module {m}" for m in mods]
     rows.append(f"{name}Project entry {name + '.main' if entry else 'none'}")
     (d / "build.sem").write_text("\n".join(rows) + "\n", encoding="utf-8")

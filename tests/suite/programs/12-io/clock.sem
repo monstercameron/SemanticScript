@@ -1,5 +1,4 @@
 # covers: 19 Date and time
-# covers: 13 Capability scoping
 # kind: positive
 # expect: run
 # exit: 0

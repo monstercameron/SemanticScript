@@ -4,6 +4,7 @@ factorial target console
 factorial version "0.1.0"
 factorial language refined-1
 factorial standardLibrary 1
+factorial allows write console.stdout none
 factorial requires none
 factorial module mathdemo
 factorial entry mathdemo.main

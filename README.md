@@ -29,9 +29,17 @@ The language is pre-release and changes without backwards compatibility.
 hello is project
 hello purpose "Print one greeting line and exit"
 hello target console
+hello version "0.1.0"
+hello language refined-1
+hello standardLibrary 1
+hello allows write console.stdout none
+hello requires none
 hello module hello
 hello entry hello.main
 ```
+
+The `allows` rows are the program's whole authority: every capability in every
+module, and in every package it requires, must fall within them.
 
 `hello/hello.sem` (abridged; the full file is
 [docs/refined-examples/hello/hello.sem](docs/refined-examples/hello/hello.sem)):

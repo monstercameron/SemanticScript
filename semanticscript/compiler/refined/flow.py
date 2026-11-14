@@ -57,6 +57,7 @@ class Flow:
         self._dataflow()
         self._settled()
         self._ownership()
+        self._iteration_loans()
 
     # ------------------------------------------------------------ blocks
 
@@ -819,7 +820,8 @@ class Flow:
         tasks = {n for n, e in op.owned.items() if e.kind == "task"}
         if not groups and not tasks:
             return
-        # pending tasks: may-analysis; settled groups: must-analysis
+        # pending tasks: may-analysis; settled groups: must-analysis. A cancelled task is tracked as
+        # `cancelled:<name>` so a `join` after `cancel` is allowed, and a second `join` is not (D-39).
         PEND = {lab: set() for lab in self.order}
         SETT = {lab: (set() if lab == "begin" else set(groups)) for lab in self.order}
         succ: dict[str, list[str]] = {}
@@ -844,20 +846,113 @@ class Flow:
         for lab in self.order:
             self._settle_block(lab, set(PEND[lab]), set(SETT[lab]), report=True, groups=groups)
 
+    def _iteration_loans(self) -> None:
+        """D-39: a `forEach` loop reads its collection on every pass, so inside the loop the collection may be
+        read but not changed, lent exclusively, or given away."""
+        for header, kind in self.kinds.items():
+            if kind != "forEach":
+                continue
+            steps = self.blocks.get(header, [])
+            if not steps or steps[0].verb != "branch" or steps[0].args[0] != "ifNext":
+                continue
+            coll = steps[0].args[1]
+            for lab in self.order:
+                if header not in self._ancestors(lab) and lab != header:
+                    continue
+                for st in self.blocks[lab]:
+                    for value, how, line in self._step_uses(st):
+                        if value == coll and how in ("lendMutable", "give", "set"):
+                            verb = {"lendMutable": "lent exclusively", "give": "given away", "set": "changed"}[how]
+                            self.err("R515", line, f"`{coll}` is being iterated by loop `{header}`, so it cannot be "
+                                     f"{verb} inside the loop")
+
+    def _loans_of(self, holder: str) -> list[tuple[str, str, str]]:
+        """(value, mode, task) for every `lend` / `lendMutable` argument a running task or group holds."""
+        op = self.op
+        names = [holder]
+        ent = op.owned.get(holder)
+        if ent is not None and ent.kind == "taskGroup":
+            names = [st.args[0] for lab in self.order for st in self.blocks[lab]
+                     if st.verb == "start" and len(st.args) == 3 and st.args[2] == holder]
+        out = []
+        for n in names:
+            ci = op.calls.get(n)
+            if ci is None:
+                continue
+            for _slot, _t, value, mode, _line in ci.args:
+                if mode in ("lend", "lendMutable"):
+                    out.append((value, mode, n))
+        return out
+
+    def _step_uses(self, st) -> list[tuple[str, str, int]]:
+        """(value, how, line) for every value a step reads or changes; how is copy, lend, lendMutable, give,
+        set, or read."""
+        op, a = self.op, st.args
+        if st.verb in ("do", "start"):
+            ci = op.calls.get(a[0])
+            return [(value, mode, line) for _s, _t, value, mode, line in (ci.args if ci else [])]
+        if st.verb == "set":
+            return [(a[0], "set", st.line), (a[1], "read", st.line)]
+        if st.verb == "return" and a[0] in ("ok", "error") and a[1] != "none":
+            return [(a[1], "read", st.line)]
+        if st.verb == "branch" and a[0] in ("if", "ifNext"):
+            return [(a[1], "read", st.line)]
+        if st.verb == "match":
+            return [(a[0], "read", st.line)]
+        return []
+
+    def _check_loans(self, st, pend: set) -> None:
+        """D-39: a running task's loans are live from `start` to `join` or `cancel`."""
+        own = st.args[0] if st.verb == "start" else None
+        live = []
+        for holder in sorted(p for p in pend if not p.startswith("cancelled:")):
+            live += [(v, m, t) for v, m, t in self._loans_of(holder) if t != own]
+        for value, how, line in self._step_uses(st):
+            for lent, mode, task in live:
+                if lent != value:
+                    continue
+                if mode == "lendMutable":
+                    self.err("R515", line, f"`{value}` is lent exclusively to task `{task}`, which may still be "
+                             f"running; join or cancel it before using `{value}`")
+                elif how in ("lendMutable", "give", "set"):
+                    verb = {"lendMutable": "lent exclusively", "give": "given away", "set": "changed"}[how]
+                    self.err("R515", line, f"`{value}` is lent to task `{task}`, which may still be running, so it "
+                             f"cannot be {verb}; join or cancel `{task}` first")
+
     def _settle_block(self, lab: str, pend: set, sett: set, report: bool, groups: set = frozenset()):
         for st in self.blocks[lab]:
             a = st.args
+            if report and st.verb in ("do", "start", "set", "return", "branch", "match"):
+                self._check_loans(st, pend)
             if st.verb == "start":
                 if len(a) == 3:
                     pend.add(a[2])
                     sett.discard(a[2])
                 else:
+                    if report and a[0] in pend:
+                        self.err("R510", st.line, f"task `{a[0]}` is started again while it may still be running; "
+                                 "join or cancel it before each new start")
                     pend.add(a[0])
-            elif st.verb in ("join", "cancel"):
+                    pend.discard(f"cancelled:{a[0]}")
+            elif st.verb == "cancel":
+                if a[0] not in groups and report and a[0] not in pend:
+                    self.err("R510", st.line, f"task `{a[0]}` is not running here; it was never started on this path, "
+                             "or it was already joined or cancelled")
                 pend.discard(a[0])
+                if a[0] not in groups:
+                    pend.add(f"cancelled:{a[0]}")
+                sett.add(a[0])
+            elif st.verb == "join":
+                if (a[0] not in groups and report and a[0] not in pend and f"cancelled:{a[0]}" not in pend):
+                    self.err("R510", st.line, f"task `{a[0]}` is not running here; it was never started on this path, "
+                             "or it was already joined")
+                pend.discard(a[0])
+                pend.discard(f"cancelled:{a[0]}")
                 sett.add(a[0])
             elif st.verb == "return" and report:
                 for t in sorted(pend - groups):
+                    if t.startswith("cancelled:"):
+                        continue  # a cancelled task has stopped; a join to read its result is optional
                     self.err("R512", st.line, f"task `{t}` may still be running at this return; join or cancel it "
                              "on every path")
                 for g in sorted(groups - sett):

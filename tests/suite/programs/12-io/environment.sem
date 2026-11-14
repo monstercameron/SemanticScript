@@ -1,6 +1,5 @@
 # covers: 12 Environment variables
 # covers: 19 Environment utilities
-# covers: 13 Capability scoping
 # kind: positive
 # expect: run
 # exit: 0

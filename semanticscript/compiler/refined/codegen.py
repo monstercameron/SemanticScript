@@ -1197,7 +1197,8 @@ class OpGen:
         if info.kind in ("opaque", "resource") or (info.kind == "instance" and info.generic in HOST_GENERICS):
             name = f"{info.generic if info.kind == 'instance' else canon}.{member}"
             if name in HOST_TARGETS:
-                return self.host_call(b, name, ci, args, line)
+                extra = [self.be.string(self.scope_text(ci.sig))] if ci.sig is not None and ci.sig.scoped else []
+                return self.host_call(b, name, ci, args, line, extra)
             self.unsupported(line, f"`{inv}`")
         if info.kind == "instance" and info.generic == "list.List":
             return self.list_member(b, member, info.args[0], args, ci, line)

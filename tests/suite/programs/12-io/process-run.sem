@@ -6,6 +6,8 @@
 # kind: positive
 # expect: run
 # exit: 0
+# requires: git
+# stdout-any: git prints its own version line, which differs between machines
 
 processCase is module
 processCase purpose "Run git to print its version, then try a program that does not exist"

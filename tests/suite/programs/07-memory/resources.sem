@@ -120,7 +120,7 @@ fileAccess is capability
 fileAccess purpose "Authority to read and write files whose names start with suite-"
 fileAccess grants read fs.files
 fileAccess grants write fs.files
-fileAccess scope "suite-"
+fileAccess scope "suite-*"
 
 closeFor is operation
 closeFor purpose "Take ownership of an open file and close it, reporting whether closing worked"
@@ -130,8 +130,8 @@ closeFor input file fs.FileHandle owned
 closeFor output Bool
 closeFor outputOwner none
 closeFor raises none
-closeFor effect read fs.files
-closeFor uses fileAccess
+closeFor effect none
+closeFor uses none
 closeFor memory heap false
 closeFor async false
 closeFor maxRecursion none

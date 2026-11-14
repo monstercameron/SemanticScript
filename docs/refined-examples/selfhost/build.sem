@@ -5,6 +5,7 @@ selfhost target library
 selfhost version "0.1.0"
 selfhost language refined-1
 selfhost standardLibrary 1
+selfhost allows none
 selfhost requires none
 selfhost module compiler.lexer
 selfhost module compiler.tokens

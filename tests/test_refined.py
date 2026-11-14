@@ -223,6 +223,7 @@ generics target library
 generics version "0.1.0"
 generics language refined-1
 generics standardLibrary 1
+generics allows none
 generics requires none
 generics module gen
 generics entry none

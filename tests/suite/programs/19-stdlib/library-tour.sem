@@ -229,7 +229,7 @@ fileAccess is capability
 fileAccess purpose "Authority to read and write files whose names start with suite-"
 fileAccess grants read fs.files
 fileAccess grants write fs.files
-fileAccess scope "suite-"
+fileAccess scope "suite-*"
 
 main is operation
 main purpose "Run the case and print what it computes"

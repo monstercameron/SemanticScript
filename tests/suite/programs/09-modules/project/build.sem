@@ -25,6 +25,7 @@ modulesDemo target console
 modulesDemo version "0.1.0"
 modulesDemo language refined-1
 modulesDemo standardLibrary 1
+modulesDemo allows write console.stdout none
 modulesDemo requires none
 modulesDemo module app
 modulesDemo module geometry.shapes

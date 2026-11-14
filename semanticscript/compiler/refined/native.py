@@ -80,6 +80,10 @@ def find_cc() -> list[str] | None:
 
 def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
     """Link the program's object, the C runtime (native_runtime.c), and a `main` into one executable."""
+    needs = sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z.]+)\|', ir_text)))
+    if needs:
+        return False, ("R901 this program calls " + ", ".join(f"`{n}`" for n in needs) + ", which need the host "
+                       "library; standalone executables include only the core runtime, so run it with `refined run`")
     cc = find_cc()
     if cc is None:
         return False, "no C compiler to link with: install one (cc, gcc, or clang) or set REFINED_CC"

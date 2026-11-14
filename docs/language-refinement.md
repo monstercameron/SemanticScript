@@ -2002,6 +2002,60 @@ Decisions (by delegation):
 
 Every checklist item now has evidence or a stated reason.
 
+## Part 10: adversarial refinement (2026-11-14)
+
+An adversarial critic was asked to break the language: to write programs the
+checker accepts but that are wrong, and to find rules that are vague,
+inconsistent, or unenforced. Each round's findings were fixed, then the critic
+ran again. Findings fixed in the first round:
+
+- Loans to tasks: a task holds every loan it was given from `start` to `join`
+  (D-39). Giving, setting, or lending mutably a value a running task holds is
+  R515; so is changing a collection inside a `forEach` over it.
+- Task lifetime: starting a task that may still be running (for example in a
+  loop with the join after it), joining twice, and joining or cancelling a
+  task that is not running are R510.
+- Scope checks: a network scope is a prefix only up to a `:` or `/` boundary,
+  so `"api.test"` no longer admits `"api.test.evil.example"`. A literal path
+  with a `..` component is R408.
+- Tests: a test that `verifies` an operation it never calls, or that calls no
+  `test.` assertion, is R604.
+- A cleanup whose call is not the `cleanedBy` of the value it releases is R409.
+- A malformed row no longer also reports its predicate as missing (R302).
+
+Decisions (by delegation):
+
+- **D-38** Capability scopes are enforced again at run time: a scoped argument
+  that is computed, not a literal, is checked before the call against the
+  scopes of the capabilities the operation uses, after `..` and links are
+  resolved. Outside every scope is a trap naming the argument and the scopes.
+- **D-39** A task's loans last from `start` to `join` (or `cancel` then
+  `join`); the collection of a `forEach` is lent for the whole loop.
+- **D-40** A `let` initialized from a name copies only plain values (R514); a
+  second name for a String, list, or record would carry a borrow past its
+  loan. A resource (a file, a socket, a library) cannot be stored in a
+  collection (R403), because a region releases a collection without closing
+  what is in it. `ExitCode` is 0 to 255, what every platform delivers.
+  `secret.matches` and `secret.length` need `read secret.values`, since both
+  reveal something about the secret. `fs.close` needs no authority beyond
+  owning the handle. A standalone executable is refused (R901) when the
+  program calls a host-library target, instead of trapping when it runs
+  (amends D-37).
+- **D-41** build.sem states the program's whole authority in `allows` rows,
+  the same `<verb> <resource> <scope>` triples capabilities grant
+  (`allows none` when it needs none). Every capability in every module grants
+  only what an `allows` row covers, with a scope inside the allowed one
+  (R408). A required package states what it needs in its own build.sem, and
+  the program requiring it must allow that too, so the project file is the
+  one place to audit what a program may do. A foreign function is authorized
+  by name: binding needs `load ffi.symbols` scoped to that symbol. An
+  `fs.files` scope says which kind it is: a directory ends in `/`
+  (`"data/"`: anything inside it), a name pattern ends in `*` (`"suite-*"`:
+  entries of the current directory whose names start with `suite-`). Any
+  other scope is R408. Tools that write a build.sem for code they did not
+  write (the REPL, the test harness) derive the `allows` rows from the
+  capabilities in it.
+
 ## Explicitness audit (2026-11-13)
 
 Measures the current compiler against P-2.
@@ -2223,6 +2277,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | Part 9 | Library, tooling, native output, FFI, and packages; decisions D-33 to D-36 (by delegation) |
 | 2026-11-14 | Part 8 | Backend completed so every program compiles and runs; decisions D-27 to D-32 (by delegation; D-31 replaces D-27) |
 | 2026-11-14 | Part 7 | Test suite and generated coverage map (owner); fixes for what it found; decisions D-24 to D-26 (by delegation) |
+| 2026-11-14 | Part 10 | Adversarial refinement: loan, task, scope, and test holes closed; decisions D-38 to D-41 (by delegation) |
 
 ## Parking lot
 

@@ -9,6 +9,11 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | Predicate | Rows | Shape |
 | --- | --- | --- |
 | `target` | exactly one | `console\|library` |
+| `version` | exactly one | `"<text>"` |
+| `language` | exactly one | `<language>-<version>` |
+| `standardLibrary` | exactly one | `<integer>` |
+| `allows` | one or more (`none` alone when empty) | `none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource> none`<br>`connect\|listen\|load\|read\|readWrite\|spawn\|write <module.resource> "<text>"` |
+| `requires` | one or more (`none` alone when empty) | `none`<br>`<name> "<text>" "<text>"` |
 | `module` | one or more (`none` alone when empty) | `<dotted.path>` |
 | `entry` | exactly one | `none`<br>`<target>` |
 

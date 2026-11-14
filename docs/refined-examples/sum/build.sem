@@ -4,6 +4,7 @@ sum target console
 sum version "0.1.0"
 sum language refined-1
 sum standardLibrary 1
+sum allows write console.stdout none
 sum requires none
 sum module sum
 sum entry sum.main

@@ -54,7 +54,7 @@ fileAccess is capability
 fileAccess purpose "Authority over files whose names start with suite-"
 fileAccess grants read fs.files
 fileAccess grants write fs.files
-fileAccess scope "suite-"
+fileAccess scope "suite-*"
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -64,7 +64,6 @@ main input none
 main output ExitCode
 main outputOwner none
 main raises none
-main effect read fs.files
 main effect write console.stdout
 main effect write fs.files
 main uses fileAccess

@@ -98,6 +98,21 @@ cRuntime purpose "Authority to load the C runtime and nothing else"
 cRuntime grants load ffi.libraries
 cRuntime scope "c"
 
+absSymbol is capability
+absSymbol purpose "Authority to bind the C symbol abs and nothing else"
+absSymbol grants load ffi.symbols
+absSymbol scope "abs"
+
+upperSymbol is capability
+upperSymbol purpose "Authority to bind the C symbol toupper and nothing else"
+upperSymbol grants load ffi.symbols
+upperSymbol scope "toupper"
+
+missingSymbol is capability
+missingSymbol purpose "Authority to bind the C symbol semanticscriptNoSuchSymbol and nothing else"
+missingSymbol grants load ffi.symbols
+missingSymbol scope "semanticscriptNoSuchSymbol"
+
 CAbs is operationType
 CAbs purpose "C's `int abs(int)`"
 CAbs input value Int32 value
@@ -133,8 +148,12 @@ main output ExitCode
 main outputOwner none
 main raises none
 main effect load ffi.libraries
+main effect load ffi.symbols
 main effect write console.stdout
 main uses cRuntime
+main uses absSymbol
+main uses upperSymbol
+main uses missingSymbol
 main uses stdoutWriter
 main memory heap false
 main async false

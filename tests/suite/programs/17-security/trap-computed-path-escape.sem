@@ -17,7 +17,7 @@ pathEscape exports main
 fileAccess is capability
 fileAccess purpose "Authority to write files whose names start with suite-"
 fileAccess grants write fs.files
-fileAccess scope "suite-"
+fileAccess scope "suite-*"
 
 main is operation
 main purpose "Run the case and print what it computes"

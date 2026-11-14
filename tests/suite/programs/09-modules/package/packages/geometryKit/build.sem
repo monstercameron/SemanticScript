@@ -4,6 +4,7 @@ geometryKit target library
 geometryKit version "1.2.0"
 geometryKit language refined-1
 geometryKit standardLibrary 1
+geometryKit allows none
 geometryKit requires none
 geometryKit module area
 geometryKit entry none

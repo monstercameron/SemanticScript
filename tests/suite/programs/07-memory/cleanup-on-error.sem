@@ -59,7 +59,7 @@ fileAccess is capability
 fileAccess purpose "Authority over files whose names start with suite-"
 fileAccess grants read fs.files
 fileAccess grants write fs.files
-fileAccess scope "suite-"
+fileAccess scope "suite-*"
 
 closeAndReport is operation
 closeAndReport purpose "Take ownership of a file, close it, and say whether closing worked"
@@ -69,9 +69,7 @@ closeAndReport input file fs.FileHandle owned
 closeAndReport output none
 closeAndReport outputOwner none
 closeAndReport raises none
-closeAndReport effect read fs.files
 closeAndReport effect write console.stdout
-closeAndReport uses fileAccess
 closeAndReport uses stdoutWriter
 closeAndReport memory heap false
 closeAndReport async false

@@ -97,7 +97,7 @@
       }
     },
     "fact": {
-      "match": "^([A-Za-z][A-Za-z0-9]*)[ \\t]+(invokesReference|instantiates|maxRecursion|outputOwner|deprecated|cleanedBy|invariant|onFailure|rationale|typeParam|capacity|released|strategy|verifies|because|borrows|exports|imports|indexes|invokes|ownedBy|purpose|variant|cleans|effect|grants|memory|module|output|raises|target|async|catch|entry|field|input|label|limit|scope|call|cell|note|path|risk|todo|uses|arg|for|let|out|row|at|in|of)\\b",
+      "match": "^([A-Za-z][A-Za-z0-9]*)[ \\t]+(invokesReference|standardLibrary|instantiates|maxRecursion|outputOwner|deprecated|cleanedBy|invariant|onFailure|rationale|typeParam|capacity|language|released|requires|strategy|verifies|because|borrows|exports|imports|indexes|invokes|ownedBy|purpose|variant|version|allows|cleans|effect|grants|memory|module|output|raises|target|async|catch|entry|field|input|label|limit|scope|call|cell|note|path|risk|todo|uses|arg|for|let|out|row|at|in|of)\\b",
       "captures": {
         "1": {
           "name": "variable.other.subject.semanticscript"
