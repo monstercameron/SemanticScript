@@ -2,7 +2,7 @@
   "name": "semanticscript-vscode",
   "displayName": "SemanticScript",
   "description": "Syntax highlighting, navigation, completion, linting, and compiler integration for SemanticScript .sscript and .sem files.",
-  "version": "0.0.1",
+  "version": "0.4.0",
   "publisher": "semanticscript-local",
   "icon": "icons/semanticscript-extension.png",
   "galleryBanner": {
@@ -32,6 +32,7 @@
     "onLanguage:semanticscript",
     "onCommand:semanticscript.toggleSegmentColors",
     "onCommand:semanticscript.runLinter",
+    "onCommand:semanticscript.runFixPlan",
     "onCommand:semanticscript.compileCurrentFile"
   ],
   "main": "./extension.js",
@@ -89,6 +90,11 @@
         "icon": "$(checklist)"
       },
       {
+        "command": "semanticscript.runFixPlan",
+        "title": "SemanticScript: Run Fix Plan",
+        "icon": "$(lightbulb)"
+      },
+      {
         "command": "semanticscript.compileCurrentFile",
         "title": "SemanticScript: Compile Current File",
         "icon": "$(gear)"
@@ -115,15 +121,7 @@
         "semanticScript.linter.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable SemanticScript lint diagnostics using the selected standalone linter CLI."
-        },
-        "semanticScript.linter.engine": {
-          "type": "string",
-          "default": "semlint",
-          "enum": [
-            "semlint"
-          ],
-          "description": "Select the SemanticScript linter engine. semlint is the canonical structured diagnostics engine."
+          "description": "Enable lint diagnostics via `semanticscript check --json`."
         },
         "semanticScript.linter.run": {
           "type": "string",
@@ -138,142 +136,32 @@
         "semanticScript.linter.pythonPath": {
           "type": "string",
           "default": "python",
-          "description": "Python executable used to run the selected linter."
+          "description": "Python executable used to run the semanticscript compiler for linting."
         },
         "semanticScript.linter.path": {
           "type": "string",
           "default": "",
-          "description": "Optional path to semlint.py. Leave empty to auto-discover the linter from the workspace."
-        },
-        "semanticScript.linter.skipFutureSyntax": {
-          "type": "boolean",
-          "default": false,
-          "description": "Skip current semlint diagnostics for proposed refined syntax files that are not executable by the current compiler yet."
+          "description": "Optional path to semanticscript.py. Leave empty to auto-discover it from the workspace."
         },
         "semanticScript.compiler.pythonPath": {
           "type": "string",
           "default": "python",
-          "description": "Python executable used to run semsc.py."
+          "description": "Python executable used to run semanticscript.py."
         },
         "semanticScript.compiler.path": {
           "type": "string",
           "default": "",
-          "description": "Optional path to semsc.py. Leave empty to auto-discover the compiler from the workspace."
+          "description": "Optional path to semanticscript.py. Leave empty to auto-discover the compiler from the workspace."
         },
         "semanticScript.compiler.outputDirectory": {
           "type": "string",
           "default": "",
-          "description": "Optional directory for compiled executables. Leave empty to use a build directory beside the source file."
+          "description": "Optional directory for built executables. Leave empty to use a build/ directory beside the source."
         },
-        "semanticScript.compiler.buildProfile": {
-          "type": "string",
-          "default": "dev",
-          "enum": [
-            "dev",
-            "prod"
-          ],
-          "description": "Build profile passed to semsc.py when compiling an executable."
-        },
-        "semanticScript.compiler.runtimeChecks": {
-          "type": "string",
-          "default": "default",
-          "enum": [
-            "default",
-            "off",
-            "traps",
-            "panic"
-          ],
-          "description": "Runtime check mode passed to semsc.py. default lets the compiler choose from the build profile."
-        },
-        "semanticScript.compiler.persistLlvmIr": {
-          "type": "string",
-          "default": "auto",
-          "enum": [
-            "auto",
-            "yes",
-            "no"
-          ],
-          "description": "Controls semsc.py --persist-llvm-ir while compiling from VS Code."
-        },
-        "semanticScript.compiler.optLevel": {
-          "type": "string",
-          "default": "default",
-          "enum": [
-            "default",
-            "0",
-            "1",
-            "2",
-            "3"
-          ],
-          "description": "Optional semsc.py --opt-level override. default lets build.sem choose optLevel."
-        },
-        "semanticScript.compiler.emitLlvmIr": {
+        "semanticScript.semanticHighlighting.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Also pass --emit-ir while compiling from VS Code, writing LLVM IR through the compiler-managed build folder unless build.sem overrides the path."
-        },
-        "semanticScript.compiler.emitOptimizedLlvmIr": {
-          "type": "boolean",
-          "default": false,
-          "description": "Also pass --emit-optimized-ir while compiling from VS Code, writing optimized LLVM IR through the compiler-managed build folder unless build.sem overrides the path."
-        },
-        "semanticScript.compiler.buildDir": {
-          "type": "string",
-          "default": "",
-          "description": "Optional exact semsc.py --build-dir artifact directory override."
-        },
-        "semanticScript.compiler.buildRoot": {
-          "type": "string",
-          "default": "",
-          "description": "Optional semsc.py --build-root parent directory override."
-        },
-        "semanticScript.compiler.buildFolderName": {
-          "type": "string",
-          "default": "",
-          "description": "Optional semsc.py --build-folder-name override. Must be one folder name."
-        },
-        "semanticScript.compiler.keepResources": {
-          "type": "boolean",
-          "default": false,
-          "description": "Pass --keep-resources to retain intermediate Windows resource files during VS Code builds."
-        },
-        "semanticScript.compiler.resourceDir": {
-          "type": "string",
-          "default": "",
-          "description": "Optional semsc.py --resource-dir path for intermediate Windows resource files. Implies --keep-resources."
-        },
-        "semanticScript.compiler.cpuBaseline": {
-          "type": "string",
-          "default": "default",
-          "enum": [
-            "default",
-            "generic",
-            "native",
-            "x86_64_v1",
-            "x86_64_v2",
-            "x86_64_v3",
-            "x86_64_v4",
-            "arm64_generic",
-            "arm64_v8_2"
-          ],
-          "description": "Optional semsc.py --cpu-baseline override. default lets build.sem choose cpuBaseline."
-        },
-        "semanticScript.compiler.cpuTune": {
-          "type": "string",
-          "default": "",
-          "description": "Optional semsc.py --cpu-tune token, such as generic, native, or a CPU name."
-        },
-        "semanticScript.compiler.cpuFeatureCheck": {
-          "type": "string",
-          "default": "default",
-          "enum": [
-            "default",
-            "auto",
-            "off",
-            "warn",
-            "require"
-          ],
-          "description": "Optional semsc.py --cpu-feature-check override for host CPU feature validation."
+          "description": "Enable the experimental semantic-token highlighter. Off by default: it is predicate-first and mis-colors the current subject-first syntax, so the TextMate grammar is the reliable highlighter. Re-enable after the provider is reworked."
         }
       }
     },
@@ -565,6 +453,12 @@
           }
         ]
       }
-    }
+    },
+    "snippets": [
+      {
+        "language": "semanticscript",
+        "path": "./snippets/semanticscript.code-snippets"
+      }
+    ]
   }
 }

@@ -1,0 +1,93 @@
+# checksum_xor_fold — (repurposed from crypto_hmac_verify: semanticscript has no crypto
+# runtime). A real integrity-checksum analog: fold values 1..5 with XOR using the
+# newly wired math.bitXorInt64. The fold result is computed in a loop, not a
+# constant, so it fails under a no-op lowering.
+#
+# Correctness observation: 1 XOR 2 XOR 3 XOR 4 XOR 5 = 1.
+# Expected output: 1
+
+ChecksumXorFold is project
+ChecksumXorFold module examplesChecksumXorFold
+ChecksumXorFold target console
+ChecksumXorFold entry main
+
+examplesChecksumXorFold is module
+examplesChecksumXorFold path examples.checksumXorFold
+examplesChecksumXorFold exports main
+examplesChecksumXorFold purpose "XOR-fold 1..5 into a checksum and print it"
+examplesChecksumXorFold invariant "Loop terminates when the counter exceeds the bound"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Fold 1..5 with XOR and print the checksum"
+main invariant "Writes exactly one integer line: 1"
+main let counter mutable Int64 1
+main let checksum mutable Int64 0
+main let upperBound immutable Int64 5
+main let oneStep immutable Int64 1
+main let harnessName immutable String "checksum_xor_fold"
+main let harnessExpected immutable Int64 1
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "checksum_xor_fold: real result (not the no-op 0)"
+main at loopHead do checkDone
+main branch ifFalse stillGoing goto loopExit
+main do foldIn
+main do advance
+main goto loopHead
+main at loopExit do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+checkDone is call
+checkDone in main
+checkDone invokes math.lessThanOrEqualInt64
+checkDone arg left Int64 counter
+checkDone arg right Int64 upperBound
+checkDone out stillGoing Bool
+
+foldIn is call
+foldIn in main
+foldIn invokes math.bitXorInt64
+foldIn arg left Int64 checksum
+foldIn arg right Int64 counter
+foldIn out checksum Int64
+
+advance is call
+advance in main
+advance invokes math.addInt64
+advance arg left Int64 counter
+advance arg right Int64 oneStep
+advance out counter Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 checksum
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 checksum
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
