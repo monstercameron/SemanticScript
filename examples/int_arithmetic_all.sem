@@ -1,0 +1,98 @@
+# int_arithmetic_all — chain add, subtract, multiply, divide with real
+# math.* calls (README §10.6). Every intermediate flows from a call, so the
+# result is computed, not a constant.
+#
+# Correctness observation: ((10 + 5) - 3) * 2 / 2 = 12.
+# Expected output: 12
+
+IntArithmeticAll is project
+IntArithmeticAll module examplesIntArithmeticAll
+IntArithmeticAll target console
+IntArithmeticAll entry main
+
+examplesIntArithmeticAll is module
+examplesIntArithmeticAll path examples.intArithmeticAll
+examplesIntArithmeticAll exports main
+examplesIntArithmeticAll purpose "Chain the four integer arithmetic ops and print the result"
+examplesIntArithmeticAll invariant "((10+5)-3)*2/2 = 12"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Compute ((10+5)-3)*2/2 and print it"
+main invariant "Writes exactly one integer line: 12"
+main let ten immutable Int64 10
+main let five immutable Int64 5
+main let three immutable Int64 3
+main let two immutable Int64 2
+main let harnessName immutable String "int_arithmetic_all"
+main let harnessExpected immutable Int64 12
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "int_arithmetic_all: real result (not the no-op 0)"
+main do addStep
+main do subStep
+main do mulStep
+main do divStep
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+addStep is call
+addStep in main
+addStep invokes math.addInt64
+addStep arg left Int64 ten
+addStep arg right Int64 five
+addStep out sum Int64
+
+subStep is call
+subStep in main
+subStep invokes math.subtractInt64
+subStep arg left Int64 sum
+subStep arg right Int64 three
+subStep out difference Int64
+
+mulStep is call
+mulStep in main
+mulStep invokes math.multiplyInt64
+mulStep arg left Int64 difference
+mulStep arg right Int64 two
+mulStep out product Int64
+
+divStep is call
+divStep in main
+divStep invokes math.divideInt64
+divStep arg left Int64 product
+divStep arg right Int64 two
+divStep out quotient Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 quotient
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 quotient
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

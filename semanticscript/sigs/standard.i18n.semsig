@@ -1,0 +1,41 @@
+# standard.i18n.semsig - deferred locale/collation contract (R-058, README ss29 #22).
+i18nSig is semsig
+i18nSig version "1.0"
+i18nSig generatedBy "semanticscript 0.1"
+i18nSig describes standard.i18n
+
+I18nError is error
+I18nError typeTrust trustedInternal
+
+invalidLocale is errorCase
+invalidLocale of I18nError
+
+unsupportedLocale is errorCase
+unsupportedLocale of I18nError
+
+invalidCollation is errorCase
+invalidCollation of I18nError
+
+validateLocale is intrinsic
+validateLocale target i18n.validateLocale
+validateLocale arg locale String
+validateLocale out canonicalLocale String
+validateLocale catch I18nError
+validateLocale purpose "Validate and canonicalize a BCP-47 locale tag; deferred in v0.x"
+
+compareLocale is intrinsic
+compareLocale target i18n.compareLocale
+compareLocale arg left String
+compareLocale arg right String
+compareLocale arg locale String
+compareLocale out ordering Int64
+compareLocale catch I18nError
+compareLocale purpose "Locale-aware collation compare returning negative, zero, or positive; deferred in v0.x"
+
+formatInt64 is intrinsic
+formatInt64 target i18n.formatInt64
+formatInt64 arg value Int64
+formatInt64 arg locale String
+formatInt64 out formatted String
+formatInt64 catch I18nError
+formatInt64 purpose "Locale-aware Int64 formatting; deferred in v0.x"

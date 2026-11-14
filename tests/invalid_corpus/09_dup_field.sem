@@ -1,0 +1,3 @@
+T is record
+T field id Int64
+T field id Int32

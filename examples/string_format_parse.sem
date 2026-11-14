@@ -1,0 +1,69 @@
+# string_format_parse - string formatting and parsing (X-211).
+# Builds "test" by concatenating "te" + "st" via a real string.concat call and
+# self-checks it via the standard.test harness, so it fails under a no-op lowering.
+# Expected output: a PASS line containing "test" then "---- N passed, 0 failed ----".
+
+StringFormatParse is project
+StringFormatParse module examplesStringFormatParse
+StringFormatParse target console
+StringFormatParse entry main
+
+examplesStringFormatParse is module
+examplesStringFormatParse path examples.stringFormatParse
+examplesStringFormatParse exports main
+examplesStringFormatParse purpose "string formatting and parsing"
+examplesStringFormatParse invariant "main is the only project entry operation"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap yes
+main async no
+main purpose "Concatenate two fragments and assert the result"
+main invariant "All assertions hold"
+main let leftPart immutable String "te"
+main let rightPart immutable String "st"
+main let harnessExpected immutable String "test"
+main let emptyGuard immutable String ""
+main let harnessName immutable String "string_format_parse"
+main let noopName immutable String "string_format_parse: real result (not the empty string)"
+main do joinCall
+main do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+joinCall is call
+joinCall in main
+joinCall invokes string.concat
+joinCall arg left String leftPart
+joinCall arg right String rightPart
+joinCall out joined String
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualText
+checkResult arg name String harnessName
+checkResult arg expected String harnessExpected
+checkResult arg actual String joined
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String joined
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

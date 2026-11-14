@@ -1,0 +1,503 @@
+{
+  "schema": 2,
+  "comment": "Native runtime libraries linked into JIT/native builds. semanticscript reads this data \u2014 it carries no per-library knowledge in the compiler. A library is built (cached) and loaded only when a program references a runtimeBinding symbol matching one of its `provides` prefixes. R-018: link inputs are platform-scoped. Top-level `sources`/`include`/`defines`/`libs` are the cross-platform base; `platforms.<name>` (windows|linux|macos|wasi) adds host-specific entries, and `compiler.<driver>` (gnu|clang|msvc|zig) adds driver-specific overlays. The resolver `_resolve_runtime_links(library, platform)` merges base + platform + compiler WITHOUT compiling, so non-Windows builds never see Windows-only libs like ws2_32 (R-013).",
+  "libraries": [
+    {
+      "name": "ss_string",
+      "comment": "X-200/STDLIB-1: byte-string comparison/(in)equality/find helpers (standard.string), reachable through public string.* targets and runtimeBinding wrappers.",
+      "provides": [
+        "ss_string_"
+      ],
+      "sources": [
+        "ss_string.c"
+      ]
+    },
+    {
+      "name": "ss_path",
+      "comment": "WS3-111: SafePath builders and portable lexical path helpers for standard.path.",
+      "provides": [
+        "ss_path_"
+      ],
+      "sources": [
+        "ss_path.c"
+      ]
+    },
+    {
+      "name": "ss_fs",
+      "comment": "WS3-109: bounded SafePath filesystem reads and Buffer chunking for standard.fs.",
+      "provides": [
+        "ss_fs_"
+      ],
+      "sources": [
+        "ss_fs.c"
+      ]
+    },
+    {
+      "name": "ss_environment",
+      "comment": "WS3-108: capability-gated environment reads and SafePath dotenv loading for standard.environment.",
+      "provides": [
+        "ss_environment_"
+      ],
+      "sources": [
+        "ss_environment.c"
+      ]
+    },
+    {
+      "name": "ss_id",
+      "comment": "WS3-129: UUID, ULID, slug, monotonic ID, and semver helpers for standard.id.",
+      "provides": [
+        "ss_id_"
+      ],
+      "sources": [
+        "ss_id.c",
+        "native_platform/ss_platform_entropy.c",
+        "native_platform/ss_platform_time.c"
+      ],
+      "include": [
+        ".",
+        "native_platform"
+      ],
+      "platforms": {
+        "windows": {
+          "libs": [
+            "bcrypt"
+          ]
+        }
+      }
+    },
+    {
+      "name": "ss_runtime",
+      "provides": [
+        "ss_sqlite_"
+      ],
+      "exports": [
+        "ss_sqlite_exec",
+        "ss_sqlite_library_version"
+      ],
+      "sources": [
+        "ss_sqlite.c",
+        "native_sqlite/sem_sqlite_runtime.c",
+        "../../third_party/sqlite/sqlite3.c"
+      ],
+      "include": [
+        "native_sqlite",
+        "../../third_party/sqlite"
+      ],
+      "defines": [
+        "SQLITE_OMIT_LOAD_EXTENSION",
+        "SQLITE_OMIT_DEPRECATED",
+        "SQLITE_DQS=0",
+        "SQLITE_THREADSAFE=2",
+        "SQLITE_DEFAULT_MEMSTATUS=0",
+        "SQLITE_USE_URI=1"
+      ],
+      "platforms": {
+        "linux": {
+          "comment": "R-019: SQLite follows the native_sqlite CMake profile: Threads::Threads, CMAKE_DL_LIBS, and m on Linux.",
+          "libs": [
+            "pthread",
+            "dl",
+            "m"
+          ]
+        },
+        "macos": {
+          "comment": "R-019: CMAKE_DL_LIBS is empty on macOS; keep thread/math scoped here without adding Linux's -ldl.",
+          "libs": [
+            "pthread",
+            "m"
+          ]
+        }
+      }
+    },
+    {
+      "name": "ss_event",
+      "comment": "APP-RUN-3 in-process event pub/sub (event.*): a stream queue + per-subscription cursor, no external deps.",
+      "provides": [
+        "ss_event_"
+      ],
+      "sources": [
+        "ss_event.c"
+      ]
+    },
+    {
+      "name": "ss_widgets",
+      "comment": "APP-RUN-4 headless widget runtime (gui.*): in-memory handle stubs so the desktop app's control tree + event wiring run non-interactively. Separate ss_widget_ prefix avoids the real Win32 ss_gui_* symbols.",
+      "provides": [
+        "ss_widget_"
+      ],
+      "sources": [
+        "ss_widget.c"
+      ]
+    },
+    {
+      "name": "ss_libc",
+      "comment": "APP-RUN-6/APP-RUN-2 libc shims (c.*) with Int64/const char* signatures so the app's declared types match exactly (no compiler coercion). Variadic printf/fprintf/snprintf forward to their v*-counterparts; terminalReadKey is headless-safe and uses _getch/termios for interactive terminals.",
+      "provides": [
+        "ss_c_"
+      ],
+      "sources": [
+        "ss_libc.c"
+      ],
+      "defines": [
+        "_CRT_SECURE_NO_WARNINGS"
+      ]
+    },
+    {
+      "name": "ss_platform_time",
+      "comment": "R-027/R-041 shared wall-clock, monotonic-clock, and sleep platform API.",
+      "provides": [
+        "ss_platform_"
+      ],
+      "sources": [
+        "native_platform/ss_platform_time.c"
+      ],
+      "include": [
+        "native_platform"
+      ]
+    },
+    {
+      "name": "ss_json",
+      "comment": "APP-RUN-6 JSON document runtime (json.*): ss_json.c is a direct-return shim over the legacy native_json out-param API.",
+      "provides": [
+        "ss_json_"
+      ],
+      "sources": [
+        "ss_json.c",
+        "native_json/sem_json_runtime.c"
+      ],
+      "include": [
+        "native_json"
+      ]
+    },
+    {
+      "name": "ss_bcrypt",
+      "comment": "APP-RUN-6 password hashing + CSPRNG + base64url (bcrypt.*). R-028 routes randomness through native_platform/ss_platform_entropy.c. The app binds the native ss_bcrypt_*/ss_random_*/ss_base64url_* directly.",
+      "provides": [
+        "ss_bcrypt_",
+        "ss_random_",
+        "ss_base64url_"
+      ],
+      "exports": [
+        "ss_bcrypt_hash",
+        "ss_bcrypt_verify",
+        "ss_random_bytes",
+        "ss_base64url_encode",
+        "ss_bcrypt_hash_owned",
+        "ss_bcrypt_session_token_owned",
+        "ss_bcrypt_free_string"
+      ],
+      "sources": [
+        "native_bcrypt/sem_bcrypt_runtime.c",
+        "native_platform/ss_platform_entropy.c",
+        "../../third_party/bcrypt/crypt_blowfish.c",
+        "../../third_party/bcrypt/crypt_gensalt.c"
+      ],
+      "include": [
+        "native_bcrypt",
+        "native_platform"
+      ],
+      "defines": [
+        "_CRT_SECURE_NO_WARNINGS"
+      ],
+      "platforms": {
+        "windows": {
+          "comment": "R-028: Windows CNG random bytes require bcrypt.dll; POSIX/macOS entropy backends use libc APIs here.",
+          "libs": [
+            "bcrypt"
+          ]
+        }
+      }
+    },
+    {
+      "name": "ss_log",
+      "comment": "APP-RUN-6 structured logging (log.*). The app binds the native ss_log_* directly.",
+      "provides": [
+        "ss_log_"
+      ],
+      "exports": [
+        "ss_log_info",
+        "ss_log_warn",
+        "ss_log_set_path"
+      ],
+      "sources": [
+        "native_log/sem_log_runtime.c"
+      ],
+      "include": [
+        "native_log",
+        "native_platform"
+      ]
+    },
+    {
+      "name": "ss_net",
+      "comment": "R-062/APP-RUN-1 TCP socket primitives plus HTTP-GET client (net.connect/send/receive/close and net.fetchText): self-contained sockets, no legacy/third-party deps.",
+      "provides": [
+        "ss_net_"
+      ],
+      "sources": [
+        "ss_net.c"
+      ],
+      "defines": [
+        "_CRT_SECURE_NO_WARNINGS"
+      ],
+      "platforms": {
+        "windows": {
+          "libs": [
+            "ws2_32"
+          ]
+        },
+        "wasi": {
+          "unsupported": "standard.net has no WASI socket backend yet."
+        }
+      }
+    },
+    {
+      "name": "ss_http",
+      "provides": [
+        "ss_http_"
+      ],
+      "exports": [
+        "ss_http_now_millis",
+        "ss_http_request_path",
+        "ss_http_session_expires_at",
+        "ss_http_session_is_expired",
+        "ss_http_request_method",
+        "ss_http_request_header",
+        "ss_http_request_query_param",
+        "ss_http_request_body_text",
+        "ss_http_request_body_bytes",
+        "ss_http_request_body_length",
+        "ss_http_response_text",
+        "ss_http_response_header",
+        "ss_http_response_bytes",
+        "ss_http_response_sse_event",
+        "ss_http_multipart_part_text",
+        "ss_http_multipart_part_bytes",
+        "ss_http_multipart_part_length",
+        "ss_http_multipart_part_filename",
+        "ss_http_multipart_part_content_type",
+        "ss_http_request_cookie",
+        "ss_http_request_path_param",
+        "ss_http_response_file"
+      ],
+      "sources": [
+        "ss_http.c",
+        "native_http/sem_http_runtime.c",
+        "native_platform/ss_platform_time.c"
+      ],
+      "include": [
+        "native_http",
+        "native_platform"
+      ],
+      "defines": [
+        "_CRT_SECURE_NO_WARNINGS"
+      ],
+      "platforms": {
+        "windows": {
+          "comment": "R-013: Winsock (ws2_32) is required for sockets on Windows only; POSIX hosts must NOT receive -lws2_32 or the link fails.",
+          "libs": [
+            "ws2_32"
+          ]
+        }
+      }
+    },
+    {
+      "name": "ss_async",
+      "comment": "R-040 async runtime backed by libuv (third_party/libuv): the SemanticScript event-loop async runtime built with SEM_ASYNC_WITH_LIBUV, wrapped for the runtimeBinding seam. Single-threaded event loop, real libuv backend.",
+      "provides": [
+        "ss_async_"
+      ],
+      "sources": [
+        "ss_async.c",
+        "native_async/sem_async_runtime.c",
+        "native_platform/ss_platform_time.c",
+        "../../third_party/libuv/src/fs-poll.c",
+        "../../third_party/libuv/src/idna.c",
+        "../../third_party/libuv/src/inet.c",
+        "../../third_party/libuv/src/random.c",
+        "../../third_party/libuv/src/strscpy.c",
+        "../../third_party/libuv/src/strtok.c",
+        "../../third_party/libuv/src/thread-common.c",
+        "../../third_party/libuv/src/threadpool.c",
+        "../../third_party/libuv/src/timer.c",
+        "../../third_party/libuv/src/uv-common.c",
+        "../../third_party/libuv/src/uv-data-getter-setters.c",
+        "../../third_party/libuv/src/version.c"
+      ],
+      "include": [
+        "../../third_party/libuv/include",
+        "../../third_party/libuv/src",
+        "native_async",
+        "native_platform"
+      ],
+      "defines": [
+        "SEM_ASYNC_WITH_LIBUV"
+      ],
+      "platforms": {
+        "windows": {
+          "sources": [
+            "../../third_party/libuv/src/win/async.c",
+            "../../third_party/libuv/src/win/core.c",
+            "../../third_party/libuv/src/win/detect-wakeup.c",
+            "../../third_party/libuv/src/win/dl.c",
+            "../../third_party/libuv/src/win/error.c",
+            "../../third_party/libuv/src/win/fs.c",
+            "../../third_party/libuv/src/win/fs-event.c",
+            "../../third_party/libuv/src/win/getaddrinfo.c",
+            "../../third_party/libuv/src/win/getnameinfo.c",
+            "../../third_party/libuv/src/win/handle.c",
+            "../../third_party/libuv/src/win/loop-watcher.c",
+            "../../third_party/libuv/src/win/pipe.c",
+            "../../third_party/libuv/src/win/thread.c",
+            "../../third_party/libuv/src/win/poll.c",
+            "../../third_party/libuv/src/win/process.c",
+            "../../third_party/libuv/src/win/process-stdio.c",
+            "../../third_party/libuv/src/win/signal.c",
+            "../../third_party/libuv/src/win/snprintf.c",
+            "../../third_party/libuv/src/win/stream.c",
+            "../../third_party/libuv/src/win/tcp.c",
+            "../../third_party/libuv/src/win/tty.c",
+            "../../third_party/libuv/src/win/udp.c",
+            "../../third_party/libuv/src/win/util.c",
+            "../../third_party/libuv/src/win/winapi.c",
+            "../../third_party/libuv/src/win/winsock.c"
+          ],
+          "include": [
+            "../../third_party/libuv/src/win"
+          ],
+          "defines": [
+            "WIN32_LEAN_AND_MEAN",
+            "_WIN32_WINNT=0x0A00",
+            "_CRT_SECURE_NO_WARNINGS"
+          ],
+          "libs": [
+            "psapi",
+            "advapi32",
+            "iphlpapi",
+            "userenv",
+            "ws2_32",
+            "dbghelp",
+            "ole32",
+            "shell32",
+            "user32",
+            "gdi32"
+          ]
+        },
+        "linux": {
+          "sources": [
+            "../../third_party/libuv/src/unix/async.c",
+            "../../third_party/libuv/src/unix/core.c",
+            "../../third_party/libuv/src/unix/dl.c",
+            "../../third_party/libuv/src/unix/fs.c",
+            "../../third_party/libuv/src/unix/getaddrinfo.c",
+            "../../third_party/libuv/src/unix/getnameinfo.c",
+            "../../third_party/libuv/src/unix/loop-watcher.c",
+            "../../third_party/libuv/src/unix/loop.c",
+            "../../third_party/libuv/src/unix/pipe.c",
+            "../../third_party/libuv/src/unix/poll.c",
+            "../../third_party/libuv/src/unix/process.c",
+            "../../third_party/libuv/src/unix/random-devurandom.c",
+            "../../third_party/libuv/src/unix/signal.c",
+            "../../third_party/libuv/src/unix/stream.c",
+            "../../third_party/libuv/src/unix/tcp.c",
+            "../../third_party/libuv/src/unix/thread.c",
+            "../../third_party/libuv/src/unix/tty.c",
+            "../../third_party/libuv/src/unix/udp.c",
+            "../../third_party/libuv/src/unix/linux.c",
+            "../../third_party/libuv/src/unix/procfs-exepath.c",
+            "../../third_party/libuv/src/unix/proctitle.c",
+            "../../third_party/libuv/src/unix/random-getrandom.c",
+            "../../third_party/libuv/src/unix/random-sysctl-linux.c"
+          ],
+          "include": [
+            "../../third_party/libuv/src/unix"
+          ],
+          "defines": [
+            "_FILE_OFFSET_BITS=64",
+            "_LARGEFILE_SOURCE",
+            "_GNU_SOURCE",
+            "_POSIX_C_SOURCE=200112"
+          ],
+          "libs": [
+            "pthread",
+            "dl",
+            "rt"
+          ]
+        },
+        "macos": {
+          "sources": [
+            "../../third_party/libuv/src/unix/async.c",
+            "../../third_party/libuv/src/unix/core.c",
+            "../../third_party/libuv/src/unix/dl.c",
+            "../../third_party/libuv/src/unix/fs.c",
+            "../../third_party/libuv/src/unix/getaddrinfo.c",
+            "../../third_party/libuv/src/unix/getnameinfo.c",
+            "../../third_party/libuv/src/unix/loop-watcher.c",
+            "../../third_party/libuv/src/unix/loop.c",
+            "../../third_party/libuv/src/unix/pipe.c",
+            "../../third_party/libuv/src/unix/poll.c",
+            "../../third_party/libuv/src/unix/process.c",
+            "../../third_party/libuv/src/unix/random-devurandom.c",
+            "../../third_party/libuv/src/unix/signal.c",
+            "../../third_party/libuv/src/unix/stream.c",
+            "../../third_party/libuv/src/unix/tcp.c",
+            "../../third_party/libuv/src/unix/thread.c",
+            "../../third_party/libuv/src/unix/tty.c",
+            "../../third_party/libuv/src/unix/udp.c",
+            "../../third_party/libuv/src/unix/bsd-ifaddrs.c",
+            "../../third_party/libuv/src/unix/darwin-proctitle.c",
+            "../../third_party/libuv/src/unix/darwin.c",
+            "../../third_party/libuv/src/unix/fsevents.c",
+            "../../third_party/libuv/src/unix/kqueue.c",
+            "../../third_party/libuv/src/unix/proctitle.c",
+            "../../third_party/libuv/src/unix/random-getentropy.c"
+          ],
+          "include": [
+            "../../third_party/libuv/src/unix"
+          ],
+          "defines": [
+            "_FILE_OFFSET_BITS=64",
+            "_LARGEFILE_SOURCE"
+          ],
+          "libs": [
+            "pthread"
+          ]
+        },
+        "wasi": {
+          "unsupported": "standard.async's libuv runtime has no WASI backend in this manifest."
+        }
+      }
+    },
+    {
+      "name": "ss_gui",
+      "comment": "WS3-044 GUI runtime: the SemanticScript Win32 GUI runtime wrapped for the runtimeBinding seam. A non-interactive health check (create window -> auto-close on shown -> return).",
+      "provides": [
+        "ss_gui_"
+      ],
+      "platforms": {
+        "windows": {
+          "sources": [
+            "ss_gui.c",
+            "native_win32_gui/sem_win32_gui_runtime.c"
+          ],
+          "include": [
+            "native_win32_gui"
+          ],
+          "libs": [
+            "user32",
+            "gdi32",
+            "comctl32"
+          ]
+        },
+        "linux": {
+          "unsupported": "standard.gui currently has only the Win32 runtime backend."
+        },
+        "macos": {
+          "unsupported": "standard.gui currently has only the Win32 runtime backend."
+        },
+        "wasi": {
+          "unsupported": "standard.gui has no WASI GUI backend."
+        }
+      }
+    }
+  ]
+}

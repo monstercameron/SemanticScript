@@ -1,0 +1,121 @@
+# nested_loops — a real nested loop: the inner loop runs fully for each outer
+# iteration, incrementing a shared counter (README §13). 3 outer x 4 inner = 12
+# increments; the total comes from the loops, not a constant.
+#
+# Correctness observation: 3 * 4 counted one-by-one in nested loops = 12.
+# Expected output: 12
+
+NestedLoops is project
+NestedLoops module examplesNestedLoops
+NestedLoops target console
+NestedLoops entry main
+
+examplesNestedLoops is module
+examplesNestedLoops path examples.nestedLoops
+examplesNestedLoops exports main
+examplesNestedLoops purpose "Count inner*outer iterations with nested loops"
+examplesNestedLoops invariant "Total equals outer bound times inner bound"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Run 3 outer x 4 inner loops and print the iteration count"
+main invariant "Writes exactly one integer line: 12"
+main let total mutable Int64 0
+main let outerIndex mutable Int64 0
+main let innerIndex mutable Int64 0
+main let zero immutable Int64 0
+main let outerBound immutable Int64 3
+main let innerBound immutable Int64 4
+main let oneStep immutable Int64 1
+main let harnessName immutable String "nested_loops"
+main let harnessExpected immutable Int64 12
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "nested_loops: real result (not the no-op 0)"
+main at outerHead do outerCheck
+main branch ifFalse outerGoing goto allDone
+main do resetInner
+main at innerHead do innerCheck
+main branch ifFalse innerGoing goto outerNext
+main do incTotal
+main do incInner
+main goto innerHead
+main at outerNext do incOuter
+main goto outerHead
+main at allDone do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+outerCheck is call
+outerCheck in main
+outerCheck invokes math.lessThanInt64
+outerCheck arg left Int64 outerIndex
+outerCheck arg right Int64 outerBound
+outerCheck out outerGoing Bool
+
+resetInner is call
+resetInner in main
+resetInner invokes math.multiplyInt64
+resetInner arg left Int64 innerIndex
+resetInner arg right Int64 zero
+resetInner out innerIndex Int64
+
+innerCheck is call
+innerCheck in main
+innerCheck invokes math.lessThanInt64
+innerCheck arg left Int64 innerIndex
+innerCheck arg right Int64 innerBound
+innerCheck out innerGoing Bool
+
+incTotal is call
+incTotal in main
+incTotal invokes math.addInt64
+incTotal arg left Int64 total
+incTotal arg right Int64 oneStep
+incTotal out total Int64
+
+incInner is call
+incInner in main
+incInner invokes math.addInt64
+incInner arg left Int64 innerIndex
+incInner arg right Int64 oneStep
+incInner out innerIndex Int64
+
+incOuter is call
+incOuter in main
+incOuter invokes math.addInt64
+incOuter arg left Int64 outerIndex
+incOuter arg right Int64 oneStep
+incOuter out outerIndex Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 total
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 total
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

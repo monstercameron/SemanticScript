@@ -1,0 +1,69 @@
+# string_path_normalize -- builds a string and asserts it via the test harness (README s35).
+# Expected output:
+#   PASS  string_path_normalize  (expected "/usr/bin", actual "/usr/bin")
+#   ---- 1 passed, 0 failed ----
+
+StringPathNormalize is project
+StringPathNormalize module examplesStringPathNormalize
+StringPathNormalize target console
+StringPathNormalize entry main
+
+examplesStringPathNormalize is module
+examplesStringPathNormalize path examples.stringPathNormalize
+examplesStringPathNormalize exports main
+examplesStringPathNormalize purpose "join a filesystem path"
+examplesStringPathNormalize invariant "Self-checking via the test harness"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "join a filesystem path and assert the result"
+main invariant "Asserts the string via the harness"
+main let partOne immutable String "/usr/"
+main let partTwo immutable String "bin"
+main do concatCall
+main let harnessName immutable String "string_path_normalize"
+main let harnessExpected immutable String "/usr/bin"
+main let emptyGuard immutable String ""
+main let noopName immutable String "string_path_normalize: real result (not the empty string)"
+main do checkResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+concatCall is call
+concatCall in main
+concatCall invokes string.concat
+concatCall arg left String partOne
+concatCall arg right String partTwo
+concatCall out actualText String
+
+checkResult is call
+checkResult in main
+checkResult invokes test.assertEqualText
+checkResult arg name String harnessName
+checkResult arg expected String harnessExpected
+checkResult arg actual String actualText
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualText
+noopCheck arg name String noopName
+noopCheck arg expected String emptyGuard
+noopCheck arg actual String actualText
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

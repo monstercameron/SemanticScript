@@ -1,0 +1,84 @@
+# record_row_fields -- (repurposed from sql_execute_query (no SQL runtime)) build a record and read a field back (Record.new / Record.field,
+# lowered to LLVM insert/extractvalue, README s10). The printed value is read
+# from the constructed record, not a constant.
+#
+# Correctness observation: build Row{rowId=3, amount=250}; read amount.
+# Expected output: 250
+
+RecordRowFields is project
+RecordRowFields module examplesRecordRowFields
+RecordRowFields target console
+RecordRowFields entry main
+
+examplesRecordRowFields is module
+examplesRecordRowFields path examples.recordRowFields
+examplesRecordRowFields exports main
+examplesRecordRowFields purpose "Build a Row record and read its amount field"
+examplesRecordRowFields invariant "Prints the amount field of the built record"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+Row is record
+Row field rowId Int64
+Row field amount Int64
+Row purpose "A two-field record"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "Build Row and print its amount field"
+main invariant "Writes exactly one integer line: 250"
+main let firstInput immutable Int64 3
+main let secondInput immutable Int64 250
+main let harnessName immutable String "record_row_fields"
+main let harnessExpected immutable Int64 250
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "record_row_fields: real result (not the no-op 0)"
+main do buildRec
+main do readField
+main do writeField
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+buildRec is call
+buildRec in main
+buildRec invokes Row.new
+buildRec arg rowId Int64 firstInput
+buildRec arg amount Int64 secondInput
+buildRec out built Row
+
+readField is call
+readField in main
+readField invokes Row.amount
+readField arg record Row built
+readField out fieldOut Int64
+
+writeField is call
+writeField in main
+writeField invokes test.assertEqualInt64
+writeField arg name String harnessName
+writeField arg expected Int64 harnessExpected
+writeField arg actual Int64 fieldOut
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 fieldOut
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
