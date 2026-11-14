@@ -2,6 +2,19 @@
 # list, prices it two ways at once (two tasks borrow the same list), prints both
 # totals, writes a one-line report file, and reads the report back.
 #
+# What the checker and runtime guarantee here (docs/safety-guarantees.md):
+# - `order` has 3 rows, so `fill` states `maxIterations 3`; fewer is rejected.
+# - Both tasks hold `lines` from `start` to `join`, so nothing may change it
+#   until both are joined, including after a `cancel`.
+# - When the list total fails, the discount task is cancelled and still joined;
+#   its outcome is observed, and a second failure is reported, not dropped.
+# - `report` is written through an exclusive loan (`lendMutable`): writing
+#   changes the handle's position, so no other activation may use it at once.
+# - The deferred cleanup closes `report` at every return after it is open; a
+#   failed close traps, since the report may be incomplete.
+# - Every allocation goes into `store`; passing its 65536 bytes traps before
+#   anything is written.
+#
 # Exit codes: 0 done, 2 a line has a negative quantity, 3 the order is empty,
 # 4 the report file could not be written or read, 5 standard output failed.
 
@@ -18,6 +31,10 @@ warehouse exports main
 stdoutWriter is capability
 stdoutWriter purpose "Authority to write lines to standard output"
 stdoutWriter grants write console.stdout none
+
+stderrWriter is capability
+stderrWriter purpose "Authority to write notes to standard error"
+stderrWriter grants write console.stderr none
 
 reportFiles is capability
 reportFiles purpose "Authority to write and read files in the working directory whose names start with warehouse-"
@@ -49,9 +66,11 @@ main output ExitCode
 main outputOwnedBy none
 main raises none
 main effect write console.stdout
+main effect write console.stderr
 main effect write fs.files
 main effect read fs.files
 main uses stdoutWriter
+main uses stderrWriter
 main uses reportFiles
 main memoryHeap true
 main async true
@@ -70,6 +89,8 @@ main label joinDiscount loopKind none
 main label joinDiscount within none
 main label stopDiscount loopKind none
 main label stopDiscount within none
+main label bothFailed loopKind none
+main label bothFailed within none
 main label printTotals loopKind none
 main label printTotals within none
 main label printSecond loopKind none
@@ -114,6 +135,7 @@ main let badLineCode ExitCode 2 immutable
 main let emptyCode ExitCode 3 immutable
 main let fileCode ExitCode 4 immutable
 main let outputCode ExitCode 5 immutable
+main let bothText String "the discount total failed too; the list total's failure decides the exit code" immutable
 main at begin do makeDeadline
 main at begin do makeLines
 main at begin goto fill
@@ -128,7 +150,9 @@ main at joinDiscount join discountTask
 main at joinDiscount branch ifError discountTask goto discountFailed else goto printTotals
 main at stopDiscount cancel discountTask
 main at stopDiscount join discountTask
-main at stopDiscount branch ifError discountTask goto listFailed else goto listFailed
+main at stopDiscount branch ifError discountTask goto bothFailed else goto listFailed
+main at bothFailed do noteBoth
+main at bothFailed branch ifError noteBoth goto listFailed else goto listFailed
 main at printTotals do printList
 main at printTotals branch ifError printList goto outputFailed else goto printSecond
 main at printSecond do printDiscount
@@ -233,7 +257,6 @@ listTask borrows none
 listTask catch listError pricing.PricingError
 
 discountTask is task
-discountTask rationale "Once the list total has failed, the discount total is cancelled and its outcome no longer matters"
 discountTask in main
 discountTask invokes pricing.discountTotal
 discountTask argument lines pricing.Lines lines lend
@@ -242,6 +265,17 @@ discountTask ownedBy none
 discountTask cleanedBy none
 discountTask borrows none
 discountTask catch discountError pricing.PricingError
+
+noteBoth is call
+noteBoth rationale "A note that cannot be written must not replace the list total's own failure, which decides the exit code"
+noteBoth in main
+noteBoth invokes console.writeError
+noteBoth argument text String bothText lend
+noteBoth result none
+noteBoth ownedBy none
+noteBoth cleanedBy none
+noteBoth borrows none
+noteBoth catch noteError console.WriteError
 
 printList is call
 printList in main

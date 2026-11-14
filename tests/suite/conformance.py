@@ -463,7 +463,14 @@ def render() -> str:
             "- Foreign functions (`ffi`) are limited to numbers and `Bool` with no shared memory; what the C code "
             "does inside is outside the language's guarantees.",
             "- Standalone executables include only the core runtime; programs calling host-library targets are "
-            "refused (R901) rather than built.", ""]
+            "refused (R901) rather than built.",
+            "- Running out of a region is a trap, not a typed error: a program cannot recover from it, only size its "
+            "regions for what it allocates.",
+            "- Cancellation is observed only at waits; a cancelled task in the middle of pure computation runs to its "
+            "end before its `join` returns.",
+            "- A task started into a task group states `result none` and `catch none`: its output and its failure are "
+            "not delivered to the parent. Use a plain task when the outcome matters.",
+            "- There is no detached task; work that must outlive its operation is not expressible.", ""]
     return "\n".join(out)
 
 

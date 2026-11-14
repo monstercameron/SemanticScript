@@ -8,6 +8,7 @@ warehouse version "0.1.0"
 warehouse language refined 1
 warehouse standardLibrary 1
 warehouse allows write console.stdout none
+warehouse allows write console.stderr none
 warehouse allows write fs.files "warehouse-*"
 warehouse allows read fs.files "warehouse-*"
 warehouse requires none
