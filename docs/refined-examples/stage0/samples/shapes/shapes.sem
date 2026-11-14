@@ -1,0 +1,567 @@
+# A stage0 sample: records, enums with payloads, exhaustive `match`, and an
+# operation that raises its own error enum. `area` gives the area of a
+# `Shape` (a square's side, a rectangle's two sides as a record, or a dot) and
+# raises `AreaError.negativeSide` for a negative side; `main` prints each
+# area, prints the error it catches, reads a labelled record's fields, and
+# exits with code 4:
+#
+#   area: 9
+#   area: 6
+#   area: 0
+#   refused a side of -2
+#   corner: 3
+shapes is module
+shapes purpose "Compute areas of shapes held in enums and records, with an error enum of their own"
+shapes path shapes
+shapes imports standard.console
+shapes imports standard.math
+shapes imports standard.compare
+shapes exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Sides is record
+Sides purpose "A rectangle's two sides"
+Sides typeParameter none
+Sides field width Int64
+Sides field height Int64
+
+Shape is enum
+Shape purpose "A shape whose area can be computed"
+Shape typeParameter none
+Shape variant square Int64
+Shape variant rectangle Sides
+Shape variant dot none
+
+AreaError is enum
+AreaError purpose "Why an area cannot be computed"
+AreaError typeParameter none
+AreaError variant negativeSide Int64
+AreaError variant tooLarge none
+
+Label is record
+Label purpose "A text with a position, so a record holds text"
+Label typeParameter none
+Label field text String
+Label field column Int64
+
+sideArea is operation
+sideArea purpose "The area of a rectangle, refusing a negative side"
+sideArea invariant none
+sideArea typeParameter none
+sideArea input width Int64 copied
+sideArea input height Int64 copied
+sideArea output Int64
+sideArea outputOwnedBy none
+sideArea raises AreaError
+sideArea effect none
+sideArea uses none
+sideArea memoryHeap false
+sideArea async false
+sideArea maxRecursion none
+sideArea label begin loopKind none
+sideArea label begin within none
+sideArea label heightTest loopKind none
+sideArea label heightTest within none
+sideArea label multiply loopKind none
+sideArea label multiply within none
+sideArea label badWidth loopKind none
+sideArea label badWidth within none
+sideArea label badHeight loopKind none
+sideArea label badHeight within none
+sideArea let zero Int64 0 immutable
+sideArea at begin do widthCheck
+sideArea at begin branch if widthNegative goto badWidth else goto heightTest
+sideArea at heightTest do heightCheck
+sideArea at heightTest branch if heightNegative goto badHeight else goto multiply
+sideArea at multiply do product
+sideArea at multiply return ok rectangleArea
+sideArea at badWidth do makeWidthError
+sideArea at badWidth return error widthError
+sideArea at badHeight do makeHeightError
+sideArea at badHeight return error heightError
+
+widthCheck is call
+widthCheck in sideArea
+widthCheck invokes compare.lessThanInt64
+widthCheck argument left Int64 width copy
+widthCheck argument right Int64 zero copy
+widthCheck result widthNegative Bool
+widthCheck ownedBy none
+widthCheck cleanedBy none
+widthCheck borrows none
+widthCheck catch none
+widthCheck suppresses none
+
+heightCheck is call
+heightCheck in sideArea
+heightCheck invokes compare.lessThanInt64
+heightCheck argument left Int64 height copy
+heightCheck argument right Int64 zero copy
+heightCheck result heightNegative Bool
+heightCheck ownedBy none
+heightCheck cleanedBy none
+heightCheck borrows none
+heightCheck catch none
+heightCheck suppresses none
+
+product is call
+product in sideArea
+product invokes math.multiplyInt64
+product argument left Int64 width copy
+product argument right Int64 height copy
+product result rectangleArea Int64
+product ownedBy none
+product cleanedBy none
+product borrows none
+product catch none
+product suppresses none
+
+makeWidthError is call
+makeWidthError in sideArea
+makeWidthError invokes AreaError.negativeSide
+makeWidthError argument payload Int64 width copy
+makeWidthError result widthError AreaError
+makeWidthError ownedBy none
+makeWidthError cleanedBy none
+makeWidthError borrows none
+makeWidthError catch none
+makeWidthError suppresses none
+
+makeHeightError is call
+makeHeightError in sideArea
+makeHeightError invokes AreaError.negativeSide
+makeHeightError argument payload Int64 height copy
+makeHeightError result heightError AreaError
+makeHeightError ownedBy none
+makeHeightError cleanedBy none
+makeHeightError borrows none
+makeHeightError catch none
+makeHeightError suppresses none
+
+area is operation
+area purpose "The area of a shape"
+area invariant none
+area typeParameter none
+area input shape Shape copied
+area output Int64
+area outputOwnedBy none
+area raises AreaError
+area effect none
+area uses none
+area memoryHeap false
+area async false
+area maxRecursion none
+area label begin loopKind none
+area label begin within none
+area label ofSquare loopKind none
+area label ofSquare within none
+area label squareAreaDone loopKind none
+area label squareAreaDone within none
+area label ofRectangle loopKind none
+area label ofRectangle within none
+area label rectangleAreaDone loopKind none
+area label rectangleAreaDone within none
+area label ofDot loopKind none
+area label ofDot within none
+area label squareAreaFailed loopKind none
+area label squareAreaFailed within none
+area label rectangleAreaFailed loopKind none
+area label rectangleAreaFailed within none
+area let zero Int64 0 immutable
+area at begin match shape Shape
+area at begin case Shape.square bind side Int64 goto ofSquare
+area at begin case Shape.rectangle bind sides Sides goto ofRectangle
+area at begin case Shape.dot bind none none goto ofDot
+area at ofSquare do squareArea
+area at ofSquare branch ifError squareArea goto squareAreaFailed else goto squareAreaDone
+area at squareAreaDone return ok squared
+area at ofRectangle do readWidth
+area at ofRectangle do readHeight
+area at ofRectangle do rectangleArea
+area at ofRectangle branch ifError rectangleArea goto rectangleAreaFailed else goto rectangleAreaDone
+area at rectangleAreaDone return ok rectangled
+area at ofDot return ok zero
+area at squareAreaFailed return error squareAreaError
+area at rectangleAreaFailed return error rectangleAreaError
+
+squareArea is call
+squareArea in area
+squareArea invokes sideArea
+squareArea argument width Int64 side copy
+squareArea argument height Int64 side copy
+squareArea result squared Int64
+squareArea ownedBy none
+squareArea cleanedBy none
+squareArea borrows none
+squareArea catch squareAreaError AreaError
+squareArea suppresses none
+
+readWidth is call
+readWidth in area
+readWidth invokes Sides.width
+readWidth argument record Sides sides copy
+readWidth result width Int64
+readWidth ownedBy none
+readWidth cleanedBy none
+readWidth borrows none
+readWidth catch none
+readWidth suppresses none
+
+readHeight is call
+readHeight in area
+readHeight invokes Sides.height
+readHeight argument record Sides sides copy
+readHeight result height Int64
+readHeight ownedBy none
+readHeight cleanedBy none
+readHeight borrows none
+readHeight catch none
+readHeight suppresses none
+
+rectangleArea is call
+rectangleArea in area
+rectangleArea invokes sideArea
+rectangleArea argument width Int64 width copy
+rectangleArea argument height Int64 height copy
+rectangleArea result rectangled Int64
+rectangleArea ownedBy none
+rectangleArea cleanedBy none
+rectangleArea borrows none
+rectangleArea catch rectangleAreaError AreaError
+rectangleArea suppresses none
+
+printArea is operation
+printArea purpose "Print the area of a shape, or the side it refused"
+printArea invariant none
+printArea typeParameter none
+printArea input shape Shape copied
+printArea output none
+printArea outputOwnedBy none
+printArea raises none
+printArea effect write console.stdout
+printArea uses stdoutWriter
+printArea memoryHeap false
+printArea async false
+printArea maxRecursion none
+printArea label begin loopKind none
+printArea label begin within none
+printArea label print loopKind none
+printArea label print within none
+printArea label writeLeadDone loopKind none
+printArea label writeLeadDone within none
+printArea label writeAreaDone loopKind none
+printArea label writeAreaDone within none
+printArea label refused loopKind none
+printArea label refused within none
+printArea label negative loopKind none
+printArea label negative within none
+printArea label writeRefusedDone loopKind none
+printArea label writeRefusedDone within none
+printArea label writeSideDone loopKind none
+printArea label writeSideDone within none
+printArea label tooLarge loopKind none
+printArea label tooLarge within none
+printArea label writeTooLargeDone loopKind none
+printArea label writeTooLargeDone within none
+printArea let areaText String "area: " immutable
+printArea let refusedText String "refused a side of " immutable
+printArea let tooLargeText String "too large" immutable
+printArea at begin do compute
+printArea at begin branch ifError compute goto refused else goto print
+printArea at print do writeLead
+printArea at print branch ifError writeLead goto writeLeadDone else goto writeLeadDone
+printArea at writeLeadDone do writeArea
+printArea at writeLeadDone branch ifError writeArea goto writeAreaDone else goto writeAreaDone
+printArea at writeAreaDone return ok none
+printArea at refused match areaError AreaError
+printArea at refused case AreaError.negativeSide bind side Int64 goto negative
+printArea at refused case AreaError.tooLarge bind none none goto tooLarge
+printArea at negative do writeRefused
+printArea at negative branch ifError writeRefused goto writeRefusedDone else goto writeRefusedDone
+printArea at writeRefusedDone do writeSide
+printArea at writeRefusedDone branch ifError writeSide goto writeSideDone else goto writeSideDone
+printArea at writeSideDone return ok none
+printArea at tooLarge do writeTooLarge
+printArea at tooLarge branch ifError writeTooLarge goto writeTooLargeDone else goto writeTooLargeDone
+printArea at writeTooLargeDone return ok none
+
+compute is call
+compute in printArea
+compute invokes area
+compute argument shape Shape shape copy
+compute result computed Int64
+compute ownedBy none
+compute cleanedBy none
+compute borrows none
+compute catch areaError AreaError
+compute suppresses none
+
+writeLead is call
+writeLead rationale "The failure has nowhere to be reported, so it is discarded"
+writeLead in printArea
+writeLead invokes console.write
+writeLead argument text String areaText lend
+writeLead result none
+writeLead ownedBy none
+writeLead cleanedBy none
+writeLead borrows none
+writeLead catch writeLeadError console.WriteError
+writeLead suppresses console.WriteError.failed
+
+writeArea is call
+writeArea rationale "The failure has nowhere to be reported, so it is discarded"
+writeArea in printArea
+writeArea invokes console.writeIntegerLine
+writeArea argument value Int64 computed copy
+writeArea result none
+writeArea ownedBy none
+writeArea cleanedBy none
+writeArea borrows none
+writeArea catch writeAreaError console.WriteError
+writeArea suppresses console.WriteError.failed
+
+writeRefused is call
+writeRefused rationale "The failure has nowhere to be reported, so it is discarded"
+writeRefused in printArea
+writeRefused invokes console.write
+writeRefused argument text String refusedText lend
+writeRefused result none
+writeRefused ownedBy none
+writeRefused cleanedBy none
+writeRefused borrows none
+writeRefused catch writeRefusedError console.WriteError
+writeRefused suppresses console.WriteError.failed
+
+writeSide is call
+writeSide rationale "The failure has nowhere to be reported, so it is discarded"
+writeSide in printArea
+writeSide invokes console.writeIntegerLine
+writeSide argument value Int64 side copy
+writeSide result none
+writeSide ownedBy none
+writeSide cleanedBy none
+writeSide borrows none
+writeSide catch writeSideError console.WriteError
+writeSide suppresses console.WriteError.failed
+
+writeTooLarge is call
+writeTooLarge rationale "The failure has nowhere to be reported, so it is discarded"
+writeTooLarge in printArea
+writeTooLarge invokes console.writeLine
+writeTooLarge argument text String tooLargeText lend
+writeTooLarge result none
+writeTooLarge ownedBy none
+writeTooLarge cleanedBy none
+writeTooLarge borrows none
+writeTooLarge catch writeTooLargeError console.WriteError
+writeTooLarge suppresses console.WriteError.failed
+
+main is operation
+main purpose "Print the areas of four shapes, then a field of a record that holds text, and exit with code 4"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label writeTextDone loopKind none
+main label writeTextDone within none
+main label writeColumnDone loopKind none
+main label writeColumnDone within none
+main let doneCode ExitCode 4 immutable
+main let three Int64 3 immutable
+main let two Int64 2 immutable
+main let minusTwo Int64 -2 immutable
+main let cornerText String "corner: " immutable
+main at begin do makeSquare
+main at begin do printSquare
+main at begin do makeSides
+main at begin do makeRectangle
+main at begin do printRectangle
+main at begin do makeDot
+main at begin do printDot
+main at begin do makeBad
+main at begin do printBad
+main at begin do makeLabel
+main at begin do readText
+main at begin do readColumn
+main at begin do writeText
+main at begin branch ifError writeText goto writeTextDone else goto writeTextDone
+main at writeTextDone do writeColumn
+main at writeTextDone branch ifError writeColumn goto writeColumnDone else goto writeColumnDone
+main at writeColumnDone return ok doneCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 65536
+scratch released atReturn
+
+makeSquare is call
+makeSquare in main
+makeSquare invokes Shape.square
+makeSquare argument payload Int64 three copy
+makeSquare result square Shape
+makeSquare ownedBy none
+makeSquare cleanedBy none
+makeSquare borrows none
+makeSquare catch none
+makeSquare suppresses none
+
+printSquare is call
+printSquare in main
+printSquare invokes printArea
+printSquare argument shape Shape square copy
+printSquare result none
+printSquare ownedBy none
+printSquare cleanedBy none
+printSquare borrows none
+printSquare catch none
+printSquare suppresses none
+
+makeSides is call
+makeSides in main
+makeSides invokes Sides.new
+makeSides argument width Int64 two copy
+makeSides argument height Int64 three copy
+makeSides result sides Sides
+makeSides ownedBy none
+makeSides cleanedBy none
+makeSides borrows none
+makeSides catch none
+makeSides suppresses none
+
+makeRectangle is call
+makeRectangle in main
+makeRectangle invokes Shape.rectangle
+makeRectangle argument payload Sides sides copy
+makeRectangle result rectangle Shape
+makeRectangle ownedBy none
+makeRectangle cleanedBy none
+makeRectangle borrows none
+makeRectangle catch none
+makeRectangle suppresses none
+
+printRectangle is call
+printRectangle in main
+printRectangle invokes printArea
+printRectangle argument shape Shape rectangle copy
+printRectangle result none
+printRectangle ownedBy none
+printRectangle cleanedBy none
+printRectangle borrows none
+printRectangle catch none
+printRectangle suppresses none
+
+makeDot is call
+makeDot in main
+makeDot invokes Shape.dot
+makeDot argument none
+makeDot result dot Shape
+makeDot ownedBy none
+makeDot cleanedBy none
+makeDot borrows none
+makeDot catch none
+makeDot suppresses none
+
+printDot is call
+printDot in main
+printDot invokes printArea
+printDot argument shape Shape dot copy
+printDot result none
+printDot ownedBy none
+printDot cleanedBy none
+printDot borrows none
+printDot catch none
+printDot suppresses none
+
+makeBad is call
+makeBad in main
+makeBad invokes Shape.square
+makeBad argument payload Int64 minusTwo copy
+makeBad result bad Shape
+makeBad ownedBy none
+makeBad cleanedBy none
+makeBad borrows none
+makeBad catch none
+makeBad suppresses none
+
+printBad is call
+printBad in main
+printBad invokes printArea
+printBad argument shape Shape bad copy
+printBad result none
+printBad ownedBy none
+printBad cleanedBy none
+printBad borrows none
+printBad catch none
+printBad suppresses none
+
+makeLabel is call
+makeLabel in main
+makeLabel invokes Label.new
+makeLabel argument text String cornerText lend
+makeLabel argument column Int64 three copy
+makeLabel argument region Region scratch lend
+makeLabel result label Label
+makeLabel ownedBy scratch
+makeLabel cleanedBy none
+makeLabel borrows none
+makeLabel catch none
+makeLabel suppresses none
+
+readText is call
+readText in main
+readText invokes Label.text
+readText argument record Label label lend
+readText result text String
+readText ownedBy none
+readText cleanedBy none
+readText borrows label
+readText catch none
+readText suppresses none
+
+readColumn is call
+readColumn in main
+readColumn invokes Label.column
+readColumn argument record Label label lend
+readColumn result column Int64
+readColumn ownedBy none
+readColumn cleanedBy none
+readColumn borrows none
+readColumn catch none
+readColumn suppresses none
+
+writeText is call
+writeText rationale "The failure has nowhere to be reported, so it is discarded"
+writeText in main
+writeText invokes console.write
+writeText argument text String text lend
+writeText result none
+writeText ownedBy none
+writeText cleanedBy none
+writeText borrows none
+writeText catch writeTextError console.WriteError
+writeText suppresses console.WriteError.failed
+
+writeColumn is call
+writeColumn rationale "The failure has nowhere to be reported, so it is discarded"
+writeColumn in main
+writeColumn invokes console.writeIntegerLine
+writeColumn argument value Int64 column copy
+writeColumn result none
+writeColumn ownedBy none
+writeColumn cleanedBy none
+writeColumn borrows none
+writeColumn catch writeColumnError console.WriteError
+writeColumn suppresses console.WriteError.failed

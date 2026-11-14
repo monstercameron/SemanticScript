@@ -1,0 +1,443 @@
+# A stage0 sample: several operations calling each other. `square` and
+# `power` take copied inputs and give one output; `factorial` and `gcd`
+# recurse (each states its maxRecursion); `report` borrows a label and prints
+# it with a number, discarding a failed write (its catch is none and it
+# suppresses console.WriteError's variant). It prints, and exits with code 0:
+#
+#   square of 7: 49
+#   2 to the 10: 1024
+#   factorial of 10: 3628800
+#   gcd of 1071 and 462: 21
+calls is module
+calls purpose "Call operations with inputs and outputs, two of them recursive"
+calls path calls
+calls imports standard.console
+calls imports standard.math
+calls imports standard.compare
+calls exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+square is operation
+square purpose "The square of a number"
+square invariant none
+square typeParameter none
+square input value Int64 copied
+square output Int64
+square outputOwnedBy none
+square raises none
+square effect none
+square uses none
+square memoryHeap false
+square async false
+square maxRecursion none
+square label begin loopKind none
+square label begin within none
+square let none
+square at begin do multiply
+square at begin return ok squared
+
+multiply is call
+multiply in square
+multiply invokes math.multiplyInt64
+multiply argument left Int64 value copy
+multiply argument right Int64 value copy
+multiply result squared Int64
+multiply ownedBy none
+multiply cleanedBy none
+multiply borrows none
+multiply catch none
+multiply suppresses none
+
+power is operation
+power purpose "A base raised to a non-negative exponent, by repeated multiplication"
+power invariant none
+power typeParameter none
+power input base Int64 copied
+power input exponent Int64 copied
+power output Int64
+power outputOwnedBy none
+power raises none
+power effect none
+power uses none
+power memoryHeap false
+power async false
+power maxRecursion none
+power label begin loopKind none
+power label begin within none
+power label multiplyMore loopKind while
+power label multiplyMore within none
+power label multiplyMore maxIterations exponent
+power label step loopKind none
+power label step within multiplyMore
+power label finished loopKind none
+power label finished within none
+power let result Int64 1 mutable
+power let count Int64 0 mutable
+power let one Int64 1 immutable
+power at begin goto multiplyMore
+power at multiplyMore do doneCheck
+power at multiplyMore branch if done goto finished else goto step
+power at step do multiply
+power at step set result product
+power at step do countStep
+power at step set count nextCount
+power at step goto multiplyMore
+power at finished return ok result
+
+doneCheck is call
+doneCheck in power
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 count copy
+doneCheck argument right Int64 exponent copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+multiply is call
+multiply in power
+multiply invokes math.multiplyInt64
+multiply argument left Int64 result copy
+multiply argument right Int64 base copy
+multiply result product Int64
+multiply ownedBy none
+multiply cleanedBy none
+multiply borrows none
+multiply catch none
+multiply suppresses none
+
+countStep is call
+countStep in power
+countStep invokes math.addInt64
+countStep argument left Int64 count copy
+countStep argument right Int64 one copy
+countStep result nextCount Int64
+countStep ownedBy none
+countStep cleanedBy none
+countStep borrows none
+countStep catch none
+countStep suppresses none
+
+factorial is operation
+factorial purpose "The factorial of a number, by recursion"
+factorial invariant none
+factorial typeParameter none
+factorial input n Int64 copied
+factorial output Int64
+factorial outputOwnedBy none
+factorial raises none
+factorial effect none
+factorial uses none
+factorial memoryHeap false
+factorial async false
+factorial maxRecursion 25
+factorial label begin loopKind none
+factorial label begin within none
+factorial label base loopKind none
+factorial label base within none
+factorial label recurse loopKind none
+factorial label recurse within none
+factorial let one Int64 1 immutable
+factorial at begin do baseCheck
+factorial at begin branch if atBase goto base else goto recurse
+factorial at base return ok one
+factorial at recurse do lower
+factorial at recurse do inner
+factorial at recurse do multiply
+factorial at recurse return ok product
+
+baseCheck is call
+baseCheck in factorial
+baseCheck invokes compare.lessOrEqualInt64
+baseCheck argument left Int64 n copy
+baseCheck argument right Int64 one copy
+baseCheck result atBase Bool
+baseCheck ownedBy none
+baseCheck cleanedBy none
+baseCheck borrows none
+baseCheck catch none
+baseCheck suppresses none
+
+lower is call
+lower in factorial
+lower invokes math.subtractInt64
+lower argument left Int64 n copy
+lower argument right Int64 one copy
+lower result smaller Int64
+lower ownedBy none
+lower cleanedBy none
+lower borrows none
+lower catch none
+lower suppresses none
+
+inner is call
+inner in factorial
+inner invokes factorial
+inner argument n Int64 smaller copy
+inner result rest Int64
+inner ownedBy none
+inner cleanedBy none
+inner borrows none
+inner catch none
+inner suppresses none
+
+multiply is call
+multiply in factorial
+multiply invokes math.multiplyInt64
+multiply argument left Int64 n copy
+multiply argument right Int64 rest copy
+multiply result product Int64
+multiply ownedBy none
+multiply cleanedBy none
+multiply borrows none
+multiply catch none
+multiply suppresses none
+
+gcd is operation
+gcd purpose "The greatest common divisor of two numbers, by Euclid's recursion"
+gcd invariant none
+gcd typeParameter none
+gcd input left Int64 copied
+gcd input right Int64 copied
+gcd output Int64
+gcd outputOwnedBy none
+gcd raises none
+gcd effect none
+gcd uses none
+gcd memoryHeap false
+gcd async false
+gcd maxRecursion 100
+gcd label begin loopKind none
+gcd label begin within none
+gcd label done loopKind none
+gcd label done within none
+gcd label recurse loopKind none
+gcd label recurse within none
+gcd let zero Int64 0 immutable
+gcd at begin do zeroCheck
+gcd at begin branch if rightIsZero goto done else goto recurse
+gcd at done return ok left
+gcd at recurse do remainder
+gcd at recurse do inner
+gcd at recurse return ok result
+
+zeroCheck is call
+zeroCheck in gcd
+zeroCheck invokes compare.equalInt64
+zeroCheck argument left Int64 right copy
+zeroCheck argument right Int64 zero copy
+zeroCheck result rightIsZero Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+remainder is call
+remainder in gcd
+remainder invokes math.remainderInt64
+remainder argument left Int64 left copy
+remainder argument right Int64 right copy
+remainder result rest Int64
+remainder ownedBy none
+remainder cleanedBy none
+remainder borrows none
+remainder catch none
+remainder suppresses none
+
+inner is call
+inner in gcd
+inner invokes gcd
+inner argument left Int64 right copy
+inner argument right Int64 rest copy
+inner result result Int64
+inner ownedBy none
+inner cleanedBy none
+inner borrows none
+inner catch none
+inner suppresses none
+
+report is operation
+report purpose "Print a label and then a number on its line; a failed write is discarded"
+report invariant none
+report typeParameter none
+report input label String borrowed
+report input value Int64 copied
+report output none
+report outputOwnedBy none
+report raises none
+report effect write console.stdout
+report uses stdoutWriter
+report memoryHeap false
+report async false
+report maxRecursion none
+report label begin loopKind none
+report label begin within none
+report label writeLabelDone loopKind none
+report label writeLabelDone within none
+report label writeValueDone loopKind none
+report label writeValueDone within none
+report let none
+report at begin do writeLabel
+report at begin branch ifError writeLabel goto writeLabelDone else goto writeLabelDone
+report at writeLabelDone do writeValue
+report at writeLabelDone branch ifError writeValue goto writeValueDone else goto writeValueDone
+report at writeValueDone return ok none
+
+writeLabel is call
+writeLabel rationale "The failure has nowhere to be reported, so it is discarded"
+writeLabel in report
+writeLabel invokes console.write
+writeLabel argument text String label lend
+writeLabel result none
+writeLabel ownedBy none
+writeLabel cleanedBy none
+writeLabel borrows none
+writeLabel catch writeLabelError console.WriteError
+writeLabel suppresses console.WriteError.failed
+
+writeValue is call
+writeValue rationale "The failure has nowhere to be reported, so it is discarded"
+writeValue in report
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeValueError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+main is operation
+main purpose "Print a square, a power, a factorial, and a greatest common divisor"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let okCode ExitCode 0 immutable
+main let seven Int64 7 immutable
+main let squareText String "square of 7: " immutable
+main let two Int64 2 immutable
+main let ten Int64 10 immutable
+main let powerText String "2 to the 10: " immutable
+main let factorialText String "factorial of 10: " immutable
+main let big Int64 1071 immutable
+main let small Int64 462 immutable
+main let gcdText String "gcd of 1071 and 462: " immutable
+main at begin do squareSeven
+main at begin do reportSquare
+main at begin do powerTwo
+main at begin do reportPower
+main at begin do factorialTen
+main at begin do reportFactorial
+main at begin do gcdOf
+main at begin do reportGcd
+main at begin return ok okCode
+
+squareSeven is call
+squareSeven in main
+squareSeven invokes square
+squareSeven argument value Int64 seven copy
+squareSeven result squared Int64
+squareSeven ownedBy none
+squareSeven cleanedBy none
+squareSeven borrows none
+squareSeven catch none
+squareSeven suppresses none
+
+reportSquare is call
+reportSquare in main
+reportSquare invokes report
+reportSquare argument label String squareText lend
+reportSquare argument value Int64 squared copy
+reportSquare result none
+reportSquare ownedBy none
+reportSquare cleanedBy none
+reportSquare borrows none
+reportSquare catch none
+reportSquare suppresses none
+
+powerTwo is call
+powerTwo in main
+powerTwo invokes power
+powerTwo argument base Int64 two copy
+powerTwo argument exponent Int64 ten copy
+powerTwo result powered Int64
+powerTwo ownedBy none
+powerTwo cleanedBy none
+powerTwo borrows none
+powerTwo catch none
+powerTwo suppresses none
+
+reportPower is call
+reportPower in main
+reportPower invokes report
+reportPower argument label String powerText lend
+reportPower argument value Int64 powered copy
+reportPower result none
+reportPower ownedBy none
+reportPower cleanedBy none
+reportPower borrows none
+reportPower catch none
+reportPower suppresses none
+
+factorialTen is call
+factorialTen in main
+factorialTen invokes factorial
+factorialTen argument n Int64 ten copy
+factorialTen result factored Int64
+factorialTen ownedBy none
+factorialTen cleanedBy none
+factorialTen borrows none
+factorialTen catch none
+factorialTen suppresses none
+
+reportFactorial is call
+reportFactorial in main
+reportFactorial invokes report
+reportFactorial argument label String factorialText lend
+reportFactorial argument value Int64 factored copy
+reportFactorial result none
+reportFactorial ownedBy none
+reportFactorial cleanedBy none
+reportFactorial borrows none
+reportFactorial catch none
+reportFactorial suppresses none
+
+gcdOf is call
+gcdOf in main
+gcdOf invokes gcd
+gcdOf argument left Int64 big copy
+gcdOf argument right Int64 small copy
+gcdOf result divisor Int64
+gcdOf ownedBy none
+gcdOf cleanedBy none
+gcdOf borrows none
+gcdOf catch none
+gcdOf suppresses none
+
+reportGcd is call
+reportGcd in main
+reportGcd invokes report
+reportGcd argument label String gcdText lend
+reportGcd argument value Int64 divisor copy
+reportGcd result none
+reportGcd ownedBy none
+reportGcd cleanedBy none
+reportGcd borrows none
+reportGcd catch none
+reportGcd suppresses none

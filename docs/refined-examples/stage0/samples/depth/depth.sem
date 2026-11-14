@@ -1,0 +1,129 @@
+# A stage0 sample whose recursion passes its bound. `countDown` prints its
+# number and calls itself with the next one, stating `maxRecursion 4`; started at
+# 1 it would stop at 6, but the fifth nested call traps (exit code 70) after
+# printing 1 to 4. `refined run` and the executable stage0 builds from it
+# stop at the same place.
+depth is module
+depth purpose "Recurse past a stated maxRecursion, so the bound's trap can be compared"
+depth path depth
+depth imports standard.console
+depth imports standard.math
+depth imports standard.compare
+depth exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+countDown is operation
+countDown purpose "Print a number, then count on from the next one until past the last, one call deeper each time"
+countDown invariant none
+countDown typeParameter none
+countDown input number Int64 copied
+countDown input last Int64 copied
+countDown output none
+countDown outputOwnedBy none
+countDown raises none
+countDown effect write console.stdout
+countDown uses stdoutWriter
+countDown memoryHeap false
+countDown async false
+countDown maxRecursion 4
+countDown label begin loopKind none
+countDown label begin within none
+countDown label print loopKind none
+countDown label print within none
+countDown label printItDone loopKind none
+countDown label printItDone within none
+countDown label done loopKind none
+countDown label done within none
+countDown let one Int64 1 immutable
+countDown at begin do pastCheck
+countDown at begin branch if past goto done else goto print
+countDown at print do printIt
+countDown at print branch ifError printIt goto printItDone else goto printItDone
+countDown at printItDone do next
+countDown at printItDone do deeper
+countDown at printItDone goto done
+countDown at done return ok none
+
+pastCheck is call
+pastCheck in countDown
+pastCheck invokes compare.greaterThanInt64
+pastCheck argument left Int64 number copy
+pastCheck argument right Int64 last copy
+pastCheck result past Bool
+pastCheck ownedBy none
+pastCheck cleanedBy none
+pastCheck borrows none
+pastCheck catch none
+pastCheck suppresses none
+
+printIt is call
+printIt rationale "The failure has nowhere to be reported, so it is discarded"
+printIt in countDown
+printIt invokes console.writeIntegerLine
+printIt argument value Int64 number copy
+printIt result none
+printIt ownedBy none
+printIt cleanedBy none
+printIt borrows none
+printIt catch printItError console.WriteError
+printIt suppresses console.WriteError.failed
+
+next is call
+next in countDown
+next invokes math.addInt64
+next argument left Int64 number copy
+next argument right Int64 one copy
+next result following Int64
+next ownedBy none
+next cleanedBy none
+next borrows none
+next catch none
+next suppresses none
+
+deeper is call
+deeper in countDown
+deeper invokes countDown
+deeper argument number Int64 following copy
+deeper argument last Int64 last copy
+deeper result none
+deeper ownedBy none
+deeper cleanedBy none
+deeper borrows none
+deeper catch none
+deeper suppresses none
+
+main is operation
+main purpose "Count from 1 to 6 by recursion bounded to four nested calls"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap false
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main let okCode ExitCode 0 immutable
+main let one Int64 1 immutable
+main let six Int64 6 immutable
+main at begin do count
+main at begin return ok okCode
+
+count is call
+count in main
+count invokes countDown
+count argument number Int64 one copy
+count argument last Int64 six copy
+count result none
+count ownedBy none
+count cleanedBy none
+count borrows none
+count catch none
+count suppresses none

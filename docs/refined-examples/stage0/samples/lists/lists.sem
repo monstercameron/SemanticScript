@@ -1,0 +1,735 @@
+# A stage0 sample: lists in a region. It fills a list of numbers, a list of
+# texts, and a list of records, reads them with `forEach`, `get` (whose
+# failure it branches on), `getOrTrap`, and `length`, builds a list in an
+# operation that receives the region to build it in, and exits with code 0:
+#
+#   sum: 14
+#   count: 5
+#   third: 4
+#   no item at 9
+#   alpha
+#   beta
+#   gamma
+#   points: 3
+#   x total: 6
+#   evens: 4
+lists is module
+lists purpose "Fill and read lists of numbers, texts, and records in a region"
+lists path lists
+lists imports standard.console
+lists imports standard.math
+lists imports standard.compare
+lists imports standard.list
+lists exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Point is record
+Point purpose "A point on a grid"
+Point typeParameter none
+Point field x Int64
+Point field y Int64
+
+Numbers is typeInstance
+Numbers purpose "A list of numbers"
+Numbers in none
+Numbers instantiates list.List Int64
+
+Names is typeInstance
+Names purpose "A list of texts"
+Names in none
+Names instantiates list.List String
+
+Points is typeInstance
+Points purpose "A list of points"
+Points in none
+Points instantiates list.List Point
+
+evens is operation
+evens purpose "The even numbers from 0 up to a limit, as a list in the caller's region"
+evens invariant none
+evens typeParameter none
+evens input limit Int64 copied
+evens input region Region borrowed
+evens output Numbers
+evens outputOwnedBy region
+evens raises none
+evens effect none
+evens uses none
+evens memoryHeap true
+evens async false
+evens maxRecursion none
+evens label begin loopKind none
+evens label begin within none
+evens label count loopKind while
+evens label count within none
+evens label count maxIterations limit
+evens label keep loopKind none
+evens label keep within count
+evens label done loopKind none
+evens label done within none
+evens let number Int64 0 mutable
+evens let two Int64 2 immutable
+evens at begin do makeList
+evens at begin goto count
+evens at count do pastCheck
+evens at count branch if past goto done else goto keep
+evens at keep do keepIt
+evens at keep do advance
+evens at keep set number nextNumber
+evens at keep goto count
+evens at done return ok found
+
+makeList is call
+makeList in evens
+makeList invokes Numbers.new
+makeList argument region Region region lend
+makeList result found Numbers
+makeList ownedBy region
+makeList cleanedBy none
+makeList borrows none
+makeList catch none
+makeList suppresses none
+
+pastCheck is call
+pastCheck in evens
+pastCheck invokes compare.greaterThanInt64
+pastCheck argument left Int64 number copy
+pastCheck argument right Int64 limit copy
+pastCheck result past Bool
+pastCheck ownedBy none
+pastCheck cleanedBy none
+pastCheck borrows none
+pastCheck catch none
+pastCheck suppresses none
+
+keepIt is call
+keepIt in evens
+keepIt invokes Numbers.append
+keepIt argument list Numbers found lendMutable
+keepIt argument item Int64 number copy
+keepIt result none
+keepIt ownedBy none
+keepIt cleanedBy none
+keepIt borrows none
+keepIt catch none
+keepIt suppresses none
+
+advance is call
+advance in evens
+advance invokes math.addInt64
+advance argument left Int64 number copy
+advance argument right Int64 two copy
+advance result nextNumber Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+report is operation
+report purpose "Print a label and a number on one line; a failed write is discarded"
+report invariant none
+report typeParameter none
+report input label String borrowed
+report input value Int64 copied
+report output none
+report outputOwnedBy none
+report raises none
+report effect write console.stdout
+report uses stdoutWriter
+report memoryHeap false
+report async false
+report maxRecursion none
+report label begin loopKind none
+report label begin within none
+report label writeLabelDone loopKind none
+report label writeLabelDone within none
+report label writeValueDone loopKind none
+report label writeValueDone within none
+report let none
+report at begin do writeLabel
+report at begin branch ifError writeLabel goto writeLabelDone else goto writeLabelDone
+report at writeLabelDone do writeValue
+report at writeLabelDone branch ifError writeValue goto writeValueDone else goto writeValueDone
+report at writeValueDone return ok none
+
+writeLabel is call
+writeLabel rationale "The failure has nowhere to be reported, so it is discarded"
+writeLabel in report
+writeLabel invokes console.write
+writeLabel argument text String label lend
+writeLabel result none
+writeLabel ownedBy none
+writeLabel cleanedBy none
+writeLabel borrows none
+writeLabel catch writeLabelError console.WriteError
+writeLabel suppresses console.WriteError.failed
+
+writeValue is call
+writeValue rationale "The failure has nowhere to be reported, so it is discarded"
+writeValue in report
+writeValue invokes console.writeIntegerLine
+writeValue argument value Int64 value copy
+writeValue result none
+writeValue ownedBy none
+writeValue cleanedBy none
+writeValue borrows none
+writeValue catch writeValueError console.WriteError
+writeValue suppresses console.WriteError.failed
+
+main is operation
+main purpose "Fill three lists and read them back"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label sumNumbers loopKind forEach
+main label sumNumbers within none
+main label sumNumbers maxIterations numberCount
+main label sumNumbers over numbers
+main label addNumber loopKind none
+main label addNumber within sumNumbers
+main label summed loopKind none
+main label summed within none
+main label readMissingDone loopKind none
+main label readMissingDone within none
+main label noItem loopKind none
+main label noItem within none
+main label writeNoItemDone loopKind none
+main label writeNoItemDone within none
+main label fillNames loopKind none
+main label fillNames within none
+main label printNames loopKind forEach
+main label printNames within none
+main label printNames maxIterations nameCount
+main label printNames over names
+main label printName loopKind none
+main label printName within printNames
+main label writeNameDone loopKind none
+main label writeNameDone within printNames
+main label fillPoints loopKind none
+main label fillPoints within none
+main label sumX loopKind forEach
+main label sumX within none
+main label sumX maxIterations pointCount
+main label sumX over points
+main label addX loopKind none
+main label addX within sumX
+main label summedX loopKind none
+main label summedX within none
+main let sum Int64 0 mutable
+main let xTotal Int64 0 mutable
+main let okCode ExitCode 0 immutable
+main let three Int64 3 immutable
+main let one Int64 1 immutable
+main let four Int64 4 immutable
+main let five Int64 5 immutable
+main let sumText String "sum: " immutable
+main let countText String "count: " immutable
+main let two Int64 2 immutable
+main let thirdText String "third: " immutable
+main let nine Int64 9 immutable
+main let missingText String "item at 9: " immutable
+main let noItemText String "no item at 9" immutable
+main let alpha String "alpha" immutable
+main let beta String "beta" immutable
+main let gamma String "gamma" immutable
+main let pointsText String "points: " immutable
+main let xText String "x total: " immutable
+main let six Int64 6 immutable
+main let evensText String "evens: " immutable
+main at begin do makeNumbers
+main at begin do addThree
+main at begin do addOne
+main at begin do addFour
+main at begin do addOneAgain
+main at begin do addFive
+main at begin do countNumbers
+main at begin goto sumNumbers
+main at sumNumbers branch ifNext numbers bind number Int64 goto addNumber else goto summed
+main at addNumber do addIt
+main at addNumber set sum nextSum
+main at addNumber goto sumNumbers
+main at summed do reportSum
+main at summed do reportCount
+main at summed do readThird
+main at summed do reportThird
+main at summed do readMissing
+main at summed branch ifError readMissing goto noItem else goto readMissingDone
+main at readMissingDone do reportMissing
+main at readMissingDone goto fillNames
+main at noItem do writeNoItem
+main at noItem branch ifError writeNoItem goto writeNoItemDone else goto writeNoItemDone
+main at writeNoItemDone goto fillNames
+main at fillNames do makeNames
+main at fillNames do addAlpha
+main at fillNames do addBeta
+main at fillNames do addGamma
+main at fillNames do countNames
+main at fillNames goto printNames
+main at printNames branch ifNext names bind name String goto printName else goto fillPoints
+main at printName do writeName
+main at printName branch ifError writeName goto writeNameDone else goto writeNameDone
+main at writeNameDone goto printNames
+main at fillPoints do makePoints
+main at fillPoints do makeFirst
+main at fillPoints do addFirst
+main at fillPoints do makeSecond
+main at fillPoints do addSecond
+main at fillPoints do makeThird
+main at fillPoints do addThird
+main at fillPoints do countPoints
+main at fillPoints do reportPoints
+main at fillPoints goto sumX
+main at sumX branch ifNext points bind point Point goto addX else goto summedX
+main at addX do readX
+main at addX do addXValue
+main at addX set xTotal nextX
+main at addX goto sumX
+main at summedX do reportX
+main at summedX do makeEvens
+main at summedX do countEvens
+main at summedX do reportEvens
+main at summedX return ok okCode
+
+scratch is region
+scratch in main
+scratch strategy arena
+scratch maxBytes 1048576
+scratch released atReturn
+
+makeNumbers is call
+makeNumbers in main
+makeNumbers invokes Numbers.new
+makeNumbers argument region Region scratch lend
+makeNumbers result numbers Numbers
+makeNumbers ownedBy scratch
+makeNumbers cleanedBy none
+makeNumbers borrows none
+makeNumbers catch none
+makeNumbers suppresses none
+
+addThree is call
+addThree in main
+addThree invokes Numbers.append
+addThree argument list Numbers numbers lendMutable
+addThree argument item Int64 three copy
+addThree result none
+addThree ownedBy none
+addThree cleanedBy none
+addThree borrows none
+addThree catch none
+addThree suppresses none
+
+addOne is call
+addOne in main
+addOne invokes Numbers.append
+addOne argument list Numbers numbers lendMutable
+addOne argument item Int64 one copy
+addOne result none
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+addOne suppresses none
+
+addFour is call
+addFour in main
+addFour invokes Numbers.append
+addFour argument list Numbers numbers lendMutable
+addFour argument item Int64 four copy
+addFour result none
+addFour ownedBy none
+addFour cleanedBy none
+addFour borrows none
+addFour catch none
+addFour suppresses none
+
+addOneAgain is call
+addOneAgain in main
+addOneAgain invokes Numbers.append
+addOneAgain argument list Numbers numbers lendMutable
+addOneAgain argument item Int64 one copy
+addOneAgain result none
+addOneAgain ownedBy none
+addOneAgain cleanedBy none
+addOneAgain borrows none
+addOneAgain catch none
+addOneAgain suppresses none
+
+addFive is call
+addFive in main
+addFive invokes Numbers.append
+addFive argument list Numbers numbers lendMutable
+addFive argument item Int64 five copy
+addFive result none
+addFive ownedBy none
+addFive cleanedBy none
+addFive borrows none
+addFive catch none
+addFive suppresses none
+
+countNumbers is call
+countNumbers in main
+countNumbers invokes Numbers.length
+countNumbers argument list Numbers numbers lend
+countNumbers result numberCount Int64
+countNumbers ownedBy none
+countNumbers cleanedBy none
+countNumbers borrows none
+countNumbers catch none
+countNumbers suppresses none
+
+addIt is call
+addIt in main
+addIt invokes math.addInt64
+addIt argument left Int64 sum copy
+addIt argument right Int64 number copy
+addIt result nextSum Int64
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+reportSum is call
+reportSum in main
+reportSum invokes report
+reportSum argument label String sumText lend
+reportSum argument value Int64 sum copy
+reportSum result none
+reportSum ownedBy none
+reportSum cleanedBy none
+reportSum borrows none
+reportSum catch none
+reportSum suppresses none
+
+reportCount is call
+reportCount in main
+reportCount invokes report
+reportCount argument label String countText lend
+reportCount argument value Int64 numberCount copy
+reportCount result none
+reportCount ownedBy none
+reportCount cleanedBy none
+reportCount borrows none
+reportCount catch none
+reportCount suppresses none
+
+readThird is call
+readThird in main
+readThird invokes Numbers.getOrTrap
+readThird argument list Numbers numbers lend
+readThird argument index Int64 two copy
+readThird result third Int64
+readThird ownedBy none
+readThird cleanedBy none
+readThird borrows none
+readThird catch none
+readThird suppresses none
+
+reportThird is call
+reportThird in main
+reportThird invokes report
+reportThird argument label String thirdText lend
+reportThird argument value Int64 third copy
+reportThird result none
+reportThird ownedBy none
+reportThird cleanedBy none
+reportThird borrows none
+reportThird catch none
+reportThird suppresses none
+
+readMissing is call
+readMissing in main
+readMissing invokes Numbers.get
+readMissing argument list Numbers numbers lend
+readMissing argument index Int64 nine copy
+readMissing result missing Int64
+readMissing ownedBy none
+readMissing cleanedBy none
+readMissing borrows none
+readMissing catch readMissingError list.IndexOutOfRange
+readMissing suppresses none
+
+reportMissing is call
+reportMissing in main
+reportMissing invokes report
+reportMissing argument label String missingText lend
+reportMissing argument value Int64 missing copy
+reportMissing result none
+reportMissing ownedBy none
+reportMissing cleanedBy none
+reportMissing borrows none
+reportMissing catch none
+reportMissing suppresses none
+
+writeNoItem is call
+writeNoItem rationale "The failure has nowhere to be reported, so it is discarded"
+writeNoItem in main
+writeNoItem invokes console.writeLine
+writeNoItem argument text String noItemText lend
+writeNoItem result none
+writeNoItem ownedBy none
+writeNoItem cleanedBy none
+writeNoItem borrows none
+writeNoItem catch writeNoItemError console.WriteError
+writeNoItem suppresses console.WriteError.failed
+
+makeNames is call
+makeNames in main
+makeNames invokes Names.new
+makeNames argument region Region scratch lend
+makeNames result names Names
+makeNames ownedBy scratch
+makeNames cleanedBy none
+makeNames borrows none
+makeNames catch none
+makeNames suppresses none
+
+addAlpha is call
+addAlpha in main
+addAlpha invokes Names.append
+addAlpha argument list Names names lendMutable
+addAlpha argument item String alpha give
+addAlpha result none
+addAlpha ownedBy none
+addAlpha cleanedBy none
+addAlpha borrows none
+addAlpha catch none
+addAlpha suppresses none
+
+addBeta is call
+addBeta in main
+addBeta invokes Names.append
+addBeta argument list Names names lendMutable
+addBeta argument item String beta give
+addBeta result none
+addBeta ownedBy none
+addBeta cleanedBy none
+addBeta borrows none
+addBeta catch none
+addBeta suppresses none
+
+addGamma is call
+addGamma in main
+addGamma invokes Names.append
+addGamma argument list Names names lendMutable
+addGamma argument item String gamma give
+addGamma result none
+addGamma ownedBy none
+addGamma cleanedBy none
+addGamma borrows none
+addGamma catch none
+addGamma suppresses none
+
+countNames is call
+countNames in main
+countNames invokes Names.length
+countNames argument list Names names lend
+countNames result nameCount Int64
+countNames ownedBy none
+countNames cleanedBy none
+countNames borrows none
+countNames catch none
+countNames suppresses none
+
+writeName is call
+writeName rationale "The failure has nowhere to be reported, so it is discarded"
+writeName in main
+writeName invokes console.writeLine
+writeName argument text String name lend
+writeName result none
+writeName ownedBy none
+writeName cleanedBy none
+writeName borrows none
+writeName catch writeNameError console.WriteError
+writeName suppresses console.WriteError.failed
+
+makePoints is call
+makePoints in main
+makePoints invokes Points.new
+makePoints argument region Region scratch lend
+makePoints result points Points
+makePoints ownedBy scratch
+makePoints cleanedBy none
+makePoints borrows none
+makePoints catch none
+makePoints suppresses none
+
+makeFirst is call
+makeFirst in main
+makeFirst invokes Point.new
+makeFirst argument x Int64 one copy
+makeFirst argument y Int64 two copy
+makeFirst result first Point
+makeFirst ownedBy none
+makeFirst cleanedBy none
+makeFirst borrows none
+makeFirst catch none
+makeFirst suppresses none
+
+addFirst is call
+addFirst in main
+addFirst invokes Points.append
+addFirst argument list Points points lendMutable
+addFirst argument item Point first copy
+addFirst result none
+addFirst ownedBy none
+addFirst cleanedBy none
+addFirst borrows none
+addFirst catch none
+addFirst suppresses none
+
+makeSecond is call
+makeSecond in main
+makeSecond invokes Point.new
+makeSecond argument x Int64 two copy
+makeSecond argument y Int64 three copy
+makeSecond result second Point
+makeSecond ownedBy none
+makeSecond cleanedBy none
+makeSecond borrows none
+makeSecond catch none
+makeSecond suppresses none
+
+addSecond is call
+addSecond in main
+addSecond invokes Points.append
+addSecond argument list Points points lendMutable
+addSecond argument item Point second copy
+addSecond result none
+addSecond ownedBy none
+addSecond cleanedBy none
+addSecond borrows none
+addSecond catch none
+addSecond suppresses none
+
+makeThird is call
+makeThird in main
+makeThird invokes Point.new
+makeThird argument x Int64 three copy
+makeThird argument y Int64 four copy
+makeThird result thirdPoint Point
+makeThird ownedBy none
+makeThird cleanedBy none
+makeThird borrows none
+makeThird catch none
+makeThird suppresses none
+
+addThird is call
+addThird in main
+addThird invokes Points.append
+addThird argument list Points points lendMutable
+addThird argument item Point thirdPoint copy
+addThird result none
+addThird ownedBy none
+addThird cleanedBy none
+addThird borrows none
+addThird catch none
+addThird suppresses none
+
+countPoints is call
+countPoints in main
+countPoints invokes Points.length
+countPoints argument list Points points lend
+countPoints result pointCount Int64
+countPoints ownedBy none
+countPoints cleanedBy none
+countPoints borrows none
+countPoints catch none
+countPoints suppresses none
+
+reportPoints is call
+reportPoints in main
+reportPoints invokes report
+reportPoints argument label String pointsText lend
+reportPoints argument value Int64 pointCount copy
+reportPoints result none
+reportPoints ownedBy none
+reportPoints cleanedBy none
+reportPoints borrows none
+reportPoints catch none
+reportPoints suppresses none
+
+readX is call
+readX in main
+readX invokes Point.x
+readX argument record Point point copy
+readX result x Int64
+readX ownedBy none
+readX cleanedBy none
+readX borrows none
+readX catch none
+readX suppresses none
+
+addXValue is call
+addXValue in main
+addXValue invokes math.addInt64
+addXValue argument left Int64 xTotal copy
+addXValue argument right Int64 x copy
+addXValue result nextX Int64
+addXValue ownedBy none
+addXValue cleanedBy none
+addXValue borrows none
+addXValue catch none
+addXValue suppresses none
+
+reportX is call
+reportX in main
+reportX invokes report
+reportX argument label String xText lend
+reportX argument value Int64 xTotal copy
+reportX result none
+reportX ownedBy none
+reportX cleanedBy none
+reportX borrows none
+reportX catch none
+reportX suppresses none
+
+makeEvens is call
+makeEvens in main
+makeEvens invokes evens
+makeEvens argument limit Int64 six copy
+makeEvens argument region Region scratch lend
+makeEvens result evenNumbers Numbers
+makeEvens ownedBy scratch
+makeEvens cleanedBy none
+makeEvens borrows none
+makeEvens catch none
+makeEvens suppresses none
+
+countEvens is call
+countEvens in main
+countEvens invokes Numbers.length
+countEvens argument list Numbers evenNumbers lend
+countEvens result evenCount Int64
+countEvens ownedBy none
+countEvens cleanedBy none
+countEvens borrows none
+countEvens catch none
+countEvens suppresses none
+
+reportEvens is call
+reportEvens in main
+reportEvens invokes report
+reportEvens argument label String evensText lend
+reportEvens argument value Int64 evenCount copy
+reportEvens result none
+reportEvens ownedBy none
+reportEvens cleanedBy none
+reportEvens borrows none
+reportEvens catch none
+reportEvens suppresses none

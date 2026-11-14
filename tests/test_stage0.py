@@ -1,8 +1,10 @@
 """stage0 (docs/refined-examples/stage0): the first stage of a SemanticScript compiler written in SemanticScript.
 
 stage0 runs under `refined run`, reads a sample module, checks that it is in the stage0 subset, writes it as C, and
-builds it with the C compiler through `process.run`. Each executable it builds must print what `refined run` prints
-for the same sample and exit with the same code, a loop that passes its bound included."""
+builds it with the C compiler through `process.run`, linked with the runtime of refined executables
+(native_runtime.c). Each executable it builds must print what `refined run` prints for the same sample and exit with
+the same code, traps included: a loop that passes its bound, a recursion that passes its maxRecursion, and a list read
+past its end."""
 from __future__ import annotations
 
 import os
@@ -18,6 +20,7 @@ sys.path.insert(0, SUITE)
 import caselib  # noqa: E402
 
 STAGE0 = os.path.join(caselib.ROOT, "docs", "refined-examples", "stage0")
+RUNTIME = os.path.join(caselib.ROOT, "semanticscript", "compiler", "refined", "native_runtime.c")
 
 # what each sample prints and its exit code, under `refined run` and as an executable
 SAMPLES = {
@@ -25,7 +28,15 @@ SAMPLES = {
     "squares": ("1\n4\n9\n16\n25\n", 0),
     "branch": ("left is smaller\ngap: -19\n", 3),
     "overrun": ("1\n2\n3\n4\n", 70),
+    "calls": ("square of 7: 49\n2 to the 10: 1024\nfactorial of 10: 3628800\ngcd of 1071 and 462: 21\n", 0),
+    "depth": ("1\n2\n3\n4\n", 70),
+    "shapes": ("area: 9\narea: 6\narea: 0\nrefused a side of -2\ncorner: 3\n", 4),
+    "lists": ("sum: 14\ncount: 5\nthird: 4\nno item at 9\nalpha\nbeta\ngamma\npoints: 3\nx total: 6\nevens: 4\n", 0),
+    "outofrange": ("2\n", 70),
+    "strings": ("brown\nbyte: 113\nlength: 19\nquick brown fox 42\nequal: true\nfox at 16\nno cat\nlimit: 3\n", 0),
+    "buffers": ("total: 42!\nlength: 10\nparsed: 1234\nnot a number\ndigit, letter\nround trip: abc\n", 0),
 }
+OUTSIDE = "samples/outside/outside.sem:12:11: this entity kind is outside the stage0 subset (alias)\n"
 
 
 def _compiler() -> str | None:
@@ -37,6 +48,8 @@ def _compiler() -> str | None:
 
 
 CC = _compiler()
+# what stage0 passes the C compiler after the C file: the runtime to link, and on Windows the library it needs
+LINK = [RUNTIME] + (["-lshell32"] if os.name == "nt" else [])
 
 
 @pytest.fixture(scope="module")
@@ -51,16 +64,19 @@ def _stage0(project: str, *arguments: str) -> subprocess.CompletedProcess:
     return caselib.refined("run", project, "--", *arguments, cwd=project, timeout=900)
 
 
+def _executable(folder: str, sample: str) -> str:
+    return os.path.join(folder, "build", sample + (".exe" if os.name == "nt" else ""))
+
+
 @pytest.mark.skipif(CC is None, reason="no C compiler named cc, gcc, or clang on PATH")
 @pytest.mark.parametrize("sample", sorted(SAMPLES))
 def test_stage0_builds_executables_that_behave_like_refined_run(project, sample):
-    built = _stage0(project, f"samples/{sample}/{sample}.sem", f"build/{sample}", CC)
+    built = _stage0(project, f"samples/{sample}/{sample}.sem", f"build/{sample}", CC, *LINK)
     assert built.returncode == 0, built.stdout + built.stderr
     assert built.stdout == f"stage0: samples/{sample}/{sample}.sem -> build/{sample}.c -> build/{sample}\n"
     assert os.path.isfile(os.path.join(project, "build", f"{sample}.c"))
     reference = caselib.refined("run", os.path.join(project, "samples", sample), cwd=project)
-    executable = os.path.join(project, "build", sample + (".exe" if os.name == "nt" else ""))
-    ran = subprocess.run([executable], capture_output=True, text=True, timeout=60)
+    ran = subprocess.run([_executable(project, sample)], capture_output=True, text=True, timeout=60)
     assert (reference.stdout, reference.returncode) == SAMPLES[sample], reference.stderr
     assert (ran.stdout, ran.returncode) == (reference.stdout, reference.returncode), ran.stderr
 
@@ -71,7 +87,7 @@ def test_stage0_refuses_a_source_outside_its_subset(project):
     proc = _stage0(project, "samples/outside/outside.sem", "build/outside")
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert proc.stdout == ""
-    assert proc.stderr == "samples/outside/outside.sem:12:10: this entity kind is outside the stage0 subset (record)\n"
+    assert proc.stderr == OUTSIDE
     assert not os.path.exists(os.path.join(project, "build", "outside.c"))
     proc = caselib.refined("run", project, cwd=project)
     assert proc.returncode == 2 and proc.stderr.startswith("usage: "), proc.stderr
@@ -79,9 +95,9 @@ def test_stage0_refuses_a_source_outside_its_subset(project):
 
 def test_stage0_module_tests_pass():
     """Every exported invariant of stage0's modules is verified by a test, and every test passes."""
-    proc = caselib.refined("test", STAGE0, timeout=900)
+    proc = caselib.refined("test", STAGE0, timeout=1800)
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "16 of 16 tests passed" in proc.stdout
+    assert "18 of 18 tests passed" in proc.stdout
 
 
 @pytest.mark.skipif(CC is None, reason="no C compiler named cc, gcc, or clang on PATH")
@@ -96,17 +112,15 @@ def test_stage0_as_an_executable_emits_the_same_c(project, tmp_path):
     for sample in sorted(SAMPLES):
         jit_c = os.path.join(project, "build", f"{sample}.c")
         if not os.path.isfile(jit_c):
-            assert _stage0(project, f"samples/{sample}/{sample}.sem", f"build/{sample}", CC).returncode == 0
-        proc = subprocess.run([exe, f"samples/{sample}/{sample}.sem", f"build/{sample}", CC], capture_output=True,
-                              text=True, cwd=native, timeout=300)
+            assert _stage0(project, f"samples/{sample}/{sample}.sem", f"build/{sample}", CC, *LINK).returncode == 0
+        proc = subprocess.run([exe, f"samples/{sample}/{sample}.sem", f"build/{sample}", CC, *LINK],
+                              capture_output=True, text=True, cwd=native, timeout=300)
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert proc.stdout == f"stage0: samples/{sample}/{sample}.sem -> build/{sample}.c -> build/{sample}\n"
         with open(jit_c, "rb") as a, open(os.path.join(native, "build", f"{sample}.c"), "rb") as b:
             assert a.read() == b.read(), sample
-        ran = subprocess.run([os.path.join(native, "build", sample + (".exe" if os.name == "nt" else ""))],
-                             capture_output=True, text=True, timeout=60)
+        ran = subprocess.run([_executable(native, sample)], capture_output=True, text=True, timeout=60)
         assert (ran.stdout, ran.returncode) == SAMPLES[sample], ran.stderr
     proc = subprocess.run([exe, "samples/outside/outside.sem", "build/outside"], capture_output=True, text=True,
                           cwd=native, timeout=300)
-    assert (proc.returncode, proc.stderr) == (
-        1, "samples/outside/outside.sem:12:10: this entity kind is outside the stage0 subset (record)\n")
+    assert (proc.returncode, proc.stderr) == (1, OUTSIDE)
