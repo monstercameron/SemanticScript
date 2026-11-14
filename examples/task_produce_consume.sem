@@ -1,0 +1,89 @@
+# task_produce_consume — (repurposed from channel_bounded_blocking: semanticscript has no
+# channel primitive). A producer task computes a value; main joins and consumes
+# it. Joining is the real synchronization/handoff point (README §13/§15.5).
+#
+# Correctness observation: producer task computes 21 * 2 = 42; main consumes it.
+# Expected output: 42
+
+TaskProduceConsume is project
+TaskProduceConsume module examplesTaskProduceConsume
+TaskProduceConsume target console
+TaskProduceConsume entry main
+
+examplesTaskProduceConsume is module
+examplesTaskProduceConsume path examples.taskProduceConsume
+examplesTaskProduceConsume exports main
+examplesTaskProduceConsume purpose "Produce a value in a task, consume it after join"
+examplesTaskProduceConsume invariant "The consumed value is the producer's real output"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+doubleIt is operation
+doubleIt in n Int64
+doubleIt out Int64
+doubleIt memory heap no
+doubleIt async no
+doubleIt purpose "Return n doubled"
+doubleIt invariant "Result is exactly 2*n"
+doubleIt let two immutable Int64 2
+doubleIt do mulCall
+doubleIt return doubled
+
+mulCall is call
+mulCall in doubleIt
+mulCall invokes math.multiplyInt64
+mulCall arg left Int64 n
+mulCall arg right Int64 two
+mulCall out doubled Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async yes
+main purpose "Join a producer task and print the consumed value"
+main invariant "Writes exactly one integer line: 42"
+main let seed immutable Int64 21
+main let harnessName immutable String "task_produce_consume"
+main let harnessExpected immutable Int64 42
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "task_produce_consume: real result (not the no-op 0)"
+main start producer
+main join producer
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+producer is task
+producer in main
+producer invokes doubleIt
+producer arg n Int64 seed
+producer out produced Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 produced
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 produced
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

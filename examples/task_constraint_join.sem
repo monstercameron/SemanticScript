@@ -1,0 +1,91 @@
+# task_constraint_join -- (repurposed from timeout_constraint_apply (no timer runtime)) start an async task, join it, and read its result (README s13/s15.5).
+# On the single-thread backend start runs eagerly and join resolves it; the
+# printed value is the task's REAL computed output, not a constant.
+#
+# Correctness observation: a task computes math.addInt64(50, 50) = 100; main joins and prints.
+# Expected output: 100
+
+TaskConstraintJoin is project
+TaskConstraintJoin module examplesTaskConstraintJoin
+TaskConstraintJoin target console
+TaskConstraintJoin entry main
+
+examplesTaskConstraintJoin is module
+examplesTaskConstraintJoin path examples.taskConstraintJoin
+examplesTaskConstraintJoin exports main
+examplesTaskConstraintJoin purpose "Join a task and print its computed result"
+examplesTaskConstraintJoin invariant "The joined value is the task's real output"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+combine is operation
+combine in a Int64
+combine in b Int64
+combine out Int64
+combine memory heap no
+combine async no
+combine purpose "Combine two integers"
+combine invariant "Result is deterministic"
+combine do opCall
+combine return result
+
+opCall is call
+opCall in combine
+opCall invokes math.addInt64
+opCall arg left Int64 a
+opCall arg right Int64 b
+opCall out result Int64
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async yes
+main purpose "Start a combine task, join it, print the result"
+main invariant "Writes exactly one integer line: 100"
+main let seedA immutable Int64 50
+main let seedB immutable Int64 50
+main let harnessName immutable String "task_constraint_join"
+main let harnessExpected immutable Int64 100
+main let noopDecoy immutable Int64 0
+main let noopName immutable String "task_constraint_join: real result (not the no-op 0)"
+main start computeTask
+main join computeTask
+main do writeResult
+main do noopCheck
+main do harnessReport
+main return harnessSummaryCode
+
+computeTask is task
+computeTask in main
+computeTask invokes combine
+computeTask arg a Int64 seedA
+computeTask arg b Int64 seedB
+computeTask out answer Int64
+
+writeResult is call
+writeResult in main
+writeResult invokes test.assertEqualInt64
+writeResult arg name String harnessName
+writeResult arg expected Int64 harnessExpected
+writeResult arg actual Int64 answer
+
+
+noopCheck is call
+noopCheck in main
+noopCheck invokes test.assertNotEqualInt64
+noopCheck arg name String noopName
+noopCheck arg expected Int64 noopDecoy
+noopCheck arg actual Int64 answer
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode

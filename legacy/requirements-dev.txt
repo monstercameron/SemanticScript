@@ -1,0 +1,7 @@
+# Developer tooling: linting, type checking, and pre-commit hooks.
+# Install with: python -m pip install -r requirements-dev.txt
+-r requirements-mcp.txt
+
+ruff>=0.17.4
+mypy>=1.10
+pre-commit>=4.7.0

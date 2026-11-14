@@ -1,0 +1,99 @@
+# standard.clock — EAV-native clock binding (§27 planned; §30.5.3 authority model).
+#
+# Parity with semsc's `std/time` surface, the EAV-clean way: time is authority,
+# so a wall-clock read is a capability-mediated effect (injected for determinism,
+# §30.5.3; captured under `mode capturedOutputReplay`, §30.1.1). `nowMillis` is a
+# `body runtimeBinding` read over the in-process runtime; the unit conversions are
+# ordinary pure step-body operations (no effect, no capability) — they compute
+# values and so are deterministic and need no authority.
+
+standardClock is module
+standardClock path standard.clock
+standardClock purpose "Capability-gated wall-clock reads plus pure time-unit conversions"
+standardClock invariant "Reading the clock is a capability-mediated effect; conversions are pure"
+
+# X-095 time-safety typing (§30.5.3): two distinct 64-bit (Y2038-safe) instant
+# types. `WallTime` is UTC/display time — it has NO arithmetic (calendar math
+# needs explicit timezone conversion). `MonotonicInstant` measures elapsed time;
+# subtract two of them for a duration. Applying math.* to a `WallTime` is SS3095.
+WallTime is alias
+WallTime for Int64
+WallTime purpose "UTC wall-clock time (ms since the Unix epoch); display only, no arithmetic"
+
+MonotonicInstant is alias
+MonotonicInstant for Int64
+MonotonicInstant purpose "A monotonic clock reading for measuring elapsed time (durations/timeouts)"
+
+DurationMillis is alias
+DurationMillis for Int64
+DurationMillis purpose "An elapsed-time span in milliseconds (the difference of two MonotonicInstants)"
+
+wallClock is capability
+wallClock grants read clock.wall
+wallClock purpose "Authority to read the wall clock (inject a fixed clock for deterministic tests)"
+
+monotonicClock is capability
+monotonicClock grants read clock.monotonic
+monotonicClock purpose "Authority to read the monotonic clock (for durations/timeouts)"
+
+secondsPerMinute is storage module immutable Int64 60
+
+nowMonotonic is operation
+nowMonotonic out MonotonicInstant
+nowMonotonic effect read clock.monotonic
+nowMonotonic uses monotonicClock
+nowMonotonic body runtimeBinding ss_http_now_millis
+nowMonotonic purpose "Current monotonic clock reading for measuring elapsed time (capability-gated)"
+
+elapsedMillis is operation
+elapsedMillis in startInstant MonotonicInstant
+elapsedMillis in endInstant MonotonicInstant
+elapsedMillis out DurationMillis
+elapsedMillis async no
+elapsedMillis purpose "Elapsed milliseconds between two monotonic readings (end - start); the only sound time difference"
+elapsedMillis do subtractInstants
+elapsedMillis return spanValue
+
+subtractInstants is call
+subtractInstants in elapsedMillis
+subtractInstants invokes math.subtractInt64
+subtractInstants arg left MonotonicInstant endInstant
+subtractInstants arg right MonotonicInstant startInstant
+subtractInstants out spanValue DurationMillis
+
+nowMillis is operation
+nowMillis out Int64
+nowMillis effect read clock.wall
+nowMillis uses wallClock
+nowMillis body runtimeBinding ss_http_now_millis
+nowMillis purpose "Current wall-clock time in milliseconds since the Unix epoch (capability-gated)"
+
+secondsToMinutes is operation
+secondsToMinutes in seconds Int64
+secondsToMinutes out Int64
+secondsToMinutes async no
+secondsToMinutes purpose "Whole minutes contained in a second count (pure)"
+secondsToMinutes do divideToMinutes
+secondsToMinutes return minutesValue
+
+divideToMinutes is call
+divideToMinutes in secondsToMinutes
+divideToMinutes invokes math.divideInt64
+divideToMinutes arg left Int64 seconds
+divideToMinutes arg right Int64 secondsPerMinute
+divideToMinutes out minutesValue Int64
+
+minutesToSeconds is operation
+minutesToSeconds in minutes Int64
+minutesToSeconds out Int64
+minutesToSeconds async no
+minutesToSeconds purpose "Seconds in a minute count (pure)"
+minutesToSeconds do multiplyToSeconds
+minutesToSeconds return secondsValue
+
+multiplyToSeconds is call
+multiplyToSeconds in minutesToSeconds
+multiplyToSeconds invokes math.multiplyInt64
+multiplyToSeconds arg left Int64 minutes
+multiplyToSeconds arg right Int64 secondsPerMinute
+multiplyToSeconds out secondsValue Int64

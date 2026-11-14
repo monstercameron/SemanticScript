@@ -1,0 +1,145 @@
+# standard.concurrent.semsig - facade over the libuv event-loop async runtime.
+
+concurrentSig is semsig
+concurrentSig version "1.0"
+concurrentSig generatedBy "semanticscript 0.1"
+concurrentSig describes standard.concurrent
+
+ConcurrentFuture is alias
+ConcurrentFuture for OpaquePointer
+ConcurrentFuture purpose "A future scheduled on the libuv loop"
+
+ConcurrentChannel is alias
+ConcurrentChannel for OpaquePointer
+ConcurrentChannel purpose "A bounded FIFO channel handle"
+
+ConcurrentMutex is alias
+ConcurrentMutex for OpaquePointer
+ConcurrentMutex purpose "A typed mutex/guard handle for the single-threaded event-loop backend"
+
+ConcurrentInterval is alias
+ConcurrentInterval for OpaquePointer
+ConcurrentInterval purpose "A periodic interval handle"
+
+WorkerPool is alias
+WorkerPool for OpaquePointer
+WorkerPool purpose "A named worker-pool facade over future-producing work submissions"
+
+ConcurrentMillis is alias
+ConcurrentMillis for Int64
+ConcurrentMillis purpose "A non-negative millisecond delay"
+
+WorkerCount is alias
+WorkerCount for Int64
+WorkerCount purpose "Requested worker count"
+
+taskGroupStart is intrinsic
+taskGroupStart target ss_async_delay_start
+taskGroupStart arg delayMs ConcurrentMillis
+taskGroupStart arg value Int64
+taskGroupStart out ConcurrentFuture
+taskGroupStart async yes
+taskGroupStart purpose "Start one task-group work item that resolves with value after delayMs"
+
+taskGroupJoin is intrinsic
+taskGroupJoin target ss_async_await
+taskGroupJoin arg future ConcurrentFuture
+taskGroupJoin out Int64
+taskGroupJoin async yes
+taskGroupJoin purpose "Join one task-group future and return its value"
+
+channelCreate is intrinsic
+channelCreate target ss_async_channel_create
+channelCreate out ConcurrentChannel
+channelCreate purpose "Create an empty bounded FIFO channel"
+
+channelProduce is intrinsic
+channelProduce target ss_async_channel_produce
+channelProduce arg channel ConcurrentChannel
+channelProduce arg delayMs ConcurrentMillis
+channelProduce arg value Int64
+channelProduce out Int32
+channelProduce async yes
+channelProduce purpose "Schedule a value to be sent to a channel after delayMs"
+
+channelReceive is intrinsic
+channelReceive target ss_async_channel_receive
+channelReceive arg channel ConcurrentChannel
+channelReceive out Int64
+channelReceive async yes
+channelReceive purpose "Receive the next available channel value, driving the event loop"
+
+channelClose is intrinsic
+channelClose target ss_async_channel_close
+channelClose arg channel ConcurrentChannel
+channelClose out Int32
+channelClose purpose "Close and release a channel handle"
+
+mutexCreate is intrinsic
+mutexCreate target ss_async_mutex_create
+mutexCreate out ConcurrentMutex
+mutexCreate purpose "Create a typed mutex/guard handle"
+
+mutexLock is intrinsic
+mutexLock target ss_async_mutex_lock
+mutexLock arg mutex ConcurrentMutex
+mutexLock out Int32
+mutexLock purpose "Acquire a mutex handle in the single-threaded backend"
+
+mutexUnlock is intrinsic
+mutexUnlock target ss_async_mutex_unlock
+mutexUnlock arg mutex ConcurrentMutex
+mutexUnlock out Int32
+mutexUnlock purpose "Release a mutex handle in the single-threaded backend"
+
+mutexClose is intrinsic
+mutexClose target ss_async_mutex_close
+mutexClose arg mutex ConcurrentMutex
+mutexClose out Int32
+mutexClose purpose "Close and release a mutex handle"
+
+intervalCreate is intrinsic
+intervalCreate target ss_async_interval_create
+intervalCreate arg periodMs ConcurrentMillis
+intervalCreate out ConcurrentInterval
+intervalCreate purpose "Create a periodic interval"
+
+intervalTick is intrinsic
+intervalTick target ss_async_interval_tick
+intervalTick arg interval ConcurrentInterval
+intervalTick out Int64
+intervalTick async yes
+intervalTick purpose "Wait one interval period and return the running tick count"
+
+intervalClose is intrinsic
+intervalClose target ss_async_interval_close
+intervalClose arg interval ConcurrentInterval
+intervalClose out Int32
+intervalClose purpose "Close and release an interval handle"
+
+workerPoolCreate is intrinsic
+workerPoolCreate target ss_async_worker_pool_create
+workerPoolCreate arg workers WorkerCount
+workerPoolCreate out WorkerPool
+workerPoolCreate purpose "Create a worker-pool facade"
+
+workerPoolSubmitValue is intrinsic
+workerPoolSubmitValue target ss_async_worker_submit_value
+workerPoolSubmitValue arg pool WorkerPool
+workerPoolSubmitValue arg value Int64
+workerPoolSubmitValue out ConcurrentFuture
+workerPoolSubmitValue async yes
+workerPoolSubmitValue purpose "Submit a value-producing work item and return its future"
+
+workerPoolJoin is intrinsic
+workerPoolJoin target ss_async_worker_join
+workerPoolJoin arg future ConcurrentFuture
+workerPoolJoin out Int64
+workerPoolJoin async yes
+workerPoolJoin purpose "Join a worker-pool future"
+
+workerPoolClose is intrinsic
+workerPoolClose target ss_async_worker_pool_close
+workerPoolClose arg pool WorkerPool
+workerPoolClose out Int32
+workerPoolClose purpose "Close and release a worker-pool facade"

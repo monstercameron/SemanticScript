@@ -1,0 +1,91 @@
+# standard.environment - capability-gated environment and dotenv loading.
+#
+# Environment reads are nondeterministic host input, so callers must declare and
+# cover the `read env.process` effect. Dotenv loading is also explicit: it reads a
+# SafePath-confined file and writes variables into the process environment. Secret
+# variables use EnvironmentSecret, a `typeTrust secret` alias, so existing secret
+# sink rules reject logging/printing/serialization.
+
+standardEnvironment is module
+standardEnvironment path standard.environment
+standardEnvironment exports getValue
+standardEnvironment exports requireValue
+standardEnvironment exports requireSecret
+standardEnvironment exports loadDotenv
+standardEnvironment exports releaseValue
+standardEnvironment exports releaseSecret
+standardEnvironment purpose "Capability-gated environment variable reads and SafePath dotenv loading"
+standardEnvironment invariant "Environment input is not ambient; secret values use EnvironmentSecret and cannot reach observable sinks"
+
+EnvironmentName is alias
+EnvironmentName for String
+EnvironmentName purpose "A validated process environment variable name"
+
+EnvironmentValue is alias
+EnvironmentValue for String
+EnvironmentValue purpose "An owned non-secret environment value returned by standard.environment"
+
+EnvironmentSecret is alias
+EnvironmentSecret for String
+EnvironmentSecret typeTrust secret
+EnvironmentSecret purpose "An owned secret environment value that must not be logged, printed, or serialized"
+
+EnvironmentError is error
+EnvironmentError purpose "Invalid environment name, missing required value, dotenv parse error, or allocation failure"
+
+environmentReader is capability
+environmentReader grants read env.process
+environmentReader purpose "Authority to read process environment variables"
+
+dotenvLoader is capability
+dotenvLoader grants read filesystem.local
+dotenvLoader grants write env.process
+dotenvLoader purpose "Authority to load a SafePath dotenv file into the process environment"
+
+getValue is operation
+getValue in name EnvironmentName
+getValue out EnvironmentValue
+getValue effect read env.process
+getValue uses environmentReader
+getValue outParam
+getValue body runtimeBinding ss_environment_get
+getValue purpose "Read an environment variable, returning an owned empty string when it is absent"
+
+requireValue is operation
+requireValue in name EnvironmentName
+requireValue out EnvironmentValue
+requireValue effect read env.process
+requireValue uses environmentReader
+requireValue outParam
+requireValue body runtimeBinding ss_environment_require
+requireValue purpose "Read a required non-secret environment variable or raise EnvironmentError when absent"
+
+requireSecret is operation
+requireSecret in name EnvironmentName
+requireSecret out EnvironmentSecret
+requireSecret effect read env.process
+requireSecret uses environmentReader
+requireSecret outParam
+requireSecret body runtimeBinding ss_environment_require_secret
+requireSecret purpose "Read a required secret environment variable as EnvironmentSecret"
+
+loadDotenv is operation
+loadDotenv in path SafePath
+loadDotenv out Int32
+loadDotenv effect read filesystem.local
+loadDotenv effect write env.process
+loadDotenv uses dotenvLoader
+loadDotenv body runtimeBinding ss_environment_load_dotenv
+loadDotenv purpose "Load KEY=VALUE rows from a SafePath dotenv file into the process environment; returns 0 on success"
+
+releaseValue is operation
+releaseValue in value EnvironmentValue
+releaseValue out Int32
+releaseValue body runtimeBinding ss_environment_release
+releaseValue purpose "Release an environment string allocated by standard.environment; stale or foreign values are ignored"
+
+releaseSecret is operation
+releaseSecret in value EnvironmentSecret
+releaseSecret out Int32
+releaseSecret body runtimeBinding ss_environment_release
+releaseSecret purpose "Release a secret environment string allocated by standard.environment; stale or foreign values are ignored"

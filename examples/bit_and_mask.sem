@@ -1,0 +1,76 @@
+# bit_and_mask -- bitwise AND result and AND != OR. Load-bearing: POSITIVE and NEGATIVE assertions (false-cases,
+# inequalities, edge cases) stress the language in both directions via the
+# standard.test harness. Exit 0 iff every assertion holds.
+# Expected output: 2 PASS lines then  ---- 2 passed, 0 failed ----
+
+BitAndMask is project
+BitAndMask module examplesBitAndMask
+BitAndMask target console
+BitAndMask entry main
+
+examplesBitAndMask is module
+examplesBitAndMask path examples.bitAndMask
+examplesBitAndMask exports main
+examplesBitAndMask purpose "bitwise AND result and AND != OR"
+examplesBitAndMask invariant "Positive and negative assertions both hold"
+
+ExitCode is alias
+ExitCode for Int32
+ExitCode purpose "Process exit status"
+
+stdoutWriter is capability
+stdoutWriter grants write console.stdout
+stdoutWriter purpose "Allow controlled writes to standard output"
+
+main is operation
+main out ExitCode
+main effect write console.stdout
+main uses stdoutWriter
+main memory heap no
+main async no
+main purpose "bitwise AND result and AND != OR"
+main invariant "All assertions hold"
+main let aVal immutable Int64 13
+main let bVal immutable Int64 6
+main let expAnd immutable Int64 4
+main let tn0 immutable String "13 & 6 == 4"
+main let tn1 immutable String "13&6 differs from 13|6"
+main do andCall
+main do orCall
+main do check0
+main do check1
+main do harnessReport
+main return harnessSummaryCode
+
+andCall is call
+andCall in main
+andCall invokes math.bitAndInt64
+andCall arg left Int64 aVal
+andCall arg right Int64 bVal
+andCall out andRes Int64
+
+orCall is call
+orCall in main
+orCall invokes math.bitOrInt64
+orCall arg left Int64 aVal
+orCall arg right Int64 bVal
+orCall out orRes Int64
+
+check0 is call
+check0 in main
+check0 invokes test.assertEqualInt64
+check0 arg name String tn0
+check0 arg expected Int64 expAnd
+check0 arg actual Int64 andRes
+
+check1 is call
+check1 in main
+check1 invokes test.assertNotEqualInt64
+check1 arg name String tn1
+check1 arg expected Int64 andRes
+check1 arg actual Int64 orRes
+
+harnessReport is call
+harnessReport in main
+harnessReport invokes test.summary
+harnessReport out harnessSummaryCode ExitCode
