@@ -1,0 +1,534 @@
+# covers: 2 Recursive types
+# covers: 6 Recursive data structures
+# covers: 2 Maps / Dictionaries
+# covers: 8 Collection iteration
+# covers: 2 Type aliases
+# kind: positive
+# expect: run
+# exit: 0
+# stdout: 7
+# stdout: x
+# stdout: y
+
+trees is module
+trees purpose "Build the tree for (1 + 2) + x in a node list, evaluate it by recursion against a symbol table, and list the table"
+trees path trees
+trees imports standard.console
+trees imports standard.list
+trees imports standard.map
+trees imports standard.math
+trees exports main
+
+stdoutWriter is capability
+stdoutWriter purpose "Authority to write lines to standard output"
+stdoutWriter grants write console.stdout none
+
+Operands is record
+Operands purpose "The two operands of a sum node, by their positions in the node list"
+Operands typeParameter none
+Operands field left NodeId
+Operands field right NodeId
+
+Expr is enum
+Expr purpose "One node of an expression tree: a number, a name, or the sum of two other nodes"
+Expr typeParameter none
+Expr variant number Int64
+Expr variant name String
+Expr variant sum Operands
+
+Nodes is typeInstance
+Nodes purpose "The nodes of an expression tree, in the order they were added"
+Nodes instantiates list.List Expr
+
+NodeId is alias
+NodeId purpose "The position of a node in a Nodes list, received when the node is added"
+NodeId typeParameter none
+NodeId aliasOf Int64
+NodeId indexes Nodes
+
+Symbols is typeInstance
+Symbols purpose "The value of each defined name, in the order the names were first defined"
+Symbols instantiates map.Map String Int64
+
+EvalError is enum
+EvalError purpose "Why an expression could not be evaluated"
+EvalError typeParameter none
+EvalError variant unknownName none
+EvalError variant missingNode Int64
+
+evaluate is operation
+evaluate purpose "Evaluate the tree whose root is at a position, operands first, by recursion"
+evaluate invariant none
+evaluate typeParameter none
+evaluate input nodes Nodes borrowed
+evaluate input symbols Symbols borrowed
+evaluate input at NodeId copied
+evaluate output Int64
+evaluate outputOwnedBy none
+evaluate raises EvalError
+evaluate effect none
+evaluate uses none
+evaluate memoryHeap false
+evaluate async false
+evaluate maxRecursion 16
+evaluate label begin loopKind none
+evaluate label begin within none
+evaluate label missing loopKind none
+evaluate label missing within none
+evaluate label reportMissing loopKind none
+evaluate label reportMissing within none
+evaluate label inspect loopKind none
+evaluate label inspect within none
+evaluate label isNumber loopKind none
+evaluate label isNumber within none
+evaluate label isName loopKind none
+evaluate label isName within none
+evaluate label found loopKind none
+evaluate label found within none
+evaluate label unknown loopKind none
+evaluate label unknown within none
+evaluate label isSum loopKind none
+evaluate label isSum within none
+evaluate label sumSecond loopKind none
+evaluate label sumSecond within none
+evaluate label sumBoth loopKind none
+evaluate label sumBoth within none
+evaluate label passLeft loopKind none
+evaluate label passLeft within none
+evaluate label passRight loopKind none
+evaluate label passRight within none
+evaluate let none
+evaluate at begin do readNode
+evaluate at begin branch ifError readNode goto missing else goto inspect
+evaluate at missing match readError list.IndexOutOfRange
+evaluate at missing case list.IndexOutOfRange.outOfRange bind badPosition Int64 goto reportMissing
+evaluate at reportMissing do makeMissing
+evaluate at reportMissing return error missingError
+evaluate at inspect match node Expr
+evaluate at inspect case Expr.number bind number Int64 goto isNumber
+evaluate at inspect case Expr.name bind text String goto isName
+evaluate at inspect case Expr.sum bind operands Operands goto isSum
+evaluate at isNumber return ok number
+evaluate at isName do lookUp
+evaluate at isName branch ifError lookUp goto unknown else goto found
+evaluate at found return ok named
+evaluate at unknown do makeUnknown
+evaluate at unknown return error unknownError
+evaluate at isSum do leftId
+evaluate at isSum do evaluateLeft
+evaluate at isSum branch ifError evaluateLeft goto passLeft else goto sumSecond
+evaluate at sumSecond do rightId
+evaluate at sumSecond do evaluateRight
+evaluate at sumSecond branch ifError evaluateRight goto passRight else goto sumBoth
+evaluate at sumBoth do addBoth
+evaluate at sumBoth return ok total
+evaluate at passLeft return error leftError
+evaluate at passRight return error rightError
+
+readNode is call
+readNode in evaluate
+readNode invokes Nodes.get
+readNode argument list Nodes nodes lend
+readNode argument index NodeId at copy
+readNode result node Expr
+readNode ownedBy none
+readNode cleanedBy none
+readNode borrows nodes
+readNode catch readError list.IndexOutOfRange
+readNode suppresses none
+
+makeMissing is call
+makeMissing in evaluate
+makeMissing invokes EvalError.missingNode
+makeMissing argument payload Int64 badPosition copy
+makeMissing result missingError EvalError
+makeMissing ownedBy none
+makeMissing cleanedBy none
+makeMissing borrows none
+makeMissing catch none
+makeMissing suppresses none
+
+lookUp is call
+lookUp in evaluate
+lookUp invokes Symbols.get
+lookUp argument map Symbols symbols lend
+lookUp argument key String text lend
+lookUp result named Int64
+lookUp ownedBy none
+lookUp cleanedBy none
+lookUp borrows none
+lookUp catch lookUpError map.KeyMissing
+lookUp suppresses none
+
+makeUnknown is call
+makeUnknown in evaluate
+makeUnknown invokes EvalError.unknownName
+makeUnknown argument none
+makeUnknown result unknownError EvalError
+makeUnknown ownedBy none
+makeUnknown cleanedBy none
+makeUnknown borrows none
+makeUnknown catch none
+makeUnknown suppresses none
+
+leftId is call
+leftId in evaluate
+leftId invokes Operands.left
+leftId argument record Operands operands copy
+leftId result leftAt NodeId
+leftId ownedBy none
+leftId cleanedBy none
+leftId borrows none
+leftId catch none
+leftId suppresses none
+
+evaluateLeft is call
+evaluateLeft in evaluate
+evaluateLeft invokes evaluate
+evaluateLeft argument nodes Nodes nodes lend
+evaluateLeft argument symbols Symbols symbols lend
+evaluateLeft argument at NodeId leftAt copy
+evaluateLeft result leftValue Int64
+evaluateLeft ownedBy none
+evaluateLeft cleanedBy none
+evaluateLeft borrows none
+evaluateLeft catch leftError EvalError
+evaluateLeft suppresses none
+
+rightId is call
+rightId in evaluate
+rightId invokes Operands.right
+rightId argument record Operands operands copy
+rightId result rightAt NodeId
+rightId ownedBy none
+rightId cleanedBy none
+rightId borrows none
+rightId catch none
+rightId suppresses none
+
+evaluateRight is call
+evaluateRight in evaluate
+evaluateRight invokes evaluate
+evaluateRight argument nodes Nodes nodes lend
+evaluateRight argument symbols Symbols symbols lend
+evaluateRight argument at NodeId rightAt copy
+evaluateRight result rightValue Int64
+evaluateRight ownedBy none
+evaluateRight cleanedBy none
+evaluateRight borrows none
+evaluateRight catch rightError EvalError
+evaluateRight suppresses none
+
+addBoth is call
+addBoth in evaluate
+addBoth invokes math.addInt64
+addBoth argument left Int64 leftValue copy
+addBoth argument right Int64 rightValue copy
+addBoth result total Int64
+addBoth ownedBy none
+addBoth cleanedBy none
+addBoth borrows none
+addBoth catch none
+addBoth suppresses none
+
+main is operation
+main purpose "Build (1 + 2) + x, define x and y, print the tree's value, then print each defined name"
+main invariant none
+main typeParameter none
+main input none
+main output ExitCode
+main outputOwnedBy none
+main raises none
+main effect write console.stdout
+main uses stdoutWriter
+main memoryHeap true
+main async false
+main maxRecursion none
+main label begin loopKind none
+main label begin within none
+main label printValue loopKind none
+main label printValue within none
+main label listNames loopKind forEach
+main label listNames within none
+main label listNames maxIterations nameCount
+main label listNames over symbolTable
+main label printName loopKind none
+main label printName within listNames
+main label finished loopKind none
+main label finished within none
+main label failed loopKind none
+main label failed within none
+main let one Int64 1 immutable
+main let two Int64 2 immutable
+main let four Int64 4 immutable
+main let five Int64 5 immutable
+main let xInTree String "x" immutable
+main let xName String "x" immutable
+main let yName String "y" immutable
+main let okCode ExitCode 0 immutable
+main let failedCode ExitCode 1 immutable
+main at begin do makeNodes
+main at begin do makeSymbols
+main at begin do numberOne
+main at begin do storeOne
+main at begin do numberTwo
+main at begin do storeTwo
+main at begin do pairOneTwo
+main at begin do sumOneTwo
+main at begin do storeSum
+main at begin do nameX
+main at begin do storeX
+main at begin do pairSumX
+main at begin do sumAll
+main at begin do storeRoot
+main at begin do defineX
+main at begin do defineY
+main at begin do evaluateRoot
+main at begin branch ifError evaluateRoot goto failed else goto printValue
+main at printValue do measureTable
+main at printValue do printTotal
+main at printValue branch ifError printTotal goto failed else goto listNames
+main at listNames branch ifNext symbolTable bind name String goto printName else goto finished
+main at printName do printOneName
+main at printName branch ifError printOneName goto failed else goto listNames
+main at finished return ok okCode
+main at failed return ok failedCode
+
+store is region
+store in main
+store strategy arena
+store maxBytes 8192
+store released atReturn
+
+makeNodes is call
+makeNodes in main
+makeNodes invokes Nodes.new
+makeNodes argument region Region store lend
+makeNodes result nodes Nodes
+makeNodes ownedBy store
+makeNodes cleanedBy none
+makeNodes borrows none
+makeNodes catch none
+makeNodes suppresses none
+
+makeSymbols is call
+makeSymbols in main
+makeSymbols invokes Symbols.new
+makeSymbols argument region Region store lend
+makeSymbols result symbolTable Symbols
+makeSymbols ownedBy store
+makeSymbols cleanedBy none
+makeSymbols borrows none
+makeSymbols catch none
+makeSymbols suppresses none
+
+numberOne is call
+numberOne in main
+numberOne invokes Expr.number
+numberOne argument payload Int64 one copy
+numberOne result oneNode Expr
+numberOne ownedBy none
+numberOne cleanedBy none
+numberOne borrows none
+numberOne catch none
+numberOne suppresses none
+
+storeOne is call
+storeOne in main
+storeOne invokes Nodes.appendIndexed
+storeOne argument list Nodes nodes lendMutable
+storeOne argument item Expr oneNode give
+storeOne result oneAt NodeId
+storeOne ownedBy none
+storeOne cleanedBy none
+storeOne borrows none
+storeOne catch none
+storeOne suppresses none
+
+numberTwo is call
+numberTwo in main
+numberTwo invokes Expr.number
+numberTwo argument payload Int64 two copy
+numberTwo result twoNode Expr
+numberTwo ownedBy none
+numberTwo cleanedBy none
+numberTwo borrows none
+numberTwo catch none
+numberTwo suppresses none
+
+storeTwo is call
+storeTwo in main
+storeTwo invokes Nodes.appendIndexed
+storeTwo argument list Nodes nodes lendMutable
+storeTwo argument item Expr twoNode give
+storeTwo result twoAt NodeId
+storeTwo ownedBy none
+storeTwo cleanedBy none
+storeTwo borrows none
+storeTwo catch none
+storeTwo suppresses none
+
+pairOneTwo is call
+pairOneTwo in main
+pairOneTwo invokes Operands.new
+pairOneTwo argument left NodeId oneAt copy
+pairOneTwo argument right NodeId twoAt copy
+pairOneTwo result oneTwo Operands
+pairOneTwo ownedBy none
+pairOneTwo cleanedBy none
+pairOneTwo borrows none
+pairOneTwo catch none
+pairOneTwo suppresses none
+
+sumOneTwo is call
+sumOneTwo in main
+sumOneTwo invokes Expr.sum
+sumOneTwo argument payload Operands oneTwo copy
+sumOneTwo result sumNode Expr
+sumOneTwo ownedBy none
+sumOneTwo cleanedBy none
+sumOneTwo borrows none
+sumOneTwo catch none
+sumOneTwo suppresses none
+
+storeSum is call
+storeSum in main
+storeSum invokes Nodes.appendIndexed
+storeSum argument list Nodes nodes lendMutable
+storeSum argument item Expr sumNode give
+storeSum result sumAt NodeId
+storeSum ownedBy none
+storeSum cleanedBy none
+storeSum borrows none
+storeSum catch none
+storeSum suppresses none
+
+nameX is call
+nameX in main
+nameX invokes Expr.name
+nameX argument payload String xInTree give
+nameX result xNode Expr
+nameX ownedBy none
+nameX cleanedBy none
+nameX borrows none
+nameX catch none
+nameX suppresses none
+
+storeX is call
+storeX in main
+storeX invokes Nodes.appendIndexed
+storeX argument list Nodes nodes lendMutable
+storeX argument item Expr xNode give
+storeX result xAt NodeId
+storeX ownedBy none
+storeX cleanedBy none
+storeX borrows none
+storeX catch none
+storeX suppresses none
+
+pairSumX is call
+pairSumX in main
+pairSumX invokes Operands.new
+pairSumX argument left NodeId sumAt copy
+pairSumX argument right NodeId xAt copy
+pairSumX result sumX Operands
+pairSumX ownedBy none
+pairSumX cleanedBy none
+pairSumX borrows none
+pairSumX catch none
+pairSumX suppresses none
+
+sumAll is call
+sumAll in main
+sumAll invokes Expr.sum
+sumAll argument payload Operands sumX copy
+sumAll result rootNode Expr
+sumAll ownedBy none
+sumAll cleanedBy none
+sumAll borrows none
+sumAll catch none
+sumAll suppresses none
+
+storeRoot is call
+storeRoot in main
+storeRoot invokes Nodes.appendIndexed
+storeRoot argument list Nodes nodes lendMutable
+storeRoot argument item Expr rootNode give
+storeRoot result rootAt NodeId
+storeRoot ownedBy none
+storeRoot cleanedBy none
+storeRoot borrows none
+storeRoot catch none
+storeRoot suppresses none
+
+defineX is call
+defineX in main
+defineX invokes Symbols.put
+defineX argument map Symbols symbolTable lendMutable
+defineX argument key String xName lend
+defineX argument value Int64 four copy
+defineX result none
+defineX ownedBy none
+defineX cleanedBy none
+defineX borrows none
+defineX catch none
+defineX suppresses none
+
+defineY is call
+defineY in main
+defineY invokes Symbols.put
+defineY argument map Symbols symbolTable lendMutable
+defineY argument key String yName lend
+defineY argument value Int64 five copy
+defineY result none
+defineY ownedBy none
+defineY cleanedBy none
+defineY borrows none
+defineY catch none
+defineY suppresses none
+
+evaluateRoot is call
+evaluateRoot in main
+evaluateRoot invokes evaluate
+evaluateRoot argument nodes Nodes nodes lend
+evaluateRoot argument symbols Symbols symbolTable lend
+evaluateRoot argument at NodeId rootAt copy
+evaluateRoot result value Int64
+evaluateRoot ownedBy none
+evaluateRoot cleanedBy none
+evaluateRoot borrows none
+evaluateRoot catch evaluateError EvalError
+evaluateRoot suppresses none
+
+printTotal is call
+printTotal in main
+printTotal invokes console.writeIntegerLine
+printTotal argument value Int64 value copy
+printTotal result none
+printTotal ownedBy none
+printTotal cleanedBy none
+printTotal borrows none
+printTotal catch printTotalError console.WriteError
+printTotal suppresses none
+
+measureTable is call
+measureTable in main
+measureTable invokes Symbols.length
+measureTable argument map Symbols symbolTable lend
+measureTable result nameCount Int64
+measureTable ownedBy none
+measureTable cleanedBy none
+measureTable borrows none
+measureTable catch none
+measureTable suppresses none
+
+printOneName is call
+printOneName in main
+printOneName invokes console.writeLine
+printOneName argument text String name lend
+printOneName result none
+printOneName ownedBy none
+printOneName cleanedBy none
+printOneName borrows none
+printOneName catch printNameError console.WriteError
+printOneName suppresses none

@@ -2177,6 +2177,58 @@ a list, operation references, two tasks borrowing one list, cancellation on
 the failure path, a cleanup that traps, exhaustive matches, and a test per
 invariant.
 
+## Data structures for self-hosting (2026-11-14)
+
+A compiler written in the language needs tokens and AST nodes (records and
+enums with payloads already suffice), trees, growable lists (`list.List`),
+symbol tables keyed by text, and loops over collections whose size is known
+only at run time (`maxIterations <name>`, where the name is an immutable
+`Int64` such as a `length` result, already works: the bound is read when the
+loop is entered and passing it traps, D-45). The audit found that a record
+holding a list of itself was accepted and then crashed the backend, that a
+`Map` could not have `String` keys, and that a map could not be read in full.
+
+- **D-60** Trees are lists of nodes with a typed position (LR-25 rule 5,
+  now enforced). `<Alias> aliasOf Int64` with `<Alias> indexes <List>` makes
+  the alias the position type of that `list.List` type of the same module:
+  its `get` and `set` take the alias, not `Int64`, and it gains
+  `appendIndexed` (item in, the new item's position out). A position has no
+  literal (R403); it comes only from `appendIndexed`, and a position the
+  list does not have is `list.IndexOutOfRange`, so a stale or foreign
+  position is an error, never a stray read. A list type has one index alias,
+  the alias is `aliasOf Int64`, and `indexes` names a list type (R403). A
+  type may no longer hold itself inside a collection either (R403, beside
+  the by-value rule): one way to build trees, no pointer types, and nothing
+  the region model cannot see. Why not an indirection type living in a
+  region: it would be a second, pointer-like way to reach a value, with a
+  lifetime the checker would have to track per node; a position is a plain
+  number checked at every read.
+- **D-61** A map's key is a plain value or a `String` (the library-only
+  constraint `@key`; R403 otherwise). A `String` key is passed by loan
+  (`lend`, R406 for `copy`), compared by content, and copied into the map's
+  own region the first time it is put, so a key read back lives as long as
+  the map, whatever region the caller's text was in. Why: symbol tables are
+  keyed by names, and copying on first put keeps the map's contents in the
+  map's region, the same rule `string.concat` follows.
+- **D-62** A `forEach` may read a map: `branch ifNext <map> bind <key>
+  <KeyType>` visits each key once, in the order keys were first put
+  (putting an existing key again keeps its place). The loop rules are those
+  of a list: inside it the map cannot be changed, lent exclusively, or given
+  away (R515), and passing `maxIterations` traps. Why: a compiler lists a
+  symbol table (to report unused names, to emit declarations) in a stable
+  order; insertion order is deterministic where hash order is not.
+
+Not done in this pass: a `growing` region strategy. Both runtimes already
+take a region's memory on demand, block by block, with `maxBytes` as the
+ceiling at which allocation traps (D-49), so nothing is reserved up front;
+a separate strategy becomes useful only if `arena` starts reserving its
+whole capacity.
+
+The `symbols` example (`docs/refined-examples/symbols`) uses these rules: it
+builds `(1 + 2) * x` in a node list, defines names in a `String`-keyed
+symbol table, evaluates the tree by recursion under `maxRecursion 64`, and
+lists the table in definition order, with a test per invariant.
+
 ## Explicitness audit (2026-11-13)
 
 Measures the current compiler against P-2.

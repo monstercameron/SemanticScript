@@ -1,0 +1,954 @@
+# Tests for expressions.sem: one test per invariant (a test may verify the
+# invariants of the operations it needs together), each building a small tree
+# or table and asserting on what the operations return.
+
+numberTest is test
+numberTest purpose "A number node for 42 evaluates to 42"
+numberTest verifies addNumber holdsNumber
+numberTest verifies evaluate numberIsItself
+numberTest typeParameter none
+numberTest input none
+numberTest output none
+numberTest outputOwnedBy none
+numberTest raises none
+numberTest effect none
+numberTest uses none
+numberTest memoryHeap true
+numberTest async false
+numberTest maxRecursion none
+numberTest label begin loopKind none
+numberTest label begin within none
+numberTest label evaluated loopKind none
+numberTest label evaluated within none
+numberTest label refused loopKind none
+numberTest label refused within none
+numberTest let fortyTwo Int64 42 immutable
+numberTest let refusedText String "a number node was not evaluated" immutable
+numberTest at begin do makeNodes
+numberTest at begin do makeSymbols
+numberTest at begin do addFortyTwo
+numberTest at begin do runIt
+numberTest at begin branch ifError runIt goto refused else goto evaluated
+numberTest at evaluated do expectFortyTwo
+numberTest at evaluated return ok none
+numberTest at refused do failRefused
+numberTest at refused return ok none
+
+store is region
+store in numberTest
+store strategy arena
+store maxBytes 4096
+store released atReturn
+
+makeNodes is call
+makeNodes in numberTest
+makeNodes invokes Nodes.new
+makeNodes argument region Region store lend
+makeNodes result nodes Nodes
+makeNodes ownedBy store
+makeNodes cleanedBy none
+makeNodes borrows none
+makeNodes catch none
+makeNodes suppresses none
+
+makeSymbols is call
+makeSymbols in numberTest
+makeSymbols invokes Symbols.new
+makeSymbols argument region Region store lend
+makeSymbols result symbolTable Symbols
+makeSymbols ownedBy store
+makeSymbols cleanedBy none
+makeSymbols borrows none
+makeSymbols catch none
+makeSymbols suppresses none
+
+addFortyTwo is call
+addFortyTwo in numberTest
+addFortyTwo invokes addNumber
+addFortyTwo argument nodes Nodes nodes lendMutable
+addFortyTwo argument value Int64 fortyTwo copy
+addFortyTwo result fortyTwoAt NodeId
+addFortyTwo ownedBy none
+addFortyTwo cleanedBy none
+addFortyTwo borrows none
+addFortyTwo catch none
+addFortyTwo suppresses none
+
+runIt is call
+runIt in numberTest
+runIt invokes evaluate
+runIt argument nodes Nodes nodes lend
+runIt argument symbols Symbols symbolTable lend
+runIt argument at NodeId fortyTwoAt copy
+runIt result result Int64
+runIt ownedBy none
+runIt cleanedBy none
+runIt borrows none
+runIt catch runError EvalError
+runIt suppresses none
+
+expectFortyTwo is call
+expectFortyTwo in numberTest
+expectFortyTwo invokes test.assertEqualInt64
+expectFortyTwo argument expected Int64 fortyTwo copy
+expectFortyTwo argument actual Int64 result copy
+expectFortyTwo result none
+expectFortyTwo ownedBy none
+expectFortyTwo cleanedBy none
+expectFortyTwo borrows none
+expectFortyTwo catch none
+expectFortyTwo suppresses none
+
+failRefused is call
+failRefused in numberTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none
+
+nameTest is test
+nameTest purpose "A name node for width evaluates to 12 once width is defined as 12"
+nameTest verifies addName holdsName
+nameTest verifies evaluate nameFromSymbols
+nameTest typeParameter none
+nameTest input none
+nameTest output none
+nameTest outputOwnedBy none
+nameTest raises none
+nameTest effect none
+nameTest uses none
+nameTest memoryHeap true
+nameTest async false
+nameTest maxRecursion none
+nameTest label begin loopKind none
+nameTest label begin within none
+nameTest label evaluated loopKind none
+nameTest label evaluated within none
+nameTest label refused loopKind none
+nameTest label refused within none
+nameTest let widthInTree String "width" immutable
+nameTest let widthName String "width" immutable
+nameTest let twelve Int64 12 immutable
+nameTest let refusedText String "a defined name was not evaluated" immutable
+nameTest at begin do makeNodes
+nameTest at begin do makeSymbols
+nameTest at begin do addWidth
+nameTest at begin do defineWidth
+nameTest at begin do runIt
+nameTest at begin branch ifError runIt goto refused else goto evaluated
+nameTest at evaluated do expectTwelve
+nameTest at evaluated return ok none
+nameTest at refused do failRefused
+nameTest at refused return ok none
+
+store is region
+store in nameTest
+store strategy arena
+store maxBytes 4096
+store released atReturn
+
+makeNodes is call
+makeNodes in nameTest
+makeNodes invokes Nodes.new
+makeNodes argument region Region store lend
+makeNodes result nodes Nodes
+makeNodes ownedBy store
+makeNodes cleanedBy none
+makeNodes borrows none
+makeNodes catch none
+makeNodes suppresses none
+
+makeSymbols is call
+makeSymbols in nameTest
+makeSymbols invokes Symbols.new
+makeSymbols argument region Region store lend
+makeSymbols result symbolTable Symbols
+makeSymbols ownedBy store
+makeSymbols cleanedBy none
+makeSymbols borrows none
+makeSymbols catch none
+makeSymbols suppresses none
+
+addWidth is call
+addWidth in nameTest
+addWidth invokes addName
+addWidth argument nodes Nodes nodes lendMutable
+addWidth argument text String widthInTree give
+addWidth result widthAt NodeId
+addWidth ownedBy none
+addWidth cleanedBy none
+addWidth borrows none
+addWidth catch none
+addWidth suppresses none
+
+defineWidth is call
+defineWidth in nameTest
+defineWidth invokes Symbols.put
+defineWidth argument map Symbols symbolTable lendMutable
+defineWidth argument key String widthName lend
+defineWidth argument value Int64 twelve copy
+defineWidth result none
+defineWidth ownedBy none
+defineWidth cleanedBy none
+defineWidth borrows none
+defineWidth catch none
+defineWidth suppresses none
+
+runIt is call
+runIt in nameTest
+runIt invokes evaluate
+runIt argument nodes Nodes nodes lend
+runIt argument symbols Symbols symbolTable lend
+runIt argument at NodeId widthAt copy
+runIt result result Int64
+runIt ownedBy none
+runIt cleanedBy none
+runIt borrows none
+runIt catch runError EvalError
+runIt suppresses none
+
+expectTwelve is call
+expectTwelve in nameTest
+expectTwelve invokes test.assertEqualInt64
+expectTwelve argument expected Int64 twelve copy
+expectTwelve argument actual Int64 result copy
+expectTwelve result none
+expectTwelve ownedBy none
+expectTwelve cleanedBy none
+expectTwelve borrows none
+expectTwelve catch none
+expectTwelve suppresses none
+
+failRefused is call
+failRefused in nameTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none
+
+treeTest is test
+treeTest purpose "3 + 4 evaluates to 7, and (3 + 4) * 5 to 35, operands first"
+treeTest verifies addSum holdsSum
+treeTest verifies addProduct holdsProduct
+treeTest verifies evaluate operandsFirst
+treeTest typeParameter none
+treeTest input none
+treeTest output none
+treeTest outputOwnedBy none
+treeTest raises none
+treeTest effect none
+treeTest uses none
+treeTest memoryHeap true
+treeTest async false
+treeTest maxRecursion none
+treeTest label begin loopKind none
+treeTest label begin within none
+treeTest label sumEvaluated loopKind none
+treeTest label sumEvaluated within none
+treeTest label productEvaluated loopKind none
+treeTest label productEvaluated within none
+treeTest label refused loopKind none
+treeTest label refused within none
+treeTest let three Int64 3 immutable
+treeTest let four Int64 4 immutable
+treeTest let five Int64 5 immutable
+treeTest let seven Int64 7 immutable
+treeTest let thirtyFive Int64 35 immutable
+treeTest let refusedText String "a tree of numbers was not evaluated" immutable
+treeTest at begin do makeNodes
+treeTest at begin do makeSymbols
+treeTest at begin do addThree
+treeTest at begin do addFour
+treeTest at begin do addFive
+treeTest at begin do addThreePlusFour
+treeTest at begin do addTimesFive
+treeTest at begin do runSum
+treeTest at begin branch ifError runSum goto refused else goto sumEvaluated
+treeTest at sumEvaluated do expectSeven
+treeTest at sumEvaluated do runProduct
+treeTest at sumEvaluated branch ifError runProduct goto refused else goto productEvaluated
+treeTest at productEvaluated do expectThirtyFive
+treeTest at productEvaluated return ok none
+treeTest at refused do failRefused
+treeTest at refused return ok none
+
+store is region
+store in treeTest
+store strategy arena
+store maxBytes 4096
+store released atReturn
+
+makeNodes is call
+makeNodes in treeTest
+makeNodes invokes Nodes.new
+makeNodes argument region Region store lend
+makeNodes result nodes Nodes
+makeNodes ownedBy store
+makeNodes cleanedBy none
+makeNodes borrows none
+makeNodes catch none
+makeNodes suppresses none
+
+makeSymbols is call
+makeSymbols in treeTest
+makeSymbols invokes Symbols.new
+makeSymbols argument region Region store lend
+makeSymbols result symbolTable Symbols
+makeSymbols ownedBy store
+makeSymbols cleanedBy none
+makeSymbols borrows none
+makeSymbols catch none
+makeSymbols suppresses none
+
+addThree is call
+addThree in treeTest
+addThree invokes addNumber
+addThree argument nodes Nodes nodes lendMutable
+addThree argument value Int64 three copy
+addThree result threeAt NodeId
+addThree ownedBy none
+addThree cleanedBy none
+addThree borrows none
+addThree catch none
+addThree suppresses none
+
+addFour is call
+addFour in treeTest
+addFour invokes addNumber
+addFour argument nodes Nodes nodes lendMutable
+addFour argument value Int64 four copy
+addFour result fourAt NodeId
+addFour ownedBy none
+addFour cleanedBy none
+addFour borrows none
+addFour catch none
+addFour suppresses none
+
+addFive is call
+addFive in treeTest
+addFive invokes addNumber
+addFive argument nodes Nodes nodes lendMutable
+addFive argument value Int64 five copy
+addFive result fiveAt NodeId
+addFive ownedBy none
+addFive cleanedBy none
+addFive borrows none
+addFive catch none
+addFive suppresses none
+
+addThreePlusFour is call
+addThreePlusFour in treeTest
+addThreePlusFour invokes addSum
+addThreePlusFour argument nodes Nodes nodes lendMutable
+addThreePlusFour argument left NodeId threeAt copy
+addThreePlusFour argument right NodeId fourAt copy
+addThreePlusFour result sumAt NodeId
+addThreePlusFour ownedBy none
+addThreePlusFour cleanedBy none
+addThreePlusFour borrows none
+addThreePlusFour catch none
+addThreePlusFour suppresses none
+
+addTimesFive is call
+addTimesFive in treeTest
+addTimesFive invokes addProduct
+addTimesFive argument nodes Nodes nodes lendMutable
+addTimesFive argument left NodeId sumAt copy
+addTimesFive argument right NodeId fiveAt copy
+addTimesFive result productAt NodeId
+addTimesFive ownedBy none
+addTimesFive cleanedBy none
+addTimesFive borrows none
+addTimesFive catch none
+addTimesFive suppresses none
+
+runSum is call
+runSum in treeTest
+runSum invokes evaluate
+runSum argument nodes Nodes nodes lend
+runSum argument symbols Symbols symbolTable lend
+runSum argument at NodeId sumAt copy
+runSum result sumResult Int64
+runSum ownedBy none
+runSum cleanedBy none
+runSum borrows none
+runSum catch sumError EvalError
+runSum suppresses none
+
+expectSeven is call
+expectSeven in treeTest
+expectSeven invokes test.assertEqualInt64
+expectSeven argument expected Int64 seven copy
+expectSeven argument actual Int64 sumResult copy
+expectSeven result none
+expectSeven ownedBy none
+expectSeven cleanedBy none
+expectSeven borrows none
+expectSeven catch none
+expectSeven suppresses none
+
+runProduct is call
+runProduct in treeTest
+runProduct invokes evaluate
+runProduct argument nodes Nodes nodes lend
+runProduct argument symbols Symbols symbolTable lend
+runProduct argument at NodeId productAt copy
+runProduct result productResult Int64
+runProduct ownedBy none
+runProduct cleanedBy none
+runProduct borrows none
+runProduct catch productError EvalError
+runProduct suppresses none
+
+expectThirtyFive is call
+expectThirtyFive in treeTest
+expectThirtyFive invokes test.assertEqualInt64
+expectThirtyFive argument expected Int64 thirtyFive copy
+expectThirtyFive argument actual Int64 productResult copy
+expectThirtyFive result none
+expectThirtyFive ownedBy none
+expectThirtyFive cleanedBy none
+expectThirtyFive borrows none
+expectThirtyFive catch none
+expectThirtyFive suppresses none
+
+failRefused is call
+failRefused in treeTest
+failRefused invokes test.fail
+failRefused argument message String refusedText lend
+failRefused result none
+failRefused ownedBy none
+failRefused cleanedBy none
+failRefused borrows none
+failRefused catch none
+failRefused suppresses none
+
+unknownNameTest is test
+unknownNameTest purpose "A name node for depth, which is not defined, is refused with unknownName"
+unknownNameTest verifies evaluate rejectsUnknownName
+unknownNameTest typeParameter none
+unknownNameTest input none
+unknownNameTest output none
+unknownNameTest outputOwnedBy none
+unknownNameTest raises none
+unknownNameTest effect none
+unknownNameTest uses none
+unknownNameTest memoryHeap true
+unknownNameTest async false
+unknownNameTest maxRecursion none
+unknownNameTest label begin loopKind none
+unknownNameTest label begin within none
+unknownNameTest label inspect loopKind none
+unknownNameTest label inspect within none
+unknownNameTest label rightVariant loopKind none
+unknownNameTest label rightVariant within none
+unknownNameTest label wrongVariant loopKind none
+unknownNameTest label wrongVariant within none
+unknownNameTest label accepted loopKind none
+unknownNameTest label accepted within none
+unknownNameTest let depthInTree String "depth" immutable
+unknownNameTest let refused Bool true immutable
+unknownNameTest let acceptedText String "an undefined name was evaluated" immutable
+unknownNameTest let wrongText String "an undefined name gave the wrong error" immutable
+unknownNameTest at begin do makeNodes
+unknownNameTest at begin do makeSymbols
+unknownNameTest at begin do addDepth
+unknownNameTest at begin do runIt
+unknownNameTest at begin branch ifError runIt goto inspect else goto accepted
+unknownNameTest at inspect match runError EvalError
+unknownNameTest at inspect case EvalError.unknownName bind none none goto rightVariant
+unknownNameTest at inspect case EvalError.missingNode bind position Int64 goto wrongVariant
+unknownNameTest at rightVariant do expectRefused
+unknownNameTest at rightVariant return ok none
+unknownNameTest at wrongVariant do failWrong
+unknownNameTest at wrongVariant return ok none
+unknownNameTest at accepted do failAccepted
+unknownNameTest at accepted return ok none
+
+store is region
+store in unknownNameTest
+store strategy arena
+store maxBytes 4096
+store released atReturn
+
+makeNodes is call
+makeNodes in unknownNameTest
+makeNodes invokes Nodes.new
+makeNodes argument region Region store lend
+makeNodes result nodes Nodes
+makeNodes ownedBy store
+makeNodes cleanedBy none
+makeNodes borrows none
+makeNodes catch none
+makeNodes suppresses none
+
+makeSymbols is call
+makeSymbols in unknownNameTest
+makeSymbols invokes Symbols.new
+makeSymbols argument region Region store lend
+makeSymbols result symbolTable Symbols
+makeSymbols ownedBy store
+makeSymbols cleanedBy none
+makeSymbols borrows none
+makeSymbols catch none
+makeSymbols suppresses none
+
+addDepth is call
+addDepth in unknownNameTest
+addDepth invokes addName
+addDepth argument nodes Nodes nodes lendMutable
+addDepth argument text String depthInTree give
+addDepth result depthAt NodeId
+addDepth ownedBy none
+addDepth cleanedBy none
+addDepth borrows none
+addDepth catch none
+addDepth suppresses none
+
+runIt is call
+runIt in unknownNameTest
+runIt invokes evaluate
+runIt argument nodes Nodes nodes lend
+runIt argument symbols Symbols symbolTable lend
+runIt argument at NodeId depthAt copy
+runIt result result Int64
+runIt ownedBy none
+runIt cleanedBy none
+runIt borrows none
+runIt catch runError EvalError
+runIt suppresses none
+
+expectRefused is call
+expectRefused in unknownNameTest
+expectRefused invokes test.assertTrue
+expectRefused argument value Bool refused copy
+expectRefused result none
+expectRefused ownedBy none
+expectRefused cleanedBy none
+expectRefused borrows none
+expectRefused catch none
+expectRefused suppresses none
+
+failWrong is call
+failWrong in unknownNameTest
+failWrong invokes test.fail
+failWrong argument message String wrongText lend
+failWrong result none
+failWrong ownedBy none
+failWrong cleanedBy none
+failWrong borrows none
+failWrong catch none
+failWrong suppresses none
+
+failAccepted is call
+failAccepted in unknownNameTest
+failAccepted invokes test.fail
+failAccepted argument message String acceptedText lend
+failAccepted result none
+failAccepted ownedBy none
+failAccepted cleanedBy none
+failAccepted borrows none
+failAccepted catch none
+failAccepted suppresses none
+
+missingNodeTest is test
+missingNodeTest purpose "Position 1 of a two-node list, read in an empty list, is refused with missingNode carrying 1"
+missingNodeTest verifies evaluate rejectsMissingNode
+missingNodeTest typeParameter none
+missingNodeTest input none
+missingNodeTest output none
+missingNodeTest outputOwnedBy none
+missingNodeTest raises none
+missingNodeTest effect none
+missingNodeTest uses none
+missingNodeTest memoryHeap true
+missingNodeTest async false
+missingNodeTest maxRecursion none
+missingNodeTest label begin loopKind none
+missingNodeTest label begin within none
+missingNodeTest label inspect loopKind none
+missingNodeTest label inspect within none
+missingNodeTest label rightPosition loopKind none
+missingNodeTest label rightPosition within none
+missingNodeTest label wrongVariant loopKind none
+missingNodeTest label wrongVariant within none
+missingNodeTest label accepted loopKind none
+missingNodeTest label accepted within none
+missingNodeTest let one Int64 1 immutable
+missingNodeTest let two Int64 2 immutable
+missingNodeTest let acceptedText String "a missing node was evaluated" immutable
+missingNodeTest let wrongText String "a missing node gave the wrong error" immutable
+missingNodeTest at begin do makeNodes
+missingNodeTest at begin do makeOtherNodes
+missingNodeTest at begin do makeSymbols
+missingNodeTest at begin do addOne
+missingNodeTest at begin do addTwo
+missingNodeTest at begin do runIt
+missingNodeTest at begin branch ifError runIt goto inspect else goto accepted
+missingNodeTest at inspect match runError EvalError
+missingNodeTest at inspect case EvalError.missingNode bind position Int64 goto rightPosition
+missingNodeTest at inspect case EvalError.unknownName bind none none goto wrongVariant
+missingNodeTest at rightPosition do expectOne
+missingNodeTest at rightPosition return ok none
+missingNodeTest at wrongVariant do failWrong
+missingNodeTest at wrongVariant return ok none
+missingNodeTest at accepted do failAccepted
+missingNodeTest at accepted return ok none
+
+store is region
+store in missingNodeTest
+store strategy arena
+store maxBytes 4096
+store released atReturn
+
+makeNodes is call
+makeNodes in missingNodeTest
+makeNodes invokes Nodes.new
+makeNodes argument region Region store lend
+makeNodes result nodes Nodes
+makeNodes ownedBy store
+makeNodes cleanedBy none
+makeNodes borrows none
+makeNodes catch none
+makeNodes suppresses none
+
+makeOtherNodes is call
+makeOtherNodes in missingNodeTest
+makeOtherNodes invokes Nodes.new
+makeOtherNodes argument region Region store lend
+makeOtherNodes result otherNodes Nodes
+makeOtherNodes ownedBy store
+makeOtherNodes cleanedBy none
+makeOtherNodes borrows none
+makeOtherNodes catch none
+makeOtherNodes suppresses none
+
+makeSymbols is call
+makeSymbols in missingNodeTest
+makeSymbols invokes Symbols.new
+makeSymbols argument region Region store lend
+makeSymbols result symbolTable Symbols
+makeSymbols ownedBy store
+makeSymbols cleanedBy none
+makeSymbols borrows none
+makeSymbols catch none
+makeSymbols suppresses none
+
+addOne is call
+addOne in missingNodeTest
+addOne invokes addNumber
+addOne argument nodes Nodes nodes lendMutable
+addOne argument value Int64 one copy
+addOne result oneAt NodeId
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+addOne suppresses none
+
+addTwo is call
+addTwo in missingNodeTest
+addTwo invokes addNumber
+addTwo argument nodes Nodes nodes lendMutable
+addTwo argument value Int64 two copy
+addTwo result twoAt NodeId
+addTwo ownedBy none
+addTwo cleanedBy none
+addTwo borrows none
+addTwo catch none
+addTwo suppresses none
+
+runIt is call
+runIt in missingNodeTest
+runIt invokes evaluate
+runIt argument nodes Nodes otherNodes lend
+runIt argument symbols Symbols symbolTable lend
+runIt argument at NodeId twoAt copy
+runIt result result Int64
+runIt ownedBy none
+runIt cleanedBy none
+runIt borrows none
+runIt catch runError EvalError
+runIt suppresses none
+
+expectOne is call
+expectOne in missingNodeTest
+expectOne invokes test.assertEqualInt64
+expectOne argument expected Int64 one copy
+expectOne argument actual Int64 position copy
+expectOne result none
+expectOne ownedBy none
+expectOne cleanedBy none
+expectOne borrows none
+expectOne catch none
+expectOne suppresses none
+
+failWrong is call
+failWrong in missingNodeTest
+failWrong invokes test.fail
+failWrong argument message String wrongText lend
+failWrong result none
+failWrong ownedBy none
+failWrong cleanedBy none
+failWrong borrows none
+failWrong catch none
+failWrong suppresses none
+
+failAccepted is call
+failAccepted in missingNodeTest
+failAccepted invokes test.fail
+failAccepted argument message String acceptedText lend
+failAccepted result none
+failAccepted ownedBy none
+failAccepted cleanedBy none
+failAccepted borrows none
+failAccepted catch none
+failAccepted suppresses none
+
+countNumbersTest is test
+countNumbersTest purpose "The five nodes of (3 + 4) * x hold two numbers"
+countNumbersTest verifies countNumbers countsNumbers
+countNumbersTest typeParameter none
+countNumbersTest input none
+countNumbersTest output none
+countNumbersTest outputOwnedBy none
+countNumbersTest raises none
+countNumbersTest effect none
+countNumbersTest uses none
+countNumbersTest memoryHeap true
+countNumbersTest async false
+countNumbersTest maxRecursion none
+countNumbersTest label begin loopKind none
+countNumbersTest label begin within none
+countNumbersTest let three Int64 3 immutable
+countNumbersTest let four Int64 4 immutable
+countNumbersTest let two Int64 2 immutable
+countNumbersTest let xInTree String "x" immutable
+countNumbersTest at begin do makeNodes
+countNumbersTest at begin do addThree
+countNumbersTest at begin do addFour
+countNumbersTest at begin do addThreePlusFour
+countNumbersTest at begin do addX
+countNumbersTest at begin do addTimesX
+countNumbersTest at begin do countThem
+countNumbersTest at begin do expectTwo
+countNumbersTest at begin return ok none
+
+store is region
+store in countNumbersTest
+store strategy arena
+store maxBytes 4096
+store released atReturn
+
+makeNodes is call
+makeNodes in countNumbersTest
+makeNodes invokes Nodes.new
+makeNodes argument region Region store lend
+makeNodes result nodes Nodes
+makeNodes ownedBy store
+makeNodes cleanedBy none
+makeNodes borrows none
+makeNodes catch none
+makeNodes suppresses none
+
+addThree is call
+addThree in countNumbersTest
+addThree invokes addNumber
+addThree argument nodes Nodes nodes lendMutable
+addThree argument value Int64 three copy
+addThree result threeAt NodeId
+addThree ownedBy none
+addThree cleanedBy none
+addThree borrows none
+addThree catch none
+addThree suppresses none
+
+addFour is call
+addFour in countNumbersTest
+addFour invokes addNumber
+addFour argument nodes Nodes nodes lendMutable
+addFour argument value Int64 four copy
+addFour result fourAt NodeId
+addFour ownedBy none
+addFour cleanedBy none
+addFour borrows none
+addFour catch none
+addFour suppresses none
+
+addThreePlusFour is call
+addThreePlusFour in countNumbersTest
+addThreePlusFour invokes addSum
+addThreePlusFour argument nodes Nodes nodes lendMutable
+addThreePlusFour argument left NodeId threeAt copy
+addThreePlusFour argument right NodeId fourAt copy
+addThreePlusFour result sumAt NodeId
+addThreePlusFour ownedBy none
+addThreePlusFour cleanedBy none
+addThreePlusFour borrows none
+addThreePlusFour catch none
+addThreePlusFour suppresses none
+
+addX is call
+addX in countNumbersTest
+addX invokes addName
+addX argument nodes Nodes nodes lendMutable
+addX argument text String xInTree give
+addX result xAt NodeId
+addX ownedBy none
+addX cleanedBy none
+addX borrows none
+addX catch none
+addX suppresses none
+
+addTimesX is call
+addTimesX in countNumbersTest
+addTimesX invokes addProduct
+addTimesX argument nodes Nodes nodes lendMutable
+addTimesX argument left NodeId sumAt copy
+addTimesX argument right NodeId xAt copy
+addTimesX result productAt NodeId
+addTimesX ownedBy none
+addTimesX cleanedBy none
+addTimesX borrows none
+addTimesX catch none
+addTimesX suppresses none
+
+countThem is call
+countThem in countNumbersTest
+countThem invokes countNumbers
+countThem argument nodes Nodes nodes lend
+countThem result numberCount Int64
+countThem ownedBy none
+countThem cleanedBy none
+countThem borrows none
+countThem catch none
+countThem suppresses none
+
+expectTwo is call
+expectTwo in countNumbersTest
+expectTwo invokes test.assertEqualInt64
+expectTwo argument expected Int64 two copy
+expectTwo argument actual Int64 numberCount copy
+expectTwo result none
+expectTwo ownedBy none
+expectTwo cleanedBy none
+expectTwo borrows none
+expectTwo catch none
+expectTwo suppresses none
+
+joinNamesTest is test
+joinNamesTest purpose "Defining b, then a, then b again lists b then a: redefining keeps a name's place"
+joinNamesTest verifies joinNames definitionOrder
+joinNamesTest typeParameter none
+joinNamesTest input none
+joinNamesTest output none
+joinNamesTest outputOwnedBy none
+joinNamesTest raises none
+joinNamesTest effect none
+joinNamesTest uses none
+joinNamesTest memoryHeap true
+joinNamesTest async false
+joinNamesTest maxRecursion none
+joinNamesTest label begin loopKind none
+joinNamesTest label begin within none
+joinNamesTest let bName String "b" immutable
+joinNamesTest let aName String "a" immutable
+joinNamesTest let one Int64 1 immutable
+joinNamesTest let two Int64 2 immutable
+joinNamesTest let three Int64 3 immutable
+joinNamesTest let expected String "b,a," immutable
+joinNamesTest at begin do makeSymbols
+joinNamesTest at begin do defineB
+joinNamesTest at begin do defineA
+joinNamesTest at begin do redefineB
+joinNamesTest at begin do joinThem
+joinNamesTest at begin do expectOrder
+joinNamesTest at begin return ok none
+
+store is region
+store in joinNamesTest
+store strategy arena
+store maxBytes 4096
+store released atReturn
+
+makeSymbols is call
+makeSymbols in joinNamesTest
+makeSymbols invokes Symbols.new
+makeSymbols argument region Region store lend
+makeSymbols result symbolTable Symbols
+makeSymbols ownedBy store
+makeSymbols cleanedBy none
+makeSymbols borrows none
+makeSymbols catch none
+makeSymbols suppresses none
+
+defineB is call
+defineB in joinNamesTest
+defineB invokes Symbols.put
+defineB argument map Symbols symbolTable lendMutable
+defineB argument key String bName lend
+defineB argument value Int64 one copy
+defineB result none
+defineB ownedBy none
+defineB cleanedBy none
+defineB borrows none
+defineB catch none
+defineB suppresses none
+
+defineA is call
+defineA in joinNamesTest
+defineA invokes Symbols.put
+defineA argument map Symbols symbolTable lendMutable
+defineA argument key String aName lend
+defineA argument value Int64 two copy
+defineA result none
+defineA ownedBy none
+defineA cleanedBy none
+defineA borrows none
+defineA catch none
+defineA suppresses none
+
+redefineB is call
+redefineB in joinNamesTest
+redefineB invokes Symbols.put
+redefineB argument map Symbols symbolTable lendMutable
+redefineB argument key String bName lend
+redefineB argument value Int64 three copy
+redefineB result none
+redefineB ownedBy none
+redefineB cleanedBy none
+redefineB borrows none
+redefineB catch none
+redefineB suppresses none
+
+joinThem is call
+joinThem in joinNamesTest
+joinThem invokes joinNames
+joinThem argument symbols Symbols symbolTable lend
+joinThem argument region Region store lend
+joinThem result joined String
+joinThem ownedBy store
+joinThem cleanedBy none
+joinThem borrows none
+joinThem catch none
+joinThem suppresses none
+
+expectOrder is call
+expectOrder in joinNamesTest
+expectOrder invokes test.assertEqualString
+expectOrder argument expected String expected lend
+expectOrder argument actual String joined lend
+expectOrder result none
+expectOrder ownedBy none
+expectOrder cleanedBy none
+expectOrder borrows none
+expectOrder catch none
+expectOrder suppresses none

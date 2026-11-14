@@ -589,6 +589,19 @@ class OpGen:
         coll, item, yes, no = a[1], a[3], a[-4], a[-1]
         idx_ptr = self.indexes[lab]
         idx = b.load(idx_ptr)
+        cinfo = self.world.type_info(self.t(self.info.bindings[coll].type)) if coll in self.info.bindings else None
+        if cinfo is not None and cinfo.generic == "map.Map":
+            # D-62: a map is read key by key, in the order keys were first put; the host keeps the order
+            handle = b.load(self.allocas[coll])
+            more = b.icmp_signed("<", idx, self.host_value(b, "map.Map.length", [handle], I64, f"{lab}.count"))
+            take = self.fn.append_basic_block(f"{lab}.take")
+            b.cbranch(more, take, self.edge(lab, no))
+            tb = ir.IRBuilder(take)
+            et = self.lt(self.info.bindings[item].type, line)
+            tb.store(self.host_value(tb, "map.Map.keyAt", [handle, idx], et, f"{lab}.key"), self.allocas[item])
+            tb.store(tb.add(idx, I64(1)), idx_ptr)
+            tb.branch(self.edge(lab, yes))
+            return
         if coll in self.m.tables:
             g, n, _rec = self.be.table(self.m, coll)
             more = b.icmp_signed("<", idx, I64(n))
@@ -1214,6 +1227,21 @@ class OpGen:
         err = b.insert_value(err, b.load(payload), 1)
         return out, b.icmp_signed("!=", status, I32(0)), err
 
+    def host_value(self, b: ir.IRBuilder, name: str, values: list, out_t: ir.Type, tag: str):
+        """A host target the compiler calls itself (not a call row): `values` in, one value of `out_t` out."""
+        groups = [self.flatten(b, v) for v in values]
+        nres = self.slot_count(out_t)
+        argbuf = self.fn_alloca(ir.ArrayType(I64, max(sum(len(g) for g in groups), 1)), f"{tag}.hostArgs")
+        resbuf = self.fn_alloca(ir.ArrayType(I64, nres), f"{tag}.hostResults")
+        payload = self.fn_alloca(I64, f"{tag}.hostError")
+        for at, s in enumerate(s for g in groups for s in g):
+            b.store(s, b.gep(argbuf, [I32(0), I32(at)]))
+        key = self.be.string(f"{name}|{','.join(str(len(g)) for g in groups)}|{nres}")
+        b.call(self.be.callbacks["refined_host"], [b.extract_value(key, 0), b.extract_value(key, 1),
+                                                   b.gep(argbuf, [I32(0), I32(0)]), b.gep(resbuf, [I32(0), I32(0)]),
+                                                   payload])
+        return self.unflatten(b, [b.load(b.gep(resbuf, [I32(0), I32(i)])) for i in range(nres)], out_t)
+
     def derived(self, b: ir.IRBuilder, inv: str, ci: CallInfo, args: dict, line: int):
         parts = inv.split(".")
         type_text, member = ".".join(parts[:-1]), parts[-1]
@@ -1225,6 +1253,9 @@ class OpGen:
             name = f"{info.generic if info.kind == 'instance' else canon}.{member}"
             if name in HOST_TARGETS:
                 extra = [self.be.string(self.scope_text(ci.sig))] if ci.sig is not None and ci.sig.scoped else []
+                if name == "map.Map.new":
+                    # D-61: the map learns whether its keys are text, compared by content and copied into it
+                    extra.append(I64(1 if self.t(info.args[0]) == "String" else 0))
                 return self.host_call(b, name, ci, args, line, extra)
             self.unsupported(line, f"`{inv}`")
         if info.kind == "instance" and info.generic == "list.List":
@@ -1281,7 +1312,7 @@ class OpGen:
         if member == "clear":
             b.store(I64(0), len_ptr)
             return None, None, None
-        if member == "append":
+        if member in ("append", "appendIndexed"):
             cap = b.load(cap_ptr)
             with b.if_then(b.icmp_signed("==", length, cap)):
                 newcap = b.select(b.icmp_signed("==", cap, I64(0)), I64(4), b.mul(cap, I64(2)))
@@ -1294,7 +1325,8 @@ class OpGen:
             slot = b.gep(b.bitcast(b.load(data_ptr), et.as_pointer()), [length])
             b.store(args["item"], slot)
             b.store(b.add(length, I64(1)), len_ptr)
-            return None, None, None
+            # D-60: `appendIndexed` gives back the new item's position, which is the length before it
+            return (length if member == "appendIndexed" else None), None, None
         if member in ("get", "set"):
             idx = args["index"]
             inside = b.and_(b.icmp_signed(">=", idx, I64(0)), b.icmp_signed("<", idx, length))

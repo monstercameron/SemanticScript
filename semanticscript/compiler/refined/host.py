@@ -774,7 +774,21 @@ def _from_bytes(p):
 # ---------------------------------------------------------------- maps, sets, channels
 
 class Map(dict):
-    pass
+    """Keys in the order they were first put (D-62). With text keys (D-61) a key is looked up by its bytes, and
+    `put` copies a new key into the map's region, so a key read back stays valid as long as the map."""
+
+    def __init__(self, region: int, text: bool):
+        super().__init__()
+        self.region, self.text, self.copies = region, text, {}
+        self.order: list | None = None  # the keys as a list, rebuilt after the set of keys changes
+
+    def key(self, slots: tuple):
+        return data(slots) if self.text else slots
+
+    def key_at(self, i: int):
+        if self.order is None:
+            self.order = list(self)
+        return self.order[i]
 
 
 class Set(set):
@@ -788,40 +802,63 @@ class Channel:
 
 @target("map.Map.new")
 def _map_new(p):
-    return ok(new_handle(Map(), p[0][0]))
+    # the compiler adds one slot: 1 when the keys are `String` (D-61)
+    return ok(new_handle(Map(p[0][0], bool(p[1][0]) if len(p) > 1 else False), p[0][0]))
 
 
 @target("map.Map.put")
 def _map_put(p):
-    get(p[0][0], Map)[p[1]] = p[2]
+    m = get(p[0][0], Map)
+    k = m.key(p[1])
+    if m.text and k not in m.copies:
+        m.copies[k] = put(m.region, k)
+    if k not in m:
+        m.order = None
+    m[k] = p[2]
     return ok()
 
 
 @target("map.Map.get")
 def _map_get(p):
     m = get(p[0][0], Map)
-    if p[1] not in m:
+    k = m.key(p[1])
+    if k not in m:
         fail("map.KeyMissing", "missing")
-    return ok(*m[p[1]])
+    return ok(*m[k])
 
 
 @target("map.Map.contains")
 def _map_contains(p):
-    return ok(1 if p[1] in get(p[0][0], Map) else 0)
+    m = get(p[0][0], Map)
+    return ok(1 if m.key(p[1]) in m else 0)
 
 
 @target("map.Map.remove")
 def _map_remove(p):
     m = get(p[0][0], Map)
-    if p[1] not in m:
+    k = m.key(p[1])
+    if k not in m:
         fail("map.KeyMissing", "missing")
-    del m[p[1]]
+    del m[k]
+    m.order = None
     return ok()
 
 
 @target("map.Map.length")
 def _map_length(p):
     return ok(len(get(p[0][0], Map)))
+
+
+@target("map.Map.keyAt")
+def _map_key_at(p):
+    """The key at a position in first-put order, for `forEach` over a map (D-62); the compiler asks only for
+    positions below the length."""
+    m = get(p[0][0], Map)
+    i = p[1][0]
+    if not 0 <= i < len(m):
+        rt._trap_now(f"a map was read at position {i} of {len(m)}")
+    k = m.key_at(i)
+    return ok(*(m.copies[k] if m.text else k))
 
 
 @target("set.Set.new")

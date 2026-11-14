@@ -56,6 +56,7 @@ RES = "07-memory/resources"
 STR = "08-strings-collections/strings"
 SORT = "08-strings-collections/sorting"
 TABLE = "08-strings-collections/table"
+TREES = "08-strings-collections/trees"
 MODS = "09-modules/project"
 PKG = "09-modules/package"
 SECRET = "19-stdlib/secret"
@@ -149,6 +150,46 @@ MUTATIONS: list[Mutation] = [
     M("type-wrong-case", ("2 User-defined types",), SHAPES,
       "Meters is alias\n", "meters is alias\nmeters purpose \"A type named like a value\"\nmeters typeParameter none\n"
       "meters aliasOf Int64\nmeters indexes none\n\nMeters is alias\n", ("R207",)),
+    # D-60: trees are node lists with a typed position; D-61: String map keys; D-62: reading a map in order
+    M("recursive-type-through-list", ("2 Recursive types", "6 Recursive data structures"), TREES,
+      "Nodes is typeInstance\n",
+      'Branch is record\nBranch purpose "A tree node that holds its children directly"\nBranch typeParameter none\n'
+      "Branch field value Int64\nBranch field children Branches\n\n"
+      'Branches is typeInstance\nBranches purpose "The children of one branch"\n'
+      "Branches instantiates list.List Branch\n\nNodes is typeInstance\n", ("R403",),
+      primary="`Branch` holds itself inside a collection"),
+    M("index-literal", ("2 Type aliases", "7 Dangling references"), TREES,
+      "main let one Int64 1 immutable", "main let one Int64 1 immutable\nmain let forged NodeId 0 immutable",
+      ("R403",), primary="a position has no literal"),
+    M("index-from-integer", ("2 Type aliases", "14 Type mismatch detection"), TREES,
+      "evaluateRoot argument at NodeId rootAt copy", "evaluateRoot argument at NodeId one copy", ("R403",)),
+    M("index-of-a-map", ("2 Type aliases",), TREES, "NodeId indexes Nodes", "NodeId indexes Symbols",
+      ("R403", "R401"), primary="`indexes` names a `list.List` type declared in this module"),
+    M("index-not-int64", ("2 Type aliases",), TREES, "NodeId aliasOf Int64", "NodeId aliasOf Int32", ("R403",),
+      primary="an index alias is `aliasOf Int64`"),
+    M("index-alias-twice", ("2 Type aliases",), TREES, "Symbols is typeInstance\n",
+      'OtherId is alias\nOtherId purpose "A second position type for the same node list"\n'
+      "OtherId typeParameter none\nOtherId aliasOf Int64\nOtherId indexes Nodes\n\nSymbols is typeInstance\n",
+      ("R403",), primary="a list type has one index alias"),
+    M("append-indexed-without-index", ("2 Type aliases",), TREES, "NodeId indexes Nodes", "NodeId indexes none",
+      ("R401", "R403"), primary="type `Nodes` has no target `appendIndexed`"),
+    M("map-key-not-plain", ("2 Maps / Dictionaries", "14 Generic constraints"), TREES, "Symbols is typeInstance\n",
+      'ByNode is typeInstance\nByNode purpose "Values keyed by whole nodes"\nByNode instantiates map.Map Expr Int64\n\n'
+      "Symbols is typeInstance\n", ("R403",), primary="a key of `map.Map` is a plain value or a `String`"),
+    M("map-text-key-copied", ("2 Maps / Dictionaries", "5 Parameter passing by reference"), TREES,
+      "defineX argument key String xName lend", "defineX argument key String xName copy", ("R406",)),
+    M("map-key-wrong-item-type", ("2 Maps / Dictionaries", "8 Collection iteration"), TREES,
+      "main at listNames branch ifNext symbolTable bind name String",
+      "main at listNames branch ifNext symbolTable bind name Int64", ("R403",)),
+    M("map-changed-while-listed", ("8 Collection iteration", "11 Shared mutable state"), TREES,
+      ("main at printName do printOneName\n", "printOneName is call\n"),
+      ("main at printName do defineAgain\nmain at printName do printOneName\n",
+       "defineAgain is call\ndefineAgain in main\ndefineAgain invokes Symbols.put\n"
+       "defineAgain argument map Symbols symbolTable lendMutable\ndefineAgain argument key String yName lend\n"
+       "defineAgain argument value Int64 five copy\ndefineAgain result none\ndefineAgain ownedBy none\n"
+       "defineAgain cleanedBy none\ndefineAgain borrows none\ndefineAgain catch none\ndefineAgain suppresses none\n\n"
+       "printOneName is call\n"),
+      ("R515",)),
     # ---------------------------------------------------------------- 3 operators
     M("operator-type-mismatch", ("3 Equality", "14 Static type checking"), OPS,
       "eq invokes compare.equalInt64", "eq invokes compare.equalFloat64", ("R403",)),

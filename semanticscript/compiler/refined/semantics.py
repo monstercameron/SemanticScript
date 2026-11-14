@@ -18,7 +18,7 @@ from . import shapes as S
 from .diagnostics import Sink
 from .library import (BUILTINS, FLOAT_TYPES, INTEGER_RANGES, LIBRARY, SCOPED_RESOURCES, Param, Sig, TypeInfo,
                       path_within,
-                      generic_members, type_param_name)
+                      fits_constraint, generic_members, type_param_name)
 from .model import Entity, Row
 
 # ---------------------------------------------------------------- program model
@@ -157,7 +157,9 @@ class World:
                         for r in ent.facts("variant")]
             return TypeInfo(canon, "enum", None, variants=variants, type_params=list(tparams.values()))
         if ent.kind == "alias":
-            return TypeInfo(canon, "alias", None, base=resolve_type(self, m, ent.value("aliasOf"), ent.line, quiet=True))
+            idx = ent.value("indexes")
+            return TypeInfo(canon, "alias", None, base=resolve_type(self, m, ent.value("aliasOf"), ent.line, quiet=True),
+                            index=None if idx in (None, "none") else resolve_type(self, m, idx, ent.line, quiet=True))
         if ent.kind == "operationType":
             return TypeInfo(canon, "operationType", True, sig=header_sig(self, m, ent, quiet=True))
         if ent.kind == "typeInstance":
@@ -176,11 +178,26 @@ class World:
             elif ginfo is not None and ginfo.kind == "generic":
                 sub = dict(zip(ginfo.type_params, args))
                 info.variants = [(n, sub.get(p, p) if p else None) for n, p in ginfo.variants]
-                info.targets = generic_members(gen, canon, args, self.plain)
+                if gen == "list.List":
+                    info.index = self.index_alias(m, canon)
+                info.targets = generic_members(gen, canon, args, self.plain, info.index)
                 if gen != "option.Option":
                     info.plain = False
             return info
         return None
+
+    def index_aliases(self, m: Module, canon: str) -> list[Entity]:
+        """D-60: the aliases of module `m` that state `indexes` naming the list type `canon`."""
+        out = []
+        for ent in m.types.values():
+            idx = ent.value("indexes") if ent.kind == "alias" else None
+            if idx not in (None, "none") and (idx == canon.split(".", 1)[1] or idx == canon):
+                out.append(ent)
+        return sorted(out, key=lambda e: e.line)
+
+    def index_alias(self, m: Module, canon: str) -> Optional[str]:
+        found = self.index_aliases(m, canon)
+        return f"{m.short}.{found[0].name}" if found else None
 
     def substitute(self, sig: Sig, sub: dict[str, str]) -> Sig:
         """Replace type parameters in a signature (generic operations, LR-24)."""
@@ -514,8 +531,9 @@ def finish_module(m: Module) -> None:
             m.sink.error("R404", line, f"module `{short}` is imported but nothing in `{m.short}` uses it")
 
 
-def _contains_by_value(world: World, canon: Optional[str], target: str, seen: set) -> bool:
-    """True if a value of `canon` holds a `target` by value (through record fields or enum payloads)."""
+def _contains_by_value(world: World, canon: Optional[str], target: str, seen: set, through: bool = False) -> bool:
+    """True if a value of `canon` holds a `target` by value (through record fields or enum payloads), or, with
+    `through`, also inside a collection it holds (the type arguments of a list, map, set, or channel)."""
     info = world.type_info(canon)
     if info is None or canon in seen:
         return False
@@ -523,7 +541,9 @@ def _contains_by_value(world: World, canon: Optional[str], target: str, seen: se
     inner = [t for _n, t in info.fields] + [p for _n, p in info.variants if p is not None]
     if info.kind == "alias":
         inner.append(info.base)
-    return any(t == target or _contains_by_value(world, t, target, seen) for t in inner if t is not None)
+    if through and info.generic is not None:
+        inner += info.args
+    return any(t == target or _contains_by_value(world, t, target, seen, through) for t in inner if t is not None)
 
 
 def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
@@ -532,16 +552,21 @@ def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
     if ent.kind in ("record", "enum", "alias") and _contains_by_value(world, canon, canon, set()):
         m.sink.error("R403", ent.line, f"`{ent.name}` contains itself by value, so it would have no finite size; "
                      "refer to other values through a list and a typed index (LR-25 rule 5)")
+    elif ent.kind in ("record", "enum") and _contains_by_value(world, canon, canon, set(), through=True):
+        # D-60: one way to build trees and graphs: nodes in a list, referring to each other by a typed index
+        m.sink.error("R403", ent.line, f"`{ent.name}` holds itself inside a collection; build a tree from a list "
+                     "of nodes and an index alias (`<Alias> indexes <List>`), so nodes refer to each other by "
+                     "position (D-60)")
     for r in ent.facts("field"):
         resolve_type(world, m, r.text(1), r.line, tparams)
     for r in ent.facts("variant"):
         if r.text(1) != "none":
             resolve_type(world, m, r.text(1), r.line, tparams)
     if ent.kind == "alias":
-        resolve_type(world, m, ent.value("aliasOf"), ent.line)
+        base = resolve_type(world, m, ent.value("aliasOf"), ent.line)
         idx = ent.value("indexes")
         if idx not in (None, "none"):
-            resolve_type(world, m, idx, ent.line)
+            _check_index_alias(world, m, ent, base, resolve_type(world, m, idx, ent.line))
     if ent.kind == "operationType":
         _check_header(world, m, ent)
     if ent.kind == "typeInstance":
@@ -561,6 +586,9 @@ def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
                 if a is not None and p.endswith("@plain") and not world.plain(a):
                     m.sink.error("R403", row.line, f"type parameter `{type_param_name(p)}` of `{row.text(0)}` is "
                                  f"`plain`; `{a}` is not a plain type")
+                elif a is not None and not fits_constraint(p, a, world.plain):
+                    m.sink.error("R403", row.line, f"a key of `{row.text(0)}` is a plain value or a `String`; `{a}` is "
+                                 "neither (D-61)")
             if gen == "ffi.Function" and args and args[0] is not None:
                 _check_foreign(world, m, row, args[0])
             for a in args:
@@ -568,6 +596,25 @@ def _check_type_entity(world: World, m: Module, ent: Entity) -> None:
                 if ai is not None and ai.kind == "resource" and gen != "ffi.Function":
                     m.sink.error("R403", row.line, f"`{a}` is a resource, owned by one operation and released by it; it "
                                  f"cannot be stored in `{row.text(0)}`, which a region releases without closing it")
+
+
+def _check_index_alias(world: World, m: Module, ent: Entity, base: Optional[str], listed: Optional[str]) -> None:
+    """D-60: `<Alias> indexes <List>` makes the alias the position type of one list type of the same module."""
+    row = ent.fact("indexes")
+    line = row.line if row is not None else ent.line
+    if listed is None:
+        return
+    info = world.type_info(listed)
+    if info is None or info.kind != "instance" or info.generic != "list.List" or not listed.startswith(f"{m.short}."):
+        m.sink.error("R403", line, f"`indexes` names a `list.List` type declared in this module; "
+                     f"`{ent.value('indexes')}` is not one")
+        return
+    if base is not None and base != "Int64":
+        m.sink.error("R403", line, f"an index alias is `aliasOf Int64`; `{ent.name}` is `aliasOf {ent.value('aliasOf')}`")
+    first = world.index_aliases(m, listed)
+    if first and first[0] is not ent:
+        m.sink.error("R403", line, f"`{ent.value('indexes')}` is already indexed by `{first[0].name}` on line "
+                     f"{first[0].line}; a list type has one index alias")
 
 
 def _import_paths(target: Module, importer: Module) -> set:
@@ -651,6 +698,11 @@ def _check_value_token(world: World, m: Module, tok, canon: Optional[str], line:
             _check_op_reference(world, m, tok.raw, canon, line, what)
         else:
             m.sink.error("R401", line, f"`{tok.raw}` is not a literal or an operation of this module")
+        return
+    info = world.type_info(canon)
+    if info is not None and info.kind == "alias" and info.index is not None:
+        m.sink.error("R403", line, f"{what} is `{_show(canon)}`, a position in `{_show(info.index)}`; a position has "
+                     f"no literal, it comes from `{_show(info.index).rsplit('.', 1)[-1]}.appendIndexed` (D-60)")
         return
     if not literal_fits(world, tok, canon):
         m.sink.error("R403", line, f"{what} is `{_show(canon)}`; `{tok.raw}` is not a valid `{_show(canon)}` literal")
