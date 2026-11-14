@@ -786,10 +786,10 @@ class Flow:
             want = resolve_type(self.world, m, m.tables[coll].value("rowType"), line, quiet=True)
         elif coll in op.bindings:
             info = self.world.type_info(op.bindings[coll].type)
-            if info is None or info.generic != "list.List":
-                self.err("R402", line, f"`ifNext` reads a table or a list; `{coll}` is neither")
+            if info is None or info.generic not in ("list.List", "map.Map"):
+                self.err("R402", line, f"`ifNext` reads a table, a list, or a map; `{coll}` is none of them")
                 return
-            want = info.args[0]
+            want = info.args[0]  # a list's items; a map's keys, in the order they were first put (D-62)
         else:
             self.err("R401", line, f"`{coll}` is not a table or a list in scope")
             return

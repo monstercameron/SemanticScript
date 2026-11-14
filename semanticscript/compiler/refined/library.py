@@ -47,6 +47,8 @@ class TypeInfo:
     args: list[str] = field(default_factory=list)  # for instances: type arguments
     sig: Optional[Sig] = None  # for operationType
     base: Optional[str] = None  # for alias
+    # D-60: for an alias, the list type it indexes; for a list instance, the alias that indexes it
+    index: Optional[str] = None
 
 
 def P(name: str, type_: str, mode: str) -> Param:
@@ -407,7 +409,8 @@ LIBRARY: dict[str, dict] = {
         "targets": {},
     },
     "map": {
-        "types": {"Map": _generic("map.Map", ["K@plain", "V@any"]),
+        # D-61: a key is a plain value or a String (compared by content, copied into the map's region)
+        "types": {"Map": _generic("map.Map", ["K@key", "V@any"]),
                   "KeyMissing": _err("map.KeyMissing", ("missing", None))},
         "targets": {},
     },
@@ -545,8 +548,9 @@ LIBRARY: dict[str, dict] = {
 }
 
 
-def generic_members(generic: str, inst: str, args: list[str], plain) -> dict[str, Sig]:
-    """Call targets of an instantiated library generic (LR-24, LR-25, LR-33)."""
+def generic_members(generic: str, inst: str, args: list[str], plain, index: Optional[str] = None) -> dict[str, Sig]:
+    """Call targets of an instantiated library generic (LR-24, LR-25, LR-33). `index` is the alias that
+    indexes a list type (D-60): its positions are then that alias, not `Int64`."""
     def own_mode(t: str) -> str:
         return "copied" if plain(t) else "owned"
 
@@ -555,25 +559,31 @@ def generic_members(generic: str, inst: str, args: list[str], plain) -> dict[str
 
     if generic == "list.List":
         item = args[0]
-        return {
+        position = index or "Int64"
+        members = {
             "new": Sig((_RG,), inst, "region"),
             "append": Sig((P("list", inst, "borrowedMutable"), P("item", item, own_mode(item)))),
-            "get": Sig((P("list", inst, "borrowed"), P("index", "Int64", "copied")), item,
+            "get": Sig((P("list", inst, "borrowed"), P("index", position, "copied")), item,
                        raises="list.IndexOutOfRange", borrows=None if plain(item) else "list"),
-            "set": Sig((P("list", inst, "borrowedMutable"), P("index", "Int64", "copied"), P("item", item, own_mode(item))),
+            "set": Sig((P("list", inst, "borrowedMutable"), P("index", position, "copied"), P("item", item, own_mode(item))),
                        raises="list.IndexOutOfRange"),
             "length": Sig((P("list", inst, "borrowed"),), "Int64"),
             "clear": Sig((P("list", inst, "borrowedMutable"),)),
         }
+        if index is not None:
+            # D-60: the one source of an index: append an item and receive its position
+            members["appendIndexed"] = Sig((P("list", inst, "borrowedMutable"), P("item", item, own_mode(item))), index)
+        return members
     if generic == "map.Map":
         key, value = args
+        kmode = read_mode(key)  # D-61: a String key is lent; `put` copies it into the map's region
         return {
             "new": Sig((_RG,), inst, "region"),
-            "put": Sig((P("map", inst, "borrowedMutable"), P("key", key, "copied"), P("value", value, own_mode(value)))),
-            "get": Sig((P("map", inst, "borrowed"), P("key", key, "copied")), value, raises="map.KeyMissing",
+            "put": Sig((P("map", inst, "borrowedMutable"), P("key", key, kmode), P("value", value, own_mode(value)))),
+            "get": Sig((P("map", inst, "borrowed"), P("key", key, kmode)), value, raises="map.KeyMissing",
                        borrows=None if plain(value) else "map"),
-            "contains": Sig((P("map", inst, "borrowed"), P("key", key, "copied")), "Bool"),
-            "remove": Sig((P("map", inst, "borrowedMutable"), P("key", key, "copied")), raises="map.KeyMissing"),
+            "contains": Sig((P("map", inst, "borrowed"), P("key", key, kmode)), "Bool"),
+            "remove": Sig((P("map", inst, "borrowedMutable"), P("key", key, kmode)), raises="map.KeyMissing"),
             "length": Sig((P("map", inst, "borrowed"),), "Int64"),
         }
     if generic == "set.Set":
@@ -608,3 +618,13 @@ def generic_members(generic: str, inst: str, args: list[str], plain) -> dict[str
 def type_param_name(canon: str) -> str:
     """`T@plain` -> `T`."""
     return canon.split("@", 1)[0]
+
+
+def fits_constraint(param: str, arg: str, plain) -> bool:
+    """Whether type argument `arg` meets the constraint of type parameter `param`: `@plain` admits plain
+    values, `@key` (a map's key, D-61) plain values and `String`, `@any` every type."""
+    if param.endswith("@plain"):
+        return plain(arg)
+    if param.endswith("@key"):
+        return arg == "String" or plain(arg)
+    return True

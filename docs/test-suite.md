@@ -11,8 +11,8 @@ Run the suite with `python -m pytest tests/test_suite.py`. How cases are written
 
 | Status | Meaning | Items |
 | --- | --- | --- |
-| **tested** | a program runs (or traps, or its tests run) and its output is checked | 375 |
-| **rejected** | the language forbids it, and a negative case proves the checker reports it | 43 |
+| **tested** | a program runs (or traps, or its tests run) and its output is checked | 376 |
+| **rejected** | the language forbids it, and a negative case proves the checker reports it | 42 |
 | **static** | the checker accepts and checks it, but the backend refuses to run it yet (R901); the case asserts that refusal, so it fails as soon as the backend learns the feature | 0 |
 | **by design** | absent on purpose; the note says what to write instead | 31 |
 | **gap** | wanted, not there yet; the note says what is missing | 0 |
@@ -59,15 +59,15 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Structures / Records | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), `record-missing-field`, `record-unknown-field`, `table-missing-cell` |   |
 | Enumerations | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `enum-unknown-variant` |   |
 | Unions | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [shapes](../tests/suite/programs/02-types/shapes.sem), `enum-unknown-variant`, `enum-payload-type` | Enums with payloads are the tagged unions; untagged unions do not exist. |
-| Maps / Dictionaries | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
+| Maps / Dictionaries | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem), [trees](../tests/suite/programs/08-strings-collections/trees.sem), `map-key-not-plain`, `map-text-key-copied`, `map-key-wrong-item-type` |   |
 | Sets | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
 | Optional / Nullable types | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [shapes](../tests/suite/programs/02-types/shapes.sem), `option-wrong-payload` |   |
 | Result types | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [errors](../tests/suite/programs/10-errors/errors.sem) |   |
 | Generic types | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `generic-instance-arity` |   |
 | User-defined types | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `type-wrong-case` |   |
-| Recursive types | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), `recursive-type-by-value` |   |
+| Recursive types | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [trees](../tests/suite/programs/08-strings-collections/trees.sem), `recursive-type-by-value`, `recursive-type-through-list` |   |
 | Function types | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `reference-signature-mismatch` |   |
-| Type aliases | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `alias-is-distinct` |   |
+| Type aliases | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), [trees](../tests/suite/programs/08-strings-collections/trees.sem), `alias-is-distinct`, `index-literal`, `index-from-integer`, `index-of-a-map`, `index-not-int64`, `index-alias-twice`, `append-indexed-without-index` |   |
 | Type conversions | tested | [integers](../tests/suite/programs/02-types/integers.sem), [trap-byte-out-of-range](../tests/suite/programs/03-operators/trap-byte-out-of-range.sem), [trap-nan-to-integer](../tests/suite/programs/03-operators/trap-nan-to-integer.sem), [trap-narrowing-out-of-range](../tests/suite/programs/03-operators/trap-narrowing-out-of-range.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Type compatibility | rejected | `no-implicit-widening`, `table-cell-wrong-type` |   |
 
@@ -147,7 +147,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Tail calls | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) | Tail recursion runs (fibonacci in the recursion case) but is not guaranteed to reuse the frame; `maxRecursion` bounds the depth either way. |
 | Function composition | tested | [functions](../tests/suite/programs/05-functions/functions.sem) |   |
 | Parameter passing by value | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `operator-wrong-mode` |   |
-| Parameter passing by reference | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `change-through-read-loan`, `by-reference-needs-mutable-loan`, `task-wrong-loan-mode` |   |
+| Parameter passing by reference | tested | [functions](../tests/suite/programs/05-functions/functions.sem), `map-text-key-copied`, `change-through-read-loan`, `by-reference-needs-mutable-loan`, `task-wrong-loan-mode` |   |
 
 ## 6. Recursion
 
@@ -158,7 +158,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Mutual recursion | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem), `mutual-recursion-undeclared` |   |
 | Tail recursion | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
 | Nested recursion | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
-| Recursive data structures | rejected | `recursive-type-by-value` |   |
+| Recursive data structures | tested | [trees](../tests/suite/programs/08-strings-collections/trees.sem), `recursive-type-by-value`, `recursive-type-through-list` |   |
 | Base-case termination | tested | [recursion](../tests/suite/programs/06-recursion/recursion.sem) |   |
 | Maximum recursion depth | tested | [trap-recursion-depth](../tests/suite/programs/06-recursion/trap-recursion-depth.sem), `recursion-undeclared`, `recursion-through-reference` |   |
 | Stack overflow detection | tested | [trap-recursion-depth](../tests/suite/programs/06-recursion/trap-recursion-depth.sem), `test_stress_stack_exhaustion_traps` |   |
@@ -188,7 +188,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Memory leak detection | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `owned-never-released`, `leak-on-error-path` |   |
 | Double-free prevention | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `double-give`, `give-deferred` |   |
 | Use-after-free prevention | tested | [resources](../tests/suite/programs/07-memory/resources.sem), `double-give`, `use-after-give` |   |
-| Dangling references | rejected | `double-give`, `use-after-give`, `give-while-lent-to-task`, `return-borrowed-resource` |   |
+| Dangling references | rejected | `index-literal`, `double-give`, `use-after-give`, `give-while-lent-to-task`, `return-borrowed-resource` |   |
 | Null pointer handling | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), `option-wrong-payload` | No null: absence is `option.Option` with `absent`, matched explicitly. |
 | Out-of-bounds memory access | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem) |   |
 | Buffer overflow protection | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem) |   |
@@ -217,7 +217,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Array bounds checking | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [bounds](../tests/suite/programs/08-strings-collections/bounds.sem), `list-index-unchecked` |   |
 | Array resizing | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem) |   |
 | Multidimensional arrays | tested | [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
-| Collection iteration | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), `append-during-foreach` |   |
+| Collection iteration | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [table](../tests/suite/programs/08-strings-collections/table.sem), [trees](../tests/suite/programs/08-strings-collections/trees.sem), `map-key-wrong-item-type`, `map-changed-while-listed`, `append-during-foreach` |   |
 | Collection insertion | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), `list-wrong-item-type` |   |
 | Collection removal | tested | [region-list](../tests/suite/programs/07-memory/region-list.sem), [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
 | Collection sorting | tested | [sorting](../tests/suite/programs/08-strings-collections/sorting.sem) |   |
@@ -280,7 +280,7 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | Futures / Promises | tested | [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem) |   |
 | Task scheduling | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem), `group-not-joined` |   |
 | Parallel execution | tested | [parallel](../tests/suite/programs/11-concurrency/parallel.sem), [tasks-and-channels](../tests/suite/programs/11-concurrency/tasks-and-channels.sem) | Each task runs on its own thread (D-31); the parallel case measures two pauses overlapping and a group of two running four tasks in two waves. |
-| Shared mutable state | rejected | `give-while-lent-to-task`, `two-tasks-lendMutable` |   |
+| Shared mutable state | rejected | `map-changed-while-listed`, `give-while-lent-to-task`, `two-tasks-lendMutable` |   |
 | Mutexes | by design |   | No shared mutable state between tasks: values are copied, lent read-only, or given. Coordination is by channels. |
 | Locks | by design |   | See mutexes: no shared mutable state, so no locks. |
 | Atomic operations | by design |   | See mutexes: no shared mutable state, so no atomics. |
@@ -350,12 +350,12 @@ Evidence: a program case links to its file; a `mutation` id names an entry in `t
 | --- | --- | --- | --- |
 | Static type checking | rejected | `operator-type-mismatch` |   |
 | Type inference | rejected | `var-no-inference` |   |
-| Type mismatch detection | rejected | `var-annotation-mismatch`, `string-is-not-integer` |   |
+| Type mismatch detection | rejected | `var-annotation-mismatch`, `index-from-integer`, `string-is-not-integer` |   |
 | Implicit conversions | rejected | `no-implicit-widening`, `float-into-integer` |   |
 | Explicit conversions | tested | [integers](../tests/suite/programs/02-types/integers.sem), [library-tour](../tests/suite/programs/19-stdlib/library-tour.sem) |   |
 | Generic functions | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-called-directly` |   |
 | Generic structures | tested | [shapes](../tests/suite/programs/02-types/shapes.sem), `generic-instance-arity` |   |
-| Generic constraints | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-wrong-argument`, `generic-constraint-isolated` |   |
+| Generic constraints | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `map-key-not-plain`, `generic-wrong-argument`, `generic-constraint-isolated` |   |
 | Type parameter inference | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem), `generic-called-directly` |   |
 | Nested generics | tested | [payloads](../tests/suite/programs/02-types/payloads.sem), [collections](../tests/suite/programs/08-strings-collections/collections.sem) |   |
 | Recursive generics | tested | [generics](../tests/suite/programs/14-types-generics/generics.sem) |   |
