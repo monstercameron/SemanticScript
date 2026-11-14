@@ -2130,6 +2130,43 @@ Decisions (by delegation):
   simplify syntax, make sure it has a consistent pattern"; D-47 is that
   consistency pass.
 
+- **D-50** Task state is checked on every path, not on some: a `join` or
+  `cancel` needs its task started and not yet joined on each path that
+  reaches it (R510). A block reached both after a join and without one is
+  rejected, so no path joins a task twice or joins one it never started.
+- **D-51** After a trap no program code runs, so deferred cleanups are
+  skipped: the state that trapped may be the state they would act on. The
+  runtime then releases what the program holds outside it (files flushed and
+  closed, connections and listeners closed, child processes stopped) and
+  says how many in the trap message, before exiting with 70.
+- **D-52** Independently opened handles can name one file, so the runtime
+  guards it: a file, under any name (links and `..` resolved), is open for
+  writing by at most one handle and never while another reads it; readers
+  share it. A conflicting `open*`, `readAll`, `writeAll`, or `remove` fails
+  with the new `fs.FileError.busy`.
+- **D-53** Declaring authority does not grant it. `refined run`, `test`,
+  `bench`, and executable builds start only when every `allows` row of
+  build.sem is listed in the project's `authority.approved`, written by
+  `refined approve` after review; otherwise they stop with exit 3 naming the
+  rows. The REPL approves its own session (its user typed the capabilities)
+  and prints what it grants; the test harness approves the programs it
+  generates.
+- **D-54** A dropped failure states exactly what it drops. Every call, task,
+  and task group has `suppresses` rows: `none` when its failure is handled,
+  and every variant of its error type when it is discarded (both `ifError`
+  arms to one block, or a cleanup under `onError suppress`), next to the
+  `rationale`. A variant added to an error type later breaks every discard
+  that does not name it.
+- **D-55** Allocation a program can recover from: `arena.remaining(region)`
+  and `arena.ensure(region, bytes)` (failing with
+  `arena.ArenaError.exhausted`, carrying the bytes left) let a program ask
+  before a step that allocates. Passing a region's capacity unasked still
+  traps (D-49).
+- **D-56** A loop's bound may be computed at run time, such as a list's
+  length: any immutable `Int64` value set on every path into the loop before
+  its first pass, back edges included (R507). A value first set inside the
+  loop cannot bound it.
+
 The guarantees these rules add up to are stated, with the executable checks
 that prove each one, in `docs/safety-guarantees.md`, generated from
 `tests/suite/conformance.py`.
@@ -2363,6 +2400,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | Part 7 | Test suite and generated coverage map (owner); fixes for what it found; decisions D-24 to D-26 (by delegation) |
 | 2026-11-14 | Part 10 | Adversarial refinement: loan, task, scope, and test holes closed; decisions D-38 to D-41 (by delegation) |
 | 2026-11-14 | D-43 to D-47 | Exclusive handle loans, cancel-then-join, table loop bounds, no exported capabilities, a conformance suite; one consistent syntax pattern (owner) |
+| 2026-11-14 | D-48 to D-56 | Group failure propagation, region trap rationale, task state on every path, release on trap, one writer per file, approved authority, exact suppression, recoverable allocation, run-time loop bounds |
 
 ## Parking lot
 

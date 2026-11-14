@@ -134,6 +134,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `cleanedBy` | exactly one | `none`<br>`<name>` |
 | `borrows` | exactly one | `none`<br>`<name>` |
 | `catch` | exactly one | `none`<br>`<name> <Type>` |
+| `suppresses` | one or more (`none` alone when empty) | `none`<br>`<Enum.variant>` |
 
 ## `task`
 
@@ -148,6 +149,7 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `cleanedBy` | exactly one | `none`<br>`<name>` |
 | `borrows` | exactly one | `none`<br>`<name>` |
 | `catch` | exactly one | `none`<br>`<name> <Type>` |
+| `suppresses` | one or more (`none` alone when empty) | `none`<br>`<Enum.variant>` |
 
 ## `cleanup`
 
@@ -174,4 +176,5 @@ Every row is `<subject> <predicate> <payload>`. Context rows (`purpose`, `invari
 | `in` | exactly one | `<name>` |
 | `maxTasks` | exactly one | `<integer>` |
 | `catch` | exactly one | `none`<br>`<name> <Type>` |
+| `suppresses` | one or more (`none` alone when empty) | `none`<br>`<Enum.variant>` |
 

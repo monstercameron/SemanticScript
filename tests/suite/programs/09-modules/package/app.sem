@@ -41,6 +41,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -73,6 +74,7 @@ computeArea ownedBy none
 computeArea cleanedBy none
 computeArea borrows none
 computeArea catch none
+computeArea suppresses none
 
 showArea is call
 showArea in main
@@ -83,3 +85,4 @@ showArea ownedBy none
 showArea cleanedBy none
 showArea borrows none
 showArea catch none
+showArea suppresses none

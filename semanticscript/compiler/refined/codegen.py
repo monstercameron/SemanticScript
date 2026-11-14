@@ -72,6 +72,7 @@ CALLBACKS = {
     "refined_fail": ir.FunctionType(ir.VoidType(), [PTR, I64, PTR, I64]),
     "refined_region_new": ir.FunctionType(PTR, [I64, PTR, I64]),
     "refined_region_alloc": ir.FunctionType(PTR, [PTR, I64]),
+    "refined_region_remaining": ir.FunctionType(I64, [PTR]),
     "refined_region_free": ir.FunctionType(ir.VoidType(), [PTR]),
     "refined_write_float": ir.FunctionType(I32, [I32, F64, I32]),
     "refined_format_int": ir.FunctionType(PTR, [I64, PTR, I64.as_pointer()]),
@@ -1057,6 +1058,14 @@ class OpGen:
                 phi.add_incoming(I8(0), start)
                 err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), idx, 1)
                 return phi, b.not_(inside), err
+        if mod == "arena":
+            left = b.call(cb["refined_region_remaining"], [a[0]])
+            if name == "remaining":
+                return left, None, None
+            if name == "ensure":
+                short = b.icmp_signed(">", a[1], left)
+                err = b.insert_value(ir.Constant(ENUM, [I32(0), I64(0)]), left, 1)  # exhausted, with what is left
+                return None, short, err
         if mod == "byte":
             v = a[0]
 

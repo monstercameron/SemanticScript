@@ -59,6 +59,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
@@ -158,6 +159,7 @@ passesDone ownedBy none
 passesDone cleanedBy none
 passesDone borrows none
 passesDone catch none
+passesDone suppresses none
 
 pairsDone is call
 pairsDone in sortInPlace
@@ -169,6 +171,7 @@ pairsDone ownedBy none
 pairsDone cleanedBy none
 pairsDone borrows none
 pairsDone catch none
+pairsDone suppresses none
 
 nextPosition is call
 nextPosition in sortInPlace
@@ -180,6 +183,7 @@ nextPosition ownedBy none
 nextPosition cleanedBy none
 nextPosition borrows none
 nextPosition catch none
+nextPosition suppresses none
 
 readLeft is call
 readLeft in sortInPlace
@@ -191,6 +195,7 @@ readLeft ownedBy none
 readLeft cleanedBy none
 readLeft borrows none
 readLeft catch leftError list.IndexOutOfRange
+readLeft suppresses none
 
 readRight is call
 readRight in sortInPlace
@@ -202,6 +207,7 @@ readRight ownedBy none
 readRight cleanedBy none
 readRight borrows none
 readRight catch rightError list.IndexOutOfRange
+readRight suppresses none
 
 outOfOrder is call
 outOfOrder in sortInPlace
@@ -213,6 +219,7 @@ outOfOrder ownedBy none
 outOfOrder cleanedBy none
 outOfOrder borrows none
 outOfOrder catch none
+outOfOrder suppresses none
 
 writeLeft is call
 writeLeft in sortInPlace
@@ -225,6 +232,7 @@ writeLeft ownedBy none
 writeLeft cleanedBy none
 writeLeft borrows none
 writeLeft catch writeLeftError list.IndexOutOfRange
+writeLeft suppresses none
 
 writeRight is call
 writeRight in sortInPlace
@@ -237,6 +245,7 @@ writeRight ownedBy none
 writeRight cleanedBy none
 writeRight borrows none
 writeRight catch writeRightError list.IndexOutOfRange
+writeRight suppresses none
 
 countPass is call
 countPass in sortInPlace
@@ -248,6 +257,7 @@ countPass ownedBy none
 countPass cleanedBy none
 countPass borrows none
 countPass catch none
+countPass suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -339,6 +349,7 @@ makeNumbers ownedBy scratch
 makeNumbers cleanedBy none
 makeNumbers borrows none
 makeNumbers catch none
+makeNumbers suppresses none
 
 appendFive is call
 appendFive in main
@@ -350,6 +361,7 @@ appendFive ownedBy none
 appendFive cleanedBy none
 appendFive borrows none
 appendFive catch none
+appendFive suppresses none
 
 appendThree is call
 appendThree in main
@@ -361,6 +373,7 @@ appendThree ownedBy none
 appendThree cleanedBy none
 appendThree borrows none
 appendThree catch none
+appendThree suppresses none
 
 appendNine is call
 appendNine in main
@@ -372,6 +385,7 @@ appendNine ownedBy none
 appendNine cleanedBy none
 appendNine borrows none
 appendNine catch none
+appendNine suppresses none
 
 appendOne is call
 appendOne in main
@@ -383,6 +397,7 @@ appendOne ownedBy none
 appendOne cleanedBy none
 appendOne borrows none
 appendOne catch none
+appendOne suppresses none
 
 appendSeven is call
 appendSeven in main
@@ -394,6 +409,7 @@ appendSeven ownedBy none
 appendSeven cleanedBy none
 appendSeven borrows none
 appendSeven catch none
+appendSeven suppresses none
 
 sortThem is call
 sortThem in main
@@ -404,6 +420,7 @@ sortThem ownedBy none
 sortThem cleanedBy none
 sortThem borrows none
 sortThem catch sortError list.IndexOutOfRange
+sortThem suppresses none
 
 showItem is call
 showItem in main
@@ -414,6 +431,7 @@ showItem ownedBy none
 showItem cleanedBy none
 showItem borrows none
 showItem catch none
+showItem suppresses none
 
 searchDone is call
 searchDone in main
@@ -425,6 +443,7 @@ searchDone ownedBy none
 searchDone cleanedBy none
 searchDone borrows none
 searchDone catch none
+searchDone suppresses none
 
 readProbe is call
 readProbe in main
@@ -436,6 +455,7 @@ readProbe ownedBy none
 readProbe cleanedBy none
 readProbe borrows none
 readProbe catch probeError list.IndexOutOfRange
+readProbe suppresses none
 
 isSeven is call
 isSeven in main
@@ -447,6 +467,7 @@ isSeven ownedBy none
 isSeven cleanedBy none
 isSeven borrows none
 isSeven catch none
+isSeven suppresses none
 
 advanceProbe is call
 advanceProbe in main
@@ -458,6 +479,7 @@ advanceProbe ownedBy none
 advanceProbe cleanedBy none
 advanceProbe borrows none
 advanceProbe catch none
+advanceProbe suppresses none
 
 showProbe is call
 showProbe in main
@@ -468,3 +490,4 @@ showProbe ownedBy none
 showProbe cleanedBy none
 showProbe borrows none
 showProbe catch none
+showProbe suppresses none

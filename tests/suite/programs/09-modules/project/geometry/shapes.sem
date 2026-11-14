@@ -39,6 +39,7 @@ readWidth ownedBy none
 readWidth cleanedBy none
 readWidth borrows none
 readWidth catch none
+readWidth suppresses none
 
 hidden is operation
 hidden purpose "A helper the module does not export"

@@ -61,6 +61,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -72,6 +73,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -105,6 +107,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 fileAccess is capability
 fileAccess purpose "Authority to read and write files whose names start with suite-"
@@ -175,6 +178,7 @@ main at refused case fs.FileError.exists bind none none goto reportExists
 main at refused case fs.FileError.tooLarge bind none none goto failed
 main at refused case fs.FileError.timedOut bind none none goto failed
 main at refused case fs.FileError.cancelled bind none none goto failed
+main at refused case fs.FileError.busy bind none none goto failed
 main at refused case fs.FileError.failed bind code Int32 goto failed
 main at reportExists do printExists
 main at reportExists do checkThere
@@ -195,6 +199,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 toBytes is call
 toBytes in main
@@ -205,6 +210,7 @@ toBytes ownedBy none
 toBytes cleanedBy none
 toBytes borrows content
 toBytes catch none
+toBytes suppresses none
 
 createIt is call
 createIt in main
@@ -215,6 +221,7 @@ createIt ownedBy main
 createIt cleanedBy none
 createIt borrows none
 createIt catch createError fs.FileError
+createIt suppresses none
 
 writeIt is task
 writeIt in main
@@ -227,6 +234,7 @@ writeIt ownedBy none
 writeIt cleanedBy none
 writeIt borrows none
 writeIt catch writeError fs.FileError
+writeIt suppresses none
 
 closeFile is call
 closeFile in main
@@ -237,6 +245,7 @@ closeFile ownedBy none
 closeFile cleanedBy none
 closeFile borrows none
 closeFile catch closeError fs.FileError
+closeFile suppresses none
 
 closeFailed is call
 closeFailed rationale "The write already failed; the case fails either way"
@@ -248,6 +257,14 @@ closeFailed ownedBy none
 closeFailed cleanedBy none
 closeFailed borrows none
 closeFailed catch closeFailedError fs.FileError
+closeFailed suppresses fs.FileError.notFound
+closeFailed suppresses fs.FileError.denied
+closeFailed suppresses fs.FileError.exists
+closeFailed suppresses fs.FileError.tooLarge
+closeFailed suppresses fs.FileError.timedOut
+closeFailed suppresses fs.FileError.cancelled
+closeFailed suppresses fs.FileError.busy
+closeFailed suppresses fs.FileError.failed
 
 createAgain is call
 createAgain in main
@@ -258,6 +275,7 @@ createAgain ownedBy main
 createAgain cleanedBy none
 createAgain borrows none
 createAgain catch againError fs.FileError
+createAgain suppresses none
 
 closeExtra is call
 closeExtra rationale "Creating the file twice should have failed; the case fails either way"
@@ -269,6 +287,14 @@ closeExtra ownedBy none
 closeExtra cleanedBy none
 closeExtra borrows none
 closeExtra catch closeExtraError fs.FileError
+closeExtra suppresses fs.FileError.notFound
+closeExtra suppresses fs.FileError.denied
+closeExtra suppresses fs.FileError.exists
+closeExtra suppresses fs.FileError.tooLarge
+closeExtra suppresses fs.FileError.timedOut
+closeExtra suppresses fs.FileError.cancelled
+closeExtra suppresses fs.FileError.busy
+closeExtra suppresses fs.FileError.failed
 
 printExists is call
 printExists in main
@@ -279,6 +305,7 @@ printExists ownedBy none
 printExists cleanedBy none
 printExists borrows none
 printExists catch none
+printExists suppresses none
 
 checkThere is call
 checkThere in main
@@ -289,6 +316,7 @@ checkThere ownedBy none
 checkThere cleanedBy none
 checkThere borrows none
 checkThere catch none
+checkThere suppresses none
 
 printThere is call
 printThere in main
@@ -299,6 +327,7 @@ printThere ownedBy none
 printThere cleanedBy none
 printThere borrows none
 printThere catch none
+printThere suppresses none
 
 removeIt is call
 removeIt in main
@@ -309,6 +338,7 @@ removeIt ownedBy none
 removeIt cleanedBy none
 removeIt borrows none
 removeIt catch removeError fs.FileError
+removeIt suppresses none
 
 checkGone is call
 checkGone in main
@@ -319,6 +349,7 @@ checkGone ownedBy none
 checkGone cleanedBy none
 checkGone borrows none
 checkGone catch none
+checkGone suppresses none
 
 printGone is call
 printGone in main
@@ -329,3 +360,4 @@ printGone ownedBy none
 printGone cleanedBy none
 printGone borrows none
 printGone catch none
+printGone suppresses none

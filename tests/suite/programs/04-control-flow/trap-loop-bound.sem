@@ -56,6 +56,7 @@ below ownedBy none
 below cleanedBy none
 below borrows none
 below catch none
+below suppresses none
 
 addOne is call
 addOne in main
@@ -67,3 +68,4 @@ addOne ownedBy none
 addOne cleanedBy none
 addOne borrows none
 addOne catch none
+addOne suppresses none

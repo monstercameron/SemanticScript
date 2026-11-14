@@ -49,6 +49,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 environmentReader is capability
 environmentReader purpose "Authority to read environment variables"
@@ -108,6 +109,7 @@ readPath ownedBy text
 readPath cleanedBy none
 readPath borrows none
 readPath catch pathError environment.MissingError
+readPath suppresses none
 
 showFound is call
 showFound in main
@@ -118,6 +120,7 @@ showFound ownedBy none
 showFound cleanedBy none
 showFound borrows none
 showFound catch none
+showFound suppresses none
 
 readUnset is call
 readUnset in main
@@ -129,6 +132,7 @@ readUnset ownedBy text
 readUnset cleanedBy none
 readUnset borrows none
 readUnset catch unsetError environment.MissingError
+readUnset suppresses none
 
 showMissing is call
 showMissing in main
@@ -139,3 +143,4 @@ showMissing ownedBy none
 showMissing cleanedBy none
 showMissing borrows none
 showMissing catch none
+showMissing suppresses none

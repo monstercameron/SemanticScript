@@ -49,3 +49,4 @@ printGreeting ownedBy none
 printGreeting cleanedBy none
 printGreeting borrows none
 printGreeting catch printError console.WriteError
+printGreeting suppresses none

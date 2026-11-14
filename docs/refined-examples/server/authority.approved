@@ -1,0 +1,4 @@
+# Authority approved for this project (`refined approve`). A program runs only with authority
+# listed here; build.sem asking for more stops `refined run`, `test`, and executable builds.
+listen net.tcp "127.0.0.1:8080"
+readWrite net.connection none

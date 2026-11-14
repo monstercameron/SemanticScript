@@ -53,6 +53,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
@@ -94,6 +95,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -105,6 +107,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 pick is operation
 pick purpose "Return the first value when the flag is true, else the second"
@@ -178,6 +181,7 @@ chooseInt ownedBy none
 chooseInt cleanedBy none
 chooseInt borrows none
 chooseInt catch none
+chooseInt suppresses none
 
 printChosen is call
 printChosen in main
@@ -188,6 +192,7 @@ printChosen ownedBy none
 printChosen cleanedBy none
 printChosen borrows none
 printChosen catch none
+printChosen suppresses none
 
 chooseBool is call
 chooseBool in main
@@ -200,6 +205,7 @@ chooseBool ownedBy none
 chooseBool cleanedBy none
 chooseBool borrows none
 chooseBool catch none
+chooseBool suppresses none
 
 printChosenFlag is call
 printChosenFlag in main
@@ -210,3 +216,4 @@ printChosenFlag ownedBy none
 printChosenFlag cleanedBy none
 printChosenFlag borrows none
 printChosenFlag catch none
+printChosenFlag suppresses none

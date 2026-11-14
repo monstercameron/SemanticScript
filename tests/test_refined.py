@@ -308,6 +308,7 @@ choose ownedBy none
 choose cleanedBy none
 choose borrows none
 choose catch none
+choose suppresses none
 
 makePoint is call
 makePoint in useBoth
@@ -319,6 +320,7 @@ makePoint ownedBy none
 makePoint cleanedBy none
 makePoint borrows none
 makePoint catch none
+makePoint suppresses none
 
 movePoint is call
 movePoint in useBoth
@@ -330,6 +332,7 @@ movePoint ownedBy none
 movePoint cleanedBy none
 movePoint borrows none
 movePoint catch none
+movePoint suppresses none
 """
 
 

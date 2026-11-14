@@ -58,6 +58,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -109,6 +110,7 @@ showMax ownedBy none
 showMax cleanedBy none
 showMax borrows none
 showMax catch none
+showMax suppresses none
 
 showMin is call
 showMin in main
@@ -119,6 +121,7 @@ showMin ownedBy none
 showMin cleanedBy none
 showMin borrows none
 showMin catch none
+showMin suppresses none
 
 widen32 is call
 widen32 in main
@@ -129,6 +132,7 @@ widen32 ownedBy none
 widen32 cleanedBy none
 widen32 borrows none
 widen32 catch none
+widen32 suppresses none
 
 show32 is call
 show32 in main
@@ -139,6 +143,7 @@ show32 ownedBy none
 show32 cleanedBy none
 show32 borrows none
 show32 catch none
+show32 suppresses none
 
 widenByte is call
 widenByte in main
@@ -149,6 +154,7 @@ widenByte ownedBy none
 widenByte cleanedBy none
 widenByte borrows none
 widenByte catch none
+widenByte suppresses none
 
 showByte is call
 showByte in main
@@ -159,6 +165,7 @@ showByte ownedBy none
 showByte cleanedBy none
 showByte borrows none
 showByte catch none
+showByte suppresses none
 
 widenLetter is call
 widenLetter in main
@@ -169,6 +176,7 @@ widenLetter ownedBy none
 widenLetter cleanedBy none
 widenLetter borrows none
 widenLetter catch none
+widenLetter suppresses none
 
 showLetter is call
 showLetter in main
@@ -179,6 +187,7 @@ showLetter ownedBy none
 showLetter cleanedBy none
 showLetter borrows none
 showLetter catch none
+showLetter suppresses none
 
 narrow is call
 narrow in main
@@ -189,6 +198,7 @@ narrow ownedBy none
 narrow cleanedBy none
 narrow borrows none
 narrow catch none
+narrow suppresses none
 
 widenNarrowed is call
 widenNarrowed in main
@@ -199,6 +209,7 @@ widenNarrowed ownedBy none
 widenNarrowed cleanedBy none
 widenNarrowed borrows none
 widenNarrowed catch none
+widenNarrowed suppresses none
 
 showNarrowed is call
 showNarrowed in main
@@ -209,3 +220,4 @@ showNarrowed ownedBy none
 showNarrowed cleanedBy none
 showNarrowed borrows none
 showNarrowed catch none
+showNarrowed suppresses none

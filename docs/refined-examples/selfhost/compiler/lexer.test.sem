@@ -33,6 +33,7 @@ scanFirst ownedBy none
 scanFirst cleanedBy none
 scanFirst borrows none
 scanFirst catch none
+scanFirst suppresses none
 
 readLength is call
 readLength in scanWordTest
@@ -43,6 +44,7 @@ readLength ownedBy none
 readLength cleanedBy none
 readLength borrows none
 readLength catch none
+readLength suppresses none
 
 expectThree is call
 expectThree in scanWordTest
@@ -54,6 +56,7 @@ expectThree ownedBy none
 expectThree cleanedBy none
 expectThree borrows none
 expectThree catch none
+expectThree suppresses none
 
 classifyWordTest is test
 classifyWordTest purpose "The word `is` is classified as the keyword `is`, not as a plain word"
@@ -86,6 +89,7 @@ classifyIs ownedBy none
 classifyIs cleanedBy none
 classifyIs borrows none
 classifyIs catch none
+classifyIs suppresses none
 
 sameKind is call
 sameKind in classifyWordTest
@@ -97,6 +101,7 @@ sameKind ownedBy none
 sameKind cleanedBy none
 sameKind borrows none
 sameKind catch none
+sameKind suppresses none
 
 expectSame is call
 expectSame in classifyWordTest
@@ -107,3 +112,4 @@ expectSame ownedBy none
 expectSame cleanedBy none
 expectSame borrows none
 expectSame catch none
+expectSame suppresses none

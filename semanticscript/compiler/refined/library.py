@@ -313,7 +313,8 @@ LIBRARY: dict[str, dict] = {
         "types": {
             "FileHandle": TypeInfo("fs.FileHandle", "resource", False),
             "FileError": _err("fs.FileError", ("notFound", None), ("denied", None), ("exists", None),
-                              ("tooLarge", None), ("timedOut", None), ("cancelled", None), ("failed", "Int32")),
+                              ("tooLarge", None), ("timedOut", None), ("cancelled", None), ("busy", None),
+                              ("failed", "Int32")),
             "DirectoryListing": TypeInfo("fs.DirectoryListing", "opaque", False),
             "EntryIndexError": _err("fs.EntryIndexError", ("outOfRange", "Int64")),
         },
@@ -437,6 +438,16 @@ LIBRARY: dict[str, dict] = {
             "open": Sig((P("name", "String", "borrowed"),), "ffi.Library", "caller", "ffi.LoadError",
                         E("load ffi.libraries"), scoped="name"),
             "close": Sig((P("library", "ffi.Library", "owned"),), effects=E("load ffi.libraries")),
+        },
+    },
+    # D-55: allocation a program can recover from. A region's capacity is still a hard limit (passing it traps,
+    # D-49); these let a program ask first and take its own path when the space is not there.
+    "arena": {
+        "types": {"ArenaError": _err("arena.ArenaError", ("exhausted", "Int64"))},
+        "targets": {
+            "remaining": Sig((P("region", "Region", "borrowed"),), "Int64"),
+            "ensure": Sig((P("region", "Region", "borrowed"), P("bytes", "Int64", "copied")),
+                          raises="arena.ArenaError"),
         },
     },
     "random": {

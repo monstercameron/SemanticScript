@@ -49,6 +49,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 fileAccess is capability
 fileAccess purpose "Authority over files whose names start with suite-"
@@ -120,6 +121,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 lockedBytes is call
 lockedBytes in main
@@ -130,6 +132,7 @@ lockedBytes ownedBy none
 lockedBytes cleanedBy none
 lockedBytes borrows abc
 lockedBytes catch none
+lockedBytes suppresses none
 
 writeLockFile is task
 writeLockFile in main
@@ -142,6 +145,7 @@ writeLockFile ownedBy none
 writeLockFile cleanedBy none
 writeLockFile borrows none
 writeLockFile catch writeLockError fs.FileError
+writeLockFile suppresses none
 
 openLockFile is call
 openLockFile in main
@@ -152,6 +156,7 @@ openLockFile ownedBy main
 openLockFile cleanedBy closeLockCleanup
 openLockFile borrows none
 openLockFile catch openLockError fs.FileError
+openLockFile suppresses none
 
 closeLockCleanup is cleanup
 closeLockCleanup rationale "A failed close at exit has nobody to report to"
@@ -169,6 +174,14 @@ closeLock ownedBy none
 closeLock cleanedBy none
 closeLock borrows none
 closeLock catch closeLockError fs.FileError
+closeLock suppresses fs.FileError.notFound
+closeLock suppresses fs.FileError.denied
+closeLock suppresses fs.FileError.exists
+closeLock suppresses fs.FileError.tooLarge
+closeLock suppresses fs.FileError.timedOut
+closeLock suppresses fs.FileError.cancelled
+closeLock suppresses fs.FileError.busy
+closeLock suppresses fs.FileError.failed
 
 takeLock is task
 takeLock in main
@@ -180,6 +193,7 @@ takeLock ownedBy none
 takeLock cleanedBy none
 takeLock borrows none
 takeLock catch lockError fs.FileError
+takeLock suppresses none
 
 printLocked is call
 printLocked in main
@@ -190,6 +204,7 @@ printLocked ownedBy none
 printLocked cleanedBy none
 printLocked borrows none
 printLocked catch none
+printLocked suppresses none
 
 releaseLock is call
 releaseLock in main
@@ -200,3 +215,4 @@ releaseLock ownedBy none
 releaseLock cleanedBy none
 releaseLock borrows none
 releaseLock catch unlockError fs.FileError
+releaseLock suppresses none

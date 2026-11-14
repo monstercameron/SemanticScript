@@ -64,6 +64,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 joinName is call
 joinName in main
@@ -76,6 +77,7 @@ joinName ownedBy text
 joinName cleanedBy none
 joinName borrows none
 joinName catch none
+joinName suppresses none
 
 newArguments is call
 newArguments in main
@@ -86,6 +88,7 @@ newArguments ownedBy text
 newArguments cleanedBy none
 newArguments borrows none
 newArguments catch none
+newArguments suppresses none
 
 runIt is task
 runIt in main
@@ -98,3 +101,4 @@ runIt ownedBy none
 runIt cleanedBy none
 runIt borrows none
 runIt catch runError process.RunError
+runIt suppresses none

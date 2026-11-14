@@ -10,13 +10,19 @@
 #   its outcome is observed, and a second failure is reported, not dropped.
 # - `report` is written through an exclusive loan (`lendMutable`): writing
 #   changes the handle's position, so no other activation may use it at once.
-# - The deferred cleanup closes `report` at every return after it is open; a
-#   failed close traps, since the report may be incomplete.
-# - Every allocation goes into `store`; passing its 65536 bytes traps before
-#   anything is written.
+# - A file open for writing cannot be opened again, by any name, until it is
+#   closed (D-52); so the report is closed on every path before it is read
+#   back, and a failed write still closes it before giving up.
+# - Every allocation goes into `store`. Before building the report line the
+#   program asks `store` for room (`arena.ensure`) and stops with exit 6 if it
+#   is short, instead of trapping halfway (D-55).
+# - Each dropped failure names exactly the variants it drops (`suppresses`).
+# - build.sem's authority is approved in authority.approved; asking for more
+#   stops the program before it starts (D-53).
 #
 # Exit codes: 0 done, 2 a line has a negative quantity, 3 the order is empty,
-# 4 the report file could not be written or read, 5 standard output failed.
+# 4 the report file could not be written or read, 5 standard output failed,
+# 6 no room left in `store` for the report.
 
 warehouse is module
 warehouse purpose "Price an order at list price and with a bulk discount, then write and read back a report"
@@ -25,6 +31,7 @@ warehouse imports standard.console
 warehouse imports standard.fs
 warehouse imports standard.string
 warehouse imports standard.time
+warehouse imports standard.arena
 warehouse imports pricing
 warehouse exports main
 
@@ -95,6 +102,8 @@ main label printTotals loopKind none
 main label printTotals within none
 main label printSecond loopKind none
 main label printSecond within none
+main label reserve loopKind none
+main label reserve within none
 main label compose loopKind none
 main label compose within none
 main label checkOld loopKind none
@@ -103,6 +112,10 @@ main label createNew loopKind none
 main label createNew within none
 main label opened loopKind none
 main label opened within none
+main label closeWritten loopKind none
+main label closeWritten within none
+main label closeAfterFailure loopKind none
+main label closeAfterFailure within none
 main label readBack loopKind none
 main label readBack within none
 main label decode loopKind none
@@ -125,6 +138,8 @@ main label fileFailed loopKind none
 main label fileFailed within none
 main label outputFailed loopKind none
 main label outputFailed within none
+main label noRoom loopKind none
+main label noRoom within none
 main let reportPath String "warehouse-report.txt" immutable
 main let listLabel String "list=" immutable
 main let discountLabel String " discounted=" immutable
@@ -135,6 +150,8 @@ main let badLineCode ExitCode 2 immutable
 main let emptyCode ExitCode 3 immutable
 main let fileCode ExitCode 4 immutable
 main let outputCode ExitCode 5 immutable
+main let noRoomCode ExitCode 6 immutable
+main let reportRoom Int64 512 immutable
 main let bothText String "the discount total failed too; the list total's failure decides the exit code" immutable
 main at begin do makeDeadline
 main at begin do makeLines
@@ -156,7 +173,9 @@ main at bothFailed branch ifError noteBoth goto listFailed else goto listFailed
 main at printTotals do printList
 main at printTotals branch ifError printList goto outputFailed else goto printSecond
 main at printSecond do printDiscount
-main at printSecond branch ifError printDiscount goto outputFailed else goto compose
+main at printSecond branch ifError printDiscount goto outputFailed else goto reserve
+main at reserve do askRoom
+main at reserve branch ifError askRoom goto noRoom else goto compose
 main at compose do listDigits
 main at compose do discountDigits
 main at compose do joinListLabel
@@ -172,13 +191,17 @@ main at checkOld case fs.FileError.exists bind none none goto fileFailed
 main at checkOld case fs.FileError.tooLarge bind none none goto fileFailed
 main at checkOld case fs.FileError.timedOut bind none none goto fileFailed
 main at checkOld case fs.FileError.cancelled bind none none goto fileFailed
+main at checkOld case fs.FileError.busy bind none none goto fileFailed
 main at checkOld case fs.FileError.failed bind removeCode Int32 goto fileFailed
 main at createNew do openReport
 main at createNew branch ifError openReport goto fileFailed else goto opened
-main at opened defer closeReportCleanup
 main at opened start writeReport into none
 main at opened join writeReport
-main at opened branch ifError writeReport goto fileFailed else goto readBack
+main at opened branch ifError writeReport goto closeAfterFailure else goto closeWritten
+main at closeWritten do closeReport
+main at closeWritten branch ifError closeReport goto fileFailed else goto readBack
+main at closeAfterFailure do closeFailedReport
+main at closeAfterFailure branch ifError closeFailedReport goto fileFailed else goto fileFailed
 main at readBack start readReport into none
 main at readBack join readReport
 main at readBack branch ifError readReport goto readFailed else goto decode
@@ -200,11 +223,13 @@ main at readFailed case fs.FileError.exists bind none none goto fileFailed
 main at readFailed case fs.FileError.tooLarge bind none none goto fileFailed
 main at readFailed case fs.FileError.timedOut bind none none goto fileFailed
 main at readFailed case fs.FileError.cancelled bind none none goto fileFailed
+main at readFailed case fs.FileError.busy bind none none goto fileFailed
 main at readFailed case fs.FileError.failed bind osCode Int32 goto fileFailed
 main at badLine return ok badLineCode
 main at noLines return ok emptyCode
 main at fileFailed return ok fileCode
 main at outputFailed return ok outputCode
+main at noRoom return ok noRoomCode
 
 store is region
 store in main
@@ -221,6 +246,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 makeLines is call
 makeLines in main
@@ -231,6 +257,7 @@ makeLines ownedBy store
 makeLines cleanedBy none
 makeLines borrows none
 makeLines catch none
+makeLines suppresses none
 
 appendRow is call
 appendRow in main
@@ -242,6 +269,7 @@ appendRow ownedBy none
 appendRow cleanedBy none
 appendRow borrows none
 appendRow catch none
+appendRow suppresses none
 
 # Both tasks borrow `lines` from start to join; neither may change it, and main
 # may not change it while either runs.
@@ -255,6 +283,7 @@ listTask ownedBy none
 listTask cleanedBy none
 listTask borrows none
 listTask catch listError pricing.PricingError
+listTask suppresses none
 
 discountTask is task
 discountTask in main
@@ -265,6 +294,7 @@ discountTask ownedBy none
 discountTask cleanedBy none
 discountTask borrows none
 discountTask catch discountError pricing.PricingError
+discountTask suppresses none
 
 noteBoth is call
 noteBoth rationale "A note that cannot be written must not replace the list total's own failure, which decides the exit code"
@@ -276,6 +306,7 @@ noteBoth ownedBy none
 noteBoth cleanedBy none
 noteBoth borrows none
 noteBoth catch noteError console.WriteError
+noteBoth suppresses console.WriteError.failed
 
 printList is call
 printList in main
@@ -286,6 +317,7 @@ printList ownedBy none
 printList cleanedBy none
 printList borrows none
 printList catch printListError console.WriteError
+printList suppresses none
 
 printDiscount is call
 printDiscount in main
@@ -296,6 +328,7 @@ printDiscount ownedBy none
 printDiscount cleanedBy none
 printDiscount borrows none
 printDiscount catch printDiscountError console.WriteError
+printDiscount suppresses none
 
 listDigits is call
 listDigits in main
@@ -307,6 +340,7 @@ listDigits ownedBy store
 listDigits cleanedBy none
 listDigits borrows none
 listDigits catch none
+listDigits suppresses none
 
 discountDigits is call
 discountDigits in main
@@ -318,6 +352,7 @@ discountDigits ownedBy store
 discountDigits cleanedBy none
 discountDigits borrows none
 discountDigits catch none
+discountDigits suppresses none
 
 joinListLabel is call
 joinListLabel in main
@@ -330,6 +365,7 @@ joinListLabel ownedBy store
 joinListLabel cleanedBy none
 joinListLabel borrows none
 joinListLabel catch none
+joinListLabel suppresses none
 
 joinDiscountLabel is call
 joinDiscountLabel in main
@@ -342,6 +378,7 @@ joinDiscountLabel ownedBy store
 joinDiscountLabel cleanedBy none
 joinDiscountLabel borrows none
 joinDiscountLabel catch none
+joinDiscountLabel suppresses none
 
 joinDiscountDigits is call
 joinDiscountDigits in main
@@ -354,6 +391,7 @@ joinDiscountDigits ownedBy store
 joinDiscountDigits cleanedBy none
 joinDiscountDigits borrows none
 joinDiscountDigits catch none
+joinDiscountDigits suppresses none
 
 lineBytes is call
 lineBytes in main
@@ -364,6 +402,7 @@ lineBytes ownedBy none
 lineBytes cleanedBy none
 lineBytes borrows reportLine
 lineBytes catch none
+lineBytes suppresses none
 
 removeOld is call
 removeOld in main
@@ -374,6 +413,7 @@ removeOld ownedBy none
 removeOld cleanedBy none
 removeOld borrows none
 removeOld catch removeError fs.FileError
+removeOld suppresses none
 
 openReport is call
 openReport in main
@@ -381,16 +421,10 @@ openReport invokes fs.create
 openReport argument path String reportPath lend
 openReport result report fs.FileHandle
 openReport ownedBy main
-openReport cleanedBy closeReportCleanup
+openReport cleanedBy none
 openReport borrows none
 openReport catch openError fs.FileError
-
-closeReportCleanup is cleanup
-closeReportCleanup rationale "A report that cannot be closed may not be fully written, so the program stops"
-closeReportCleanup in main
-closeReportCleanup runs closeReport
-closeReportCleanup cleans report
-closeReportCleanup onError trap
+openReport suppresses none
 
 closeReport is call
 closeReport in main
@@ -401,6 +435,38 @@ closeReport ownedBy none
 closeReport cleanedBy none
 closeReport borrows none
 closeReport catch closeError fs.FileError
+closeReport suppresses none
+
+closeFailedReport is call
+closeFailedReport rationale "The write already failed and exit 4 reports it; the close only releases the file"
+closeFailedReport in main
+closeFailedReport invokes fs.close
+closeFailedReport argument file fs.FileHandle report give
+closeFailedReport result none
+closeFailedReport ownedBy none
+closeFailedReport cleanedBy none
+closeFailedReport borrows none
+closeFailedReport catch closeFailedError fs.FileError
+closeFailedReport suppresses fs.FileError.notFound
+closeFailedReport suppresses fs.FileError.denied
+closeFailedReport suppresses fs.FileError.exists
+closeFailedReport suppresses fs.FileError.tooLarge
+closeFailedReport suppresses fs.FileError.timedOut
+closeFailedReport suppresses fs.FileError.cancelled
+closeFailedReport suppresses fs.FileError.busy
+closeFailedReport suppresses fs.FileError.failed
+
+askRoom is call
+askRoom in main
+askRoom invokes arena.ensure
+askRoom argument region Region store lend
+askRoom argument bytes Int64 reportRoom copy
+askRoom result none
+askRoom ownedBy none
+askRoom cleanedBy none
+askRoom borrows none
+askRoom catch roomError arena.ArenaError
+askRoom suppresses none
 
 writeReport is task
 writeReport in main
@@ -413,6 +479,7 @@ writeReport ownedBy none
 writeReport cleanedBy none
 writeReport borrows none
 writeReport catch writeError fs.FileError
+writeReport suppresses none
 
 readReport is task
 readReport in main
@@ -426,6 +493,7 @@ readReport ownedBy store
 readReport cleanedBy none
 readReport borrows none
 readReport catch readError fs.FileError
+readReport suppresses none
 
 decodeReport is call
 decodeReport in main
@@ -437,6 +505,7 @@ decodeReport ownedBy store
 decodeReport cleanedBy none
 decodeReport borrows none
 decodeReport catch decodeError string.Utf8Error
+decodeReport suppresses none
 
 printReport is call
 printReport in main
@@ -447,3 +516,4 @@ printReport ownedBy none
 printReport cleanedBy none
 printReport borrows none
 printReport catch printReportError console.WriteError
+printReport suppresses none

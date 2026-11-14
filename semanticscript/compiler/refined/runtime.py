@@ -52,11 +52,32 @@ def _bytes(ptr: int, length: int) -> bytes:
     return ctypes.string_at(ptr, length) if length > 0 else b""
 
 
+# D-51: what runs after a trap. No program code: deferred cleanups are skipped, since the state that trapped
+# may be the state they would act on. The runtime then releases what the program still holds outside the process
+# (each hook releases one kind and returns how many it released) before the process exits.
+TRAP_RELEASES: list = []
+
+
+def _release_on_trap() -> int:
+    released = 0
+    for hook in TRAP_RELEASES:
+        try:
+            released += hook()
+        except Exception:  # noqa: BLE001 - releasing is best effort while the process ends
+            pass
+    return released
+
+
 @ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int64)
 def _trap(ptr, length):
     from . import tasks
     trace = tasks.stack_trace()
     msg = b"trap: " + _bytes(ptr, length) + b"\n" + "".join(line + "\n" for line in trace).encode("utf-8", "replace")
+    released = _release_on_trap()
+    if released:
+        msg += (f"the runtime released {released} resource{'s' if released != 1 else ''} the program still held "
+                "(files flushed and closed, connections closed, child processes stopped); deferred cleanups do not "
+                "run after a trap\n").encode()
     if _session.capture:
         _session.stderr.append(msg)
         out = b"".join(_session.stdout)
@@ -131,6 +152,14 @@ def _region_new(capacity, lp, ll):
     reg.blocks.append(anchor)
     _regions[addr] = reg
     return addr
+
+
+@ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_void_p)
+def _region_remaining(handle):
+    reg = _regions.get(handle)
+    if reg is None:
+        _trap_now("a region was asked how much room it has after it was released")
+    return reg.capacity - reg.used
 
 
 @ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64)
@@ -254,6 +283,7 @@ _CALLBACKS = {
     "refined_bytes_equal": _bytes_equal, "refined_assert_int": _assert_int, "refined_assert_true": _assert_true,
     "refined_assert_str": _assert_str, "refined_fail": _fail,
     "refined_region_new": _region_new, "refined_region_alloc": _region_alloc, "refined_region_free": _region_free,
+    "refined_region_remaining": _region_remaining,
     "refined_write_float": _write_float, "refined_format_int": _format_int, "refined_find": _find,
     "refined_parse_int": _parse_int, "refined_host": _host,
 }

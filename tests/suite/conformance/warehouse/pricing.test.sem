@@ -30,6 +30,7 @@ runFull ownedBy none
 runFull cleanedBy none
 runFull borrows none
 runFull catch none
+runFull suppresses none
 
 expectSame is call
 expectSame in fullPriceTest
@@ -41,6 +42,7 @@ expectSame ownedBy none
 expectSame cleanedBy none
 expectSame borrows none
 expectSame catch none
+expectSame suppresses none
 
 bulkDiscountTest is test
 bulkDiscountTest purpose "bulkDiscount takes 1000 to 900 and rounds 15 down to 13"
@@ -76,6 +78,7 @@ discountRound ownedBy none
 discountRound cleanedBy none
 discountRound borrows none
 discountRound catch none
+discountRound suppresses none
 
 expectRound is call
 expectRound in bulkDiscountTest
@@ -87,6 +90,7 @@ expectRound ownedBy none
 expectRound cleanedBy none
 expectRound borrows none
 expectRound catch none
+expectRound suppresses none
 
 discountOdd is call
 discountOdd in bulkDiscountTest
@@ -97,6 +101,7 @@ discountOdd ownedBy none
 discountOdd cleanedBy none
 discountOdd borrows none
 discountOdd catch none
+discountOdd suppresses none
 
 expectRoundedDown is call
 expectRoundedDown in bulkDiscountTest
@@ -108,6 +113,7 @@ expectRoundedDown ownedBy none
 expectRoundedDown cleanedBy none
 expectRoundedDown borrows none
 expectRoundedDown catch none
+expectRoundedDown suppresses none
 
 lineTotalTest is test
 lineTotalTest purpose "Four at 250 cents under bulkDiscount is 900 cents"
@@ -153,6 +159,7 @@ makeLine ownedBy none
 makeLine cleanedBy none
 makeLine borrows none
 makeLine catch none
+makeLine suppresses none
 
 priceLine is call
 priceLine in lineTotalTest
@@ -164,6 +171,7 @@ priceLine ownedBy none
 priceLine cleanedBy none
 priceLine borrows none
 priceLine catch priceError PricingError
+priceLine suppresses none
 
 expectCharge is call
 expectCharge in lineTotalTest
@@ -175,6 +183,7 @@ expectCharge ownedBy none
 expectCharge cleanedBy none
 expectCharge borrows none
 expectCharge catch none
+expectCharge suppresses none
 
 failRefused is call
 failRefused in lineTotalTest
@@ -185,6 +194,7 @@ failRefused ownedBy none
 failRefused cleanedBy none
 failRefused borrows none
 failRefused catch none
+failRefused suppresses none
 
 negativeLineTest is test
 negativeLineTest purpose "A line of -1 of sku 7 is refused with negativeQuantity carrying 7"
@@ -239,6 +249,7 @@ makeLine ownedBy none
 makeLine cleanedBy none
 makeLine borrows none
 makeLine catch none
+makeLine suppresses none
 
 priceLine is call
 priceLine in negativeLineTest
@@ -250,6 +261,7 @@ priceLine ownedBy none
 priceLine cleanedBy none
 priceLine borrows none
 priceLine catch priceError PricingError
+priceLine suppresses none
 
 expectSku is call
 expectSku in negativeLineTest
@@ -261,6 +273,7 @@ expectSku ownedBy none
 expectSku cleanedBy none
 expectSku borrows none
 expectSku catch none
+expectSku suppresses none
 
 failWrong is call
 failWrong in negativeLineTest
@@ -271,6 +284,7 @@ failWrong ownedBy none
 failWrong cleanedBy none
 failWrong borrows none
 failWrong catch none
+failWrong suppresses none
 
 failAccepted is call
 failAccepted in negativeLineTest
@@ -281,6 +295,7 @@ failAccepted ownedBy none
 failAccepted cleanedBy none
 failAccepted borrows none
 failAccepted catch none
+failAccepted suppresses none
 
 orderTotalTest is test
 orderTotalTest purpose "Two lines, 2 at 300 and 1 at 50, total 650 at list price, by either route"
@@ -341,6 +356,7 @@ makeLines ownedBy store
 makeLines cleanedBy none
 makeLines borrows none
 makeLines catch none
+makeLines suppresses none
 
 makeFirst is call
 makeFirst in orderTotalTest
@@ -353,6 +369,7 @@ makeFirst ownedBy none
 makeFirst cleanedBy none
 makeFirst borrows none
 makeFirst catch none
+makeFirst suppresses none
 
 appendFirst is call
 appendFirst in orderTotalTest
@@ -364,6 +381,7 @@ appendFirst ownedBy none
 appendFirst cleanedBy none
 appendFirst borrows none
 appendFirst catch none
+appendFirst suppresses none
 
 makeSecond is call
 makeSecond in orderTotalTest
@@ -376,6 +394,7 @@ makeSecond ownedBy none
 makeSecond cleanedBy none
 makeSecond borrows none
 makeSecond catch none
+makeSecond suppresses none
 
 appendSecond is call
 appendSecond in orderTotalTest
@@ -387,6 +406,7 @@ appendSecond ownedBy none
 appendSecond cleanedBy none
 appendSecond borrows none
 appendSecond catch none
+appendSecond suppresses none
 
 priceOrder is call
 priceOrder in orderTotalTest
@@ -398,6 +418,7 @@ priceOrder ownedBy none
 priceOrder cleanedBy none
 priceOrder borrows none
 priceOrder catch priceError PricingError
+priceOrder suppresses none
 
 expectTotal is call
 expectTotal in orderTotalTest
@@ -409,6 +430,7 @@ expectTotal ownedBy none
 expectTotal cleanedBy none
 expectTotal borrows none
 expectTotal catch none
+expectTotal suppresses none
 
 priceList is call
 priceList in orderTotalTest
@@ -419,6 +441,7 @@ priceList ownedBy none
 priceList cleanedBy none
 priceList borrows none
 priceList catch listError PricingError
+priceList suppresses none
 
 expectListTotal is call
 expectListTotal in orderTotalTest
@@ -430,6 +453,7 @@ expectListTotal ownedBy none
 expectListTotal cleanedBy none
 expectListTotal borrows none
 expectListTotal catch none
+expectListTotal suppresses none
 
 failRefused is call
 failRefused in orderTotalTest
@@ -440,6 +464,7 @@ failRefused ownedBy none
 failRefused cleanedBy none
 failRefused borrows none
 failRefused catch none
+failRefused suppresses none
 
 discountOrderTest is test
 discountOrderTest purpose "One line of 3 at 1000 is 2700 with the bulk discount"
@@ -490,6 +515,7 @@ makeLines ownedBy store
 makeLines cleanedBy none
 makeLines borrows none
 makeLines catch none
+makeLines suppresses none
 
 makeOnly is call
 makeOnly in discountOrderTest
@@ -502,6 +528,7 @@ makeOnly ownedBy none
 makeOnly cleanedBy none
 makeOnly borrows none
 makeOnly catch none
+makeOnly suppresses none
 
 appendOnly is call
 appendOnly in discountOrderTest
@@ -513,6 +540,7 @@ appendOnly ownedBy none
 appendOnly cleanedBy none
 appendOnly borrows none
 appendOnly catch none
+appendOnly suppresses none
 
 priceOrder is call
 priceOrder in discountOrderTest
@@ -523,6 +551,7 @@ priceOrder ownedBy none
 priceOrder cleanedBy none
 priceOrder borrows none
 priceOrder catch priceError PricingError
+priceOrder suppresses none
 
 expectTotal is call
 expectTotal in discountOrderTest
@@ -534,6 +563,7 @@ expectTotal ownedBy none
 expectTotal cleanedBy none
 expectTotal borrows none
 expectTotal catch none
+expectTotal suppresses none
 
 failRefused is call
 failRefused in discountOrderTest
@@ -544,6 +574,7 @@ failRefused ownedBy none
 failRefused cleanedBy none
 failRefused borrows none
 failRefused catch none
+failRefused suppresses none
 
 emptyOrderTest is test
 emptyOrderTest purpose "An order with no lines is refused with emptyOrder"
@@ -600,6 +631,7 @@ makeLines ownedBy store
 makeLines cleanedBy none
 makeLines borrows none
 makeLines catch none
+makeLines suppresses none
 
 priceOrder is call
 priceOrder in emptyOrderTest
@@ -611,6 +643,7 @@ priceOrder ownedBy none
 priceOrder cleanedBy none
 priceOrder borrows none
 priceOrder catch priceError PricingError
+priceOrder suppresses none
 
 expectRefused is call
 expectRefused in emptyOrderTest
@@ -621,6 +654,7 @@ expectRefused ownedBy none
 expectRefused cleanedBy none
 expectRefused borrows none
 expectRefused catch none
+expectRefused suppresses none
 
 failWrong is call
 failWrong in emptyOrderTest
@@ -631,6 +665,7 @@ failWrong ownedBy none
 failWrong cleanedBy none
 failWrong borrows none
 failWrong catch none
+failWrong suppresses none
 
 failAccepted is call
 failAccepted in emptyOrderTest
@@ -641,3 +676,4 @@ failAccepted ownedBy none
 failAccepted cleanedBy none
 failAccepted borrows none
 failAccepted catch none
+failAccepted suppresses none

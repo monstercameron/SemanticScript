@@ -60,6 +60,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -93,6 +94,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 cRuntime is capability
 cRuntime purpose "Authority to load the C runtime and nothing else"
@@ -211,6 +213,7 @@ openC ownedBy main
 openC cleanedBy closeCCleanup
 openC borrows none
 openC catch openError ffi.LoadError
+openC suppresses none
 
 closeCCleanup is cleanup
 closeCCleanup rationale "Releasing a library handle cannot fail"
@@ -228,6 +231,7 @@ closeC ownedBy none
 closeC cleanedBy none
 closeC borrows none
 closeC catch none
+closeC suppresses none
 
 bindAbs is call
 bindAbs in main
@@ -239,6 +243,7 @@ bindAbs ownedBy none
 bindAbs cleanedBy none
 bindAbs borrows none
 bindAbs catch absError ffi.LoadError
+bindAbs suppresses none
 
 runAbs is call
 runAbs in main
@@ -249,6 +254,7 @@ runAbs ownedBy none
 runAbs cleanedBy none
 runAbs borrows none
 runAbs catch none
+runAbs suppresses none
 
 widenAbs is call
 widenAbs in main
@@ -259,6 +265,7 @@ widenAbs ownedBy none
 widenAbs cleanedBy none
 widenAbs borrows none
 widenAbs catch none
+widenAbs suppresses none
 
 showAbs is call
 showAbs in main
@@ -269,6 +276,7 @@ showAbs ownedBy none
 showAbs cleanedBy none
 showAbs borrows none
 showAbs catch none
+showAbs suppresses none
 
 bindUpper is call
 bindUpper in main
@@ -280,6 +288,7 @@ bindUpper ownedBy none
 bindUpper cleanedBy none
 bindUpper borrows none
 bindUpper catch upperError ffi.LoadError
+bindUpper suppresses none
 
 runUpper is call
 runUpper in main
@@ -290,6 +299,7 @@ runUpper ownedBy none
 runUpper cleanedBy none
 runUpper borrows none
 runUpper catch none
+runUpper suppresses none
 
 widenUpper is call
 widenUpper in main
@@ -300,6 +310,7 @@ widenUpper ownedBy none
 widenUpper cleanedBy none
 widenUpper borrows none
 widenUpper catch none
+widenUpper suppresses none
 
 showUpper is call
 showUpper in main
@@ -310,6 +321,7 @@ showUpper ownedBy none
 showUpper cleanedBy none
 showUpper borrows none
 showUpper catch none
+showUpper suppresses none
 
 bindMissing is call
 bindMissing in main
@@ -321,6 +333,7 @@ bindMissing ownedBy none
 bindMissing cleanedBy none
 bindMissing borrows none
 bindMissing catch missingError ffi.LoadError
+bindMissing suppresses none
 
 showMissing is call
 showMissing in main
@@ -331,3 +344,4 @@ showMissing ownedBy none
 showMissing cleanedBy none
 showMissing borrows none
 showMissing catch none
+showMissing suppresses none

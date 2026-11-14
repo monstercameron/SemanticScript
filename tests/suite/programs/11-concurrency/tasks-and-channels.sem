@@ -64,6 +64,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 Mailbox is typeInstance
 Mailbox purpose "A channel of whole numbers between a producer and a consumer"
@@ -98,6 +99,7 @@ multiply ownedBy none
 multiply cleanedBy none
 multiply borrows none
 multiply catch none
+multiply suppresses none
 
 warm is operation
 warm purpose "Square a number and keep nothing; work started into a group returns nothing"
@@ -127,6 +129,7 @@ squareIt ownedBy none
 squareIt cleanedBy none
 squareIt borrows none
 squareIt catch none
+squareIt suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -184,6 +187,7 @@ workers is taskGroup
 workers in main
 workers maxTasks 2
 workers catch none
+workers suppresses none
 
 mail is region
 mail in main
@@ -200,6 +204,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 squareThree is task
 squareThree in main
@@ -210,6 +215,7 @@ squareThree ownedBy none
 squareThree cleanedBy none
 squareThree borrows none
 squareThree catch none
+squareThree suppresses none
 
 showSquare is call
 showSquare in main
@@ -220,6 +226,7 @@ showSquare ownedBy none
 showSquare cleanedBy none
 showSquare borrows none
 showSquare catch none
+showSquare suppresses none
 
 squareFour is task
 squareFour in main
@@ -230,6 +237,7 @@ squareFour ownedBy none
 squareFour cleanedBy none
 squareFour borrows none
 squareFour catch none
+squareFour suppresses none
 
 squareFive is task
 squareFive in main
@@ -240,6 +248,7 @@ squareFive ownedBy none
 squareFive cleanedBy none
 squareFive borrows none
 squareFive catch none
+squareFive suppresses none
 
 nap is task
 nap in main
@@ -250,6 +259,7 @@ nap ownedBy none
 nap cleanedBy none
 nap borrows none
 nap catch none
+nap suppresses none
 
 makeMailbox is call
 makeMailbox in main
@@ -261,6 +271,7 @@ makeMailbox ownedBy mail
 makeMailbox cleanedBy none
 makeMailbox borrows none
 makeMailbox catch none
+makeMailbox suppresses none
 
 produce is task
 produce in main
@@ -273,6 +284,7 @@ produce ownedBy none
 produce cleanedBy none
 produce borrows none
 produce catch sendError channel.ChannelError
+produce suppresses none
 
 receiveOne is task
 receiveOne in main
@@ -284,6 +296,7 @@ receiveOne ownedBy none
 receiveOne cleanedBy none
 receiveOne borrows none
 receiveOne catch receiveError channel.ChannelError
+receiveOne suppresses none
 
 showReceived is call
 showReceived in main
@@ -294,3 +307,4 @@ showReceived ownedBy none
 showReceived cleanedBy none
 showReceived borrows none
 showReceived catch none
+showReceived suppresses none

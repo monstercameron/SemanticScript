@@ -220,6 +220,7 @@ def _project(tmp_path, name: str, module_text: str, extra: dict[str, str] | None
     rows += [f"{name}Project includesModule {m}" for m in mods]
     rows.append(f"{name}Project entry {name + '.main' if entry else 'none'}")
     (d / "build.sem").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    caselib.approve(str(d))
     with open(d / f"{name}.sem", "w", encoding="utf-8", newline="\n") as fh:
         fh.write(module_text)
     for m, text in (extra or {}).items():

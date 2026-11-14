@@ -51,6 +51,7 @@ tokenizeEmpty ownedBy testRegion
 tokenizeEmpty cleanedBy none
 tokenizeEmpty borrows none
 tokenizeEmpty catch unexpectedError LexError
+tokenizeEmpty suppresses none
 
 countTokens is call
 countTokens in emptySourceTest
@@ -61,6 +62,7 @@ countTokens ownedBy none
 countTokens cleanedBy none
 countTokens borrows none
 countTokens catch none
+countTokens suppresses none
 
 expectZero is call
 expectZero in emptySourceTest
@@ -72,6 +74,7 @@ expectZero ownedBy none
 expectZero cleanedBy none
 expectZero borrows none
 expectZero catch none
+expectZero suppresses none
 
 failUnexpected is call
 failUnexpected in emptySourceTest
@@ -82,6 +85,7 @@ failUnexpected ownedBy none
 failUnexpected cleanedBy none
 failUnexpected borrows none
 failUnexpected catch none
+failUnexpected suppresses none
 
 badByteTest is test
 badByteTest purpose "A digit where a word must start stops tokenizing with unexpectedByte at that offset"
@@ -132,6 +136,7 @@ tokenizeBad ownedBy badRegion
 tokenizeBad cleanedBy none
 tokenizeBad borrows none
 tokenizeBad catch badError LexError
+tokenizeBad suppresses none
 
 expectOffset is call
 expectOffset in badByteTest
@@ -143,6 +148,7 @@ expectOffset ownedBy none
 expectOffset cleanedBy none
 expectOffset borrows none
 expectOffset catch none
+expectOffset suppresses none
 
 failOnSuccess is call
 failOnSuccess in badByteTest
@@ -153,6 +159,7 @@ failOnSuccess ownedBy none
 failOnSuccess cleanedBy none
 failOnSuccess borrows none
 failOnSuccess catch none
+failOnSuccess suppresses none
 
 absentKindTest is test
 absentKindTest purpose "Text that fails to tokenize reports that it has no first token kind"
@@ -192,6 +199,7 @@ firstOfDigit ownedBy none
 firstOfDigit cleanedBy none
 firstOfDigit borrows none
 firstOfDigit catch none
+firstOfDigit suppresses none
 
 failOnPresent is call
 failOnPresent in absentKindTest
@@ -202,3 +210,4 @@ failOnPresent ownedBy none
 failOnPresent cleanedBy none
 failOnPresent borrows none
 failOnPresent catch none
+failOnPresent suppresses none

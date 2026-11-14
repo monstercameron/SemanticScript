@@ -107,6 +107,11 @@ def main() -> int:
                     _say("nothing to run: define `main is operation`")
                     continue
                 import subprocess
+                from .check import approve_authority
+                # D-53: at the REPL the person typing the capabilities is the one approving them; say what they grant
+                granted = approve_authority(os.path.join(d, "build.sem"))
+                if granted:
+                    _say("running with: " + "; ".join(granted))
                 me = os.path.dirname(os.path.abspath(__file__))
                 proc = subprocess.run([sys.executable, me, "run", d, "--no-cache"], capture_output=True, text=True,
                                       encoding="utf-8", errors="replace")

@@ -1,0 +1,6 @@
+# Authority approved for this project (`refined approve`). A program runs only with authority
+# listed here; build.sem asking for more stops `refined run`, `test`, and executable builds.
+write console.stdout none
+write console.stderr none
+write fs.files "warehouse-*"
+read fs.files "warehouse-*"

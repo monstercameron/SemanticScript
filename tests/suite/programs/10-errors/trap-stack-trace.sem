@@ -40,6 +40,7 @@ divide ownedBy none
 divide cleanedBy none
 divide borrows none
 divide catch none
+divide suppresses none
 
 middle is operation
 middle purpose "Call inner"
@@ -69,6 +70,7 @@ callInner ownedBy none
 callInner cleanedBy none
 callInner borrows none
 callInner catch none
+callInner suppresses none
 
 outer is operation
 outer purpose "Call middle"
@@ -98,6 +100,7 @@ callMiddle ownedBy none
 callMiddle cleanedBy none
 callMiddle borrows none
 callMiddle catch none
+callMiddle suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -128,3 +131,4 @@ callOuter ownedBy none
 callOuter cleanedBy none
 callOuter borrows none
 callOuter catch none
+callOuter suppresses none

@@ -83,6 +83,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
@@ -124,6 +125,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -135,6 +137,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -212,6 +215,7 @@ add ownedBy none
 add cleanedBy none
 add borrows none
 add catch none
+add suppresses none
 
 showAdd is call
 showAdd in main
@@ -222,6 +226,7 @@ showAdd ownedBy none
 showAdd cleanedBy none
 showAdd borrows none
 showAdd catch none
+showAdd suppresses none
 
 sub is call
 sub in main
@@ -233,6 +238,7 @@ sub ownedBy none
 sub cleanedBy none
 sub borrows none
 sub catch none
+sub suppresses none
 
 showSub is call
 showSub in main
@@ -243,6 +249,7 @@ showSub ownedBy none
 showSub cleanedBy none
 showSub borrows none
 showSub catch none
+showSub suppresses none
 
 mul is call
 mul in main
@@ -254,6 +261,7 @@ mul ownedBy none
 mul cleanedBy none
 mul borrows none
 mul catch none
+mul suppresses none
 
 showMul is call
 showMul in main
@@ -264,6 +272,7 @@ showMul ownedBy none
 showMul cleanedBy none
 showMul borrows none
 showMul catch none
+showMul suppresses none
 
 div is call
 div in main
@@ -275,6 +284,7 @@ div ownedBy none
 div cleanedBy none
 div borrows none
 div catch none
+div suppresses none
 
 showDiv is call
 showDiv in main
@@ -285,6 +295,7 @@ showDiv ownedBy none
 showDiv cleanedBy none
 showDiv borrows none
 showDiv catch none
+showDiv suppresses none
 
 rem is call
 rem in main
@@ -296,6 +307,7 @@ rem ownedBy none
 rem cleanedBy none
 rem borrows none
 rem catch none
+rem suppresses none
 
 showRem is call
 showRem in main
@@ -306,6 +318,7 @@ showRem ownedBy none
 showRem cleanedBy none
 showRem borrows none
 showRem catch none
+showRem suppresses none
 
 pow is call
 pow in main
@@ -317,6 +330,7 @@ pow ownedBy none
 pow cleanedBy none
 pow borrows none
 pow catch none
+pow suppresses none
 
 showPow is call
 showPow in main
@@ -327,6 +341,7 @@ showPow ownedBy none
 showPow cleanedBy none
 showPow borrows none
 showPow catch none
+showPow suppresses none
 
 neg is call
 neg in main
@@ -337,6 +352,7 @@ neg ownedBy none
 neg cleanedBy none
 neg borrows none
 neg catch none
+neg suppresses none
 
 showNeg is call
 showNeg in main
@@ -347,6 +363,7 @@ showNeg ownedBy none
 showNeg cleanedBy none
 showNeg borrows none
 showNeg catch none
+showNeg suppresses none
 
 abs is call
 abs in main
@@ -357,6 +374,7 @@ abs ownedBy none
 abs cleanedBy none
 abs borrows none
 abs catch none
+abs suppresses none
 
 showAbs is call
 showAbs in main
@@ -367,6 +385,7 @@ showAbs ownedBy none
 showAbs cleanedBy none
 showAbs borrows none
 showAbs catch none
+showAbs suppresses none
 
 eq is call
 eq in main
@@ -378,6 +397,7 @@ eq ownedBy none
 eq cleanedBy none
 eq borrows none
 eq catch none
+eq suppresses none
 
 showEq is call
 showEq in main
@@ -388,6 +408,7 @@ showEq ownedBy none
 showEq cleanedBy none
 showEq borrows none
 showEq catch none
+showEq suppresses none
 
 ne is call
 ne in main
@@ -399,6 +420,7 @@ ne ownedBy none
 ne cleanedBy none
 ne borrows none
 ne catch none
+ne suppresses none
 
 showNe is call
 showNe in main
@@ -409,6 +431,7 @@ showNe ownedBy none
 showNe cleanedBy none
 showNe borrows none
 showNe catch none
+showNe suppresses none
 
 gt is call
 gt in main
@@ -420,6 +443,7 @@ gt ownedBy none
 gt cleanedBy none
 gt borrows none
 gt catch none
+gt suppresses none
 
 showGt is call
 showGt in main
@@ -430,6 +454,7 @@ showGt ownedBy none
 showGt cleanedBy none
 showGt borrows none
 showGt catch none
+showGt suppresses none
 
 lt is call
 lt in main
@@ -441,6 +466,7 @@ lt ownedBy none
 lt cleanedBy none
 lt borrows none
 lt catch none
+lt suppresses none
 
 showLt is call
 showLt in main
@@ -451,6 +477,7 @@ showLt ownedBy none
 showLt cleanedBy none
 showLt borrows none
 showLt catch none
+showLt suppresses none
 
 both is call
 both in main
@@ -462,6 +489,7 @@ both ownedBy none
 both cleanedBy none
 both borrows none
 both catch none
+both suppresses none
 
 showBoth is call
 showBoth in main
@@ -472,6 +500,7 @@ showBoth ownedBy none
 showBoth cleanedBy none
 showBoth borrows none
 showBoth catch none
+showBoth suppresses none
 
 either is call
 either in main
@@ -483,6 +512,7 @@ either ownedBy none
 either cleanedBy none
 either borrows none
 either catch none
+either suppresses none
 
 showEither is call
 showEither in main
@@ -493,6 +523,7 @@ showEither ownedBy none
 showEither cleanedBy none
 showEither borrows none
 showEither catch none
+showEither suppresses none
 
 negation is call
 negation in main
@@ -503,6 +534,7 @@ negation ownedBy none
 negation cleanedBy none
 negation borrows none
 negation catch none
+negation suppresses none
 
 showNegation is call
 showNegation in main
@@ -513,6 +545,7 @@ showNegation ownedBy none
 showNegation cleanedBy none
 showNegation borrows none
 showNegation catch none
+showNegation suppresses none
 
 andBits is call
 andBits in main
@@ -524,6 +557,7 @@ andBits ownedBy none
 andBits cleanedBy none
 andBits borrows none
 andBits catch none
+andBits suppresses none
 
 showAndBits is call
 showAndBits in main
@@ -534,6 +568,7 @@ showAndBits ownedBy none
 showAndBits cleanedBy none
 showAndBits borrows none
 showAndBits catch none
+showAndBits suppresses none
 
 orBits is call
 orBits in main
@@ -545,6 +580,7 @@ orBits ownedBy none
 orBits cleanedBy none
 orBits borrows none
 orBits catch none
+orBits suppresses none
 
 showOrBits is call
 showOrBits in main
@@ -555,6 +591,7 @@ showOrBits ownedBy none
 showOrBits cleanedBy none
 showOrBits borrows none
 showOrBits catch none
+showOrBits suppresses none
 
 xorBits is call
 xorBits in main
@@ -566,6 +603,7 @@ xorBits ownedBy none
 xorBits cleanedBy none
 xorBits borrows none
 xorBits catch none
+xorBits suppresses none
 
 showXorBits is call
 showXorBits in main
@@ -576,6 +614,7 @@ showXorBits ownedBy none
 showXorBits cleanedBy none
 showXorBits borrows none
 showXorBits catch none
+showXorBits suppresses none
 
 shift is call
 shift in main
@@ -587,6 +626,7 @@ shift ownedBy none
 shift cleanedBy none
 shift borrows none
 shift catch none
+shift suppresses none
 
 showShift is call
 showShift in main
@@ -597,6 +637,7 @@ showShift ownedBy none
 showShift cleanedBy none
 showShift borrows none
 showShift catch none
+showShift suppresses none
 
 ashr is call
 ashr in main
@@ -608,6 +649,7 @@ ashr ownedBy none
 ashr cleanedBy none
 ashr borrows none
 ashr catch none
+ashr suppresses none
 
 showAshr is call
 showAshr in main
@@ -618,3 +660,4 @@ showAshr ownedBy none
 showAshr cleanedBy none
 showAshr borrows none
 showAshr catch none
+showAshr suppresses none

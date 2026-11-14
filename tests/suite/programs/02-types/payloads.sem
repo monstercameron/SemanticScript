@@ -68,6 +68,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -101,6 +102,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
@@ -142,6 +144,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -153,6 +156,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 MaybeName is typeInstance
 MaybeName purpose "A name that may be absent"
@@ -221,6 +225,7 @@ makeError ownedBy none
 makeError cleanedBy none
 makeError borrows none
 makeError catch none
+makeError suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -372,6 +377,7 @@ makePresent ownedBy none
 makePresent cleanedBy none
 makePresent borrows none
 makePresent catch none
+makePresent suppresses none
 
 printName is call
 printName in main
@@ -382,6 +388,7 @@ printName ownedBy none
 printName cleanedBy none
 printName borrows none
 printName catch none
+printName suppresses none
 
 makeAbsent is call
 makeAbsent in main
@@ -392,6 +399,7 @@ makeAbsent ownedBy none
 makeAbsent cleanedBy none
 makeAbsent borrows none
 makeAbsent catch none
+makeAbsent suppresses none
 
 printNobody is call
 printNobody in main
@@ -402,6 +410,7 @@ printNobody ownedBy none
 printNobody cleanedBy none
 printNobody borrows none
 printNobody catch none
+printNobody suppresses none
 
 makeSize is call
 makeSize in main
@@ -413,6 +422,7 @@ makeSize ownedBy none
 makeSize cleanedBy none
 makeSize borrows none
 makeSize catch none
+makeSize suppresses none
 
 makeBox is call
 makeBox in main
@@ -423,6 +433,7 @@ makeBox ownedBy none
 makeBox cleanedBy none
 makeBox borrows none
 makeBox catch none
+makeBox suppresses none
 
 readWidth is call
 readWidth in main
@@ -433,6 +444,7 @@ readWidth ownedBy none
 readWidth cleanedBy none
 readWidth borrows none
 readWidth catch none
+readWidth suppresses none
 
 printWidth is call
 printWidth in main
@@ -443,6 +455,7 @@ printWidth ownedBy none
 printWidth cleanedBy none
 printWidth borrows none
 printWidth catch none
+printWidth suppresses none
 
 makeNumbers is call
 makeNumbers in main
@@ -453,6 +466,7 @@ makeNumbers ownedBy store
 makeNumbers cleanedBy none
 makeNumbers borrows none
 makeNumbers catch none
+makeNumbers suppresses none
 
 appendOne is call
 appendOne in main
@@ -464,6 +478,7 @@ appendOne ownedBy none
 appendOne cleanedBy none
 appendOne borrows none
 appendOne catch none
+appendOne suppresses none
 
 appendTwo is call
 appendTwo in main
@@ -475,6 +490,7 @@ appendTwo ownedBy none
 appendTwo cleanedBy none
 appendTwo borrows none
 appendTwo catch none
+appendTwo suppresses none
 
 appendThree is call
 appendThree in main
@@ -486,6 +502,7 @@ appendThree ownedBy none
 appendThree cleanedBy none
 appendThree borrows none
 appendThree catch none
+appendThree suppresses none
 
 appendFour is call
 appendFour in main
@@ -497,6 +514,7 @@ appendFour ownedBy none
 appendFour cleanedBy none
 appendFour borrows none
 appendFour catch none
+appendFour suppresses none
 
 makePoints is call
 makePoints in main
@@ -507,6 +525,7 @@ makePoints ownedBy none
 makePoints cleanedBy none
 makePoints borrows none
 makePoints catch none
+makePoints suppresses none
 
 countPoints is call
 countPoints in main
@@ -517,6 +536,7 @@ countPoints ownedBy none
 countPoints cleanedBy none
 countPoints borrows none
 countPoints catch none
+countPoints suppresses none
 
 printCount is call
 printCount in main
@@ -527,6 +547,7 @@ printCount ownedBy none
 printCount cleanedBy none
 printCount borrows none
 printCount catch none
+printCount suppresses none
 
 runCheck is call
 runCheck in main
@@ -537,6 +558,7 @@ runCheck ownedBy none
 runCheck cleanedBy none
 runCheck borrows none
 runCheck catch checkError InputError
+runCheck suppresses none
 
 printWhy is call
 printWhy in main
@@ -547,6 +569,7 @@ printWhy ownedBy none
 printWhy cleanedBy none
 printWhy borrows none
 printWhy catch none
+printWhy suppresses none
 
 makeLabel is call
 makeLabel in main
@@ -557,6 +580,7 @@ makeLabel ownedBy none
 makeLabel cleanedBy none
 makeLabel borrows none
 makeLabel catch none
+makeLabel suppresses none
 
 makeTagged is call
 makeTagged in main
@@ -567,6 +591,7 @@ makeTagged ownedBy none
 makeTagged cleanedBy none
 makeTagged borrows none
 makeTagged catch none
+makeTagged suppresses none
 
 printLabel is call
 printLabel in main
@@ -577,6 +602,7 @@ printLabel ownedBy none
 printLabel cleanedBy none
 printLabel borrows none
 printLabel catch none
+printLabel suppresses none
 
 sameBox is call
 sameBox in main
@@ -588,6 +614,7 @@ sameBox ownedBy none
 sameBox cleanedBy none
 sameBox borrows none
 sameBox catch none
+sameBox suppresses none
 
 printSameBox is call
 printSameBox in main
@@ -598,6 +625,7 @@ printSameBox ownedBy none
 printSameBox cleanedBy none
 printSameBox borrows none
 printSameBox catch none
+printSameBox suppresses none
 
 boxVersusPoints is call
 boxVersusPoints in main
@@ -609,6 +637,7 @@ boxVersusPoints ownedBy none
 boxVersusPoints cleanedBy none
 boxVersusPoints borrows none
 boxVersusPoints catch none
+boxVersusPoints suppresses none
 
 printBoxVersusPoints is call
 printBoxVersusPoints in main
@@ -619,6 +648,7 @@ printBoxVersusPoints ownedBy none
 printBoxVersusPoints cleanedBy none
 printBoxVersusPoints borrows none
 printBoxVersusPoints catch none
+printBoxVersusPoints suppresses none
 
 makeOtherNumbers is call
 makeOtherNumbers in main
@@ -629,6 +659,7 @@ makeOtherNumbers ownedBy store
 makeOtherNumbers cleanedBy none
 makeOtherNumbers borrows none
 makeOtherNumbers catch none
+makeOtherNumbers suppresses none
 
 otherOne is call
 otherOne in main
@@ -640,6 +671,7 @@ otherOne ownedBy none
 otherOne cleanedBy none
 otherOne borrows none
 otherOne catch none
+otherOne suppresses none
 
 otherTwo is call
 otherTwo in main
@@ -651,6 +683,7 @@ otherTwo ownedBy none
 otherTwo cleanedBy none
 otherTwo borrows none
 otherTwo catch none
+otherTwo suppresses none
 
 otherThree is call
 otherThree in main
@@ -662,6 +695,7 @@ otherThree ownedBy none
 otherThree cleanedBy none
 otherThree borrows none
 otherThree catch none
+otherThree suppresses none
 
 otherFour is call
 otherFour in main
@@ -673,6 +707,7 @@ otherFour ownedBy none
 otherFour cleanedBy none
 otherFour borrows none
 otherFour catch none
+otherFour suppresses none
 
 makeOtherPoints is call
 makeOtherPoints in main
@@ -683,6 +718,7 @@ makeOtherPoints ownedBy none
 makeOtherPoints cleanedBy none
 makeOtherPoints borrows none
 makeOtherPoints catch none
+makeOtherPoints suppresses none
 
 samePoints is call
 samePoints in main
@@ -694,6 +730,7 @@ samePoints ownedBy none
 samePoints cleanedBy none
 samePoints borrows none
 samePoints catch none
+samePoints suppresses none
 
 printSamePoints is call
 printSamePoints in main
@@ -704,6 +741,7 @@ printSamePoints ownedBy none
 printSamePoints cleanedBy none
 printSamePoints borrows none
 printSamePoints catch none
+printSamePoints suppresses none
 
 makeShorter is call
 makeShorter in main
@@ -714,6 +752,7 @@ makeShorter ownedBy store
 makeShorter cleanedBy none
 makeShorter borrows none
 makeShorter catch none
+makeShorter suppresses none
 
 shorterOne is call
 shorterOne in main
@@ -725,6 +764,7 @@ shorterOne ownedBy none
 shorterOne cleanedBy none
 shorterOne borrows none
 shorterOne catch none
+shorterOne suppresses none
 
 makeShorterPoints is call
 makeShorterPoints in main
@@ -735,6 +775,7 @@ makeShorterPoints ownedBy none
 makeShorterPoints cleanedBy none
 makeShorterPoints borrows none
 makeShorterPoints catch none
+makeShorterPoints suppresses none
 
 differentPoints is call
 differentPoints in main
@@ -746,6 +787,7 @@ differentPoints ownedBy none
 differentPoints cleanedBy none
 differentPoints borrows none
 differentPoints catch none
+differentPoints suppresses none
 
 printDifferentPoints is call
 printDifferentPoints in main
@@ -756,6 +798,7 @@ printDifferentPoints ownedBy none
 printDifferentPoints cleanedBy none
 printDifferentPoints borrows none
 printDifferentPoints catch none
+printDifferentPoints suppresses none
 
 makeFirstLabelled is call
 makeFirstLabelled in main
@@ -768,6 +811,7 @@ makeFirstLabelled ownedBy store
 makeFirstLabelled cleanedBy none
 makeFirstLabelled borrows none
 makeFirstLabelled catch none
+makeFirstLabelled suppresses none
 
 makeSecondLabelled is call
 makeSecondLabelled in main
@@ -780,6 +824,7 @@ makeSecondLabelled ownedBy store
 makeSecondLabelled cleanedBy none
 makeSecondLabelled borrows none
 makeSecondLabelled catch none
+makeSecondLabelled suppresses none
 
 sameLabelled is call
 sameLabelled in main
@@ -791,6 +836,7 @@ sameLabelled ownedBy none
 sameLabelled cleanedBy none
 sameLabelled borrows none
 sameLabelled catch none
+sameLabelled suppresses none
 
 printSameLabelled is call
 printSameLabelled in main
@@ -801,6 +847,7 @@ printSameLabelled ownedBy none
 printSameLabelled cleanedBy none
 printSameLabelled borrows none
 printSameLabelled catch none
+printSameLabelled suppresses none
 
 makeOtherLabel is call
 makeOtherLabel in main
@@ -811,6 +858,7 @@ makeOtherLabel ownedBy none
 makeOtherLabel cleanedBy none
 makeOtherLabel borrows none
 makeOtherLabel catch none
+makeOtherLabel suppresses none
 
 makeOtherTagged is call
 makeOtherTagged in main
@@ -821,6 +869,7 @@ makeOtherTagged ownedBy none
 makeOtherTagged cleanedBy none
 makeOtherTagged borrows none
 makeOtherTagged catch none
+makeOtherTagged suppresses none
 
 differentTags is call
 differentTags in main
@@ -832,6 +881,7 @@ differentTags ownedBy none
 differentTags cleanedBy none
 differentTags borrows none
 differentTags catch none
+differentTags suppresses none
 
 printDifferentTags is call
 printDifferentTags in main
@@ -842,3 +892,4 @@ printDifferentTags ownedBy none
 printDifferentTags cleanedBy none
 printDifferentTags borrows none
 printDifferentTags catch none
+printDifferentTags suppresses none

@@ -59,6 +59,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -70,6 +71,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -103,6 +105,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 entropy is capability
 entropy purpose "Authority to read random numbers from the operating system"
@@ -178,6 +181,7 @@ firstGenerator ownedBy store
 firstGenerator cleanedBy none
 firstGenerator borrows none
 firstGenerator catch none
+firstGenerator suppresses none
 
 secondGenerator is call
 secondGenerator in main
@@ -189,6 +193,7 @@ secondGenerator ownedBy store
 secondGenerator cleanedBy none
 secondGenerator borrows none
 secondGenerator catch none
+secondGenerator suppresses none
 
 drawFirst is call
 drawFirst in main
@@ -201,6 +206,7 @@ drawFirst ownedBy none
 drawFirst cleanedBy none
 drawFirst borrows none
 drawFirst catch drawFirstError random.RangeError
+drawFirst suppresses none
 
 drawSecond is call
 drawSecond in main
@@ -213,6 +219,7 @@ drawSecond ownedBy none
 drawSecond cleanedBy none
 drawSecond borrows none
 drawSecond catch drawSecondError random.RangeError
+drawSecond suppresses none
 
 sameDraw is call
 sameDraw in main
@@ -224,6 +231,7 @@ sameDraw ownedBy none
 sameDraw cleanedBy none
 sameDraw borrows none
 sameDraw catch none
+sameDraw suppresses none
 
 printRepeatable is call
 printRepeatable in main
@@ -234,6 +242,7 @@ printRepeatable ownedBy none
 printRepeatable cleanedBy none
 printRepeatable borrows none
 printRepeatable catch none
+printRepeatable suppresses none
 
 rollDie is call
 rollDie in main
@@ -245,6 +254,7 @@ rollDie ownedBy none
 rollDie cleanedBy none
 rollDie borrows none
 rollDie catch rollError random.RangeError
+rollDie suppresses none
 
 atLeastOne is call
 atLeastOne in main
@@ -256,6 +266,7 @@ atLeastOne ownedBy none
 atLeastOne cleanedBy none
 atLeastOne borrows none
 atLeastOne catch none
+atLeastOne suppresses none
 
 atMostSix is call
 atMostSix in main
@@ -267,6 +278,7 @@ atMostSix ownedBy none
 atMostSix cleanedBy none
 atMostSix borrows none
 atMostSix catch none
+atMostSix suppresses none
 
 printAboveLow is call
 printAboveLow in main
@@ -277,6 +289,7 @@ printAboveLow ownedBy none
 printAboveLow cleanedBy none
 printAboveLow borrows none
 printAboveLow catch none
+printAboveLow suppresses none
 
 printBelowHigh is call
 printBelowHigh in main
@@ -287,6 +300,7 @@ printBelowHigh ownedBy none
 printBelowHigh cleanedBy none
 printBelowHigh borrows none
 printBelowHigh catch none
+printBelowHigh suppresses none
 
 emptyDraw is call
 emptyDraw in main
@@ -299,6 +313,7 @@ emptyDraw ownedBy none
 emptyDraw cleanedBy none
 emptyDraw borrows none
 emptyDraw catch emptyError random.RangeError
+emptyDraw suppresses none
 
 printEmptyRange is call
 printEmptyRange in main
@@ -309,3 +324,4 @@ printEmptyRange ownedBy none
 printEmptyRange cleanedBy none
 printEmptyRange borrows none
 printEmptyRange catch none
+printEmptyRange suppresses none

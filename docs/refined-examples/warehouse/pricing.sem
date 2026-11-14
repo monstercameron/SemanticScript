@@ -93,6 +93,7 @@ timesNine ownedBy none
 timesNine cleanedBy none
 timesNine borrows none
 timesNine catch none
+timesNine suppresses none
 
 byTen is call
 byTen in bulkDiscount
@@ -104,6 +105,7 @@ byTen ownedBy none
 byTen cleanedBy none
 byTen borrows none
 byTen catch none
+byTen suppresses none
 
 # ---------------------------------------------------------------- one line
 
@@ -149,6 +151,7 @@ readQuantity ownedBy none
 readQuantity cleanedBy none
 readQuantity borrows none
 readQuantity catch none
+readQuantity suppresses none
 
 checkSign is call
 checkSign in lineTotal
@@ -160,6 +163,7 @@ checkSign ownedBy none
 checkSign cleanedBy none
 checkSign borrows none
 checkSign catch none
+checkSign suppresses none
 
 readSku is call
 readSku in lineTotal
@@ -170,6 +174,7 @@ readSku ownedBy none
 readSku cleanedBy none
 readSku borrows none
 readSku catch none
+readSku suppresses none
 
 makeNegative is call
 makeNegative in lineTotal
@@ -180,6 +185,7 @@ makeNegative ownedBy none
 makeNegative cleanedBy none
 makeNegative borrows none
 makeNegative catch none
+makeNegative suppresses none
 
 readUnit is call
 readUnit in lineTotal
@@ -190,6 +196,7 @@ readUnit ownedBy none
 readUnit cleanedBy none
 readUnit borrows none
 readUnit catch none
+readUnit suppresses none
 
 gross is call
 gross in lineTotal
@@ -201,6 +208,7 @@ gross ownedBy none
 gross cleanedBy none
 gross borrows none
 gross catch none
+gross suppresses none
 
 applyRule is call
 applyRule in lineTotal
@@ -211,6 +219,7 @@ applyRule ownedBy none
 applyRule cleanedBy none
 applyRule borrows none
 applyRule catch none
+applyRule suppresses none
 
 # ---------------------------------------------------------------- a whole order
 
@@ -235,7 +244,7 @@ orderTotal label rejectEmpty loopKind none
 orderTotal label rejectEmpty within none
 orderTotal label sumLines loopKind forEach
 orderTotal label sumLines within none
-orderTotal label sumLines maxIterations 1000
+orderTotal label sumLines maxIterations lineCount
 orderTotal label sumLines over lines
 orderTotal label priceLine loopKind none
 orderTotal label priceLine within sumLines
@@ -270,6 +279,7 @@ countLines ownedBy none
 countLines cleanedBy none
 countLines borrows none
 countLines catch none
+countLines suppresses none
 
 checkEmpty is call
 checkEmpty in orderTotal
@@ -281,6 +291,7 @@ checkEmpty ownedBy none
 checkEmpty cleanedBy none
 checkEmpty borrows none
 checkEmpty catch none
+checkEmpty suppresses none
 
 makeEmpty is call
 makeEmpty in orderTotal
@@ -291,6 +302,7 @@ makeEmpty ownedBy none
 makeEmpty cleanedBy none
 makeEmpty borrows none
 makeEmpty catch none
+makeEmpty suppresses none
 
 priceIt is call
 priceIt in orderTotal
@@ -302,6 +314,7 @@ priceIt ownedBy none
 priceIt cleanedBy none
 priceIt borrows none
 priceIt catch lineError PricingError
+priceIt suppresses none
 
 accumulate is call
 accumulate in orderTotal
@@ -313,6 +326,7 @@ accumulate ownedBy none
 accumulate cleanedBy none
 accumulate borrows none
 accumulate catch none
+accumulate suppresses none
 
 # ---------------------------------------------------------------- what other modules call
 
@@ -351,6 +365,7 @@ total ownedBy none
 total cleanedBy none
 total borrows none
 total catch totalError PricingError
+total suppresses none
 
 discountTotal is operation
 discountTotal purpose "Total an order with the bulk discount on every line"
@@ -387,3 +402,4 @@ total ownedBy none
 total cleanedBy none
 total borrows none
 total catch totalError PricingError
+total suppresses none

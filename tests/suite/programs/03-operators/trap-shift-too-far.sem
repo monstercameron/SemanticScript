@@ -39,3 +39,4 @@ compute ownedBy none
 compute cleanedBy none
 compute borrows none
 compute catch none
+compute suppresses none

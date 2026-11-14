@@ -76,6 +76,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
@@ -355,6 +356,7 @@ makeNumbers ownedBy scratch
 makeNumbers cleanedBy none
 makeNumbers borrows none
 makeNumbers catch none
+makeNumbers suppresses none
 
 sliceNegativeStart is call
 sliceNegativeStart in main
@@ -367,6 +369,7 @@ sliceNegativeStart ownedBy none
 sliceNegativeStart cleanedBy none
 sliceNegativeStart borrows source
 sliceNegativeStart catch sliceNegativeStartError string.StringIndexError
+sliceNegativeStart suppresses none
 
 measure0 is call
 measure0 in main
@@ -377,6 +380,7 @@ measure0 ownedBy none
 measure0 cleanedBy none
 measure0 borrows none
 measure0 catch none
+measure0 suppresses none
 
 showSliceNegativeStart is call
 showSliceNegativeStart in main
@@ -387,6 +391,7 @@ showSliceNegativeStart ownedBy none
 showSliceNegativeStart cleanedBy none
 showSliceNegativeStart borrows none
 showSliceNegativeStart catch none
+showSliceNegativeStart suppresses none
 
 showFailed0 is call
 showFailed0 in main
@@ -397,6 +402,7 @@ showFailed0 ownedBy none
 showFailed0 cleanedBy none
 showFailed0 borrows none
 showFailed0 catch none
+showFailed0 suppresses none
 
 sliceNegativeLength is call
 sliceNegativeLength in main
@@ -409,6 +415,7 @@ sliceNegativeLength ownedBy none
 sliceNegativeLength cleanedBy none
 sliceNegativeLength borrows source
 sliceNegativeLength catch sliceNegativeLengthError string.StringIndexError
+sliceNegativeLength suppresses none
 
 measure1 is call
 measure1 in main
@@ -419,6 +426,7 @@ measure1 ownedBy none
 measure1 cleanedBy none
 measure1 borrows none
 measure1 catch none
+measure1 suppresses none
 
 showSliceNegativeLength is call
 showSliceNegativeLength in main
@@ -429,6 +437,7 @@ showSliceNegativeLength ownedBy none
 showSliceNegativeLength cleanedBy none
 showSliceNegativeLength borrows none
 showSliceNegativeLength catch none
+showSliceNegativeLength suppresses none
 
 showFailed1 is call
 showFailed1 in main
@@ -439,6 +448,7 @@ showFailed1 ownedBy none
 showFailed1 cleanedBy none
 showFailed1 borrows none
 showFailed1 catch none
+showFailed1 suppresses none
 
 sliceLengthOverflows is call
 sliceLengthOverflows in main
@@ -451,6 +461,7 @@ sliceLengthOverflows ownedBy none
 sliceLengthOverflows cleanedBy none
 sliceLengthOverflows borrows source
 sliceLengthOverflows catch sliceLengthOverflowsError string.StringIndexError
+sliceLengthOverflows suppresses none
 
 measure2 is call
 measure2 in main
@@ -461,6 +472,7 @@ measure2 ownedBy none
 measure2 cleanedBy none
 measure2 borrows none
 measure2 catch none
+measure2 suppresses none
 
 showSliceLengthOverflows is call
 showSliceLengthOverflows in main
@@ -471,6 +483,7 @@ showSliceLengthOverflows ownedBy none
 showSliceLengthOverflows cleanedBy none
 showSliceLengthOverflows borrows none
 showSliceLengthOverflows catch none
+showSliceLengthOverflows suppresses none
 
 showFailed2 is call
 showFailed2 in main
@@ -481,6 +494,7 @@ showFailed2 ownedBy none
 showFailed2 cleanedBy none
 showFailed2 borrows none
 showFailed2 catch none
+showFailed2 suppresses none
 
 sliceStartPastEnd is call
 sliceStartPastEnd in main
@@ -493,6 +507,7 @@ sliceStartPastEnd ownedBy none
 sliceStartPastEnd cleanedBy none
 sliceStartPastEnd borrows source
 sliceStartPastEnd catch sliceStartPastEndError string.StringIndexError
+sliceStartPastEnd suppresses none
 
 measure3 is call
 measure3 in main
@@ -503,6 +518,7 @@ measure3 ownedBy none
 measure3 cleanedBy none
 measure3 borrows none
 measure3 catch none
+measure3 suppresses none
 
 showSliceStartPastEnd is call
 showSliceStartPastEnd in main
@@ -513,6 +529,7 @@ showSliceStartPastEnd ownedBy none
 showSliceStartPastEnd cleanedBy none
 showSliceStartPastEnd borrows none
 showSliceStartPastEnd catch none
+showSliceStartPastEnd suppresses none
 
 showFailed3 is call
 showFailed3 in main
@@ -523,6 +540,7 @@ showFailed3 ownedBy none
 showFailed3 cleanedBy none
 showFailed3 borrows none
 showFailed3 catch none
+showFailed3 suppresses none
 
 sliceEmptyAtEnd is call
 sliceEmptyAtEnd in main
@@ -535,6 +553,7 @@ sliceEmptyAtEnd ownedBy none
 sliceEmptyAtEnd cleanedBy none
 sliceEmptyAtEnd borrows source
 sliceEmptyAtEnd catch sliceEmptyAtEndError string.StringIndexError
+sliceEmptyAtEnd suppresses none
 
 measure4 is call
 measure4 in main
@@ -545,6 +564,7 @@ measure4 ownedBy none
 measure4 cleanedBy none
 measure4 borrows none
 measure4 catch none
+measure4 suppresses none
 
 showSliceEmptyAtEnd is call
 showSliceEmptyAtEnd in main
@@ -555,6 +575,7 @@ showSliceEmptyAtEnd ownedBy none
 showSliceEmptyAtEnd cleanedBy none
 showSliceEmptyAtEnd borrows none
 showSliceEmptyAtEnd catch none
+showSliceEmptyAtEnd suppresses none
 
 showFailed4 is call
 showFailed4 in main
@@ -565,6 +586,7 @@ showFailed4 ownedBy none
 showFailed4 cleanedBy none
 showFailed4 borrows none
 showFailed4 catch none
+showFailed4 suppresses none
 
 byteBeforeStart is call
 byteBeforeStart in main
@@ -576,6 +598,7 @@ byteBeforeStart ownedBy none
 byteBeforeStart cleanedBy none
 byteBeforeStart borrows none
 byteBeforeStart catch byteBeforeStartError string.StringIndexError
+byteBeforeStart suppresses none
 
 showByteBeforeStart is call
 showByteBeforeStart in main
@@ -586,6 +609,7 @@ showByteBeforeStart ownedBy none
 showByteBeforeStart cleanedBy none
 showByteBeforeStart borrows none
 showByteBeforeStart catch none
+showByteBeforeStart suppresses none
 
 showFailed5 is call
 showFailed5 in main
@@ -596,6 +620,7 @@ showFailed5 ownedBy none
 showFailed5 cleanedBy none
 showFailed5 borrows none
 showFailed5 catch none
+showFailed5 suppresses none
 
 byteAtEnd is call
 byteAtEnd in main
@@ -607,6 +632,7 @@ byteAtEnd ownedBy none
 byteAtEnd cleanedBy none
 byteAtEnd borrows none
 byteAtEnd catch byteAtEndError string.StringIndexError
+byteAtEnd suppresses none
 
 showByteAtEnd is call
 showByteAtEnd in main
@@ -617,6 +643,7 @@ showByteAtEnd ownedBy none
 showByteAtEnd cleanedBy none
 showByteAtEnd borrows none
 showByteAtEnd catch none
+showByteAtEnd suppresses none
 
 showFailed6 is call
 showFailed6 in main
@@ -627,6 +654,7 @@ showFailed6 ownedBy none
 showFailed6 cleanedBy none
 showFailed6 borrows none
 showFailed6 catch none
+showFailed6 suppresses none
 
 findEmpty is call
 findEmpty in main
@@ -638,6 +666,7 @@ findEmpty ownedBy none
 findEmpty cleanedBy none
 findEmpty borrows none
 findEmpty catch findEmptyError string.NotFound
+findEmpty suppresses none
 
 showFindEmpty is call
 showFindEmpty in main
@@ -648,6 +677,7 @@ showFindEmpty ownedBy none
 showFindEmpty cleanedBy none
 showFindEmpty borrows none
 showFindEmpty catch none
+showFindEmpty suppresses none
 
 showFailed7 is call
 showFailed7 in main
@@ -658,6 +688,7 @@ showFailed7 ownedBy none
 showFailed7 cleanedBy none
 showFailed7 borrows none
 showFailed7 catch none
+showFailed7 suppresses none
 
 parseLargest is call
 parseLargest in main
@@ -668,6 +699,7 @@ parseLargest ownedBy none
 parseLargest cleanedBy none
 parseLargest borrows none
 parseLargest catch parseLargestError string.ParseError
+parseLargest suppresses none
 
 showParseLargest is call
 showParseLargest in main
@@ -678,6 +710,7 @@ showParseLargest ownedBy none
 showParseLargest cleanedBy none
 showParseLargest borrows none
 showParseLargest catch none
+showParseLargest suppresses none
 
 showFailed8 is call
 showFailed8 in main
@@ -688,6 +721,7 @@ showFailed8 ownedBy none
 showFailed8 cleanedBy none
 showFailed8 borrows none
 showFailed8 catch none
+showFailed8 suppresses none
 
 parsePastLargest is call
 parsePastLargest in main
@@ -698,6 +732,7 @@ parsePastLargest ownedBy none
 parsePastLargest cleanedBy none
 parsePastLargest borrows none
 parsePastLargest catch parsePastLargestError string.ParseError
+parsePastLargest suppresses none
 
 showParsePastLargest is call
 showParsePastLargest in main
@@ -708,6 +743,7 @@ showParsePastLargest ownedBy none
 showParsePastLargest cleanedBy none
 showParsePastLargest borrows none
 showParsePastLargest catch none
+showParsePastLargest suppresses none
 
 showFailed9 is call
 showFailed9 in main
@@ -718,6 +754,7 @@ showFailed9 ownedBy none
 showFailed9 cleanedBy none
 showFailed9 borrows none
 showFailed9 catch none
+showFailed9 suppresses none
 
 parseSmallest is call
 parseSmallest in main
@@ -728,6 +765,7 @@ parseSmallest ownedBy none
 parseSmallest cleanedBy none
 parseSmallest borrows none
 parseSmallest catch parseSmallestError string.ParseError
+parseSmallest suppresses none
 
 showParseSmallest is call
 showParseSmallest in main
@@ -738,6 +776,7 @@ showParseSmallest ownedBy none
 showParseSmallest cleanedBy none
 showParseSmallest borrows none
 showParseSmallest catch none
+showParseSmallest suppresses none
 
 showFailed10 is call
 showFailed10 in main
@@ -748,6 +787,7 @@ showFailed10 ownedBy none
 showFailed10 cleanedBy none
 showFailed10 borrows none
 showFailed10 catch none
+showFailed10 suppresses none
 
 parseSignOnly is call
 parseSignOnly in main
@@ -758,6 +798,7 @@ parseSignOnly ownedBy none
 parseSignOnly cleanedBy none
 parseSignOnly borrows none
 parseSignOnly catch parseSignOnlyError string.ParseError
+parseSignOnly suppresses none
 
 showParseSignOnly is call
 showParseSignOnly in main
@@ -768,6 +809,7 @@ showParseSignOnly ownedBy none
 showParseSignOnly cleanedBy none
 showParseSignOnly borrows none
 showParseSignOnly catch none
+showParseSignOnly suppresses none
 
 showFailed11 is call
 showFailed11 in main
@@ -778,6 +820,7 @@ showFailed11 ownedBy none
 showFailed11 cleanedBy none
 showFailed11 borrows none
 showFailed11 catch none
+showFailed11 suppresses none
 
 parseEmpty is call
 parseEmpty in main
@@ -788,6 +831,7 @@ parseEmpty ownedBy none
 parseEmpty cleanedBy none
 parseEmpty borrows none
 parseEmpty catch parseEmptyError string.ParseError
+parseEmpty suppresses none
 
 showParseEmpty is call
 showParseEmpty in main
@@ -798,6 +842,7 @@ showParseEmpty ownedBy none
 showParseEmpty cleanedBy none
 showParseEmpty borrows none
 showParseEmpty catch none
+showParseEmpty suppresses none
 
 showFailed12 is call
 showFailed12 in main
@@ -808,6 +853,7 @@ showFailed12 ownedBy none
 showFailed12 cleanedBy none
 showFailed12 borrows none
 showFailed12 catch none
+showFailed12 suppresses none
 
 parsePlus is call
 parsePlus in main
@@ -818,6 +864,7 @@ parsePlus ownedBy none
 parsePlus cleanedBy none
 parsePlus borrows none
 parsePlus catch parsePlusError string.ParseError
+parsePlus suppresses none
 
 showParsePlus is call
 showParsePlus in main
@@ -828,6 +875,7 @@ showParsePlus ownedBy none
 showParsePlus cleanedBy none
 showParsePlus borrows none
 showParsePlus catch none
+showParsePlus suppresses none
 
 showFailed13 is call
 showFailed13 in main
@@ -838,6 +886,7 @@ showFailed13 ownedBy none
 showFailed13 cleanedBy none
 showFailed13 borrows none
 showFailed13 catch none
+showFailed13 suppresses none
 
 parseSpace is call
 parseSpace in main
@@ -848,6 +897,7 @@ parseSpace ownedBy none
 parseSpace cleanedBy none
 parseSpace borrows none
 parseSpace catch parseSpaceError string.ParseError
+parseSpace suppresses none
 
 showParseSpace is call
 showParseSpace in main
@@ -858,6 +908,7 @@ showParseSpace ownedBy none
 showParseSpace cleanedBy none
 showParseSpace borrows none
 showParseSpace catch none
+showParseSpace suppresses none
 
 showFailed14 is call
 showFailed14 in main
@@ -868,6 +919,7 @@ showFailed14 ownedBy none
 showFailed14 cleanedBy none
 showFailed14 borrows none
 showFailed14 catch none
+showFailed14 suppresses none
 
 parseNonAscii is call
 parseNonAscii in main
@@ -878,6 +930,7 @@ parseNonAscii ownedBy none
 parseNonAscii cleanedBy none
 parseNonAscii borrows none
 parseNonAscii catch parseNonAsciiError string.ParseError
+parseNonAscii suppresses none
 
 showParseNonAscii is call
 showParseNonAscii in main
@@ -888,6 +941,7 @@ showParseNonAscii ownedBy none
 showParseNonAscii cleanedBy none
 showParseNonAscii borrows none
 showParseNonAscii catch none
+showParseNonAscii suppresses none
 
 showFailed15 is call
 showFailed15 in main
@@ -898,6 +952,7 @@ showFailed15 ownedBy none
 showFailed15 cleanedBy none
 showFailed15 borrows none
 showFailed15 catch none
+showFailed15 suppresses none
 
 listNegative is call
 listNegative in main
@@ -909,6 +964,7 @@ listNegative ownedBy none
 listNegative cleanedBy none
 listNegative borrows none
 listNegative catch listNegativeError list.IndexOutOfRange
+listNegative suppresses none
 
 showListNegative is call
 showListNegative in main
@@ -919,6 +975,7 @@ showListNegative ownedBy none
 showListNegative cleanedBy none
 showListNegative borrows none
 showListNegative catch none
+showListNegative suppresses none
 
 showFailed16 is call
 showFailed16 in main
@@ -929,6 +986,7 @@ showFailed16 ownedBy none
 showFailed16 cleanedBy none
 showFailed16 borrows none
 showFailed16 catch none
+showFailed16 suppresses none
 
 listEmptyRead is call
 listEmptyRead in main
@@ -940,6 +998,7 @@ listEmptyRead ownedBy none
 listEmptyRead cleanedBy none
 listEmptyRead borrows none
 listEmptyRead catch listEmptyReadError list.IndexOutOfRange
+listEmptyRead suppresses none
 
 showListEmptyRead is call
 showListEmptyRead in main
@@ -950,6 +1009,7 @@ showListEmptyRead ownedBy none
 showListEmptyRead cleanedBy none
 showListEmptyRead borrows none
 showListEmptyRead catch none
+showListEmptyRead suppresses none
 
 showFailed17 is call
 showFailed17 in main
@@ -960,3 +1020,4 @@ showFailed17 ownedBy none
 showFailed17 cleanedBy none
 showFailed17 borrows none
 showFailed17 catch none
+showFailed17 suppresses none

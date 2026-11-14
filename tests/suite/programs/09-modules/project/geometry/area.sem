@@ -36,6 +36,7 @@ readWidth ownedBy none
 readWidth cleanedBy none
 readWidth borrows none
 readWidth catch none
+readWidth suppresses none
 
 readHeight is call
 readHeight in rectangle
@@ -46,6 +47,7 @@ readHeight ownedBy none
 readHeight cleanedBy none
 readHeight borrows none
 readHeight catch none
+readHeight suppresses none
 
 multiply is call
 multiply in rectangle
@@ -57,3 +59,4 @@ multiply ownedBy none
 multiply cleanedBy none
 multiply borrows none
 multiply catch none
+multiply suppresses none

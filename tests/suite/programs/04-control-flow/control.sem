@@ -70,6 +70,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 grade is operation
 grade purpose "Return 1 below 10, 2 below 20, and 3 otherwise"
@@ -117,6 +118,7 @@ belowTen ownedBy none
 belowTen cleanedBy none
 belowTen borrows none
 belowTen catch none
+belowTen suppresses none
 
 belowTwenty is call
 belowTwenty in grade
@@ -128,6 +130,7 @@ belowTwenty ownedBy none
 belowTwenty cleanedBy none
 belowTwenty borrows none
 belowTwenty catch none
+belowTwenty suppresses none
 
 sumToFive is operation
 sumToFive purpose "Add the whole numbers from 1 to 5 with a counted loop"
@@ -176,6 +179,7 @@ pastLast ownedBy none
 pastLast cleanedBy none
 pastLast borrows none
 pastLast catch none
+pastLast suppresses none
 
 addToTotal is call
 addToTotal in sumToFive
@@ -187,6 +191,7 @@ addToTotal ownedBy none
 addToTotal cleanedBy none
 addToTotal borrows none
 addToTotal catch none
+addToTotal suppresses none
 
 advance is call
 advance in sumToFive
@@ -198,6 +203,7 @@ advance ownedBy none
 advance cleanedBy none
 advance borrows none
 advance catch none
+advance suppresses none
 
 oddSum is operation
 oddSum purpose "Add odd numbers from 1 upward, skipping evens, stopping before the total passes 10"
@@ -256,6 +262,7 @@ moreLeft ownedBy none
 moreLeft cleanedBy none
 moreLeft borrows none
 moreLeft catch none
+moreLeft suppresses none
 
 parity is call
 parity in oddSum
@@ -267,6 +274,7 @@ parity ownedBy none
 parity cleanedBy none
 parity borrows none
 parity catch none
+parity suppresses none
 
 isOdd is call
 isOdd in oddSum
@@ -278,6 +286,7 @@ isOdd ownedBy none
 isOdd cleanedBy none
 isOdd borrows none
 isOdd catch none
+isOdd suppresses none
 
 advance is call
 advance in oddSum
@@ -289,6 +298,7 @@ advance ownedBy none
 advance cleanedBy none
 advance borrows none
 advance catch none
+advance suppresses none
 
 addOdd is call
 addOdd in oddSum
@@ -300,6 +310,7 @@ addOdd ownedBy none
 addOdd cleanedBy none
 addOdd borrows none
 addOdd catch none
+addOdd suppresses none
 
 tooBig is call
 tooBig in oddSum
@@ -311,6 +322,7 @@ tooBig ownedBy none
 tooBig cleanedBy none
 tooBig borrows none
 tooBig catch none
+tooBig suppresses none
 
 atLeastOnce is operation
 atLeastOnce purpose "Count passes of a loop whose test is false from the start; it still runs once"
@@ -354,6 +366,7 @@ countPass ownedBy none
 countPass cleanedBy none
 countPass borrows none
 countPass catch none
+countPass suppresses none
 
 gridCells is operation
 gridCells purpose "Count the cells of a 5 by 5 grid with two nested counted loops"
@@ -419,6 +432,7 @@ rowsDone ownedBy none
 rowsDone cleanedBy none
 rowsDone borrows none
 rowsDone catch none
+rowsDone suppresses none
 
 columnsDone is call
 columnsDone in gridCells
@@ -430,6 +444,7 @@ columnsDone ownedBy none
 columnsDone cleanedBy none
 columnsDone borrows none
 columnsDone catch none
+columnsDone suppresses none
 
 addCell is call
 addCell in gridCells
@@ -441,6 +456,7 @@ addCell ownedBy none
 addCell cleanedBy none
 addCell borrows none
 addCell catch none
+addCell suppresses none
 
 nextColumn is call
 nextColumn in gridCells
@@ -452,6 +468,7 @@ nextColumn ownedBy none
 nextColumn cleanedBy none
 nextColumn borrows none
 nextColumn catch none
+nextColumn suppresses none
 
 advanceRow is call
 advanceRow in gridCells
@@ -463,6 +480,7 @@ advanceRow ownedBy none
 advanceRow cleanedBy none
 advanceRow borrows none
 advanceRow catch none
+advanceRow suppresses none
 
 halvings is operation
 halvings purpose "Halve 4096 until it reaches 1 in a service-style loop with an explicit exit"
@@ -511,6 +529,7 @@ reachedOne ownedBy none
 reachedOne cleanedBy none
 reachedOne borrows none
 reachedOne catch none
+reachedOne suppresses none
 
 half is call
 half in halvings
@@ -522,6 +541,7 @@ half ownedBy none
 half cleanedBy none
 half borrows none
 half catch none
+half suppresses none
 
 countStep is call
 countStep in halvings
@@ -533,6 +553,7 @@ countStep ownedBy none
 countStep cleanedBy none
 countStep borrows none
 countStep catch none
+countStep suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -584,6 +605,7 @@ gradeFifteen ownedBy none
 gradeFifteen cleanedBy none
 gradeFifteen borrows none
 gradeFifteen catch none
+gradeFifteen suppresses none
 
 showGrade is call
 showGrade in main
@@ -594,6 +616,7 @@ showGrade ownedBy none
 showGrade cleanedBy none
 showGrade borrows none
 showGrade catch none
+showGrade suppresses none
 
 runSum is call
 runSum in main
@@ -604,6 +627,7 @@ runSum ownedBy none
 runSum cleanedBy none
 runSum borrows none
 runSum catch none
+runSum suppresses none
 
 showSum is call
 showSum in main
@@ -614,6 +638,7 @@ showSum ownedBy none
 showSum cleanedBy none
 showSum borrows none
 showSum catch none
+showSum suppresses none
 
 runOdd is call
 runOdd in main
@@ -624,6 +649,7 @@ runOdd ownedBy none
 runOdd cleanedBy none
 runOdd borrows none
 runOdd catch none
+runOdd suppresses none
 
 showOdd is call
 showOdd in main
@@ -634,6 +660,7 @@ showOdd ownedBy none
 showOdd cleanedBy none
 showOdd borrows none
 showOdd catch none
+showOdd suppresses none
 
 runOnce is call
 runOnce in main
@@ -644,6 +671,7 @@ runOnce ownedBy none
 runOnce cleanedBy none
 runOnce borrows none
 runOnce catch none
+runOnce suppresses none
 
 showOnce is call
 showOnce in main
@@ -654,6 +682,7 @@ showOnce ownedBy none
 showOnce cleanedBy none
 showOnce borrows none
 showOnce catch none
+showOnce suppresses none
 
 runGrid is call
 runGrid in main
@@ -664,6 +693,7 @@ runGrid ownedBy none
 runGrid cleanedBy none
 runGrid borrows none
 runGrid catch none
+runGrid suppresses none
 
 showGrid is call
 showGrid in main
@@ -674,6 +704,7 @@ showGrid ownedBy none
 showGrid cleanedBy none
 showGrid borrows none
 showGrid catch none
+showGrid suppresses none
 
 runHalvings is call
 runHalvings in main
@@ -684,6 +715,7 @@ runHalvings ownedBy none
 runHalvings cleanedBy none
 runHalvings borrows none
 runHalvings catch none
+runHalvings suppresses none
 
 showHalvings is call
 showHalvings in main
@@ -694,6 +726,7 @@ showHalvings ownedBy none
 showHalvings cleanedBy none
 showHalvings borrows none
 showHalvings catch none
+showHalvings suppresses none
 
 gradeFive is call
 gradeFive in main
@@ -704,6 +737,7 @@ gradeFive ownedBy none
 gradeFive cleanedBy none
 gradeFive borrows none
 gradeFive catch none
+gradeFive suppresses none
 
 gradeTwenty is call
 gradeTwenty in main
@@ -714,6 +748,7 @@ gradeTwenty ownedBy none
 gradeTwenty cleanedBy none
 gradeTwenty borrows none
 gradeTwenty catch none
+gradeTwenty suppresses none
 
 sumGrades is call
 sumGrades in main
@@ -725,6 +760,7 @@ sumGrades ownedBy none
 sumGrades cleanedBy none
 sumGrades borrows none
 sumGrades catch none
+sumGrades suppresses none
 
 showGrades is call
 showGrades in main
@@ -735,6 +771,7 @@ showGrades ownedBy none
 showGrades cleanedBy none
 showGrades borrows none
 showGrades catch none
+showGrades suppresses none
 
 squareEight is call
 squareEight in main
@@ -746,6 +783,7 @@ squareEight ownedBy none
 squareEight cleanedBy none
 squareEight borrows none
 squareEight catch none
+squareEight suppresses none
 
 showSquare is call
 showSquare in main
@@ -756,3 +794,4 @@ showSquare ownedBy none
 showSquare cleanedBy none
 showSquare borrows none
 showSquare catch none
+showSquare suppresses none

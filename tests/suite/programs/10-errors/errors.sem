@@ -66,6 +66,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 ConfigError is enum
 ConfigError purpose "Why a configuration value was rejected, with the detail needed to report it"
@@ -116,6 +117,7 @@ parse ownedBy none
 parse cleanedBy none
 parse borrows none
 parse catch parseError string.ParseError
+parse suppresses none
 
 makeNotANumber is call
 makeNotANumber in parsePort
@@ -126,6 +128,7 @@ makeNotANumber ownedBy none
 makeNotANumber cleanedBy none
 makeNotANumber borrows none
 makeNotANumber catch none
+makeNotANumber suppresses none
 
 tooBig is call
 tooBig in parsePort
@@ -137,6 +140,7 @@ tooBig ownedBy none
 tooBig cleanedBy none
 tooBig borrows none
 tooBig catch none
+tooBig suppresses none
 
 makeTooLarge is call
 makeTooLarge in parsePort
@@ -147,6 +151,7 @@ makeTooLarge ownedBy none
 makeTooLarge cleanedBy none
 makeTooLarge borrows none
 makeTooLarge catch none
+makeTooLarge suppresses none
 
 loadPort is operation
 loadPort purpose "Parse a port, passing any ConfigError up unchanged"
@@ -182,6 +187,7 @@ parseIt ownedBy none
 parseIt cleanedBy none
 parseIt borrows none
 parseIt catch innerError ConfigError
+parseIt suppresses none
 
 portOrDefault is operation
 portOrDefault purpose "Parse a port, recovering with port 0 when the text is not a number"
@@ -218,6 +224,7 @@ tryParse ownedBy none
 tryParse cleanedBy none
 tryParse borrows none
 tryParse catch ignoredError ConfigError
+tryParse suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -274,6 +281,7 @@ loadGood ownedBy none
 loadGood cleanedBy none
 loadGood borrows none
 loadGood catch goodError ConfigError
+loadGood suppresses none
 
 printGood is call
 printGood in main
@@ -284,6 +292,7 @@ printGood ownedBy none
 printGood cleanedBy none
 printGood borrows none
 printGood catch none
+printGood suppresses none
 
 loadDefault is call
 loadDefault in main
@@ -294,6 +303,7 @@ loadDefault ownedBy none
 loadDefault cleanedBy none
 loadDefault borrows none
 loadDefault catch none
+loadDefault suppresses none
 
 printDefault is call
 printDefault in main
@@ -304,6 +314,7 @@ printDefault ownedBy none
 printDefault cleanedBy none
 printDefault borrows none
 printDefault catch none
+printDefault suppresses none
 
 loadLarge is call
 loadLarge in main
@@ -314,6 +325,7 @@ loadLarge ownedBy none
 loadLarge cleanedBy none
 loadLarge borrows none
 loadLarge catch largeError ConfigError
+loadLarge suppresses none
 
 printTwo is call
 printTwo in main
@@ -324,6 +336,7 @@ printTwo ownedBy none
 printTwo cleanedBy none
 printTwo borrows none
 printTwo catch none
+printTwo suppresses none
 
 printThree is call
 printThree in main
@@ -334,3 +347,4 @@ printThree ownedBy none
 printThree cleanedBy none
 printThree borrows none
 printThree catch none
+printThree suppresses none

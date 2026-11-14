@@ -47,7 +47,12 @@ TRAP_EXIT_CODE = 70
 
 sys.path.insert(0, os.path.join(ROOT, "semanticscript", "compiler"))
 from refined import check_path  # noqa: E402
-from refined.check import allows_rows  # noqa: E402,F401
+from refined.check import allows_rows, approve_authority  # noqa: E402,F401
+
+
+def approve(project_dir: str) -> None:
+    """D-53: the harness is the trusted party that approves the authority of the programs it generates."""
+    approve_authority(os.path.join(project_dir, "build.sem"))
 
 
 @dataclass
@@ -149,6 +154,7 @@ def materialize(case: Case, workdir: str) -> str:
     dst = os.path.join(workdir, os.path.basename(case.name))
     if os.path.isdir(case.path):
         shutil.copytree(case.path, dst)
+        approve(dst)
         return dst
     os.makedirs(dst)
     with open(case.path, encoding="utf-8") as fh:
@@ -173,6 +179,7 @@ def materialize(case: Case, workdir: str) -> str:
             f"{project} entry {module + '.main' if console else 'none'}"]
     with open(os.path.join(dst, "build.sem"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(rows) + "\n")
+    approve(dst)
     return dst
 
 

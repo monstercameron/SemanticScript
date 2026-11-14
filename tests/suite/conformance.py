@@ -17,13 +17,17 @@ import os
 import sys
 from dataclasses import dataclass, field
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "semanticscript", "compiler"))
+from sembuild import suppressed  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.join(HERE, "conformance", "warehouse")
 BASES = {"warehouse": BASE, "groups": os.path.join(HERE, "conformance", "groups"),
          "cleanups": os.path.join(HERE, "conformance", "cleanups")}
 DOC = os.path.join(HERE, "..", "..", "docs", "safety-guarantees.md")
 
-W, P, B = "warehouse.sem", "pricing.sem", "build.sem"
+W, P, B, C = "warehouse.sem", "pricing.sem", "build.sem", "cleanups.sem"
 
 
 @dataclass(frozen=True)
@@ -36,7 +40,7 @@ class Check:
     detail: str = ""  # reject: text of the rule's own diagnostic; trap: text in stderr; run: a stdout line
     base: str = "warehouse"  # which program in tests/suite/conformance the edits apply to
     exit: int = 0  # run: the exit code
-    lines: tuple = ()  # run and trap: the exact stdout, line by line, when the order matters
+    lines: tuple | None = None  # run and trap: the exact stdout, line by line (`()` for nothing)
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,7 @@ def _call(name, op, target, args, out="none", owned="none", catch="none", kind="
     rows += [f"{name} argument {a}" for a in args] or [f"{name} argument none"]
     rows += [f"{name} result {out}", f"{name} ownedBy {owned}", f"{name} cleanedBy none", f"{name} borrows none",
              f"{name} catch {catch}"]
+    rows += [f"{name} suppresses {v}" for v in suppressed(catch, rationale)]
     return "\n".join(rows)
 
 
@@ -63,85 +68,69 @@ CLEAR_LINES = _call("clearLines", "main", "pricing.Lines.clear", ("list pricing.
 CLEANUP = ('closeReportCleanup is cleanup\ncloseReportCleanup rationale "A report that cannot be closed may not be '
            'fully written, so the program stops"\ncloseReportCleanup in main\ncloseReportCleanup runs closeReport\n'
            'closeReportCleanup cleans report\ncloseReportCleanup onError trap\n')
-ANNOUNCE = '''
-announceWriter is capability
-announceWriter purpose "Authority to write notices to standard error"
-announceWriter grants write console.stderr none
+STAMP = '''
+clockReader is capability
+clockReader purpose "Authority to read the monotonic clock"
+clockReader grants read clock.monotonic none
 
-announce is operation
-announce purpose "Write a notice line to standard error"
-announce invariant writesNotice "Writes the text as one line on standard error"
-announce typeParameter none
-announce input text String borrowed
-announce output none
-announce outputOwnedBy none
-announce raises console.WriteError
-announce effect write console.stderr
-announce uses announceWriter
-announce memoryHeap false
-announce async false
-announce maxRecursion none
-announce label begin loopKind none
-announce label begin within none
-announce label failed loopKind none
-announce label failed within none
-announce label done loopKind none
-announce label done within none
-announce let none
-announce at begin do say
-announce at begin branch ifError say goto failed else goto done
-announce at failed return error sayError
-announce at done return ok none
+stamp is operation
+stamp purpose "Read the monotonic clock"
+stamp invariant notNegative "Returns a time of zero or more milliseconds"
+stamp typeParameter none
+stamp input none
+stamp output Int64
+stamp outputOwnedBy none
+stamp raises none
+stamp effect read clock.monotonic
+stamp uses clockReader
+stamp memoryHeap false
+stamp async false
+stamp maxRecursion none
+stamp label begin loopKind none
+stamp label begin within none
+stamp let none
+stamp at begin do readClock
+stamp at begin return ok now
 
-say is call
-say in announce
-say invokes console.writeError
-say argument text String text lend
-say result none
-say ownedBy none
-say cleanedBy none
-say borrows none
-say catch sayError console.WriteError'''
-ANNOUNCE_TEST = '''
-announceTest is test
-announceTest purpose "announce writes a notice without failing"
-announceTest verifies announce writesNotice
-announceTest typeParameter none
-announceTest input none
-announceTest output none
-announceTest outputOwnedBy none
-announceTest raises none
-announceTest effect write console.stderr
-announceTest uses announceWriter
-announceTest memoryHeap false
-announceTest async false
-announceTest maxRecursion none
-announceTest label begin loopKind none
-announceTest label begin within none
-announceTest label wrote loopKind none
-announceTest label wrote within none
-announceTest label failed loopKind none
-announceTest label failed within none
-announceTest let notice String "pricing test notice" immutable
-announceTest let failedText String "writing a notice to standard error failed" immutable
-announceTest at begin do runAnnounce
-announceTest at begin branch ifError runAnnounce goto failed else goto wrote
-announceTest at wrote return ok none
-announceTest at failed do failWrite
-announceTest at failed return ok none
+''' + _call("readClock", "stamp", "clock.monotonic", (), out="now Int64")
+STAMP_TEST = '''
+stampTest is test
+stampTest purpose "The clock reads zero or more"
+stampTest verifies stamp notNegative
+stampTest typeParameter none
+stampTest input none
+stampTest output none
+stampTest outputOwnedBy none
+stampTest raises none
+stampTest effect read clock.monotonic
+stampTest uses clockReader
+stampTest memoryHeap false
+stampTest async false
+stampTest maxRecursion none
+stampTest label begin loopKind none
+stampTest label begin within none
+stampTest let zero Int64 0 immutable
+stampTest at begin do runStamp
+stampTest at begin do atLeastZero
+stampTest at begin do expectAtLeastZero
+stampTest at begin return ok none
 
-''' + _call("runAnnounce", "announceTest", "announce", ("text String notice lend",),
-             catch="announceError console.WriteError") + "\n\n" + _call(
-    "failWrite", "announceTest", "test.fail", ("message String failedText lend",))
+''' + "\n\n".join([
+    _call("runStamp", "stampTest", "stamp", (), out="now Int64"),
+    _call("atLeastZero", "stampTest", "compare.greaterOrEqualInt64", ("left Int64 now copy", "right Int64 zero copy"),
+          out="fine Bool"),
+    _call("expectAtLeastZero", "stampTest", "test.assertTrue", ("value Bool fine copy",))])
 FAILING = (("cleanups.sem", "closeSecond invokes closeNoting\ncloseSecond argument file fs.FileHandle second give\n"
                  "closeSecond argument note String secondNote lend",
                  "closeSecond invokes closeFailing\ncloseSecond argument file fs.FileHandle second give"),
                 ("cleanups.sem", "closeSecond catch closeSecondError fs.FileError",
                  "closeSecond catch closeSecondError CloseError"),
-                ("cleanups.sem", 'main let secondNote String "closing second" immutable\n', ""))
+                ("cleanups.sem", 'main let secondNote String "closing second" immutable\n', ""),
+                ("cleanups.sem", "closeSecond suppresses fs.FileError.notFound\ncloseSecond suppresses fs.FileError.denied\ncloseSecond suppresses fs.FileError.exists\ncloseSecond suppresses fs.FileError.tooLarge\ncloseSecond suppresses fs.FileError.timedOut\ncloseSecond suppresses fs.FileError.cancelled\ncloseSecond suppresses fs.FileError.busy\ncloseSecond suppresses fs.FileError.failed", "closeSecond suppresses CloseError.refused"))
 FAILING_TRAP = FAILING + (("cleanups.sem", "releaseSecond runs closeSecond\nreleaseSecond cleans second\n"
                                            "releaseSecond onError suppress",
-                           "releaseSecond runs closeSecond\nreleaseSecond cleans second\nreleaseSecond onError trap"),)
+                           "releaseSecond runs closeSecond\nreleaseSecond cleans second\nreleaseSecond onError trap"),
+                          ("cleanups.sem", "closeSecond suppresses CloseError.refused", "closeSecond suppresses none"))
 REGION_TEXT = '''
 label is operation
 label purpose "Return text built in this operation's own region"
@@ -181,11 +170,20 @@ GUARANTEES = (
         "outlive the loan it came from (R514).",
         "A resource cannot be stored in a collection, because a region releases collections without closing what "
         "they hold (R403).",
+        "Two handles are independent values to the checker, so the runtime guards what they share: one file, under "
+        "any name (links and `..` resolved), is open for writing by at most one handle of the program and never "
+        "while another handle reads it; readers share it. A conflicting open, `readAll`, `writeAll`, or `remove` "
+        "fails with `fs.FileError.busy` (D-52).",
     ), (
-        Check("use-after-close", "reject", "writing a report after closing it",
-              ((W, "main at opened defer closeReportCleanup\n", "main at opened do closeReport\n"),
-               (W, "openReport cleanedBy closeReportCleanup", "openReport cleanedBy none"), (W, CLEANUP, "")),
-              ("R513", "R506"), "`report` may already have been given away"),
+        Check("same-file-twice", "run", "opening `./cleanup-first.txt` while `cleanup-first.txt` is open for writing "
+              "fails with `busy`; only the first file's cleanup runs",
+              ((C, 'main let secondPath String "cleanup-second.txt" immutable',
+                'main let secondPath String "./cleanup-first.txt" immutable'),),
+              (), "closing first", base="cleanups", exit=1, lines=("closing first",)),
+        Check("close-twice", "reject", "closing the report again after the failure path already closed it",
+              ((W, "main at closeAfterFailure branch ifError closeFailedReport goto fileFailed else goto fileFailed",
+                "main at closeAfterFailure branch ifError closeFailedReport goto closeWritten else goto closeWritten"),),
+              ("R513",), "`report` may already have been given away"),
         Check("let-aliases-a-loan", "reject", "a `let` naming a borrowed list",
               ((P, "orderTotal let running Int64 0 mutable\n",
                 "orderTotal let running Int64 0 mutable\norderTotal let alias Lines lines immutable\n"),),
@@ -237,14 +235,25 @@ GUARANTEES = (
         "can fail; R403). The first task to fail records its error in the group and cancels the group's other "
         "tasks; `join <group>` waits for all of them and delivers that error, followed directly by "
         "`branch ifError <group>` (R506, D-48). A grouped task's own output is never read (R510).",
+        "A `join` or `cancel` needs its task live on EVERY path that reaches it: started, and not yet joined, on "
+        "each incoming path, not just on one; a block reached both after a join and without one is rejected (R510, "
+        "D-50).",
         "Cancellation is observed at waits (channel operations, sleeps, accepts, reads, child processes, file "
         "locks): the wait ends with the `cancelled` variant of its error. Computation between waits runs to its "
         "end, so a cancelled task always finishes in a defined state.",
     ), (
         Check("cancel-without-join", "reject", "cancelling a task and returning without joining it",
               ((W, "main at stopDiscount join discountTask\nmain at stopDiscount branch ifError discountTask goto "
-                   "listFailed else goto listFailed", "main at stopDiscount goto listFailed"),),
-              ("R512",), "was cancelled but is not joined"),
+                   "bothFailed else goto listFailed", "main at stopDiscount goto listFailed"),),
+              ("R512", "R511"), "was cancelled but is not joined"),
+        Check("join-on-a-merge", "reject", "a block joins the task, then flows into a block that joins it again",
+              ((W, "main at price branch ifError listTask goto stopDiscount else goto joinDiscount",
+                "main at price branch ifError listTask goto earlyJoin else goto joinDiscount\n"
+                "main at earlyJoin join discountTask\n"
+                "main at earlyJoin branch ifError discountTask goto joinDiscount else goto joinDiscount"),
+               (W, "main label joinDiscount loopKind none",
+                "main label earlyJoin loopKind none\nmain label earlyJoin within none\nmain label joinDiscount loopKind none")),
+              ("R510", "R507", "R511", "R506"), "was never started or was already joined"),
         Check("no-detach", "reject", "`detach` is not a step",
               ((W, "main at price start discountTask into none", "main at price detach discountTask"),),
               ("R205", "R510"), "step row must be"),
@@ -278,23 +287,16 @@ GUARANTEES = (
               "does not declare it",
               ((P, "PriceRule effect none", "PriceRule effect write console.stdout"),),
               ("R407",), "`lineTotal` performs `write console.stdout`"),
-        Check("effect-across-modules", "reject", "calling an imported operation that writes to standard error",
-              ((P, "pricing imports standard.list", "pricing imports standard.list\npricing imports standard.console"),
-               (P, "pricing exports discountTotal", "pricing exports discountTotal\npricing exports announce"),
-               (P, "<append>", ANNOUNCE),
-               ("pricing.test.sem", "<append>", ANNOUNCE_TEST),
+        Check("effect-across-modules", "reject", "calling an imported operation that reads the clock",
+              ((P, "pricing imports standard.list", "pricing imports standard.list\npricing imports standard.clock"),
+               (P, "pricing exports discountTotal", "pricing exports discountTotal\npricing exports stamp"),
+               (P, "<append>", STAMP),
+               ("pricing.test.sem", "<append>", STAMP_TEST),
                (B, "warehouse allows write console.stdout none",
-                "warehouse allows write console.stdout none\nwarehouse allows write console.stderr none"),
-               (W, "main at finished return ok okCode",
-                "main at finished do announceDone\nmain at finished branch ifError announceDone goto outputFailed "
-                "else goto exit\nmain at exit return ok okCode"),
-               (W, "main label listFailed loopKind none", "main label exit loopKind none\nmain label exit within none\n"
-                                                         "main label listFailed loopKind none"),
-               (W, "main let okCode ExitCode 0 immutable", 'main let okCode ExitCode 0 immutable\n'
-                                                          'main let doneText String "warehouse done" immutable'),
-               (W, "<append>", _call("announceDone", "main", "pricing.announce", ("text String doneText lend",),
-                                     catch="announceError console.WriteError"))),
-              ("R407",), "`main` performs `write console.stderr`"),
+                "warehouse allows write console.stdout none\nwarehouse allows read clock.monotonic none"),
+               (W, "main at finished return ok okCode", "main at finished do stampDone\nmain at finished return ok okCode"),
+               (W, "<append>", _call("stampDone", "main", "pricing.stamp", (), out="doneAt Int64"))),
+              ("R407",), "`main` performs `read clock.monotonic`"),
     ), ("mutation:effect-undeclared", "mutation:effect-declared-not-performed", "mutation:effect-laundering-ref",
         "mutation:reference-signature-mismatch")),
 
@@ -306,7 +308,14 @@ GUARANTEES = (
         "between modules (R402, R205).",
         "A scoped argument written as a literal must lie inside the scope at check time (R408); a computed one is "
         "checked before the call at run time, after `..` and links are resolved, and traps outside it (D-38).",
+        "Writing `allows` rows does not grant them: `refined run`, `test`, `bench`, and executable builds start only "
+        "when every `allows` row of build.sem is listed in the project's `authority.approved`, written by "
+        "`refined approve` after a person or a trusted pipeline reviews them; otherwise they stop with exit 3 and "
+        "name what is missing (D-53).",
     ), (
+        Check("authority-not-approved", "refused", "build.sem widened to read every file in the directory; nobody "
+              "approved that", ((B, 'warehouse allows read fs.files "warehouse-*"', 'warehouse allows read fs.files "*"'),),
+              (), 'allows read fs.files "*"', exit=3),
         Check("allows-missing", "reject", "build.sem no longer allows reading files",
               ((B, 'warehouse allows read fs.files "warehouse-*"\n', ""),), ("R408",), "which build.sem does not allow"),
         Check("capability-exported", "reject", "exporting a capability",
@@ -331,15 +340,24 @@ GUARANTEES = (
         "A fallible activation is followed directly by `branch ifError`; its error has the declared type of the "
         "target, and an operation raises only its declared type (R506, R403).",
         "A `match` names every variant of the error exactly once (R509).",
-        "Sending both outcomes to the same block discards the failure, which needs a `rationale` row saying why; "
-        "filler text is rejected (R506, R304).",
+        "Sending both outcomes to the same block discards the failure, which needs a `rationale` row saying why "
+        "(filler text is rejected) and `suppresses` rows naming exactly the variants dropped: every variant of the "
+        "error type, so a variant added later breaks the build instead of vanishing. An activation that handles its "
+        "failure states `suppresses none`; a cleanup under `onError suppress` names its call's variants (R506, "
+        "R304, D-54).",
     ), (
-        Check("discard-without-reason", "reject", "both outcomes of a join go to the same block, with no reason",
-              ((W, 'discountTask rationale "Once the list total has failed, the discount total is cancelled and its '
-                   'outcome no longer matters"\n', ""),), ("R506",), "needs a `rationale` row"),
+        Check("discard-without-reason", "reject", "both outcomes of a close go to the same block, with no reason",
+              ((W, 'closeFailedReport rationale "The write already failed and exit 4 reports it; the close only '
+                   'releases the file"\n', ""),), ("R506",), "needs a `rationale` row"),
         Check("discard-with-filler", "reject", "a rationale that says nothing",
-              ((W, 'discountTask rationale "Once the list total has failed, the discount total is cancelled and its '
-                   'outcome no longer matters"', 'discountTask rationale "ignored"'),), ("R304",), "filler"),
+              ((W, 'closeFailedReport rationale "The write already failed and exit 4 reports it; the close only '
+                   'releases the file"', 'closeFailedReport rationale "ignored"'),), ("R304",), "filler"),
+        Check("suppression-incomplete", "reject", "a discard that does not name `busy`",
+              ((W, "closeFailedReport suppresses fs.FileError.busy\n", ""),), ("R506",),
+              "add `closeFailedReport suppresses fs.FileError.busy`"),
+        Check("suppression-on-handled", "reject", "naming a suppressed variant for a failure that is handled",
+              ((W, "askRoom suppresses none", "askRoom suppresses arena.ArenaError.exhausted"),), ("R506",),
+              "handles its failure, so it suppresses nothing"),
         Check("match-incomplete", "reject", "a match missing `emptyOrder`",
               ((W, "main at listFailed case pricing.PricingError.emptyOrder bind none none goto noLines\n", ""),),
               ("R509",), "has no case for `emptyOrder`"),
@@ -355,19 +373,29 @@ GUARANTEES = (
         "every later `return`, `ok` or `error`, newest first, and only once.",
         "A cleanup's call takes the value with `give`: the value is consumed even if releasing it fails. "
         "`onError trap` stops the program; `onError suppress` continues. Every cleanup states a `rationale` row saying why its policy is right (R302).",
-        "A trap does not run cleanups: the process ends and the operating system releases what it held.",
+        "A trap runs no more program code, so deferred cleanups are skipped (the state that trapped may be the "
+        "state they act on). The runtime then releases what the program still holds outside it: files are flushed "
+        "and closed, connections closed, child processes stopped; the trap message says how many (D-51).",
         "A cancelled task runs the cleanups of the operations it unwinds through, since cancellation reaches it as "
         "an error.",
     ), (
-        Check("cleanup-deferred-twice", "reject", "deferring the report's cleanup twice",
-              ((W, "main at opened defer closeReportCleanup\n",
-                "main at opened defer closeReportCleanup\nmain at opened defer closeReportCleanup\n"),),
-              ("R510",), "is deferred 2 times"),
+        Check("cleanup-deferred-twice", "reject", "deferring the first file's cleanup twice",
+              ((C, "main at openedFirst defer releaseFirst\n",
+                "main at openedFirst defer releaseFirst\nmain at openedFirst defer releaseFirst\n"),),
+              ("R510",), "is deferred 2 times", base="cleanups"),
         Check("cleanup-before-acquire", "reject", "deferring the cleanup before the file is open",
-              ((W, "main at createNew do openReport\n", "main at createNew defer closeReportCleanup\n"
-                                                        "main at createNew do openReport\n"),
-               (W, "main at opened defer closeReportCleanup\n", "")),
-              ("R507", "R513"), "may not be set here"),
+              ((C, "main at begin do openFirst\n", "main at begin defer releaseFirst\nmain at begin do openFirst\n"),
+               (C, "main at openedFirst defer releaseFirst\n", "")),
+              ("R507", "R513"), "may not be set here", base="cleanups"),
+        Check("trap-releases-handles", "trap", "a division by zero with both files open: no cleanup runs, and the "
+              "runtime closes the two files",
+              ((C, "cleanups imports standard.fs", "cleanups imports standard.fs\ncleanups imports standard.math"),
+               (C, "main at openedSecond do printBody\n", "main at openedSecond do crash\nmain at openedSecond do printBody\n"),
+               (C, "main let okCode ExitCode 0 immutable", "main let okCode ExitCode 0 immutable\n"
+                                                          "main let one Int64 1 immutable\nmain let zero Int64 0 immutable"),
+               (C, "<append>", _call("crash", "main", "math.divideInt64", ("left Int64 one copy", "right Int64 zero copy"),
+                                     out="nothing Int64"))),
+              (), "the runtime released 2 resources", base="cleanups", lines=()),
         Check("cleanup-order", "run", "two deferred cleanups run at the return, newest first", (), (), "body",
               base="cleanups", lines=("body", "closing second", "closing first")),
         Check("partial-initialization", "run", "the second file fails to open: only the first file's cleanup "
@@ -380,8 +408,9 @@ GUARANTEES = (
         Check("cleanup-fails-suppress", "run", "a cleanup that fails under `onError suppress` is passed over; the "
               "handle is consumed and the older cleanup still runs", FAILING, (), "closing first",
               base="cleanups", lines=("body", "closing first")),
-        Check("cleanup-missing", "reject", "never deferring the report's cleanup",
-              ((W, "main at opened defer closeReportCleanup\n", ""),), ("R513", "R510"), "may still be owned"),
+        Check("cleanup-missing", "reject", "never deferring the first file's cleanup",
+              ((C, "main at openedFirst defer releaseFirst\n", ""),), ("R513", "R510"), "may still be owned",
+              base="cleanups"),
     ), ("mutation:cleanup-not-deferred", "mutation:cleanup-wrong-value", "mutation:cleanup-suppress-without-reason",
         "mutation:cleanup-before-acquire", "case:07-memory/cleanup-on-error", "case:06-recursion/recursive-cleanup",
         "case:07-memory/resources")),
@@ -391,8 +420,14 @@ GUARANTEES = (
         "region's name before any memory is written, so exhaustion never corrupts memory (A10).",
         "A region is released at its operation's return, after every task that could use it has been joined; values "
         "it owns cannot be returned unless the output names the region as owner (R409, R512).",
+        "Allocation a program can recover from: `arena.remaining(region)` says how many bytes are left, and "
+        "`arena.ensure(region, bytes)` fails with `arena.ArenaError.exhausted` (carrying what is left) when that "
+        "much is not free, so a program asks before a step that allocates and takes its own path (D-55).",
     ), (
-        Check("arena-exhausted", "trap", "a 64-byte region for the whole program",
+        Check("recover-before-allocating", "run", "a 300-byte region: the totals fit, the report does not, and the "
+              "program says so with exit 6 instead of trapping",
+              ((W, "store maxBytes 65536", "store maxBytes 300"),), (), "3375", exit=6, lines=("3750", "3375")),
+        Check("arena-exhausted", "trap", "a 64-byte region for the whole program: passing it unasked traps",
               ((W, "store maxBytes 65536", "store maxBytes 64"),), (), "exceeded its capacity of 64 bytes"),
     ), ("case:07-memory/trap-region-exhausted", "mutation:region-value-without-owner", "mutation:heap-undeclared",
         "mutation:region-escape-none")),
@@ -409,13 +444,14 @@ GUARANTEES = (
               ("R406",), "passed as `lendMutable`"),
         Check("two-writers", "reject", "two tasks writing through one handle at once",
               ((W, "main at opened start writeReport into none\n", "main at opened start writeReport into none\nmain at opened start writeAgain into none\n"),
-               (W, "main at opened branch ifError writeReport goto fileFailed else goto readBack",
+               (W, "main at opened branch ifError writeReport goto closeAfterFailure else goto closeWritten",
                 "main at opened branch ifError writeReport goto stopAgain else goto joinAgain\n"
-                "main at joinAgain join writeAgain\nmain at joinAgain branch ifError writeAgain goto fileFailed else goto readBack\n"
+                "main at joinAgain join writeAgain\nmain at joinAgain branch ifError writeAgain goto closeAfterFailure "
+                "else goto closeWritten\n"
                 "main at stopAgain cancel writeAgain\nmain at stopAgain join writeAgain\n"
-                "main at stopAgain branch ifError writeAgain goto fileFailed else goto fileFailed"),
-               (W, "main label readBack loopKind none", "main label joinAgain loopKind none\nmain label joinAgain within none\n"
-                "main label stopAgain loopKind none\nmain label stopAgain within none\nmain label readBack loopKind none"),
+                "main at stopAgain branch ifError writeAgain goto closeAfterFailure else goto closeAfterFailure"),
+               (W, "main label closeWritten loopKind none", "main label joinAgain loopKind none\nmain label joinAgain within none\n"
+                "main label stopAgain loopKind none\nmain label stopAgain within none\nmain label closeWritten loopKind none"),
                (W, "<append>", _call("writeAgain", "main", "fs.write",
                                      ("file fs.FileHandle report lendMutable", "bytes Bytes reportBytes lend",
                                       "deadline time.Deadline deadline copy"),
@@ -435,8 +471,8 @@ GUARANTEES = (
               ((W, "goto outputFailed else goto finished", "goto outputFailed else goto finishd"),),
               ("R502", "R511"), "no block is labelled `finishd`"),
         Check("maybe-unset", "reject", "reaching the totals after the list task failed",
-              ((W, "main at stopDiscount branch ifError discountTask goto listFailed else goto listFailed",
-                "main at stopDiscount branch ifError discountTask goto listFailed else goto printTotals"),),
+              ((W, "main at stopDiscount branch ifError discountTask goto bothFailed else goto listFailed",
+                "main at stopDiscount branch ifError discountTask goto bothFailed else goto printTotals"),),
               ("R507",), "`listCents` may not be set here"),
         Check("set-immutable", "reject", "setting an immutable let",
               ((W, "main at finished return ok okCode", "main at finished set okCode badLineCode\nmain at finished return ok okCode"),),
@@ -454,12 +490,17 @@ GUARANTEES = (
         "that changes it. A `forEach` over a table states a `maxIterations` at least its row count (R503).",
         "A `forEach` over a list reads it on every pass, so inside the loop the list cannot be changed, lent "
         "exclusively, or given away (R515). Passing the loop's `maxIterations` at run time traps (D-45).",
+        "A loop's bound may be computed at run time (a list's length, say): any immutable `Int64` value set on "
+        "every path into the loop before its first pass, back edges included (R503, R507, D-56).",
     ), (
         Check("table-rows-exceed-bound", "reject", "a three-row table read by a loop bounded at 2",
               ((W, "main label fill maxIterations 3", "main label fill maxIterations 2"),), ("R503",), "has 3 rows"),
         Check("list-exceeds-bound", "trap", "a three-line order priced by a loop bounded at 2",
-              ((P, "orderTotal label sumLines maxIterations 1000", "orderTotal label sumLines maxIterations 2"),), (),
+              ((P, "orderTotal label sumLines maxIterations lineCount", "orderTotal label sumLines maxIterations 2"),), (),
               "more than maxIterations 2 times"),
+        Check("bound-set-inside-loop", "reject", "a loop bounded by a value first set inside the loop",
+              ((P, "orderTotal label sumLines maxIterations lineCount", "orderTotal label sumLines maxIterations newRunning"),),
+              ("R507",), "may not be set when loop `sumLines` starts"),
     ), ("mutation:append-during-foreach", "mutation:list-index-unchecked", "mutation:table-missing-cell",
         "mutation:table-cell-wrong-type", "case:04-control-flow/trap-loop-bound")),
 
@@ -494,7 +535,8 @@ def render() -> str:
         out += [f"- {r}" for r in g.rules]
         out += ["", "| Check | Expect | What it shows |", "| --- | --- | --- |"]
         for c in g.checks:
-            expect = {"reject": "rejected: " + ", ".join(c.codes), "trap": "traps", "run": "runs"}[c.kind]
+            expect = {"reject": "rejected: " + ", ".join(c.codes), "trap": "traps", "run": "runs",
+                      "refused": f"refused to start (exit {c.exit})"}[c.kind]
             out.append(f"| `{c.id}` | {expect} | {c.says} |")
         if g.evidence:
             out += ["", "Also: " + ", ".join(f"`{e}`" for e in g.evidence) + "."]

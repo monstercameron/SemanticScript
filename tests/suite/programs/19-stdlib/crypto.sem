@@ -59,6 +59,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -70,6 +71,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -103,6 +105,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -154,6 +157,7 @@ abcBytes ownedBy none
 abcBytes cleanedBy none
 abcBytes borrows abc
 abcBytes catch none
+abcBytes suppresses none
 
 hashAbc is call
 hashAbc in main
@@ -165,6 +169,7 @@ hashAbc ownedBy store
 hashAbc cleanedBy none
 hashAbc borrows none
 hashAbc catch none
+hashAbc suppresses none
 
 hexAbc is call
 hexAbc in main
@@ -176,6 +181,7 @@ hexAbc ownedBy store
 hexAbc cleanedBy none
 hexAbc borrows none
 hexAbc catch none
+hexAbc suppresses none
 
 printAbcHex is call
 printAbcHex in main
@@ -186,6 +192,7 @@ printAbcHex ownedBy none
 printAbcHex cleanedBy none
 printAbcHex borrows none
 printAbcHex catch none
+printAbcHex suppresses none
 
 keyBytes is call
 keyBytes in main
@@ -196,6 +203,7 @@ keyBytes ownedBy none
 keyBytes cleanedBy none
 keyBytes borrows keyText
 keyBytes catch none
+keyBytes suppresses none
 
 messageBytes is call
 messageBytes in main
@@ -206,6 +214,7 @@ messageBytes ownedBy none
 messageBytes cleanedBy none
 messageBytes borrows messageText
 messageBytes catch none
+messageBytes suppresses none
 
 signMessage is call
 signMessage in main
@@ -218,6 +227,7 @@ signMessage ownedBy store
 signMessage cleanedBy none
 signMessage borrows none
 signMessage catch none
+signMessage suppresses none
 
 hexSignature is call
 hexSignature in main
@@ -229,6 +239,7 @@ hexSignature ownedBy store
 hexSignature cleanedBy none
 hexSignature borrows none
 hexSignature catch none
+hexSignature suppresses none
 
 printSignature is call
 printSignature in main
@@ -239,6 +250,7 @@ printSignature ownedBy none
 printSignature cleanedBy none
 printSignature borrows none
 printSignature catch none
+printSignature suppresses none
 
 sameHash is call
 sameHash in main
@@ -250,6 +262,7 @@ sameHash ownedBy none
 sameHash cleanedBy none
 sameHash borrows none
 sameHash catch none
+sameHash suppresses none
 
 printHashSame is call
 printHashSame in main
@@ -260,6 +273,7 @@ printHashSame ownedBy none
 printHashSame cleanedBy none
 printHashSame borrows none
 printHashSame catch none
+printHashSame suppresses none
 
 hashVersusMac is call
 hashVersusMac in main
@@ -271,6 +285,7 @@ hashVersusMac ownedBy none
 hashVersusMac cleanedBy none
 hashVersusMac borrows none
 hashVersusMac catch none
+hashVersusMac suppresses none
 
 printHashIsMac is call
 printHashIsMac in main
@@ -281,3 +296,4 @@ printHashIsMac ownedBy none
 printHashIsMac cleanedBy none
 printHashIsMac borrows none
 printHashIsMac catch none
+printHashIsMac suppresses none

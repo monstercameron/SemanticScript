@@ -41,6 +41,7 @@ makeNan ownedBy none
 makeNan cleanedBy none
 makeNan borrows none
 makeNan catch none
+makeNan suppresses none
 
 toInteger is call
 toInteger in main
@@ -51,3 +52,4 @@ toInteger ownedBy none
 toInteger cleanedBy none
 toInteger borrows none
 toInteger catch none
+toInteger suppresses none

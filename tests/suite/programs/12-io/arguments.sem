@@ -50,6 +50,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -83,6 +84,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 argumentReader is capability
 argumentReader purpose "Authority to read the command-line arguments"
@@ -145,6 +147,7 @@ countArguments ownedBy none
 countArguments cleanedBy none
 countArguments borrows none
 countArguments catch none
+countArguments suppresses none
 
 showCount is call
 showCount in main
@@ -155,6 +158,7 @@ showCount ownedBy none
 showCount cleanedBy none
 showCount borrows none
 showCount catch none
+showCount suppresses none
 
 readFirst is call
 readFirst in main
@@ -166,6 +170,7 @@ readFirst ownedBy text
 readFirst cleanedBy none
 readFirst borrows none
 readFirst catch firstError process.ArgumentError
+readFirst suppresses none
 
 showFirst is call
 showFirst in main
@@ -176,6 +181,7 @@ showFirst ownedBy none
 showFirst cleanedBy none
 showFirst borrows none
 showFirst catch none
+showFirst suppresses none
 
 readSixth is call
 readSixth in main
@@ -187,6 +193,7 @@ readSixth ownedBy text
 readSixth cleanedBy none
 readSixth borrows none
 readSixth catch sixthError process.ArgumentError
+readSixth suppresses none
 
 printBad is call
 printBad in main
@@ -197,3 +204,4 @@ printBad ownedBy none
 printBad cleanedBy none
 printBad borrows none
 printBad catch none
+printBad suppresses none

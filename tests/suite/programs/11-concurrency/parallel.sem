@@ -63,6 +63,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
@@ -104,6 +105,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -115,6 +117,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 clockReader is capability
 clockReader purpose "Authority to read the monotonic clock"
@@ -153,6 +156,7 @@ nap ownedBy none
 nap cleanedBy none
 nap borrows none
 nap catch none
+nap suppresses none
 
 produce is operation
 produce purpose "Send the numbers 1 to 5 into a channel, one at a time"
@@ -207,6 +211,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 pastFive is call
 pastFive in produce
@@ -218,6 +223,7 @@ pastFive ownedBy none
 pastFive cleanedBy none
 pastFive borrows none
 pastFive catch none
+pastFive suppresses none
 
 sendIt is task
 sendIt rationale "A failed send ends the producer early"
@@ -231,6 +237,7 @@ sendIt ownedBy none
 sendIt cleanedBy none
 sendIt borrows none
 sendIt catch sendError channel.ChannelError
+sendIt suppresses none
 
 nextValue is call
 nextValue in produce
@@ -242,6 +249,7 @@ nextValue ownedBy none
 nextValue cleanedBy none
 nextValue borrows none
 nextValue catch none
+nextValue suppresses none
 
 consume is operation
 consume purpose "Receive five numbers from a channel and return their sum, or -1 if receiving fails"
@@ -300,6 +308,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 allTaken is call
 allTaken in consume
@@ -311,6 +320,7 @@ allTaken ownedBy none
 allTaken cleanedBy none
 allTaken borrows none
 allTaken catch none
+allTaken suppresses none
 
 receiveIt is task
 receiveIt in consume
@@ -322,6 +332,7 @@ receiveIt ownedBy none
 receiveIt cleanedBy none
 receiveIt borrows none
 receiveIt catch receiveError channel.ChannelError
+receiveIt suppresses none
 
 addItem is call
 addItem in consume
@@ -333,6 +344,7 @@ addItem ownedBy none
 addItem cleanedBy none
 addItem borrows none
 addItem catch none
+addItem suppresses none
 
 countIt is call
 countIt in consume
@@ -344,6 +356,7 @@ countIt ownedBy none
 countIt cleanedBy none
 countIt borrows none
 countIt catch none
+countIt suppresses none
 
 factorial is operation
 factorial purpose "Return n factorial"
@@ -383,6 +396,7 @@ isBase ownedBy none
 isBase cleanedBy none
 isBase borrows none
 isBase catch none
+isBase suppresses none
 
 less is call
 less in factorial
@@ -394,6 +408,7 @@ less ownedBy none
 less cleanedBy none
 less borrows none
 less catch none
+less suppresses none
 
 inner is call
 inner in factorial
@@ -404,6 +419,7 @@ inner ownedBy none
 inner cleanedBy none
 inner borrows none
 inner catch none
+inner suppresses none
 
 times is call
 times in factorial
@@ -415,6 +431,7 @@ times ownedBy none
 times cleanedBy none
 times borrows none
 times catch none
+times suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -482,6 +499,7 @@ pair is taskGroup
 pair in main
 pair maxTasks 2
 pair catch none
+pair suppresses none
 
 mail is region
 mail in main
@@ -498,6 +516,7 @@ clockA ownedBy none
 clockA cleanedBy none
 clockA borrows none
 clockA catch none
+clockA suppresses none
 
 clockB is call
 clockB in main
@@ -508,6 +527,7 @@ clockB ownedBy none
 clockB cleanedBy none
 clockB borrows none
 clockB catch none
+clockB suppresses none
 
 clockC is call
 clockC in main
@@ -518,6 +538,7 @@ clockC ownedBy none
 clockC cleanedBy none
 clockC borrows none
 clockC catch none
+clockC suppresses none
 
 clockD is call
 clockD in main
@@ -528,6 +549,7 @@ clockD ownedBy none
 clockD cleanedBy none
 clockD borrows none
 clockD catch none
+clockD suppresses none
 
 pauseOne is task
 pauseOne in main
@@ -538,6 +560,7 @@ pauseOne ownedBy none
 pauseOne cleanedBy none
 pauseOne borrows none
 pauseOne catch none
+pauseOne suppresses none
 
 pauseTwo is task
 pauseTwo in main
@@ -548,6 +571,7 @@ pauseTwo ownedBy none
 pauseTwo cleanedBy none
 pauseTwo borrows none
 pauseTwo catch none
+pauseTwo suppresses none
 
 overlapTime is call
 overlapTime in main
@@ -559,6 +583,7 @@ overlapTime ownedBy none
 overlapTime cleanedBy none
 overlapTime borrows none
 overlapTime catch none
+overlapTime suppresses none
 
 overlapped is call
 overlapped in main
@@ -570,6 +595,7 @@ overlapped ownedBy none
 overlapped cleanedBy none
 overlapped borrows none
 overlapped catch none
+overlapped suppresses none
 
 showOverlapped is call
 showOverlapped in main
@@ -580,6 +606,7 @@ showOverlapped ownedBy none
 showOverlapped cleanedBy none
 showOverlapped borrows none
 showOverlapped catch none
+showOverlapped suppresses none
 
 groupOne is task
 groupOne in main
@@ -590,6 +617,7 @@ groupOne ownedBy none
 groupOne cleanedBy none
 groupOne borrows none
 groupOne catch none
+groupOne suppresses none
 
 groupTwo is task
 groupTwo in main
@@ -600,6 +628,7 @@ groupTwo ownedBy none
 groupTwo cleanedBy none
 groupTwo borrows none
 groupTwo catch none
+groupTwo suppresses none
 
 groupThree is task
 groupThree in main
@@ -610,6 +639,7 @@ groupThree ownedBy none
 groupThree cleanedBy none
 groupThree borrows none
 groupThree catch none
+groupThree suppresses none
 
 groupFour is task
 groupFour in main
@@ -620,6 +650,7 @@ groupFour ownedBy none
 groupFour cleanedBy none
 groupFour borrows none
 groupFour catch none
+groupFour suppresses none
 
 groupTime is call
 groupTime in main
@@ -631,6 +662,7 @@ groupTime ownedBy none
 groupTime cleanedBy none
 groupTime borrows none
 groupTime catch none
+groupTime suppresses none
 
 atLeastTwoWaves is call
 atLeastTwoWaves in main
@@ -642,6 +674,7 @@ atLeastTwoWaves ownedBy none
 atLeastTwoWaves cleanedBy none
 atLeastTwoWaves borrows none
 atLeastTwoWaves catch none
+atLeastTwoWaves suppresses none
 
 notSequential is call
 notSequential in main
@@ -653,6 +686,7 @@ notSequential ownedBy none
 notSequential cleanedBy none
 notSequential borrows none
 notSequential catch none
+notSequential suppresses none
 
 showTwoWaves is call
 showTwoWaves in main
@@ -663,6 +697,7 @@ showTwoWaves ownedBy none
 showTwoWaves cleanedBy none
 showTwoWaves borrows none
 showTwoWaves catch none
+showTwoWaves suppresses none
 
 showNotSequential is call
 showNotSequential in main
@@ -673,6 +708,7 @@ showNotSequential ownedBy none
 showNotSequential cleanedBy none
 showNotSequential borrows none
 showNotSequential catch none
+showNotSequential suppresses none
 
 makeMailbox is call
 makeMailbox in main
@@ -684,6 +720,7 @@ makeMailbox ownedBy mail
 makeMailbox cleanedBy none
 makeMailbox borrows none
 makeMailbox catch none
+makeMailbox suppresses none
 
 consumer is task
 consumer in main
@@ -694,6 +731,7 @@ consumer ownedBy none
 consumer cleanedBy none
 consumer borrows none
 consumer catch none
+consumer suppresses none
 
 producer is task
 producer in main
@@ -704,6 +742,7 @@ producer ownedBy none
 producer cleanedBy none
 producer borrows none
 producer catch none
+producer suppresses none
 
 showSum is call
 showSum in main
@@ -714,6 +753,7 @@ showSum ownedBy none
 showSum cleanedBy none
 showSum borrows none
 showSum catch none
+showSum suppresses none
 
 factorialTask is task
 factorialTask in main
@@ -724,6 +764,7 @@ factorialTask ownedBy none
 factorialTask cleanedBy none
 factorialTask borrows none
 factorialTask catch none
+factorialTask suppresses none
 
 showFactorial is call
 showFactorial in main
@@ -734,3 +775,4 @@ showFactorial ownedBy none
 showFactorial cleanedBy none
 showFactorial borrows none
 showFactorial catch none
+showFactorial suppresses none

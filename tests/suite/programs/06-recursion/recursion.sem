@@ -63,6 +63,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 CountdownError is enum
 CountdownError purpose "Why a countdown could not finish"
@@ -107,6 +108,7 @@ isBase ownedBy none
 isBase cleanedBy none
 isBase borrows none
 isBase catch none
+isBase suppresses none
 
 less is call
 less in factorial
@@ -118,6 +120,7 @@ less ownedBy none
 less cleanedBy none
 less borrows none
 less catch none
+less suppresses none
 
 inner is call
 inner in factorial
@@ -128,6 +131,7 @@ inner ownedBy none
 inner cleanedBy none
 inner borrows none
 inner catch none
+inner suppresses none
 
 times is call
 times in factorial
@@ -139,6 +143,7 @@ times ownedBy none
 times cleanedBy none
 times borrows none
 times catch none
+times suppresses none
 
 isEven is operation
 isEven purpose "Return 1 if n is even, by asking isOdd about n minus 1"
@@ -179,6 +184,7 @@ atZero ownedBy none
 atZero cleanedBy none
 atZero borrows none
 atZero catch none
+atZero suppresses none
 
 less is call
 less in isEven
@@ -190,6 +196,7 @@ less ownedBy none
 less cleanedBy none
 less borrows none
 less catch none
+less suppresses none
 
 ask is call
 ask in isEven
@@ -200,6 +207,7 @@ ask ownedBy none
 ask cleanedBy none
 ask borrows none
 ask catch none
+ask suppresses none
 
 isOdd is operation
 isOdd purpose "Return 1 if n is odd, by asking isEven about n minus 1"
@@ -240,6 +248,7 @@ atZero ownedBy none
 atZero cleanedBy none
 atZero borrows none
 atZero catch none
+atZero suppresses none
 
 less is call
 less in isOdd
@@ -251,6 +260,7 @@ less ownedBy none
 less cleanedBy none
 less borrows none
 less catch none
+less suppresses none
 
 ask is call
 ask in isOdd
@@ -261,6 +271,7 @@ ask ownedBy none
 ask cleanedBy none
 ask borrows none
 ask catch none
+ask suppresses none
 
 ackermann is operation
 ackermann purpose "Return the Ackermann function, a recursion nested inside its own argument"
@@ -312,6 +323,7 @@ mIsZero ownedBy none
 mIsZero cleanedBy none
 mIsZero borrows none
 mIsZero catch none
+mIsZero suppresses none
 
 addOne is call
 addOne in ackermann
@@ -323,6 +335,7 @@ addOne ownedBy none
 addOne cleanedBy none
 addOne borrows none
 addOne catch none
+addOne suppresses none
 
 nIsZero is call
 nIsZero in ackermann
@@ -334,6 +347,7 @@ nIsZero ownedBy none
 nIsZero cleanedBy none
 nIsZero borrows none
 nIsZero catch none
+nIsZero suppresses none
 
 mLess is call
 mLess in ackermann
@@ -345,6 +359,7 @@ mLess ownedBy none
 mLess cleanedBy none
 mLess borrows none
 mLess catch none
+mLess suppresses none
 
 withOne is call
 withOne in ackermann
@@ -356,6 +371,7 @@ withOne ownedBy none
 withOne cleanedBy none
 withOne borrows none
 withOne catch none
+withOne suppresses none
 
 nLess is call
 nLess in ackermann
@@ -367,6 +383,7 @@ nLess ownedBy none
 nLess cleanedBy none
 nLess borrows none
 nLess catch none
+nLess suppresses none
 
 innerCall is call
 innerCall in ackermann
@@ -378,6 +395,7 @@ innerCall ownedBy none
 innerCall cleanedBy none
 innerCall borrows none
 innerCall catch none
+innerCall suppresses none
 
 outerCall is call
 outerCall in ackermann
@@ -389,6 +407,7 @@ outerCall ownedBy none
 outerCall cleanedBy none
 outerCall borrows none
 outerCall catch none
+outerCall suppresses none
 
 fibonacci is operation
 fibonacci purpose "Return the nth Fibonacci number by tail recursion with two accumulators"
@@ -431,6 +450,7 @@ done ownedBy none
 done cleanedBy none
 done borrows none
 done catch none
+done suppresses none
 
 less is call
 less in fibonacci
@@ -442,6 +462,7 @@ less ownedBy none
 less cleanedBy none
 less borrows none
 less catch none
+less suppresses none
 
 advance is call
 advance in fibonacci
@@ -453,6 +474,7 @@ advance ownedBy none
 advance cleanedBy none
 advance borrows none
 advance catch none
+advance suppresses none
 
 recurse is call
 recurse in fibonacci
@@ -465,6 +487,7 @@ recurse ownedBy none
 recurse cleanedBy none
 recurse borrows none
 recurse catch none
+recurse suppresses none
 
 countdown is operation
 countdown purpose "Count down by two to zero, failing when the count goes negative"
@@ -518,6 +541,7 @@ isZero ownedBy none
 isZero cleanedBy none
 isZero borrows none
 isZero catch none
+isZero suppresses none
 
 isNegative is call
 isNegative in countdown
@@ -529,6 +553,7 @@ isNegative ownedBy none
 isNegative cleanedBy none
 isNegative borrows none
 isNegative catch none
+isNegative suppresses none
 
 makeError is call
 makeError in countdown
@@ -539,6 +564,7 @@ makeError ownedBy none
 makeError cleanedBy none
 makeError borrows none
 makeError catch none
+makeError suppresses none
 
 less is call
 less in countdown
@@ -550,6 +576,7 @@ less ownedBy none
 less cleanedBy none
 less borrows none
 less catch none
+less suppresses none
 
 recurse is call
 recurse in countdown
@@ -560,6 +587,7 @@ recurse ownedBy none
 recurse cleanedBy none
 recurse borrows none
 recurse catch innerFailure CountdownError
+recurse suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -616,6 +644,7 @@ runFactorial ownedBy none
 runFactorial cleanedBy none
 runFactorial borrows none
 runFactorial catch none
+runFactorial suppresses none
 
 showFactorial is call
 showFactorial in main
@@ -626,6 +655,7 @@ showFactorial ownedBy none
 showFactorial cleanedBy none
 showFactorial borrows none
 showFactorial catch none
+showFactorial suppresses none
 
 runEven is call
 runEven in main
@@ -636,6 +666,7 @@ runEven ownedBy none
 runEven cleanedBy none
 runEven borrows none
 runEven catch none
+runEven suppresses none
 
 showEven is call
 showEven in main
@@ -646,6 +677,7 @@ showEven ownedBy none
 showEven cleanedBy none
 showEven borrows none
 showEven catch none
+showEven suppresses none
 
 runOdd is call
 runOdd in main
@@ -656,6 +688,7 @@ runOdd ownedBy none
 runOdd cleanedBy none
 runOdd borrows none
 runOdd catch none
+runOdd suppresses none
 
 showOdd is call
 showOdd in main
@@ -666,6 +699,7 @@ showOdd ownedBy none
 showOdd cleanedBy none
 showOdd borrows none
 showOdd catch none
+showOdd suppresses none
 
 runAckermann is call
 runAckermann in main
@@ -677,6 +711,7 @@ runAckermann ownedBy none
 runAckermann cleanedBy none
 runAckermann borrows none
 runAckermann catch none
+runAckermann suppresses none
 
 showAckermann is call
 showAckermann in main
@@ -687,6 +722,7 @@ showAckermann ownedBy none
 showAckermann cleanedBy none
 showAckermann borrows none
 showAckermann catch none
+showAckermann suppresses none
 
 runFibonacci is call
 runFibonacci in main
@@ -699,6 +735,7 @@ runFibonacci ownedBy none
 runFibonacci cleanedBy none
 runFibonacci borrows none
 runFibonacci catch none
+runFibonacci suppresses none
 
 showFibonacci is call
 showFibonacci in main
@@ -709,6 +746,7 @@ showFibonacci ownedBy none
 showFibonacci cleanedBy none
 showFibonacci borrows none
 showFibonacci catch none
+showFibonacci suppresses none
 
 runCountdown is call
 runCountdown in main
@@ -719,6 +757,7 @@ runCountdown ownedBy none
 runCountdown cleanedBy none
 runCountdown borrows none
 runCountdown catch countdownError CountdownError
+runCountdown suppresses none
 
 printNegative is call
 printNegative in main
@@ -729,3 +768,4 @@ printNegative ownedBy none
 printNegative cleanedBy none
 printNegative borrows none
 printNegative catch none
+printNegative suppresses none

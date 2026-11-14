@@ -30,6 +30,7 @@ computeFive ownedBy none
 computeFive cleanedBy none
 computeFive borrows none
 computeFive catch none
+computeFive suppresses none
 
 expectOneHundredTwenty is call
 expectOneHundredTwenty in fiveFactorialTest
@@ -41,3 +42,4 @@ expectOneHundredTwenty ownedBy none
 expectOneHundredTwenty cleanedBy none
 expectOneHundredTwenty borrows none
 expectOneHundredTwenty catch none
+expectOneHundredTwenty suppresses none

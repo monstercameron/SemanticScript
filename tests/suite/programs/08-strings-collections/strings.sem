@@ -78,6 +78,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
@@ -119,6 +120,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -130,6 +132,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -163,6 +166,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -279,6 +283,7 @@ emptyLength ownedBy none
 emptyLength cleanedBy none
 emptyLength borrows none
 emptyLength catch none
+emptyLength suppresses none
 
 showEmpty is call
 showEmpty in main
@@ -289,6 +294,7 @@ showEmpty ownedBy none
 showEmpty cleanedBy none
 showEmpty borrows none
 showEmpty catch none
+showEmpty suppresses none
 
 accentLength is call
 accentLength in main
@@ -299,6 +305,7 @@ accentLength ownedBy none
 accentLength cleanedBy none
 accentLength borrows none
 accentLength catch none
+accentLength suppresses none
 
 showAccent is call
 showAccent in main
@@ -309,6 +316,7 @@ showAccent ownedBy none
 showAccent cleanedBy none
 showAccent borrows none
 showAccent catch none
+showAccent suppresses none
 
 join is call
 join in main
@@ -321,6 +329,7 @@ join ownedBy text
 join cleanedBy none
 join borrows none
 join catch none
+join suppresses none
 
 showJoined is call
 showJoined in main
@@ -331,6 +340,7 @@ showJoined ownedBy none
 showJoined cleanedBy none
 showJoined borrows none
 showJoined catch none
+showJoined suppresses none
 
 sameText is call
 sameText in main
@@ -342,6 +352,7 @@ sameText ownedBy none
 sameText cleanedBy none
 sameText borrows none
 sameText catch none
+sameText suppresses none
 
 showSame is call
 showSame in main
@@ -352,6 +363,7 @@ showSame ownedBy none
 showSame cleanedBy none
 showSame borrows none
 showSame catch none
+showSame suppresses none
 
 hasPrefix is call
 hasPrefix in main
@@ -363,6 +375,7 @@ hasPrefix ownedBy none
 hasPrefix cleanedBy none
 hasPrefix borrows none
 hasPrefix catch none
+hasPrefix suppresses none
 
 showPrefix is call
 showPrefix in main
@@ -373,6 +386,7 @@ showPrefix ownedBy none
 showPrefix cleanedBy none
 showPrefix borrows none
 showPrefix catch none
+showPrefix suppresses none
 
 cut is call
 cut in main
@@ -385,6 +399,7 @@ cut ownedBy none
 cut cleanedBy none
 cut borrows joined
 cut catch cutFailed string.StringIndexError
+cut suppresses none
 
 printCut is call
 printCut in main
@@ -395,6 +410,7 @@ printCut ownedBy none
 printCut cleanedBy none
 printCut borrows none
 printCut catch none
+printCut suppresses none
 
 cutTooFar is call
 cutTooFar in main
@@ -407,6 +423,7 @@ cutTooFar ownedBy none
 cutTooFar cleanedBy none
 cutTooFar borrows joined
 cutTooFar catch cutError string.StringIndexError
+cutTooFar suppresses none
 
 printTooFar is call
 printTooFar in main
@@ -417,6 +434,7 @@ printTooFar ownedBy none
 printTooFar cleanedBy none
 printTooFar borrows none
 printTooFar catch none
+printTooFar suppresses none
 
 search is call
 search in main
@@ -428,6 +446,7 @@ search ownedBy none
 search cleanedBy none
 search borrows none
 search catch searchError string.NotFound
+search suppresses none
 
 printFound is call
 printFound in main
@@ -438,6 +457,7 @@ printFound ownedBy none
 printFound cleanedBy none
 printFound borrows none
 printFound catch none
+printFound suppresses none
 
 searchMissing is call
 searchMissing in main
@@ -449,6 +469,7 @@ searchMissing ownedBy none
 searchMissing cleanedBy none
 searchMissing borrows none
 searchMissing catch missingError string.NotFound
+searchMissing suppresses none
 
 printMissing is call
 printMissing in main
@@ -459,6 +480,7 @@ printMissing ownedBy none
 printMissing cleanedBy none
 printMissing borrows none
 printMissing catch none
+printMissing suppresses none
 
 numberText is call
 numberText in main
@@ -470,6 +492,7 @@ numberText ownedBy text
 numberText cleanedBy none
 numberText borrows none
 numberText catch none
+numberText suppresses none
 
 printNumber is call
 printNumber in main
@@ -480,6 +503,7 @@ printNumber ownedBy none
 printNumber cleanedBy none
 printNumber borrows none
 printNumber catch none
+printNumber suppresses none
 
 parseGood is call
 parseGood in main
@@ -490,6 +514,7 @@ parseGood ownedBy none
 parseGood cleanedBy none
 parseGood borrows none
 parseGood catch goodError string.ParseError
+parseGood suppresses none
 
 printParsed is call
 printParsed in main
@@ -500,6 +525,7 @@ printParsed ownedBy none
 printParsed cleanedBy none
 printParsed borrows none
 printParsed catch none
+printParsed suppresses none
 
 parseBad is call
 parseBad in main
@@ -510,6 +536,7 @@ parseBad ownedBy none
 parseBad cleanedBy none
 parseBad borrows none
 parseBad catch parseError string.ParseError
+parseBad suppresses none
 
 printOne is call
 printOne in main
@@ -520,6 +547,7 @@ printOne ownedBy none
 printOne cleanedBy none
 printOne borrows none
 printOne catch none
+printOne suppresses none
 
 printEscaped is call
 printEscaped in main
@@ -530,6 +558,7 @@ printEscaped ownedBy none
 printEscaped cleanedBy none
 printEscaped borrows none
 printEscaped catch none
+printEscaped suppresses none
 
 firstByte is call
 firstByte in main
@@ -541,6 +570,7 @@ firstByte ownedBy none
 firstByte cleanedBy none
 firstByte borrows none
 firstByte catch byteError string.StringIndexError
+firstByte suppresses none
 
 widenByte is call
 widenByte in main
@@ -551,6 +581,7 @@ widenByte ownedBy none
 widenByte cleanedBy none
 widenByte borrows none
 widenByte catch none
+widenByte suppresses none
 
 printByte is call
 printByte in main
@@ -561,6 +592,7 @@ printByte ownedBy none
 printByte cleanedBy none
 printByte borrows none
 printByte catch none
+printByte suppresses none
 
 rawLength is call
 rawLength in main
@@ -571,6 +603,7 @@ rawLength ownedBy none
 rawLength cleanedBy none
 rawLength borrows none
 rawLength catch none
+rawLength suppresses none
 
 printRaw is call
 printRaw in main
@@ -581,3 +614,4 @@ printRaw ownedBy none
 printRaw cleanedBy none
 printRaw borrows none
 printRaw catch none
+printRaw suppresses none

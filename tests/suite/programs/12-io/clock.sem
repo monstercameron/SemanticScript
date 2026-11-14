@@ -57,6 +57,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -68,6 +69,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 clockReader is capability
 clockReader purpose "Authority to read both clocks"
@@ -113,6 +115,7 @@ readWall ownedBy none
 readWall cleanedBy none
 readWall borrows none
 readWall catch none
+readWall suppresses none
 
 afterEpoch is call
 afterEpoch in main
@@ -124,6 +127,7 @@ afterEpoch ownedBy none
 afterEpoch cleanedBy none
 afterEpoch borrows none
 afterEpoch catch none
+afterEpoch suppresses none
 
 showAfterEpoch is call
 showAfterEpoch in main
@@ -134,6 +138,7 @@ showAfterEpoch ownedBy none
 showAfterEpoch cleanedBy none
 showAfterEpoch borrows none
 showAfterEpoch catch none
+showAfterEpoch suppresses none
 
 readFirst is call
 readFirst in main
@@ -144,6 +149,7 @@ readFirst ownedBy none
 readFirst cleanedBy none
 readFirst borrows none
 readFirst catch none
+readFirst suppresses none
 
 readSecond is call
 readSecond in main
@@ -154,6 +160,7 @@ readSecond ownedBy none
 readSecond cleanedBy none
 readSecond borrows none
 readSecond catch none
+readSecond suppresses none
 
 notBackwards is call
 notBackwards in main
@@ -165,6 +172,7 @@ notBackwards ownedBy none
 notBackwards cleanedBy none
 notBackwards borrows none
 notBackwards catch none
+notBackwards suppresses none
 
 showNotBackwards is call
 showNotBackwards in main
@@ -175,3 +183,4 @@ showNotBackwards ownedBy none
 showNotBackwards cleanedBy none
 showNotBackwards borrows none
 showNotBackwards catch none
+showNotBackwards suppresses none

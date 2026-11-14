@@ -537,6 +537,34 @@ class Flow:
 
     # ------------------------------------------------------------ activations
 
+    def _suppression(self, ent, error_type, discards: bool, line: int) -> None:
+        """D-54: an activation whose failure is dropped names, in `suppresses` rows, exactly the variants of its error
+        type; one whose failure is handled states `suppresses none`. A new variant then breaks every discard that
+        does not name it, instead of disappearing silently."""
+        if error_type is None:
+            return  # the error type did not resolve; that is reported where it is named
+        rows = [r for r in ent.facts("suppresses") if r.text(0) != "none"]
+        info = self.world.type_info(error_type)
+        variants = [n for n, _p in info.variants] if info is not None and info.variants else []
+        if not discards:
+            for r in rows:
+                self.err("R506", r.line, f"`{ent.name}` handles its failure, so it suppresses nothing; write "
+                         f"`{ent.name} suppresses none`")
+            return
+        named = {}
+        for r in rows:
+            v = resolve_variant(self.world, self.m, r.text(0), r.line, quiet=True)
+            if v is None or v[0] != error_type:
+                self.err("R506", r.line, f"`{r.text(0)}` is not a variant of `{error_type}`, the error `{ent.name}` "
+                         "can raise")
+            else:
+                named[v[1]] = r.line
+        missing = [v for v in variants if v not in named]
+        if missing:
+            want = "; ".join(f"`{ent.name} suppresses {_variant_text(self.m, error_type, v)}`" for v in missing)
+            self.err("R506", (ent.fact("suppresses") or ent).line, f"`{ent.name}`'s failure is dropped at line {line}, "
+                     f"so it names every variant it drops; add {want}")
+
     def _group_catch(self, name: str):
         """(error name, type) a task group states with `catch`, or None (D-48)."""
         g = self.op.owned.get(name)
@@ -631,26 +659,46 @@ class Flow:
             elif ent.kind == "cleanup":
                 if len(c.get("defer", [])) != 1:
                     self.err("R510", ent.line, f"cleanup `{name}` is deferred {len(c.get('defer', []))} times; exactly once")
+        policy: dict = {}  # entity -> [entity, error type, line of a discard or None] (D-54)
+
+        def note(ent, error_type, discards, line):
+            entry = policy.setdefault(ent.name + "@" + str(ent.line), [ent, error_type, None])
+            if discards and entry[2] is None:
+                entry[2] = line
+
         for st_lab in self.order:
             for st in self.blocks[st_lab]:
                 if st.verb == "branch" and st.args[0] == "ifError":
                     ci = op.calls.get(st.args[1])
                     group = op.owned.get(st.args[1])
                     if group is not None and group.kind == "taskGroup":
-                        if self._group_catch(st.args[1]) is None:
+                        caught = self._group_catch(st.args[1])
+                        if caught is None:
                             self.err("R506", st.line, f"task group `{st.args[1]}` cannot fail (`catch none`), so it has "
                                      "no error branch")
-                        elif st.args[-4] == st.args[-1] and not group.facts("rationale"):
-                            self.err("R506", st.line, f"both arms go to `{st.args[-1]}`, which ignores the failure; "
-                                     f"`{st.args[1]}` needs a `rationale` row saying why")
+                        else:
+                            if st.args[-4] == st.args[-1] and not group.facts("rationale"):
+                                self.err("R506", st.line, f"both arms go to `{st.args[-1]}`, which ignores the failure; "
+                                         f"`{st.args[1]}` needs a `rationale` row saying why")
+                            note(group, caught[1], st.args[-4] == st.args[-1], st.line)
                         continue
                     if ci is None:
                         self.err("R401", st.line, f"`{st.args[1]}` is not a call or task of `{self.ent.name}`")
                     elif ci.catch is None:
                         self.err("R506", st.line, f"`{st.args[1]}` cannot fail (`catch none`), so it has no error branch")
-                    elif st.args[-4] == st.args[-1] and not ci.entity.facts("rationale"):
-                        self.err("R506", st.line, f"both arms go to `{st.args[-1]}`, which ignores the failure; "
-                                 f"`{st.args[1]}` needs a `rationale` row saying why")
+                    else:
+                        if st.args[-4] == st.args[-1] and not ci.entity.facts("rationale"):
+                            self.err("R506", st.line, f"both arms go to `{st.args[-1]}`, which ignores the failure; "
+                                     f"`{st.args[1]}` needs a `rationale` row saying why")
+                        note(ci.entity, ci.catch[1], st.args[-4] == st.args[-1], st.line)
+        for c in op.owned.values():
+            if c.kind == "cleanup":
+                worker = op.calls.get(c.value("runs") or "")
+                if worker is not None and worker.catch is not None:
+                    note(worker.entity, worker.catch[1], c.value("onError") == "suppress",
+                         (c.fact("onError") or c).line)
+        for ent, error_type, discard_line in policy.values():
+            self._suppression(ent, error_type, discard_line is not None, discard_line or ent.line)
 
     # ------------------------------------------------------------ definite assignment and types
 
@@ -674,6 +722,18 @@ class Flow:
             if not changed:
                 break
         self._transfer_all(IN, report=True)
+        # D-56: a loop's bound may be a value computed at run time, but it is read when the loop starts, so it is set
+        # on every path into the loop's header (back edges included: a value first set inside the loop is not).
+        for header in self.kinds:
+            if self.kinds[header] == "none":
+                continue
+            bound = self.decl.get(header, {}).get("maxIterations")
+            if bound is None or bound[1][0] == "unbounded" or S.INT.match(bound[1][0]):
+                continue
+            name = bound[1][0]
+            if name in op.bindings and name not in IN.get(header, set()):
+                self.err("R507", bound[0], f"`{name}` may not be set when loop `{header}` starts; a loop's bound is set "
+                         "on every path into the loop, before its first pass")
 
     def _transfer_all(self, IN: dict[str, set], report: bool):
         outs = []
@@ -891,6 +951,51 @@ class Flow:
                 break
         for lab in self.order:
             self._settle_block(lab, set(PEND[lab]), set(SETT[lab]), report=True, groups=groups)
+        self._joins_on_every_path(tasks - self._grouped)
+
+    def _joins_on_every_path(self, tasks: set) -> None:
+        """D-50: a `join` or `cancel` needs the task live (started and not yet joined) on EVERY path that reaches
+        it, not just on some; otherwise one path would join a task twice, or join one it never started."""
+        if not tasks:
+            return
+        preds: dict[str, list[str]] = {}
+        for _l, a, b in self.edges:
+            preds.setdefault(b, []).append(a)
+
+        def transfer(lab: str, cur: set, may: set, report: bool):
+            for st in self.blocks[lab]:
+                a = st.args
+                if st.verb == "start" and a[0] in tasks:
+                    cur.add(a[0])
+                    may.add(a[0])
+                elif st.verb in ("join", "cancel") and a[0] in tasks:
+                    if report and a[0] in may and a[0] not in cur:
+                        self.err("R510", st.line, f"`{st.verb} {a[0]}` is reached on a path where `{a[0]}` was "
+                                 "never started or was already joined; every path to it starts the task and has not "
+                                 "joined it yet")
+                    if st.verb == "join":
+                        cur.discard(a[0])
+                        may.discard(a[0])
+            return cur, may
+
+        MUST = {lab: (set() if lab == "begin" else set(tasks)) for lab in self.order}
+        MAY = {lab: set() for lab in self.order}
+        for _ in range(len(self.order) + 5):
+            outs = {lab: transfer(lab, set(MUST[lab]), set(MAY[lab]), False) for lab in self.order}
+            new_must, new_may = {}, {}
+            for lab in self.order:
+                if lab == "begin":
+                    new_must[lab], new_may[lab] = set(), set()
+                    continue
+                ps = [p for p in preds.get(lab, []) if p in outs]
+                new_must[lab] = set.intersection(*[outs[p][0] for p in ps]) if ps else set(tasks)
+                new_may[lab] = set.union(*[outs[p][1] for p in ps]) if ps else set()
+            if new_must == MUST and new_may == MAY:
+                break
+            MUST, MAY = new_must, new_may
+        for lab in self.order:
+            if lab == "begin" or preds.get(lab):
+                transfer(lab, set(MUST[lab]), set(MAY[lab]), True)
 
     def _iteration_loans(self) -> None:
         """D-39: a `forEach` loop reads its collection on every pass, so inside the loop the collection may be
@@ -1006,3 +1111,10 @@ class Flow:
                     self.err("R512", st.line, f"task group `{g}` is not joined on every path to this return; `cancel` "
                              "only asks its tasks to stop, so `join` it to wait for them")
         return pend, sett
+
+
+def _variant_text(m: Module, error_type: str, variant: str) -> str:
+    """How module `m` writes a variant of `error_type`: `Enum.variant` for its own enums, `module.Enum.variant`
+    for another module's or the standard library's."""
+    mod, name = error_type.split(".", 1) if "." in error_type else ("", error_type)
+    return f"{name}.{variant}" if mod == m.short else f"{error_type}.{variant}"

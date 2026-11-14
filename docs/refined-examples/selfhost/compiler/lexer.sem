@@ -104,6 +104,7 @@ measureSource ownedBy none
 measureSource cleanedBy none
 measureSource borrows none
 measureSource catch none
+measureSource suppresses none
 
 atEndCheck is call
 atEndCheck in scanWord
@@ -115,6 +116,7 @@ atEndCheck ownedBy none
 atEndCheck cleanedBy none
 atEndCheck borrows none
 atEndCheck catch none
+atEndCheck suppresses none
 
 readByte is call
 readByte in scanWord
@@ -126,6 +128,7 @@ readByte ownedBy none
 readByte cleanedBy none
 readByte borrows none
 readByte catch readByteError string.StringIndexError
+readByte suppresses none
 
 wordByteCheck is call
 wordByteCheck in scanWord
@@ -136,6 +139,7 @@ wordByteCheck ownedBy none
 wordByteCheck cleanedBy none
 wordByteCheck borrows none
 wordByteCheck catch none
+wordByteCheck suppresses none
 
 addOne is call
 addOne in scanWord
@@ -147,6 +151,7 @@ addOne ownedBy none
 addOne cleanedBy none
 addOne borrows none
 addOne catch none
+addOne suppresses none
 
 measureWord is call
 measureWord in scanWord
@@ -158,6 +163,7 @@ measureWord ownedBy none
 measureWord cleanedBy none
 measureWord borrows none
 measureWord catch none
+measureWord suppresses none
 
 makeWordKind is call
 makeWordKind in scanWord
@@ -168,6 +174,7 @@ makeWordKind ownedBy none
 makeWordKind cleanedBy none
 makeWordKind borrows none
 makeWordKind catch none
+makeWordKind suppresses none
 
 buildToken is call
 buildToken in scanWord
@@ -180,6 +187,7 @@ buildToken ownedBy none
 buildToken cleanedBy none
 buildToken borrows none
 buildToken catch none
+buildToken suppresses none
 
 # ---------------------------------------------------------------- classifyWord
 
@@ -228,6 +236,7 @@ readKeywordText ownedBy none
 readKeywordText cleanedBy none
 readKeywordText borrows candidate
 readKeywordText catch none
+readKeywordText suppresses none
 
 textsEqual is call
 textsEqual in classifyWord
@@ -239,6 +248,7 @@ textsEqual ownedBy none
 textsEqual cleanedBy none
 textsEqual borrows none
 textsEqual catch none
+textsEqual suppresses none
 
 readKeywordKind is call
 readKeywordKind in classifyWord
@@ -249,6 +259,7 @@ readKeywordKind ownedBy none
 readKeywordKind cleanedBy none
 readKeywordKind borrows none
 readKeywordKind catch none
+readKeywordKind suppresses none
 
 makePlainKind is call
 makePlainKind in classifyWord
@@ -259,3 +270,4 @@ makePlainKind ownedBy none
 makePlainKind cleanedBy none
 makePlainKind borrows none
 makePlainKind catch none
+makePlainKind suppresses none

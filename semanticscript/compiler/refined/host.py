@@ -100,6 +100,37 @@ def drop(h: int) -> None:
     _objects.pop(h, None)
 
 
+_children: set = set()  # child processes still running (killed if the program traps)
+
+
+def _release_all() -> int:
+    """D-51: after a trap, close every file, connection, listener, and library the program still holds, and stop
+    every child process it started. Returns how many were released."""
+    count = 0
+    for h, obj in list(_objects.items()):
+        thing = getattr(obj, "fh", None) or getattr(obj, "sock", None)
+        if thing is not None:
+            try:
+                if hasattr(thing, "flush"):
+                    thing.flush()
+                thing.close()
+            except OSError:
+                pass
+            count += 1
+            _objects.pop(h, None)
+    for proc in list(_children):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        count += 1
+    _children.clear()
+    return count
+
+
+rt.TRAP_RELEASES.append(_release_all)
+
+
 def now_ms() -> int:
     return time.monotonic_ns() // 1_000_000
 
@@ -257,6 +288,7 @@ def _child(argv: list, deadline: int, stdin_bytes=None) -> tuple:
     except OSError as exc:
         fail("process.RunError", "failed", exc.errno or 1)
     result: dict = {}
+    _children.add(proc)
 
     def collect():
         try:
@@ -271,7 +303,9 @@ def _child(argv: list, deadline: int, stdin_bytes=None) -> tuple:
         _wait_external(lambda: result.get("done", False), deadline, "a wait for a child process", "process.RunError")
     except Fail:
         proc.kill()
+        _children.discard(proc)
         raise
+    _children.discard(proc)
     return proc.returncode, result.get("out", (None, None))
 
 
@@ -286,8 +320,34 @@ def _run(p):
 # ---------------------------------------------------------------- files
 
 class File:
-    def __init__(self, fh):
-        self.fh = fh
+    def __init__(self, fh, key: str = "", writes: bool = False):
+        self.fh, self.key, self.writes = fh, key, writes
+
+
+# D-52: one file, however it is named, is open for writing by at most one handle of the program, and never while
+# another handle reads it; readers may share it. Keys are resolved paths, so a link or a `..` names the same file.
+_open_files: dict[str, list] = {}
+
+
+def _file_key(path: str) -> str:
+    return os.path.normcase(os.path.realpath(path))
+
+
+def _claim(path: str, writes: bool) -> str:
+    key = _file_key(path)
+    holders = _open_files.get(key, [])
+    if holders and (writes or any(holders)):
+        fail("fs.FileError", "busy")
+    _open_files.setdefault(key, []).append(writes)
+    return key
+
+
+def _unclaim(key: str, writes: bool) -> None:
+    holders = _open_files.get(key)
+    if holders:
+        holders.remove(writes)
+        if not holders:
+            del _open_files[key]
 
 
 def _file_error(exc: OSError):
@@ -301,6 +361,8 @@ def _file_error(exc: OSError):
 
 
 def _open(path: str, mode: str) -> tuple:
+    writes = mode != "rb"
+    key = _claim(path, writes)
     try:
         if mode == "r+b" and not os.path.isfile(path):
             raise FileNotFoundError(path)
@@ -308,8 +370,9 @@ def _open(path: str, mode: str) -> tuple:
         if mode == "r+b":
             fh.truncate(0)
     except OSError as exc:
+        _unclaim(key, writes)
         _file_error(exc)
-    return ok(new_handle(File(fh)))
+    return ok(new_handle(File(fh, key, writes)))
 
 
 @target("fs.openRead")
@@ -402,6 +465,7 @@ def _fs_write(p):
 def _fs_close(p):
     f = get(p[0][0], File)
     drop(p[0][0])
+    _unclaim(f.key, f.writes)
     try:
         f.fh.close()
     except OSError as exc:
@@ -416,6 +480,8 @@ def _exists(p):
 
 @target("fs.remove")
 def _remove(p):
+    if _file_key(text(p[0])) in _open_files:
+        fail("fs.FileError", "busy")
     try:
         os.remove(text(p[0]))
     except OSError as exc:
@@ -437,11 +503,14 @@ def _file_wait_check(deadline: int) -> None:
 def _read_all(p):
     path, region, limit = text(p[0]), p[1][0], p[2][0]
     _file_wait_check(p[3][0])
+    key = _claim(path, False)
     try:
         with open(path, "rb") as fh:
             content = fh.read(limit + 1)
     except OSError as exc:
         _file_error(exc)
+    finally:
+        _unclaim(key, False)
     if len(content) > limit:
         fail("fs.FileError", "tooLarge")
     return ok(*put(region, content))
@@ -450,11 +519,14 @@ def _read_all(p):
 @target("fs.writeAll")
 def _write_all(p):
     _file_wait_check(p[2][0])
+    key = _claim(text(p[0]), True)
     try:
         with open(text(p[0]), "wb") as fh:
             fh.write(data(p[1]))
     except OSError as exc:
         _file_error(exc)
+    finally:
+        _unclaim(key, True)
     return ok()
 
 

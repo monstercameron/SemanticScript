@@ -56,6 +56,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 fileAccess is capability
 fileAccess purpose "Authority to read and write files whose names start with suite-"
@@ -121,6 +122,7 @@ main at small case fs.FileError.exists bind none none goto failed
 main at small case fs.FileError.tooLarge bind none none goto tooLarge
 main at small case fs.FileError.timedOut bind none none goto failed
 main at small case fs.FileError.cancelled bind none none goto failed
+main at small case fs.FileError.busy bind none none goto failed
 main at small case fs.FileError.failed bind code Int32 goto failed
 main at tooLarge do printTooLarge
 main at tooLarge return ok okCode
@@ -141,6 +143,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 toBytes is call
 toBytes in main
@@ -151,6 +154,7 @@ toBytes ownedBy none
 toBytes cleanedBy none
 toBytes borrows content
 toBytes catch none
+toBytes suppresses none
 
 writeIt is task
 writeIt in main
@@ -163,6 +167,7 @@ writeIt ownedBy none
 writeIt cleanedBy none
 writeIt borrows none
 writeIt catch writeError fs.FileError
+writeIt suppresses none
 
 readIt is task
 readIt in main
@@ -176,6 +181,7 @@ readIt ownedBy io
 readIt cleanedBy none
 readIt borrows none
 readIt catch readError fs.FileError
+readIt suppresses none
 
 toText is call
 toText in main
@@ -187,6 +193,7 @@ toText ownedBy io
 toText cleanedBy none
 toText borrows none
 toText catch decodeError string.Utf8Error
+toText suppresses none
 
 printText is call
 printText in main
@@ -197,6 +204,7 @@ printText ownedBy none
 printText cleanedBy none
 printText borrows none
 printText catch none
+printText suppresses none
 
 readSmall is task
 readSmall in main
@@ -210,6 +218,7 @@ readSmall ownedBy io
 readSmall cleanedBy none
 readSmall borrows none
 readSmall catch smallError fs.FileError
+readSmall suppresses none
 
 printTooLarge is call
 printTooLarge in main
@@ -220,3 +229,4 @@ printTooLarge ownedBy none
 printTooLarge cleanedBy none
 printTooLarge borrows none
 printTooLarge catch none
+printTooLarge suppresses none

@@ -39,6 +39,7 @@ runJoin ownedBy scratch
 runJoin cleanedBy none
 runJoin borrows none
 runJoin catch none
+runJoin suppresses none
 
 expectJoined is call
 expectJoined in joinTest
@@ -50,3 +51,4 @@ expectJoined ownedBy none
 expectJoined cleanedBy none
 expectJoined borrows none
 expectJoined catch none
+expectJoined suppresses none

@@ -31,6 +31,7 @@ runTriple ownedBy none
 runTriple cleanedBy none
 runTriple borrows none
 runTriple catch none
+runTriple suppresses none
 
 expectResult is call
 expectResult in tripleTest
@@ -42,3 +43,4 @@ expectResult ownedBy none
 expectResult cleanedBy none
 expectResult borrows none
 expectResult catch none
+expectResult suppresses none

@@ -54,6 +54,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 listenAuthority is capability
 listenAuthority purpose "Authority to accept connections on loopback port 47811"
@@ -149,6 +150,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 openListener is call
 openListener in main
@@ -159,6 +161,7 @@ openListener ownedBy main
 openListener cleanedBy closeListenerCleanup
 openListener borrows none
 openListener catch listenError net.NetError
+openListener suppresses none
 
 closeListenerCleanup is cleanup
 closeListenerCleanup rationale "Nothing can be done if closing fails at exit"
@@ -176,6 +179,11 @@ closeListener ownedBy none
 closeListener cleanedBy none
 closeListener borrows none
 closeListener catch closeListenerError net.NetError
+closeListener suppresses net.NetError.closed
+closeListener suppresses net.NetError.timedOut
+closeListener suppresses net.NetError.refused
+closeListener suppresses net.NetError.cancelled
+closeListener suppresses net.NetError.failed
 
 connectClient is task
 connectClient in main
@@ -187,6 +195,7 @@ connectClient ownedBy main
 connectClient cleanedBy closeClientCleanup
 connectClient borrows none
 connectClient catch connectError net.NetError
+connectClient suppresses none
 
 closeClientCleanup is cleanup
 closeClientCleanup rationale "Nothing can be done if closing fails at exit"
@@ -204,6 +213,11 @@ closeClient ownedBy none
 closeClient cleanedBy none
 closeClient borrows none
 closeClient catch closeClientError net.NetError
+closeClient suppresses net.NetError.closed
+closeClient suppresses net.NetError.timedOut
+closeClient suppresses net.NetError.refused
+closeClient suppresses net.NetError.cancelled
+closeClient suppresses net.NetError.failed
 
 acceptServer is task
 acceptServer in main
@@ -215,6 +229,7 @@ acceptServer ownedBy main
 acceptServer cleanedBy closeServerCleanup
 acceptServer borrows none
 acceptServer catch acceptError net.NetError
+acceptServer suppresses none
 
 closeServerCleanup is cleanup
 closeServerCleanup rationale "Nothing can be done if closing fails at exit"
@@ -232,6 +247,11 @@ closeServer ownedBy none
 closeServer cleanedBy none
 closeServer borrows none
 closeServer catch closeServerError net.NetError
+closeServer suppresses net.NetError.closed
+closeServer suppresses net.NetError.timedOut
+closeServer suppresses net.NetError.refused
+closeServer suppresses net.NetError.cancelled
+closeServer suppresses net.NetError.failed
 
 toBytes is call
 toBytes in main
@@ -242,6 +262,7 @@ toBytes ownedBy none
 toBytes cleanedBy none
 toBytes borrows message
 toBytes catch none
+toBytes suppresses none
 
 sendPing is task
 sendPing in main
@@ -254,6 +275,7 @@ sendPing ownedBy none
 sendPing cleanedBy none
 sendPing borrows none
 sendPing catch sendError net.NetError
+sendPing suppresses none
 
 readPing is task
 readPing in main
@@ -267,6 +289,7 @@ readPing ownedBy io
 readPing cleanedBy none
 readPing borrows none
 readPing catch readError net.NetError
+readPing suppresses none
 
 toText is call
 toText in main
@@ -278,6 +301,7 @@ toText ownedBy io
 toText cleanedBy none
 toText borrows none
 toText catch decodeError string.Utf8Error
+toText suppresses none
 
 printPing is call
 printPing in main
@@ -288,3 +312,4 @@ printPing ownedBy none
 printPing cleanedBy none
 printPing borrows none
 printPing catch none
+printPing suppresses none

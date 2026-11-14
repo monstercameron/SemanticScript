@@ -54,6 +54,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
@@ -95,6 +96,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -106,6 +108,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -139,6 +142,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -256,6 +260,7 @@ parseDocument ownedBy store
 parseDocument cleanedBy none
 parseDocument borrows none
 parseDocument catch parseError json.ParseError
+parseDocument suppresses none
 
 nameField is call
 nameField in main
@@ -268,6 +273,7 @@ nameField ownedBy store
 nameField cleanedBy none
 nameField borrows none
 nameField catch nameError json.AccessError
+nameField suppresses none
 
 nameText is call
 nameText in main
@@ -279,6 +285,7 @@ nameText ownedBy store
 nameText cleanedBy none
 nameText borrows none
 nameText catch nameTextError json.AccessError
+nameText suppresses none
 
 printName is call
 printName in main
@@ -289,6 +296,7 @@ printName ownedBy none
 printName cleanedBy none
 printName borrows none
 printName catch none
+printName suppresses none
 
 tagsField is call
 tagsField in main
@@ -301,6 +309,7 @@ tagsField ownedBy store
 tagsField cleanedBy none
 tagsField borrows none
 tagsField catch tagsError json.AccessError
+tagsField suppresses none
 
 tagCount is call
 tagCount in main
@@ -311,6 +320,7 @@ tagCount ownedBy none
 tagCount cleanedBy none
 tagCount borrows none
 tagCount catch tagCountError json.AccessError
+tagCount suppresses none
 
 printTagCount is call
 printTagCount in main
@@ -321,6 +331,7 @@ printTagCount ownedBy none
 printTagCount cleanedBy none
 printTagCount borrows none
 printTagCount catch none
+printTagCount suppresses none
 
 secondTag is call
 secondTag in main
@@ -333,6 +344,7 @@ secondTag ownedBy store
 secondTag cleanedBy none
 secondTag borrows none
 secondTag catch tagError json.AccessError
+secondTag suppresses none
 
 tagNumber is call
 tagNumber in main
@@ -343,6 +355,7 @@ tagNumber ownedBy none
 tagNumber cleanedBy none
 tagNumber borrows none
 tagNumber catch tagNumberError json.AccessError
+tagNumber suppresses none
 
 printTag is call
 printTag in main
@@ -353,6 +366,7 @@ printTag ownedBy none
 printTag cleanedBy none
 printTag borrows none
 printTag catch none
+printTag suppresses none
 
 okField is call
 okField in main
@@ -365,6 +379,7 @@ okField ownedBy store
 okField cleanedBy none
 okField borrows none
 okField catch okError json.AccessError
+okField suppresses none
 
 okFlag is call
 okFlag in main
@@ -375,6 +390,7 @@ okFlag ownedBy none
 okFlag cleanedBy none
 okFlag borrows none
 okFlag catch okFlagError json.AccessError
+okFlag suppresses none
 
 printFlag is call
 printFlag in main
@@ -385,6 +401,7 @@ printFlag ownedBy none
 printFlag cleanedBy none
 printFlag borrows none
 printFlag catch none
+printFlag suppresses none
 
 absentField is call
 absentField in main
@@ -397,6 +414,7 @@ absentField ownedBy store
 absentField cleanedBy none
 absentField borrows none
 absentField catch absentError json.AccessError
+absentField suppresses none
 
 printMissing is call
 printMissing in main
@@ -407,6 +425,7 @@ printMissing ownedBy none
 printMissing cleanedBy none
 printMissing borrows none
 printMissing catch none
+printMissing suppresses none
 
 parseBad is call
 parseBad in main
@@ -418,6 +437,7 @@ parseBad ownedBy store
 parseBad cleanedBy none
 parseBad borrows none
 parseBad catch badError json.ParseError
+parseBad suppresses none
 
 printBadAt is call
 printBadAt in main
@@ -428,6 +448,7 @@ printBadAt ownedBy none
 printBadAt cleanedBy none
 printBadAt borrows none
 printBadAt catch none
+printBadAt suppresses none
 
 newObject is call
 newObject in main
@@ -438,6 +459,7 @@ newObject ownedBy store
 newObject cleanedBy none
 newObject borrows none
 newObject catch none
+newObject suppresses none
 
 setA is call
 setA in main
@@ -450,6 +472,7 @@ setA ownedBy none
 setA cleanedBy none
 setA borrows none
 setA catch setAError json.AccessError
+setA suppresses none
 
 setN is call
 setN in main
@@ -462,6 +485,7 @@ setN ownedBy none
 setN cleanedBy none
 setN borrows none
 setN catch setNError json.AccessError
+setN suppresses none
 
 serialize is call
 serialize in main
@@ -473,6 +497,7 @@ serialize ownedBy store
 serialize cleanedBy none
 serialize borrows none
 serialize catch none
+serialize suppresses none
 
 printSerialized is call
 printSerialized in main
@@ -483,3 +508,4 @@ printSerialized ownedBy none
 printSerialized cleanedBy none
 printSerialized borrows none
 printSerialized catch none
+printSerialized suppresses none

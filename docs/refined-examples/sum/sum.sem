@@ -68,6 +68,7 @@ pastLastCheck ownedBy none
 pastLastCheck cleanedBy none
 pastLastCheck borrows none
 pastLastCheck catch none
+pastLastCheck suppresses none
 
 addToTotal is call
 addToTotal in main
@@ -79,6 +80,7 @@ addToTotal ownedBy none
 addToTotal cleanedBy none
 addToTotal borrows none
 addToTotal catch none
+addToTotal suppresses none
 
 addOne is call
 addOne in main
@@ -90,6 +92,7 @@ addOne ownedBy none
 addOne cleanedBy none
 addOne borrows none
 addOne catch none
+addOne suppresses none
 
 printTotal is call
 printTotal in main
@@ -100,3 +103,4 @@ printTotal ownedBy none
 printTotal cleanedBy none
 printTotal borrows none
 printTotal catch printError console.WriteError
+printTotal suppresses none

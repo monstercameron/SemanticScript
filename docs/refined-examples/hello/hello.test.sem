@@ -30,6 +30,7 @@ runMain ownedBy none
 runMain cleanedBy none
 runMain borrows none
 runMain catch none
+runMain suppresses none
 
 expectZero is call
 expectZero in greetingTest
@@ -41,3 +42,4 @@ expectZero ownedBy none
 expectZero cleanedBy none
 expectZero borrows none
 expectZero catch none
+expectZero suppresses none

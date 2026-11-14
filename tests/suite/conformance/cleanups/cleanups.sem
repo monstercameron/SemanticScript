@@ -63,6 +63,7 @@ sayNote ownedBy none
 sayNote cleanedBy none
 sayNote borrows none
 sayNote catch noteError console.WriteError
+sayNote suppresses console.WriteError.failed
 
 closeIt is call
 closeIt in closeNoting
@@ -73,6 +74,7 @@ closeIt ownedBy none
 closeIt cleanedBy none
 closeIt borrows none
 closeIt catch closeError fs.FileError
+closeIt suppresses none
 
 closeFailing is operation
 closeFailing purpose "Close a file, then report that closing failed"
@@ -107,6 +109,14 @@ closeQuietly ownedBy none
 closeQuietly cleanedBy none
 closeQuietly borrows none
 closeQuietly catch quietError fs.FileError
+closeQuietly suppresses fs.FileError.notFound
+closeQuietly suppresses fs.FileError.denied
+closeQuietly suppresses fs.FileError.exists
+closeQuietly suppresses fs.FileError.tooLarge
+closeQuietly suppresses fs.FileError.timedOut
+closeQuietly suppresses fs.FileError.cancelled
+closeQuietly suppresses fs.FileError.busy
+closeQuietly suppresses fs.FileError.failed
 
 makeRefused is call
 makeRefused in closeFailing
@@ -117,6 +127,7 @@ makeRefused ownedBy none
 makeRefused cleanedBy none
 makeRefused borrows none
 makeRefused catch none
+makeRefused suppresses none
 
 main is operation
 main purpose "Open two files, defer a cleanup for each, and return"
@@ -170,6 +181,7 @@ openFirst ownedBy main
 openFirst cleanedBy releaseFirst
 openFirst borrows none
 openFirst catch firstError fs.FileError
+openFirst suppresses none
 
 releaseFirst is cleanup
 releaseFirst rationale "Closing an empty append handle cannot lose data, so the program goes on"
@@ -188,6 +200,14 @@ closeFirst ownedBy none
 closeFirst cleanedBy none
 closeFirst borrows none
 closeFirst catch closeFirstError fs.FileError
+closeFirst suppresses fs.FileError.notFound
+closeFirst suppresses fs.FileError.denied
+closeFirst suppresses fs.FileError.exists
+closeFirst suppresses fs.FileError.tooLarge
+closeFirst suppresses fs.FileError.timedOut
+closeFirst suppresses fs.FileError.cancelled
+closeFirst suppresses fs.FileError.busy
+closeFirst suppresses fs.FileError.failed
 
 openSecond is call
 openSecond in main
@@ -198,6 +218,7 @@ openSecond ownedBy main
 openSecond cleanedBy releaseSecond
 openSecond borrows none
 openSecond catch secondError fs.FileError
+openSecond suppresses none
 
 releaseSecond is cleanup
 releaseSecond rationale "Closing an empty append handle cannot lose data, so the program goes on"
@@ -216,6 +237,14 @@ closeSecond ownedBy none
 closeSecond cleanedBy none
 closeSecond borrows none
 closeSecond catch closeSecondError fs.FileError
+closeSecond suppresses fs.FileError.notFound
+closeSecond suppresses fs.FileError.denied
+closeSecond suppresses fs.FileError.exists
+closeSecond suppresses fs.FileError.tooLarge
+closeSecond suppresses fs.FileError.timedOut
+closeSecond suppresses fs.FileError.cancelled
+closeSecond suppresses fs.FileError.busy
+closeSecond suppresses fs.FileError.failed
 
 printBody is call
 printBody rationale "The cleanups run and report whether or not the body line could be printed"
@@ -227,3 +256,4 @@ printBody ownedBy none
 printBody cleanedBy none
 printBody borrows none
 printBody catch bodyError console.WriteError
+printBody suppresses console.WriteError.failed

@@ -100,6 +100,21 @@ def _entry_ir(path: str, options: dict, as_json: bool, use_cache: bool, surface:
     return ir_text, blocks, f"{mod}.{op}"
 
 
+def _unapproved(path: str) -> int:
+    """D-53: a program runs only with authority someone approved. Exit 3, naming what is missing, otherwise 0."""
+    from .check import find_build, unapproved_authority
+    build_path = find_build(path)
+    if build_path is None:
+        return 0
+    missing = unapproved_authority(build_path)
+    if not missing:
+        return 0
+    sys.stderr.write("build.sem asks for authority that was not approved:\n"
+                     + "".join(f"  allows {r}\n" for r in missing)
+                     + f"review these rows, then run `refined approve {path}`\n")
+    return 3
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="refined", description="Refined SemanticScript compiler")
     sub = ap.add_subparsers(dest="command", required=True)
@@ -124,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("path")
     p.add_argument("--runs", type=int, default=5)
     p.add_argument("--json", action="store_true")
+    p = sub.add_parser("approve", help="review a project's `allows` rows and approve them (D-53)")
+    p.add_argument("path")
     p = sub.add_parser("emit-ir")
     p.add_argument("path")
     p.add_argument("--test", default=None, help="emit the IR for one test, MODULE.TEST")
@@ -171,6 +188,21 @@ def main(argv: list[str] | None = None) -> int:
         diags = stale(args.path, args.base)
         _emit(diags, args.json, "refined.stale.v1")
         return 0 if not diags else 1
+
+    if args.command == "approve":
+        from .check import approve_authority, find_build
+        build_path = find_build(args.path)
+        if build_path is None:
+            sys.stderr.write(f"{args.path} is not a project (no build.sem)\n")
+            return 2
+        rows = approve_authority(build_path)
+        sys.stdout.write("approved:\n" + "".join(f"  allows {r}\n" for r in rows) if rows else
+                         "approved: nothing (the project allows none)\n")
+        return 0
+    if args.command in ("run", "bench", "test") or (args.command == "build" and args.kind == "executable"):
+        refused = _unapproved(args.path)
+        if refused:
+            return refused
 
     if args.command == "check":
         if not args.no_cache:

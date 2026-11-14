@@ -50,6 +50,7 @@ atZero ownedBy none
 atZero cleanedBy none
 atZero borrows none
 atZero catch none
+atZero suppresses none
 
 less is call
 less in descend
@@ -61,6 +62,7 @@ less ownedBy none
 less cleanedBy none
 less borrows none
 less catch none
+less suppresses none
 
 recurse is call
 recurse in descend
@@ -71,6 +73,7 @@ recurse ownedBy none
 recurse cleanedBy none
 recurse borrows none
 recurse catch none
+recurse suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -101,3 +104,4 @@ goDeep ownedBy none
 goDeep cleanedBy none
 goDeep borrows none
 goDeep catch none
+goDeep suppresses none

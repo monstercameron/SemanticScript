@@ -62,6 +62,7 @@ isNegative ownedBy none
 isNegative cleanedBy none
 isNegative borrows none
 isNegative catch none
+isNegative suppresses none
 
 makeError is call
 makeError in checkPositive
@@ -72,6 +73,7 @@ makeError ownedBy none
 makeError cleanedBy none
 makeError borrows none
 makeError catch none
+makeError suppresses none
 
 rest is operation
 rest purpose "Wait ten seconds, or less if cancelled"
@@ -102,6 +104,7 @@ sleep ownedBy none
 sleep cleanedBy none
 sleep borrows none
 sleep catch none
+sleep suppresses none
 
 main is operation
 main purpose "Run the three checks as one group and report how it ended"
@@ -163,6 +166,7 @@ checks is taskGroup
 checks in main
 checks maxTasks 3
 checks catch checkError CheckError
+checks suppresses none
 
 clockBefore is call
 clockBefore in main
@@ -173,6 +177,7 @@ clockBefore ownedBy none
 clockBefore cleanedBy none
 clockBefore borrows none
 clockBefore catch none
+clockBefore suppresses none
 
 checkFive is task
 checkFive in main
@@ -183,6 +188,7 @@ checkFive ownedBy none
 checkFive cleanedBy none
 checkFive borrows none
 checkFive catch fiveError CheckError
+checkFive suppresses none
 
 checkMinus is task
 checkMinus in main
@@ -193,6 +199,7 @@ checkMinus ownedBy none
 checkMinus cleanedBy none
 checkMinus borrows none
 checkMinus catch minusError CheckError
+checkMinus suppresses none
 
 restLong is task
 restLong in main
@@ -203,6 +210,7 @@ restLong ownedBy none
 restLong cleanedBy none
 restLong borrows none
 restLong catch none
+restLong suppresses none
 
 printValue is call
 printValue rationale "The exit code reports how the group ended even when the value cannot be printed"
@@ -214,6 +222,7 @@ printValue ownedBy none
 printValue cleanedBy none
 printValue borrows none
 printValue catch printError console.WriteError
+printValue suppresses console.WriteError.failed
 
 clockAfter is call
 clockAfter in main
@@ -224,6 +233,7 @@ clockAfter ownedBy none
 clockAfter cleanedBy none
 clockAfter borrows none
 clockAfter catch none
+clockAfter suppresses none
 
 elapsed is call
 elapsed in main
@@ -235,6 +245,7 @@ elapsed ownedBy none
 elapsed cleanedBy none
 elapsed borrows none
 elapsed catch none
+elapsed suppresses none
 
 stoppedEarly is call
 stoppedEarly in main
@@ -246,3 +257,4 @@ stoppedEarly ownedBy none
 stoppedEarly cleanedBy none
 stoppedEarly borrows none
 stoppedEarly catch none
+stoppedEarly suppresses none

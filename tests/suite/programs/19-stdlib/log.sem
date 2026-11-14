@@ -56,3 +56,4 @@ logOnce ownedBy none
 logOnce cleanedBy none
 logOnce borrows none
 logOnce catch logError log.LogError
+logOnce suppresses none

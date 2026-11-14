@@ -62,6 +62,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -73,6 +74,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -106,6 +108,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 clockReader is capability
 clockReader purpose "Authority to read the monotonic clock"
@@ -144,6 +147,7 @@ nap ownedBy none
 nap cleanedBy none
 nap borrows none
 nap catch none
+nap suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -214,6 +218,7 @@ clockA ownedBy none
 clockA cleanedBy none
 clockA borrows none
 clockA catch none
+clockA suppresses none
 
 clockB is call
 clockB in main
@@ -224,6 +229,7 @@ clockB ownedBy none
 clockB cleanedBy none
 clockB borrows none
 clockB catch none
+clockB suppresses none
 
 longPause is task
 longPause in main
@@ -234,6 +240,7 @@ longPause ownedBy none
 longPause cleanedBy none
 longPause borrows none
 longPause catch none
+longPause suppresses none
 
 elapsed is call
 elapsed in main
@@ -245,6 +252,7 @@ elapsed ownedBy none
 elapsed cleanedBy none
 elapsed borrows none
 elapsed catch none
+elapsed suppresses none
 
 stoppedEarly is call
 stoppedEarly in main
@@ -256,6 +264,7 @@ stoppedEarly ownedBy none
 stoppedEarly cleanedBy none
 stoppedEarly borrows none
 stoppedEarly catch none
+stoppedEarly suppresses none
 
 showEarly is call
 showEarly in main
@@ -266,6 +275,7 @@ showEarly ownedBy none
 showEarly cleanedBy none
 showEarly borrows none
 showEarly catch none
+showEarly suppresses none
 
 makeNever is call
 makeNever in main
@@ -276,6 +286,7 @@ makeNever ownedBy none
 makeNever cleanedBy none
 makeNever borrows none
 makeNever catch none
+makeNever suppresses none
 
 makeMailbox is call
 makeMailbox in main
@@ -287,6 +298,7 @@ makeMailbox ownedBy mail
 makeMailbox cleanedBy none
 makeMailbox borrows none
 makeMailbox catch none
+makeMailbox suppresses none
 
 waitForever is task
 waitForever in main
@@ -298,6 +310,7 @@ waitForever ownedBy none
 waitForever cleanedBy none
 waitForever borrows none
 waitForever catch waitError channel.ChannelError
+waitForever suppresses none
 
 pauseBriefly is task
 pauseBriefly in main
@@ -308,6 +321,7 @@ pauseBriefly ownedBy none
 pauseBriefly cleanedBy none
 pauseBriefly borrows none
 pauseBriefly catch none
+pauseBriefly suppresses none
 
 showCancelled is call
 showCancelled in main
@@ -318,3 +332,4 @@ showCancelled ownedBy none
 showCancelled cleanedBy none
 showCancelled borrows none
 showCancelled catch none
+showCancelled suppresses none

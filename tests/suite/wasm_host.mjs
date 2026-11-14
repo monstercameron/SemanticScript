@@ -34,6 +34,7 @@ const env = {
   refined_region_new: (capacity) => { const at = heap; heap += Number(capacity) + 16; return at; },
   refined_region_alloc: (region, size) => { const at = heap; heap += (Number(size) + 7) & ~7; return at; },
   refined_region_free: () => {},
+  refined_region_remaining: () => 1n << 40n,  // the WebAssembly host keeps no capacities
   // compiler-rt's 128-bit multiply, which LLVM calls for overflow-checked 64-bit multiplication on wasm32
   __multi3: (ret, aLo, aHi, bLo, bHi) => {
     const mask = (1n << 64n) - 1n;

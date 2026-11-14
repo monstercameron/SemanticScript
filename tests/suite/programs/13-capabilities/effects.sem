@@ -59,6 +59,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 square is operation
 square purpose "Return a number times itself; touches nothing outside"
@@ -89,6 +90,7 @@ multiply ownedBy none
 multiply cleanedBy none
 multiply borrows none
 multiply catch none
+multiply suppresses none
 
 report is operation
 report purpose "Print the square of a number; inherits the write effect from showInt"
@@ -119,6 +121,7 @@ squareIt ownedBy none
 squareIt cleanedBy none
 squareIt borrows none
 squareIt catch none
+squareIt suppresses none
 
 showIt is call
 showIt in report
@@ -129,6 +132,7 @@ showIt ownedBy none
 showIt cleanedBy none
 showIt borrows none
 showIt catch none
+showIt suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -159,3 +163,4 @@ reportSeven ownedBy none
 reportSeven cleanedBy none
 reportSeven borrows none
 reportSeven catch none
+reportSeven suppresses none

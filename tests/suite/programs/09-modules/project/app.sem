@@ -42,6 +42,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -78,6 +79,7 @@ makeRectangle ownedBy none
 makeRectangle cleanedBy none
 makeRectangle borrows none
 makeRectangle catch none
+makeRectangle suppresses none
 
 computeArea is call
 computeArea in main
@@ -88,6 +90,7 @@ computeArea ownedBy none
 computeArea cleanedBy none
 computeArea borrows none
 computeArea catch none
+computeArea suppresses none
 
 showArea is call
 showArea in main
@@ -98,6 +101,7 @@ showArea ownedBy none
 showArea cleanedBy none
 showArea borrows none
 showArea catch none
+showArea suppresses none
 
 readWidth is call
 readWidth in main
@@ -108,6 +112,7 @@ readWidth ownedBy none
 readWidth cleanedBy none
 readWidth borrows none
 readWidth catch none
+readWidth suppresses none
 
 showWidth is call
 showWidth in main
@@ -118,3 +123,4 @@ showWidth ownedBy none
 showWidth cleanedBy none
 showWidth borrows none
 showWidth catch none
+showWidth suppresses none

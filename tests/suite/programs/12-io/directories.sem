@@ -55,6 +55,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -88,6 +89,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
@@ -129,6 +131,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -140,6 +143,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 fileAccess is capability
 fileAccess purpose "Authority over the suite-dir directory"
@@ -265,6 +269,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 makeDir is call
 makeDir in main
@@ -275,6 +280,7 @@ makeDir ownedBy none
 makeDir cleanedBy none
 makeDir borrows none
 makeDir catch makeDirError fs.FileError
+makeDir suppresses none
 
 open0 is call
 open0 in main
@@ -285,6 +291,7 @@ open0 ownedBy main
 open0 cleanedBy none
 open0 borrows none
 open0 catch open0Error fs.FileError
+open0 suppresses none
 
 bytes0 is call
 bytes0 in main
@@ -295,6 +302,7 @@ bytes0 ownedBy none
 bytes0 cleanedBy none
 bytes0 borrows partA
 bytes0 catch none
+bytes0 suppresses none
 
 append0 is task
 append0 in main
@@ -307,6 +315,7 @@ append0 ownedBy none
 append0 cleanedBy none
 append0 borrows none
 append0 catch append0Error fs.FileError
+append0 suppresses none
 
 closeFailed0 is call
 closeFailed0 rationale "The write already failed; the case fails either way"
@@ -318,6 +327,14 @@ closeFailed0 ownedBy none
 closeFailed0 cleanedBy none
 closeFailed0 borrows none
 closeFailed0 catch closeFailed0Error fs.FileError
+closeFailed0 suppresses fs.FileError.notFound
+closeFailed0 suppresses fs.FileError.denied
+closeFailed0 suppresses fs.FileError.exists
+closeFailed0 suppresses fs.FileError.tooLarge
+closeFailed0 suppresses fs.FileError.timedOut
+closeFailed0 suppresses fs.FileError.cancelled
+closeFailed0 suppresses fs.FileError.busy
+closeFailed0 suppresses fs.FileError.failed
 
 close0 is call
 close0 in main
@@ -328,6 +345,7 @@ close0 ownedBy none
 close0 cleanedBy none
 close0 borrows none
 close0 catch close0Error fs.FileError
+close0 suppresses none
 
 open1 is call
 open1 in main
@@ -338,6 +356,7 @@ open1 ownedBy main
 open1 cleanedBy none
 open1 borrows none
 open1 catch open1Error fs.FileError
+open1 suppresses none
 
 bytes1 is call
 bytes1 in main
@@ -348,6 +367,7 @@ bytes1 ownedBy none
 bytes1 cleanedBy none
 bytes1 borrows partB
 bytes1 catch none
+bytes1 suppresses none
 
 append1 is task
 append1 in main
@@ -360,6 +380,7 @@ append1 ownedBy none
 append1 cleanedBy none
 append1 borrows none
 append1 catch append1Error fs.FileError
+append1 suppresses none
 
 closeFailed1 is call
 closeFailed1 rationale "The write already failed; the case fails either way"
@@ -371,6 +392,14 @@ closeFailed1 ownedBy none
 closeFailed1 cleanedBy none
 closeFailed1 borrows none
 closeFailed1 catch closeFailed1Error fs.FileError
+closeFailed1 suppresses fs.FileError.notFound
+closeFailed1 suppresses fs.FileError.denied
+closeFailed1 suppresses fs.FileError.exists
+closeFailed1 suppresses fs.FileError.tooLarge
+closeFailed1 suppresses fs.FileError.timedOut
+closeFailed1 suppresses fs.FileError.cancelled
+closeFailed1 suppresses fs.FileError.busy
+closeFailed1 suppresses fs.FileError.failed
 
 close1 is call
 close1 in main
@@ -381,6 +410,7 @@ close1 ownedBy none
 close1 cleanedBy none
 close1 borrows none
 close1 catch close1Error fs.FileError
+close1 suppresses none
 
 listDir is call
 listDir in main
@@ -392,6 +422,7 @@ listDir ownedBy io
 listDir cleanedBy none
 listDir borrows none
 listDir catch listError fs.FileError
+listDir suppresses none
 
 countEntries is call
 countEntries in main
@@ -402,6 +433,7 @@ countEntries ownedBy none
 countEntries cleanedBy none
 countEntries borrows none
 countEntries catch none
+countEntries suppresses none
 
 printCount is call
 printCount in main
@@ -412,6 +444,7 @@ printCount ownedBy none
 printCount cleanedBy none
 printCount borrows none
 printCount catch none
+printCount suppresses none
 
 firstName is call
 firstName in main
@@ -424,6 +457,7 @@ firstName ownedBy io
 firstName cleanedBy none
 firstName borrows none
 firstName catch nameError fs.EntryIndexError
+firstName suppresses none
 
 printName is call
 printName in main
@@ -434,6 +468,7 @@ printName ownedBy none
 printName cleanedBy none
 printName borrows none
 printName catch none
+printName suppresses none
 
 readBack is task
 readBack in main
@@ -447,6 +482,7 @@ readBack ownedBy io
 readBack cleanedBy none
 readBack borrows none
 readBack catch readError fs.FileError
+readBack suppresses none
 
 toText is call
 toText in main
@@ -458,6 +494,7 @@ toText ownedBy io
 toText cleanedBy none
 toText borrows none
 toText catch decodeError string.Utf8Error
+toText suppresses none
 
 printText is call
 printText in main
@@ -468,6 +505,7 @@ printText ownedBy none
 printText cleanedBy none
 printText borrows none
 printText catch none
+printText suppresses none
 
 removeFile is call
 removeFile in main
@@ -478,6 +516,7 @@ removeFile ownedBy none
 removeFile cleanedBy none
 removeFile borrows none
 removeFile catch removeFileError fs.FileError
+removeFile suppresses none
 
 removeDir is call
 removeDir in main
@@ -488,6 +527,7 @@ removeDir ownedBy none
 removeDir cleanedBy none
 removeDir borrows none
 removeDir catch removeDirError fs.FileError
+removeDir suppresses none
 
 stillThere is call
 stillThere in main
@@ -498,6 +538,7 @@ stillThere ownedBy none
 stillThere cleanedBy none
 stillThere borrows none
 stillThere catch none
+stillThere suppresses none
 
 printThere is call
 printThere in main
@@ -508,3 +549,4 @@ printThere ownedBy none
 printThere cleanedBy none
 printThere borrows none
 printThere catch none
+printThere suppresses none

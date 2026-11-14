@@ -208,9 +208,12 @@ _CALL_SHAPES = {
     "cleanedBy": [(NONE,), ("name",)],
     "borrows": [(NONE,), ("name",)],
     "catch": [(NONE,), ("name", "Type")],
+    # D-54: the exact error variants a discard (both `ifError` arms to one block, or `onError suppress`) drops
+    "suppresses": [(NONE,), ("variant",)],
 }
 _CALL_SKELETON = [("in", "one"), ("invokes|invokesReference", "one"), ("argument", "some"), ("result", "one"),
-                  ("ownedBy", "one"), ("cleanedBy", "one"), ("borrows", "one"), ("catch", "one")]
+                  ("ownedBy", "one"), ("cleanedBy", "one"), ("borrows", "one"), ("catch", "one"),
+                  ("suppresses", "some")]
 
 KINDS: dict[str, dict] = {
     # D-34: a project states its own version, the language and standard-library versions it is written for, and
@@ -279,8 +282,9 @@ KINDS: dict[str, dict] = {
     },
     # D-48: the error a group's tasks may raise; `join <group>` delivers the first one
     "taskGroup": {
-        "shapes": {"in": [("name",)], "maxTasks": [("int",)], "catch": [(NONE,), ("name", "Type")]},
-        "skeleton": [("in", "one"), ("maxTasks", "one"), ("catch", "one")],
+        "shapes": {"in": [("name",)], "maxTasks": [("int",)], "catch": [(NONE,), ("name", "Type")],
+                   "suppresses": [(NONE,), ("variant",)]},
+        "skeleton": [("in", "one"), ("maxTasks", "one"), ("catch", "one"), ("suppresses", "some")],
     },
 }
 

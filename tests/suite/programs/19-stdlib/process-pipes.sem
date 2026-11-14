@@ -51,6 +51,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 gitRunner is capability
 gitRunner purpose "Authority to run git"
@@ -124,6 +125,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 newArguments is call
 newArguments in main
@@ -134,6 +136,7 @@ newArguments ownedBy store
 newArguments cleanedBy none
 newArguments borrows none
 newArguments catch none
+newArguments suppresses none
 
 addhashObject is call
 addhashObject in main
@@ -145,6 +148,7 @@ addhashObject ownedBy none
 addhashObject cleanedBy none
 addhashObject borrows none
 addhashObject catch none
+addhashObject suppresses none
 
 addfromStdin is call
 addfromStdin in main
@@ -156,6 +160,7 @@ addfromStdin ownedBy none
 addfromStdin cleanedBy none
 addfromStdin borrows none
 addfromStdin catch none
+addfromStdin suppresses none
 
 pipedBytes is call
 pipedBytes in main
@@ -166,6 +171,7 @@ pipedBytes ownedBy none
 pipedBytes cleanedBy none
 pipedBytes borrows piped
 pipedBytes catch none
+pipedBytes suppresses none
 
 runGit is task
 runGit in main
@@ -181,6 +187,7 @@ runGit ownedBy store
 runGit cleanedBy none
 runGit borrows none
 runGit catch runError process.RunError
+runGit suppresses none
 
 readStdout is call
 readStdout in main
@@ -191,6 +198,7 @@ readStdout ownedBy none
 readStdout cleanedBy none
 readStdout borrows gitOutput
 readStdout catch none
+readStdout suppresses none
 
 stdoutText is call
 stdoutText in main
@@ -202,6 +210,7 @@ stdoutText ownedBy store
 stdoutText cleanedBy none
 stdoutText borrows none
 stdoutText catch stdoutError string.Utf8Error
+stdoutText suppresses none
 
 hashLength is call
 hashLength in main
@@ -212,6 +221,7 @@ hashLength ownedBy none
 hashLength cleanedBy none
 hashLength borrows none
 hashLength catch none
+hashLength suppresses none
 
 trimmedHash is call
 trimmedHash in main
@@ -224,6 +234,7 @@ trimmedHash ownedBy none
 trimmedHash cleanedBy none
 trimmedHash borrows gitText
 trimmedHash catch trimError string.StringIndexError
+trimmedHash suppresses none
 
 printHash is call
 printHash in main
@@ -234,3 +245,4 @@ printHash ownedBy none
 printHash cleanedBy none
 printHash borrows none
 printHash catch none
+printHash suppresses none

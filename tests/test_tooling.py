@@ -99,6 +99,7 @@ printIt ownedBy none
 printIt cleanedBy none
 printIt borrows none
 printIt catch printError console.WriteError
+printIt suppresses console.WriteError.failed
 :check
 :run
 :quit
@@ -296,6 +297,7 @@ def test_program_sees_an_interrupt(tmp_path):
                                  + "\n".join(allows_rows("interruptsProject", [p.render()])) + "\n"
                                  "interruptsProject requires none\ninterruptsProject includesModule interrupts\n"
                                  "interruptsProject entry interrupts.main\n", encoding="utf-8")
+    caselib.approve(str(d))
     (d / "interrupts.sem").write_text(p.render(), encoding="utf-8")
     assert not caselib.diagnostics(str(d))
     proc = subprocess.Popen([sys.executable, caselib.COMPILER, "run", str(d), "--no-cache"], stdout=subprocess.PIPE,
@@ -381,6 +383,7 @@ def test_symlink_out_of_scope_traps(tmp_path):
                                  + "\n".join(allows_rows("linkedProject", [p.render()])) + "\n"
                                  "linkedProject requires none\nlinkedProject includesModule linked\n"
                                  "linkedProject entry linked.main\n", encoding="utf-8")
+    caselib.approve(str(d))
     (d / "linked.sem").write_text(p.render(), encoding="utf-8")
     assert not caselib.diagnostics(str(d))
     proc = caselib.refined("run", str(d), "--no-cache", cwd=str(d))

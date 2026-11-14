@@ -67,6 +67,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 joinPath is call
 joinPath in main
@@ -79,6 +80,7 @@ joinPath ownedBy text
 joinPath cleanedBy none
 joinPath borrows none
 joinPath catch none
+joinPath suppresses none
 
 toBytes is call
 toBytes in main
@@ -89,6 +91,7 @@ toBytes ownedBy none
 toBytes cleanedBy none
 toBytes borrows content
 toBytes catch none
+toBytes suppresses none
 
 writeIt is task
 writeIt in main
@@ -101,3 +104,4 @@ writeIt ownedBy none
 writeIt cleanedBy none
 writeIt borrows none
 writeIt catch writeError fs.FileError
+writeIt suppresses none

@@ -51,6 +51,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 stdinReader is capability
 stdinReader purpose "Authority to read standard input"
@@ -119,6 +120,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 readFirst is task
 readFirst in main
@@ -131,6 +133,7 @@ readFirst ownedBy text
 readFirst cleanedBy none
 readFirst borrows none
 readFirst catch firstError console.ReadError
+readFirst suppresses none
 
 readSecond is task
 readSecond in main
@@ -143,6 +146,7 @@ readSecond ownedBy text
 readSecond cleanedBy none
 readSecond borrows none
 readSecond catch secondError console.ReadError
+readSecond suppresses none
 
 printFirst is call
 printFirst in main
@@ -153,6 +157,7 @@ printFirst ownedBy none
 printFirst cleanedBy none
 printFirst borrows none
 printFirst catch none
+printFirst suppresses none
 
 printEnd is call
 printEnd in main
@@ -163,3 +168,4 @@ printEnd ownedBy none
 printEnd cleanedBy none
 printEnd borrows none
 printEnd catch none
+printEnd suppresses none

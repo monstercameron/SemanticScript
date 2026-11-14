@@ -108,6 +108,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
@@ -149,6 +150,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -160,6 +162,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -193,6 +196,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showFloat is operation
 showFloat purpose "Print one floating-point number on its own line"
@@ -226,6 +230,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 fileAccess is capability
 fileAccess purpose "Authority to read and write files whose names start with suite-"
@@ -451,6 +456,7 @@ notFive ownedBy none
 notFive cleanedBy none
 notFive borrows none
 notFive catch none
+notFive suppresses none
 
 printNotFive is call
 printNotFive in main
@@ -461,6 +467,7 @@ printNotFive ownedBy none
 printNotFive cleanedBy none
 printNotFive borrows none
 printNotFive catch none
+printNotFive suppresses none
 
 makeBuffer is call
 makeBuffer in main
@@ -471,6 +478,7 @@ makeBuffer ownedBy store
 makeBuffer cleanedBy none
 makeBuffer borrows none
 makeBuffer catch none
+makeBuffer suppresses none
 
 addText is call
 addText in main
@@ -482,6 +490,7 @@ addText ownedBy none
 addText cleanedBy none
 addText borrows none
 addText catch none
+addText suppresses none
 
 addNumber is call
 addNumber in main
@@ -493,6 +502,7 @@ addNumber ownedBy none
 addNumber cleanedBy none
 addNumber borrows none
 addNumber catch none
+addNumber suppresses none
 
 addBang is call
 addBang in main
@@ -504,6 +514,7 @@ addBang ownedBy none
 addBang cleanedBy none
 addBang borrows none
 addBang catch none
+addBang suppresses none
 
 bufferLength is call
 bufferLength in main
@@ -514,6 +525,7 @@ bufferLength ownedBy none
 bufferLength cleanedBy none
 bufferLength borrows none
 bufferLength catch none
+bufferLength suppresses none
 
 printBufferLength is call
 printBufferLength in main
@@ -524,6 +536,7 @@ printBufferLength ownedBy none
 printBufferLength cleanedBy none
 printBufferLength borrows none
 printBufferLength catch none
+printBufferLength suppresses none
 
 bufferText is call
 bufferText in main
@@ -535,6 +548,7 @@ bufferText ownedBy store
 bufferText cleanedBy none
 bufferText borrows none
 bufferText catch bufTextError string.Utf8Error
+bufferText suppresses none
 
 printBufferText is call
 printBufferText in main
@@ -545,6 +559,7 @@ printBufferText ownedBy none
 printBufferText cleanedBy none
 printBufferText borrows none
 printBufferText catch none
+printBufferText suppresses none
 
 byteSame is call
 byteSame in main
@@ -556,6 +571,7 @@ byteSame ownedBy none
 byteSame cleanedBy none
 byteSame borrows none
 byteSame catch none
+byteSame suppresses none
 
 printByteSame is call
 printByteSame in main
@@ -566,6 +582,7 @@ printByteSame ownedBy none
 printByteSame cleanedBy none
 printByteSame borrows none
 printByteSame catch none
+printByteSame suppresses none
 
 isSeven is call
 isSeven in main
@@ -576,6 +593,7 @@ isSeven ownedBy none
 isSeven cleanedBy none
 isSeven borrows none
 isSeven catch none
+isSeven suppresses none
 
 printIsSeven is call
 printIsSeven in main
@@ -586,6 +604,7 @@ printIsSeven ownedBy none
 printIsSeven cleanedBy none
 printIsSeven borrows none
 printIsSeven catch none
+printIsSeven suppresses none
 
 cmpByteEq is call
 cmpByteEq in main
@@ -597,6 +616,7 @@ cmpByteEq ownedBy none
 cmpByteEq cleanedBy none
 cmpByteEq borrows none
 cmpByteEq catch none
+cmpByteEq suppresses none
 
 printCmpByteEq is call
 printCmpByteEq in main
@@ -607,6 +627,7 @@ printCmpByteEq ownedBy none
 printCmpByteEq cleanedBy none
 printCmpByteEq borrows none
 printCmpByteEq catch none
+printCmpByteEq suppresses none
 
 cmpByteNe is call
 cmpByteNe in main
@@ -618,6 +639,7 @@ cmpByteNe ownedBy none
 cmpByteNe cleanedBy none
 cmpByteNe borrows none
 cmpByteNe catch none
+cmpByteNe suppresses none
 
 printCmpByteNe is call
 printCmpByteNe in main
@@ -628,6 +650,7 @@ printCmpByteNe ownedBy none
 printCmpByteNe cleanedBy none
 printCmpByteNe borrows none
 printCmpByteNe catch none
+printCmpByteNe suppresses none
 
 cmpByteLt is call
 cmpByteLt in main
@@ -639,6 +662,7 @@ cmpByteLt ownedBy none
 cmpByteLt cleanedBy none
 cmpByteLt borrows none
 cmpByteLt catch none
+cmpByteLt suppresses none
 
 printCmpByteLt is call
 printCmpByteLt in main
@@ -649,6 +673,7 @@ printCmpByteLt ownedBy none
 printCmpByteLt cleanedBy none
 printCmpByteLt borrows none
 printCmpByteLt catch none
+printCmpByteLt suppresses none
 
 cmpByteLe is call
 cmpByteLe in main
@@ -660,6 +685,7 @@ cmpByteLe ownedBy none
 cmpByteLe cleanedBy none
 cmpByteLe borrows none
 cmpByteLe catch none
+cmpByteLe suppresses none
 
 printCmpByteLe is call
 printCmpByteLe in main
@@ -670,6 +696,7 @@ printCmpByteLe ownedBy none
 printCmpByteLe cleanedBy none
 printCmpByteLe borrows none
 printCmpByteLe catch none
+printCmpByteLe suppresses none
 
 cmpByteGt is call
 cmpByteGt in main
@@ -681,6 +708,7 @@ cmpByteGt ownedBy none
 cmpByteGt cleanedBy none
 cmpByteGt borrows none
 cmpByteGt catch none
+cmpByteGt suppresses none
 
 printCmpByteGt is call
 printCmpByteGt in main
@@ -691,6 +719,7 @@ printCmpByteGt ownedBy none
 printCmpByteGt cleanedBy none
 printCmpByteGt borrows none
 printCmpByteGt catch none
+printCmpByteGt suppresses none
 
 cmpByteGe is call
 cmpByteGe in main
@@ -702,6 +731,7 @@ cmpByteGe ownedBy none
 cmpByteGe cleanedBy none
 cmpByteGe borrows none
 cmpByteGe catch none
+cmpByteGe suppresses none
 
 printCmpByteGe is call
 printCmpByteGe in main
@@ -712,6 +742,7 @@ printCmpByteGe ownedBy none
 printCmpByteGe cleanedBy none
 printCmpByteGe borrows none
 printCmpByteGe catch none
+printCmpByteGe suppresses none
 
 cmpInt32Eq is call
 cmpInt32Eq in main
@@ -723,6 +754,7 @@ cmpInt32Eq ownedBy none
 cmpInt32Eq cleanedBy none
 cmpInt32Eq borrows none
 cmpInt32Eq catch none
+cmpInt32Eq suppresses none
 
 printCmpInt32Eq is call
 printCmpInt32Eq in main
@@ -733,6 +765,7 @@ printCmpInt32Eq ownedBy none
 printCmpInt32Eq cleanedBy none
 printCmpInt32Eq borrows none
 printCmpInt32Eq catch none
+printCmpInt32Eq suppresses none
 
 cmpInt32Ne is call
 cmpInt32Ne in main
@@ -744,6 +777,7 @@ cmpInt32Ne ownedBy none
 cmpInt32Ne cleanedBy none
 cmpInt32Ne borrows none
 cmpInt32Ne catch none
+cmpInt32Ne suppresses none
 
 printCmpInt32Ne is call
 printCmpInt32Ne in main
@@ -754,6 +788,7 @@ printCmpInt32Ne ownedBy none
 printCmpInt32Ne cleanedBy none
 printCmpInt32Ne borrows none
 printCmpInt32Ne catch none
+printCmpInt32Ne suppresses none
 
 cmpInt32Lt is call
 cmpInt32Lt in main
@@ -765,6 +800,7 @@ cmpInt32Lt ownedBy none
 cmpInt32Lt cleanedBy none
 cmpInt32Lt borrows none
 cmpInt32Lt catch none
+cmpInt32Lt suppresses none
 
 printCmpInt32Lt is call
 printCmpInt32Lt in main
@@ -775,6 +811,7 @@ printCmpInt32Lt ownedBy none
 printCmpInt32Lt cleanedBy none
 printCmpInt32Lt borrows none
 printCmpInt32Lt catch none
+printCmpInt32Lt suppresses none
 
 cmpInt32Le is call
 cmpInt32Le in main
@@ -786,6 +823,7 @@ cmpInt32Le ownedBy none
 cmpInt32Le cleanedBy none
 cmpInt32Le borrows none
 cmpInt32Le catch none
+cmpInt32Le suppresses none
 
 printCmpInt32Le is call
 printCmpInt32Le in main
@@ -796,6 +834,7 @@ printCmpInt32Le ownedBy none
 printCmpInt32Le cleanedBy none
 printCmpInt32Le borrows none
 printCmpInt32Le catch none
+printCmpInt32Le suppresses none
 
 cmpInt32Gt is call
 cmpInt32Gt in main
@@ -807,6 +846,7 @@ cmpInt32Gt ownedBy none
 cmpInt32Gt cleanedBy none
 cmpInt32Gt borrows none
 cmpInt32Gt catch none
+cmpInt32Gt suppresses none
 
 printCmpInt32Gt is call
 printCmpInt32Gt in main
@@ -817,6 +857,7 @@ printCmpInt32Gt ownedBy none
 printCmpInt32Gt cleanedBy none
 printCmpInt32Gt borrows none
 printCmpInt32Gt catch none
+printCmpInt32Gt suppresses none
 
 cmpInt32Ge is call
 cmpInt32Ge in main
@@ -828,6 +869,7 @@ cmpInt32Ge ownedBy none
 cmpInt32Ge cleanedBy none
 cmpInt32Ge borrows none
 cmpInt32Ge catch none
+cmpInt32Ge suppresses none
 
 printCmpInt32Ge is call
 printCmpInt32Ge in main
@@ -838,6 +880,7 @@ printCmpInt32Ge ownedBy none
 printCmpInt32Ge cleanedBy none
 printCmpInt32Ge borrows none
 printCmpInt32Ge catch none
+printCmpInt32Ge suppresses none
 
 cmpFloatNe is call
 cmpFloatNe in main
@@ -849,6 +892,7 @@ cmpFloatNe ownedBy none
 cmpFloatNe cleanedBy none
 cmpFloatNe borrows none
 cmpFloatNe catch none
+cmpFloatNe suppresses none
 
 printCmpFloatNe is call
 printCmpFloatNe in main
@@ -859,6 +903,7 @@ printCmpFloatNe ownedBy none
 printCmpFloatNe cleanedBy none
 printCmpFloatNe borrows none
 printCmpFloatNe catch none
+printCmpFloatNe suppresses none
 
 cmpFloatLt is call
 cmpFloatLt in main
@@ -870,6 +915,7 @@ cmpFloatLt ownedBy none
 cmpFloatLt cleanedBy none
 cmpFloatLt borrows none
 cmpFloatLt catch none
+cmpFloatLt suppresses none
 
 printCmpFloatLt is call
 printCmpFloatLt in main
@@ -880,6 +926,7 @@ printCmpFloatLt ownedBy none
 printCmpFloatLt cleanedBy none
 printCmpFloatLt borrows none
 printCmpFloatLt catch none
+printCmpFloatLt suppresses none
 
 cmpFloatLe is call
 cmpFloatLe in main
@@ -891,6 +938,7 @@ cmpFloatLe ownedBy none
 cmpFloatLe cleanedBy none
 cmpFloatLe borrows none
 cmpFloatLe catch none
+cmpFloatLe suppresses none
 
 printCmpFloatLe is call
 printCmpFloatLe in main
@@ -901,6 +949,7 @@ printCmpFloatLe ownedBy none
 printCmpFloatLe cleanedBy none
 printCmpFloatLe borrows none
 printCmpFloatLe catch none
+printCmpFloatLe suppresses none
 
 cmpFloatGe is call
 cmpFloatGe in main
@@ -912,6 +961,7 @@ cmpFloatGe ownedBy none
 cmpFloatGe cleanedBy none
 cmpFloatGe borrows none
 cmpFloatGe catch none
+cmpFloatGe suppresses none
 
 printCmpFloatGe is call
 printCmpFloatGe in main
@@ -922,6 +972,7 @@ printCmpFloatGe ownedBy none
 printCmpFloatGe cleanedBy none
 printCmpFloatGe borrows none
 printCmpFloatGe catch none
+printCmpFloatGe suppresses none
 
 cmpFloatLtSame is call
 cmpFloatLtSame in main
@@ -933,6 +984,7 @@ cmpFloatLtSame ownedBy none
 cmpFloatLtSame cleanedBy none
 cmpFloatLtSame borrows none
 cmpFloatLtSame catch none
+cmpFloatLtSame suppresses none
 
 printCmpFloatLtSame is call
 printCmpFloatLtSame in main
@@ -943,6 +995,7 @@ printCmpFloatLtSame ownedBy none
 printCmpFloatLtSame cleanedBy none
 printCmpFloatLtSame borrows none
 printCmpFloatLtSame catch none
+printCmpFloatLtSame suppresses none
 
 cmpFloatGtSame is call
 cmpFloatGtSame in main
@@ -954,6 +1007,7 @@ cmpFloatGtSame ownedBy none
 cmpFloatGtSame cleanedBy none
 cmpFloatGtSame borrows none
 cmpFloatGtSame catch none
+cmpFloatGtSame suppresses none
 
 printCmpFloatGtSame is call
 printCmpFloatGtSame in main
@@ -964,6 +1018,7 @@ printCmpFloatGtSame ownedBy none
 printCmpFloatGtSame cleanedBy none
 printCmpFloatGtSame borrows none
 printCmpFloatGtSame catch none
+printCmpFloatGtSame suppresses none
 
 toExit is call
 toExit in main
@@ -974,6 +1029,7 @@ toExit ownedBy none
 toExit cleanedBy none
 toExit borrows none
 toExit catch none
+toExit suppresses none
 
 fromExit is call
 fromExit in main
@@ -984,6 +1040,7 @@ fromExit ownedBy none
 fromExit cleanedBy none
 fromExit borrows none
 fromExit catch none
+fromExit suppresses none
 
 printExitBack is call
 printExitBack in main
@@ -994,6 +1051,7 @@ printExitBack ownedBy none
 printExitBack cleanedBy none
 printExitBack borrows none
 printExitBack catch none
+printExitBack suppresses none
 
 toFloat is call
 toFloat in main
@@ -1004,6 +1062,7 @@ toFloat ownedBy none
 toFloat cleanedBy none
 toFloat borrows none
 toFloat catch none
+toFloat suppresses none
 
 printTwoFloat is call
 printTwoFloat in main
@@ -1014,6 +1073,7 @@ printTwoFloat ownedBy none
 printTwoFloat cleanedBy none
 printTwoFloat borrows none
 printTwoFloat catch none
+printTwoFloat suppresses none
 
 eitherTrue is call
 eitherTrue in main
@@ -1025,6 +1085,7 @@ eitherTrue ownedBy none
 eitherTrue cleanedBy none
 eitherTrue borrows none
 eitherTrue catch none
+eitherTrue suppresses none
 
 printEitherTrue is call
 printEitherTrue in main
@@ -1035,6 +1096,7 @@ printEitherTrue ownedBy none
 printEitherTrue cleanedBy none
 printEitherTrue borrows none
 printEitherTrue catch none
+printEitherTrue suppresses none
 
 oneTrue is call
 oneTrue in main
@@ -1046,6 +1108,7 @@ oneTrue ownedBy none
 oneTrue cleanedBy none
 oneTrue borrows none
 oneTrue catch none
+oneTrue suppresses none
 
 printOneTrue is call
 printOneTrue in main
@@ -1056,6 +1119,7 @@ printOneTrue ownedBy none
 printOneTrue cleanedBy none
 printOneTrue borrows none
 printOneTrue catch none
+printOneTrue suppresses none
 
 add32 is call
 add32 in main
@@ -1067,6 +1131,7 @@ add32 ownedBy none
 add32 cleanedBy none
 add32 borrows none
 add32 catch none
+add32 suppresses none
 
 widenadd32 is call
 widenadd32 in main
@@ -1077,6 +1142,7 @@ widenadd32 ownedBy none
 widenadd32 cleanedBy none
 widenadd32 borrows none
 widenadd32 catch none
+widenadd32 suppresses none
 
 printadd32 is call
 printadd32 in main
@@ -1087,6 +1153,7 @@ printadd32 ownedBy none
 printadd32 cleanedBy none
 printadd32 borrows none
 printadd32 catch none
+printadd32 suppresses none
 
 sub32 is call
 sub32 in main
@@ -1098,6 +1165,7 @@ sub32 ownedBy none
 sub32 cleanedBy none
 sub32 borrows none
 sub32 catch none
+sub32 suppresses none
 
 widensub32 is call
 widensub32 in main
@@ -1108,6 +1176,7 @@ widensub32 ownedBy none
 widensub32 cleanedBy none
 widensub32 borrows none
 widensub32 catch none
+widensub32 suppresses none
 
 printsub32 is call
 printsub32 in main
@@ -1118,6 +1187,7 @@ printsub32 ownedBy none
 printsub32 cleanedBy none
 printsub32 borrows none
 printsub32 catch none
+printsub32 suppresses none
 
 mul32 is call
 mul32 in main
@@ -1129,6 +1199,7 @@ mul32 ownedBy none
 mul32 cleanedBy none
 mul32 borrows none
 mul32 catch none
+mul32 suppresses none
 
 widenmul32 is call
 widenmul32 in main
@@ -1139,6 +1210,7 @@ widenmul32 ownedBy none
 widenmul32 cleanedBy none
 widenmul32 borrows none
 widenmul32 catch none
+widenmul32 suppresses none
 
 printmul32 is call
 printmul32 in main
@@ -1149,6 +1221,7 @@ printmul32 ownedBy none
 printmul32 cleanedBy none
 printmul32 borrows none
 printmul32 catch none
+printmul32 suppresses none
 
 div32 is call
 div32 in main
@@ -1160,6 +1233,7 @@ div32 ownedBy none
 div32 cleanedBy none
 div32 borrows none
 div32 catch none
+div32 suppresses none
 
 widendiv32 is call
 widendiv32 in main
@@ -1170,6 +1244,7 @@ widendiv32 ownedBy none
 widendiv32 cleanedBy none
 widendiv32 borrows none
 widendiv32 catch none
+widendiv32 suppresses none
 
 printdiv32 is call
 printdiv32 in main
@@ -1180,6 +1255,7 @@ printdiv32 ownedBy none
 printdiv32 cleanedBy none
 printdiv32 borrows none
 printdiv32 catch none
+printdiv32 suppresses none
 
 rem32 is call
 rem32 in main
@@ -1191,6 +1267,7 @@ rem32 ownedBy none
 rem32 cleanedBy none
 rem32 borrows none
 rem32 catch none
+rem32 suppresses none
 
 widenrem32 is call
 widenrem32 in main
@@ -1201,6 +1278,7 @@ widenrem32 ownedBy none
 widenrem32 cleanedBy none
 widenrem32 borrows none
 widenrem32 catch none
+widenrem32 suppresses none
 
 printrem32 is call
 printrem32 in main
@@ -1211,6 +1289,7 @@ printrem32 ownedBy none
 printrem32 cleanedBy none
 printrem32 borrows none
 printrem32 catch none
+printrem32 suppresses none
 
 floatDifference is call
 floatDifference in main
@@ -1222,6 +1301,7 @@ floatDifference ownedBy none
 floatDifference cleanedBy none
 floatDifference borrows none
 floatDifference catch none
+floatDifference suppresses none
 
 printFloatDifference is call
 printFloatDifference in main
@@ -1232,6 +1312,7 @@ printFloatDifference ownedBy none
 printFloatDifference cleanedBy none
 printFloatDifference borrows none
 printFloatDifference catch none
+printFloatDifference suppresses none
 
 wrapAdd is call
 wrapAdd in main
@@ -1243,6 +1324,7 @@ wrapAdd ownedBy none
 wrapAdd cleanedBy none
 wrapAdd borrows none
 wrapAdd catch none
+wrapAdd suppresses none
 
 printWrapAdd is call
 printWrapAdd in main
@@ -1253,6 +1335,7 @@ printWrapAdd ownedBy none
 printWrapAdd cleanedBy none
 printWrapAdd borrows none
 printWrapAdd catch none
+printWrapAdd suppresses none
 
 wrapSub is call
 wrapSub in main
@@ -1264,6 +1347,7 @@ wrapSub ownedBy none
 wrapSub cleanedBy none
 wrapSub borrows none
 wrapSub catch none
+wrapSub suppresses none
 
 printWrapSub is call
 printWrapSub in main
@@ -1274,6 +1358,7 @@ printWrapSub ownedBy none
 printWrapSub cleanedBy none
 printWrapSub borrows none
 printWrapSub catch none
+printWrapSub suppresses none
 
 satAdd is call
 satAdd in main
@@ -1285,6 +1370,7 @@ satAdd ownedBy none
 satAdd cleanedBy none
 satAdd borrows none
 satAdd catch none
+satAdd suppresses none
 
 printSatAdd is call
 printSatAdd in main
@@ -1295,6 +1381,7 @@ printSatAdd ownedBy none
 printSatAdd cleanedBy none
 printSatAdd borrows none
 printSatAdd catch none
+printSatAdd suppresses none
 
 satSub is call
 satSub in main
@@ -1306,6 +1393,7 @@ satSub ownedBy none
 satSub cleanedBy none
 satSub borrows none
 satSub catch none
+satSub suppresses none
 
 printSatSub is call
 printSatSub in main
@@ -1316,6 +1404,7 @@ printSatSub ownedBy none
 printSatSub cleanedBy none
 printSatSub borrows none
 printSatSub catch none
+printSatSub suppresses none
 
 wrapMul is call
 wrapMul in main
@@ -1327,6 +1416,7 @@ wrapMul ownedBy none
 wrapMul cleanedBy none
 wrapMul borrows none
 wrapMul catch none
+wrapMul suppresses none
 
 printWrapMul is call
 printWrapMul in main
@@ -1337,6 +1427,7 @@ printWrapMul ownedBy none
 printWrapMul cleanedBy none
 printWrapMul borrows none
 printWrapMul catch none
+printWrapMul suppresses none
 
 satMul is call
 satMul in main
@@ -1348,6 +1439,7 @@ satMul ownedBy none
 satMul cleanedBy none
 satMul borrows none
 satMul catch none
+satMul suppresses none
 
 printSatMul is call
 printSatMul in main
@@ -1358,6 +1450,7 @@ printSatMul ownedBy none
 printSatMul cleanedBy none
 printSatMul borrows none
 printSatMul catch none
+printSatMul suppresses none
 
 makeDeadline is call
 makeDeadline in main
@@ -1368,6 +1461,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 contentBytes is call
 contentBytes in main
@@ -1378,6 +1472,7 @@ contentBytes ownedBy none
 contentBytes cleanedBy none
 contentBytes borrows oldContent
 contentBytes catch none
+contentBytes suppresses none
 
 writeOld is task
 writeOld in main
@@ -1390,6 +1485,7 @@ writeOld ownedBy none
 writeOld cleanedBy none
 writeOld borrows none
 writeOld catch writeOldError fs.FileError
+writeOld suppresses none
 
 openForWrite is call
 openForWrite in main
@@ -1400,6 +1496,7 @@ openForWrite ownedBy main
 openForWrite cleanedBy none
 openForWrite borrows none
 openForWrite catch openWriteError fs.FileError
+openForWrite suppresses none
 
 newBytes is call
 newBytes in main
@@ -1410,6 +1507,7 @@ newBytes ownedBy none
 newBytes cleanedBy none
 newBytes borrows newContent
 newBytes catch none
+newBytes suppresses none
 
 writeThrough is task
 writeThrough in main
@@ -1422,6 +1520,7 @@ writeThrough ownedBy none
 writeThrough cleanedBy none
 writeThrough borrows none
 writeThrough catch writeThroughError fs.FileError
+writeThrough suppresses none
 
 closeWriterFailed is call
 closeWriterFailed rationale "The write already failed; the case fails either way"
@@ -1433,6 +1532,14 @@ closeWriterFailed ownedBy none
 closeWriterFailed cleanedBy none
 closeWriterFailed borrows none
 closeWriterFailed catch closeWriterFailedError fs.FileError
+closeWriterFailed suppresses fs.FileError.notFound
+closeWriterFailed suppresses fs.FileError.denied
+closeWriterFailed suppresses fs.FileError.exists
+closeWriterFailed suppresses fs.FileError.tooLarge
+closeWriterFailed suppresses fs.FileError.timedOut
+closeWriterFailed suppresses fs.FileError.cancelled
+closeWriterFailed suppresses fs.FileError.busy
+closeWriterFailed suppresses fs.FileError.failed
 
 closeWriter is call
 closeWriter in main
@@ -1443,6 +1550,7 @@ closeWriter ownedBy none
 closeWriter cleanedBy none
 closeWriter borrows none
 closeWriter catch closeWriterError fs.FileError
+closeWriter suppresses none
 
 openForRead is call
 openForRead in main
@@ -1453,6 +1561,7 @@ openForRead ownedBy main
 openForRead cleanedBy none
 openForRead borrows none
 openForRead catch openReadError fs.FileError
+openForRead suppresses none
 
 readSome is task
 readSome in main
@@ -1466,6 +1575,7 @@ readSome ownedBy store
 readSome cleanedBy none
 readSome borrows none
 readSome catch readSomeError fs.FileError
+readSome suppresses none
 
 closeReaderFailed is call
 closeReaderFailed rationale "The read already failed; the case fails either way"
@@ -1477,6 +1587,14 @@ closeReaderFailed ownedBy none
 closeReaderFailed cleanedBy none
 closeReaderFailed borrows none
 closeReaderFailed catch closeReaderFailedError fs.FileError
+closeReaderFailed suppresses fs.FileError.notFound
+closeReaderFailed suppresses fs.FileError.denied
+closeReaderFailed suppresses fs.FileError.exists
+closeReaderFailed suppresses fs.FileError.tooLarge
+closeReaderFailed suppresses fs.FileError.timedOut
+closeReaderFailed suppresses fs.FileError.cancelled
+closeReaderFailed suppresses fs.FileError.busy
+closeReaderFailed suppresses fs.FileError.failed
 
 closeReader is call
 closeReader in main
@@ -1487,6 +1605,7 @@ closeReader ownedBy none
 closeReader cleanedBy none
 closeReader borrows none
 closeReader catch closeReaderError fs.FileError
+closeReader suppresses none
 
 chunkText is call
 chunkText in main
@@ -1498,6 +1617,7 @@ chunkText ownedBy store
 chunkText cleanedBy none
 chunkText borrows none
 chunkText catch chunkError string.Utf8Error
+chunkText suppresses none
 
 printChunk is call
 printChunk in main
@@ -1508,6 +1628,7 @@ printChunk ownedBy none
 printChunk cleanedBy none
 printChunk borrows none
 printChunk catch none
+printChunk suppresses none
 
 requestBytes is call
 requestBytes in main
@@ -1518,6 +1639,7 @@ requestBytes ownedBy none
 requestBytes cleanedBy none
 requestBytes borrows request
 requestBytes catch none
+requestBytes suppresses none
 
 parseIt is call
 parseIt in main
@@ -1529,6 +1651,7 @@ parseIt ownedBy store
 parseIt cleanedBy none
 parseIt borrows none
 parseIt catch parseError http.HttpParseError
+parseIt suppresses none
 
 hostHeader is call
 hostHeader in main
@@ -1540,6 +1663,7 @@ hostHeader ownedBy none
 hostHeader cleanedBy none
 hostHeader borrows parsed
 hostHeader catch headerError string.NotFound
+hostHeader suppresses none
 
 printHost is call
 printHost in main
@@ -1550,3 +1674,4 @@ printHost ownedBy none
 printHost cleanedBy none
 printHost borrows none
 printHost catch none
+printHost suppresses none

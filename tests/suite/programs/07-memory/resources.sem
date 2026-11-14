@@ -71,6 +71,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -82,6 +83,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -115,6 +117,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 fileAccess is capability
 fileAccess purpose "Authority to read and write files whose names start with suite-"
@@ -156,6 +159,7 @@ closeIt ownedBy none
 closeIt cleanedBy none
 closeIt borrows none
 closeIt catch closeError fs.FileError
+closeIt suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -223,6 +227,7 @@ main at missing case fs.FileError.exists bind none none goto failed
 main at missing case fs.FileError.tooLarge bind none none goto failed
 main at missing case fs.FileError.timedOut bind none none goto failed
 main at missing case fs.FileError.cancelled bind none none goto failed
+main at missing case fs.FileError.busy bind none none goto failed
 main at missing case fs.FileError.failed bind code Int32 goto failed
 main at reportMissing do showNotFound
 main at reportMissing return ok okCode
@@ -243,6 +248,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 toBytes is call
 toBytes in main
@@ -253,6 +259,7 @@ toBytes ownedBy none
 toBytes cleanedBy none
 toBytes borrows content
 toBytes catch none
+toBytes suppresses none
 
 writeFirst is task
 writeFirst in main
@@ -265,6 +272,7 @@ writeFirst ownedBy none
 writeFirst cleanedBy none
 writeFirst borrows none
 writeFirst catch writeFirstError fs.FileError
+writeFirst suppresses none
 
 writeSecond is task
 writeSecond in main
@@ -277,6 +285,7 @@ writeSecond ownedBy none
 writeSecond cleanedBy none
 writeSecond borrows none
 writeSecond catch writeSecondError fs.FileError
+writeSecond suppresses none
 
 openFirst is call
 openFirst in main
@@ -287,6 +296,7 @@ openFirst ownedBy main
 openFirst cleanedBy closeFirstCleanup
 openFirst borrows none
 openFirst catch firstError fs.FileError
+openFirst suppresses none
 
 closeFirstCleanup is cleanup
 closeFirstCleanup rationale "A failed close at exit has nobody to report to"
@@ -304,6 +314,14 @@ closeFirst ownedBy none
 closeFirst cleanedBy none
 closeFirst borrows none
 closeFirst catch closeFirstError fs.FileError
+closeFirst suppresses fs.FileError.notFound
+closeFirst suppresses fs.FileError.denied
+closeFirst suppresses fs.FileError.exists
+closeFirst suppresses fs.FileError.tooLarge
+closeFirst suppresses fs.FileError.timedOut
+closeFirst suppresses fs.FileError.cancelled
+closeFirst suppresses fs.FileError.busy
+closeFirst suppresses fs.FileError.failed
 
 openSecond is call
 openSecond in main
@@ -314,6 +332,7 @@ openSecond ownedBy main
 openSecond cleanedBy none
 openSecond borrows none
 openSecond catch secondError fs.FileError
+openSecond suppresses none
 
 giveSecond is call
 giveSecond in main
@@ -324,6 +343,7 @@ giveSecond ownedBy none
 giveSecond cleanedBy none
 giveSecond borrows none
 giveSecond catch none
+giveSecond suppresses none
 
 showClosed is call
 showClosed in main
@@ -334,6 +354,7 @@ showClosed ownedBy none
 showClosed cleanedBy none
 showClosed borrows none
 showClosed catch none
+showClosed suppresses none
 
 readMissing is task
 readMissing in main
@@ -347,6 +368,7 @@ readMissing ownedBy scratch
 readMissing cleanedBy none
 readMissing borrows none
 readMissing catch missingError fs.FileError
+readMissing suppresses none
 
 showNotFound is call
 showNotFound in main
@@ -357,3 +379,4 @@ showNotFound ownedBy none
 showNotFound cleanedBy none
 showNotFound borrows none
 showNotFound catch none
+showNotFound suppresses none

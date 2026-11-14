@@ -54,6 +54,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 fileAccess is capability
 fileAccess purpose "Authority over files whose names start with suite-"
@@ -97,6 +98,7 @@ closeIt ownedBy none
 closeIt cleanedBy none
 closeIt borrows none
 closeIt catch closeError fs.FileError
+closeIt suppresses none
 
 printClosed is call
 printClosed in closeAndReport
@@ -107,6 +109,7 @@ printClosed ownedBy none
 printClosed cleanedBy none
 printClosed borrows none
 printClosed catch none
+printClosed suppresses none
 
 printCloseFailed is call
 printCloseFailed in closeAndReport
@@ -117,6 +120,7 @@ printCloseFailed ownedBy none
 printCloseFailed cleanedBy none
 printCloseFailed borrows none
 printCloseFailed catch none
+printCloseFailed suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -180,6 +184,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 toBytes is call
 toBytes in main
@@ -190,6 +195,7 @@ toBytes ownedBy none
 toBytes cleanedBy none
 toBytes borrows content
 toBytes catch none
+toBytes suppresses none
 
 writeIt is task
 writeIt in main
@@ -202,6 +208,7 @@ writeIt ownedBy none
 writeIt cleanedBy none
 writeIt borrows none
 writeIt catch writeError fs.FileError
+writeIt suppresses none
 
 openIt is call
 openIt in main
@@ -212,6 +219,7 @@ openIt ownedBy main
 openIt cleanedBy reportCleanup
 openIt borrows none
 openIt catch openError fs.FileError
+openIt suppresses none
 
 reportCleanup is cleanup
 reportCleanup rationale "closeAndReport reports a failed close itself"
@@ -229,6 +237,7 @@ release ownedBy none
 release cleanedBy none
 release borrows none
 release catch none
+release suppresses none
 
 printOpened is call
 printOpened in main
@@ -239,6 +248,7 @@ printOpened ownedBy none
 printOpened cleanedBy none
 printOpened borrows none
 printOpened catch none
+printOpened suppresses none
 
 openMissing is call
 openMissing in main
@@ -249,6 +259,7 @@ openMissing ownedBy main
 openMissing cleanedBy none
 openMissing borrows none
 openMissing catch missingError fs.FileError
+openMissing suppresses none
 
 closeUnexpected is call
 closeUnexpected in main
@@ -259,6 +270,7 @@ closeUnexpected ownedBy none
 closeUnexpected cleanedBy none
 closeUnexpected borrows none
 closeUnexpected catch none
+closeUnexpected suppresses none
 
 printMissing is call
 printMissing in main
@@ -269,3 +281,4 @@ printMissing ownedBy none
 printMissing cleanedBy none
 printMissing borrows none
 printMissing catch none
+printMissing suppresses none

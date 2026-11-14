@@ -84,6 +84,7 @@ writePart ownedBy none
 writePart cleanedBy none
 writePart borrows none
 writePart catch partError console.WriteError
+writePart suppresses none
 
 writeRest is call
 writeRest in main
@@ -94,6 +95,7 @@ writeRest ownedBy none
 writeRest cleanedBy none
 writeRest borrows none
 writeRest catch restError console.WriteError
+writeRest suppresses none
 
 writeSecond is call
 writeSecond in main
@@ -104,6 +106,7 @@ writeSecond ownedBy none
 writeSecond cleanedBy none
 writeSecond borrows none
 writeSecond catch secondError console.WriteError
+writeSecond suppresses none
 
 writeDiagnostic is call
 writeDiagnostic in main
@@ -114,3 +117,4 @@ writeDiagnostic ownedBy none
 writeDiagnostic cleanedBy none
 writeDiagnostic borrows none
 writeDiagnostic catch diagnosticError console.WriteError
+writeDiagnostic suppresses none

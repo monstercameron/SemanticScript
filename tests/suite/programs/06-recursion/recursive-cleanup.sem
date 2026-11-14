@@ -54,6 +54,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -87,6 +88,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 fileAccess is capability
 fileAccess purpose "Authority over files whose names start with suite-"
@@ -140,6 +142,7 @@ openIt ownedBy nest
 openIt cleanedBy closeItCleanup
 openIt borrows none
 openIt catch openError fs.FileError
+openIt suppresses none
 
 closeItCleanup is cleanup
 closeItCleanup rationale "A failed close has nobody to report to"
@@ -157,6 +160,14 @@ closeIt ownedBy none
 closeIt cleanedBy none
 closeIt borrows none
 closeIt catch closeError fs.FileError
+closeIt suppresses fs.FileError.notFound
+closeIt suppresses fs.FileError.denied
+closeIt suppresses fs.FileError.exists
+closeIt suppresses fs.FileError.tooLarge
+closeIt suppresses fs.FileError.timedOut
+closeIt suppresses fs.FileError.cancelled
+closeIt suppresses fs.FileError.busy
+closeIt suppresses fs.FileError.failed
 
 atBottom is call
 atBottom in nest
@@ -168,6 +179,7 @@ atBottom ownedBy none
 atBottom cleanedBy none
 atBottom borrows none
 atBottom catch none
+atBottom suppresses none
 
 less is call
 less in nest
@@ -179,6 +191,7 @@ less ownedBy none
 less cleanedBy none
 less borrows none
 less catch none
+less suppresses none
 
 recurse is call
 recurse in nest
@@ -189,6 +202,7 @@ recurse ownedBy none
 recurse cleanedBy none
 recurse borrows none
 recurse catch none
+recurse suppresses none
 
 addOne is call
 addOne in nest
@@ -200,6 +214,7 @@ addOne ownedBy none
 addOne cleanedBy none
 addOne borrows none
 addOne catch none
+addOne suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -254,6 +269,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 toBytes is call
 toBytes in main
@@ -264,6 +280,7 @@ toBytes ownedBy none
 toBytes cleanedBy none
 toBytes borrows content
 toBytes catch none
+toBytes suppresses none
 
 writeIt is task
 writeIt in main
@@ -276,6 +293,7 @@ writeIt ownedBy none
 writeIt cleanedBy none
 writeIt borrows none
 writeIt catch writeError fs.FileError
+writeIt suppresses none
 
 runNest is call
 runNest in main
@@ -286,6 +304,7 @@ runNest ownedBy none
 runNest cleanedBy none
 runNest borrows none
 runNest catch none
+runNest suppresses none
 
 showLevels is call
 showLevels in main
@@ -296,6 +315,7 @@ showLevels ownedBy none
 showLevels cleanedBy none
 showLevels borrows none
 showLevels catch none
+showLevels suppresses none
 
 removeIt is call
 removeIt in main
@@ -306,6 +326,7 @@ removeIt ownedBy none
 removeIt cleanedBy none
 removeIt borrows none
 removeIt catch removeError fs.FileError
+removeIt suppresses none
 
 showRemoved is call
 showRemoved in main
@@ -316,3 +337,4 @@ showRemoved ownedBy none
 showRemoved cleanedBy none
 showRemoved borrows none
 showRemoved catch none
+showRemoved suppresses none

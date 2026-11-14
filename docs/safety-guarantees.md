@@ -10,10 +10,12 @@ Each guarantee states the rules the checker and runtime enforce, the conformance
 - Every owned value is released exactly once on every path: given away, returned, or cleaned by a deferred cleanup (R513). A cleanup is deferred exactly once (R510).
 - A `let` copies only plain values; a second name for a String, list, or record is rejected because it would outlive the loan it came from (R514).
 - A resource cannot be stored in a collection, because a region releases collections without closing what they hold (R403).
+- Two handles are independent values to the checker, so the runtime guards what they share: one file, under any name (links and `..` resolved), is open for writing by at most one handle of the program and never while another handle reads it; readers share it. A conflicting open, `readAll`, `writeAll`, or `remove` fails with `fs.FileError.busy` (D-52).
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
-| `use-after-close` | rejected: R513, R506 | writing a report after closing it |
+| `same-file-twice` | runs | opening `./cleanup-first.txt` while `cleanup-first.txt` is open for writing fails with `busy`; only the first file's cleanup runs |
+| `close-twice` | rejected: R513 | closing the report again after the failure path already closed it |
 | `let-aliases-a-loan` | rejected: R514 | a `let` naming a borrowed list |
 | `resource-in-collection` | rejected: R403 | a list of file handles |
 
@@ -39,11 +41,13 @@ Also: `mutation:mutable-loan-of-read-loan`, `mutation:change-through-read-loan`,
 - `cancel` asks a task (and every task it started) to stop and returns at once; the task sees `cancelled` at its next wait. `join` waits for it to stop and delivers its outcome: its output, its error, or the `cancelled` variant of its error type (D-44).
 - A task's failure is delivered only at its `join`, to the operation that started it, and must be branched on there (R506). One plain task failing does not cancel its siblings: the parent decides, and must still join each one. A trap in any task ends the program with the trap's stack trace.
 - A task group states the one error type its tasks raise (`catch <name> <Type>`, or `catch none` when none can fail; R403). The first task to fail records its error in the group and cancels the group's other tasks; `join <group>` waits for all of them and delivers that error, followed directly by `branch ifError <group>` (R506, D-48). A grouped task's own output is never read (R510).
+- A `join` or `cancel` needs its task live on EVERY path that reaches it: started, and not yet joined, on each incoming path, not just on one; a block reached both after a join and without one is rejected (R510, D-50).
 - Cancellation is observed at waits (channel operations, sleeps, accepts, reads, child processes, file locks): the wait ends with the `cancelled` variant of its error. Computation between waits runs to its end, so a cancelled task always finishes in a defined state.
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
-| `cancel-without-join` | rejected: R512 | cancelling a task and returning without joining it |
+| `cancel-without-join` | rejected: R512, R511 | cancelling a task and returning without joining it |
+| `join-on-a-merge` | rejected: R510, R507, R511, R506 | a block joins the task, then flows into a block that joins it again |
 | `no-detach` | rejected: R205, R510 | `detach` is not a step |
 | `runs` | runs | the program prices the order in two tasks and prints the report |
 | `group-first-failure` | runs | a group's failing task cancels a ten-second sibling; `join` delivers its error at once (exit 3: stopped early) |
@@ -62,7 +66,7 @@ Also: `mutation:task-not-joined`, `mutation:group-not-joined`, `mutation:join-tw
 | --- | --- | --- |
 | `effect-undeclared` | rejected: R407, R408 | printing without declaring `write console.stdout` |
 | `effect-through-reference` | rejected: R407 | a rule type that allows printing, invoked by an operation that does not declare it |
-| `effect-across-modules` | rejected: R407 | calling an imported operation that writes to standard error |
+| `effect-across-modules` | rejected: R407 | calling an imported operation that reads the clock |
 
 Also: `mutation:effect-undeclared`, `mutation:effect-declared-not-performed`, `mutation:effect-laundering-ref`, `mutation:reference-signature-mismatch`.
 
@@ -71,9 +75,11 @@ Also: `mutation:effect-undeclared`, `mutation:effect-declared-not-performed`, `m
 - build.sem states the program's whole authority in `allows` rows. Every capability of every module, including required packages, grants only what an `allows` row covers, within its scope (R408, D-41).
 - An effect is performed only through a capability the operation `uses`, declared in the same module. Capabilities cannot be exported or named from another module, so authority cannot be forged or passed between modules (R402, R205).
 - A scoped argument written as a literal must lie inside the scope at check time (R408); a computed one is checked before the call at run time, after `..` and links are resolved, and traps outside it (D-38).
+- Writing `allows` rows does not grant them: `refined run`, `test`, `bench`, and executable builds start only when every `allows` row of build.sem is listed in the project's `authority.approved`, written by `refined approve` after a person or a trusted pipeline reviews them; otherwise they stop with exit 3 and name what is missing (D-53).
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
+| `authority-not-approved` | refused to start (exit 3) | build.sem widened to read every file in the directory; nobody approved that |
 | `allows-missing` | rejected: R408 | build.sem no longer allows reading files |
 | `capability-exported` | rejected: R402 | exporting a capability |
 | `capability-of-another-module` | rejected: R205 | using a capability declared in another module |
@@ -86,12 +92,14 @@ Also: `mutation:capability-missing`, `mutation:capability-unused`, `mutation:cap
 
 - A fallible activation is followed directly by `branch ifError`; its error has the declared type of the target, and an operation raises only its declared type (R506, R403).
 - A `match` names every variant of the error exactly once (R509).
-- Sending both outcomes to the same block discards the failure, which needs a `rationale` row saying why; filler text is rejected (R506, R304).
+- Sending both outcomes to the same block discards the failure, which needs a `rationale` row saying why (filler text is rejected) and `suppresses` rows naming exactly the variants dropped: every variant of the error type, so a variant added later breaks the build instead of vanishing. An activation that handles its failure states `suppresses none`; a cleanup under `onError suppress` names its call's variants (R506, R304, D-54).
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
-| `discard-without-reason` | rejected: R506 | both outcomes of a join go to the same block, with no reason |
+| `discard-without-reason` | rejected: R506 | both outcomes of a close go to the same block, with no reason |
 | `discard-with-filler` | rejected: R304 | a rationale that says nothing |
+| `suppression-incomplete` | rejected: R506 | a discard that does not name `busy` |
+| `suppression-on-handled` | rejected: R506 | naming a suppressed variant for a failure that is handled |
 | `match-incomplete` | rejected: R509 | a match missing `emptyOrder` |
 | `wrong-error-type` | rejected: R403 | catching an imported operation's error as the wrong type |
 
@@ -101,18 +109,19 @@ Also: `mutation:catch-missing`, `mutation:catch-wrong-type`, `mutation:raise-und
 
 - A cleanup is deferred after the value it cleans exists, and exactly once on a path (R507, R510); it runs at every later `return`, `ok` or `error`, newest first, and only once.
 - A cleanup's call takes the value with `give`: the value is consumed even if releasing it fails. `onError trap` stops the program; `onError suppress` continues. Every cleanup states a `rationale` row saying why its policy is right (R302).
-- A trap does not run cleanups: the process ends and the operating system releases what it held.
+- A trap runs no more program code, so deferred cleanups are skipped (the state that trapped may be the state they act on). The runtime then releases what the program still holds outside it: files are flushed and closed, connections closed, child processes stopped; the trap message says how many (D-51).
 - A cancelled task runs the cleanups of the operations it unwinds through, since cancellation reaches it as an error.
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
-| `cleanup-deferred-twice` | rejected: R510 | deferring the report's cleanup twice |
+| `cleanup-deferred-twice` | rejected: R510 | deferring the first file's cleanup twice |
 | `cleanup-before-acquire` | rejected: R507, R513 | deferring the cleanup before the file is open |
+| `trap-releases-handles` | traps | a division by zero with both files open: no cleanup runs, and the runtime closes the two files |
 | `cleanup-order` | runs | two deferred cleanups run at the return, newest first |
 | `partial-initialization` | runs | the second file fails to open: only the first file's cleanup exists, and only it runs |
 | `cleanup-fails-trap` | traps | a cleanup that fails under `onError trap` stops the program; the older cleanup does not run |
 | `cleanup-fails-suppress` | runs | a cleanup that fails under `onError suppress` is passed over; the handle is consumed and the older cleanup still runs |
-| `cleanup-missing` | rejected: R513, R510 | never deferring the report's cleanup |
+| `cleanup-missing` | rejected: R513, R510 | never deferring the first file's cleanup |
 
 Also: `mutation:cleanup-not-deferred`, `mutation:cleanup-wrong-value`, `mutation:cleanup-suppress-without-reason`, `mutation:cleanup-before-acquire`, `case:07-memory/cleanup-on-error`, `case:06-recursion/recursive-cleanup`, `case:07-memory/resources`.
 
@@ -120,10 +129,12 @@ Also: `mutation:cleanup-not-deferred`, `mutation:cleanup-wrong-value`, `mutation
 
 - Every allocation names a region; a region's `capacity` is a hard limit. Allocating past it traps with the region's name before any memory is written, so exhaustion never corrupts memory (A10).
 - A region is released at its operation's return, after every task that could use it has been joined; values it owns cannot be returned unless the output names the region as owner (R409, R512).
+- Allocation a program can recover from: `arena.remaining(region)` says how many bytes are left, and `arena.ensure(region, bytes)` fails with `arena.ArenaError.exhausted` (carrying what is left) when that much is not free, so a program asks before a step that allocates and takes its own path (D-55).
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
-| `arena-exhausted` | traps | a 64-byte region for the whole program |
+| `recover-before-allocating` | runs | a 300-byte region: the totals fit, the report does not, and the program says so with exit 6 instead of trapping |
+| `arena-exhausted` | traps | a 64-byte region for the whole program: passing it unasked traps |
 
 Also: `case:07-memory/trap-region-exhausted`, `mutation:region-value-without-owner`, `mutation:heap-undeclared`, `mutation:region-escape-none`.
 
@@ -157,11 +168,13 @@ Also: `mutation:var-uninitialized-path`, `mutation:var-unset-after-zero-pass-loo
 
 - A table is constant data fixed when the program is checked; it is read only by `forEach` and has no step that changes it. A `forEach` over a table states a `maxIterations` at least its row count (R503).
 - A `forEach` over a list reads it on every pass, so inside the loop the list cannot be changed, lent exclusively, or given away (R515). Passing the loop's `maxIterations` at run time traps (D-45).
+- A loop's bound may be computed at run time (a list's length, say): any immutable `Int64` value set on every path into the loop before its first pass, back edges included (R503, R507, D-56).
 
 | Check | Expect | What it shows |
 | --- | --- | --- |
 | `table-rows-exceed-bound` | rejected: R503 | a three-row table read by a loop bounded at 2 |
 | `list-exceeds-bound` | traps | a three-line order priced by a loop bounded at 2 |
+| `bound-set-inside-loop` | rejected: R507 | a loop bounded by a value first set inside the loop |
 
 Also: `mutation:append-during-foreach`, `mutation:list-index-unchecked`, `mutation:table-missing-cell`, `mutation:table-cell-wrong-type`, `case:04-control-flow/trap-loop-bound`.
 

@@ -57,6 +57,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -68,6 +69,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -101,6 +103,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 interrupts is capability
 interrupts purpose "Authority to observe interrupts"
@@ -156,6 +159,7 @@ checkInterrupt ownedBy none
 checkInterrupt cleanedBy none
 checkInterrupt borrows none
 checkInterrupt catch none
+checkInterrupt suppresses none
 
 printInterrupted is call
 printInterrupted in main
@@ -166,6 +170,7 @@ printInterrupted ownedBy none
 printInterrupted cleanedBy none
 printInterrupted borrows none
 printInterrupted catch none
+printInterrupted suppresses none
 
 shortDeadline is call
 shortDeadline in main
@@ -176,6 +181,7 @@ shortDeadline ownedBy none
 shortDeadline cleanedBy none
 shortDeadline borrows none
 shortDeadline catch none
+shortDeadline suppresses none
 
 awaitInterrupt is task
 awaitInterrupt in main
@@ -186,6 +192,7 @@ awaitInterrupt ownedBy none
 awaitInterrupt cleanedBy none
 awaitInterrupt borrows none
 awaitInterrupt catch interruptError signal.SignalError
+awaitInterrupt suppresses none
 
 printTimedOut is call
 printTimedOut in main
@@ -196,3 +203,4 @@ printTimedOut ownedBy none
 printTimedOut cleanedBy none
 printTimedOut borrows none
 printTimedOut catch none
+printTimedOut suppresses none

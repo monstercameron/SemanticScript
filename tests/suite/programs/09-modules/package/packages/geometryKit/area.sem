@@ -34,3 +34,4 @@ multiply ownedBy none
 multiply cleanedBy none
 multiply borrows none
 multiply catch none
+multiply suppresses none

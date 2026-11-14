@@ -70,6 +70,7 @@ makeNumbers ownedBy tiny
 makeNumbers cleanedBy none
 makeNumbers borrows none
 makeNumbers catch none
+makeNumbers suppresses none
 
 filled is call
 filled in main
@@ -81,6 +82,7 @@ filled ownedBy none
 filled cleanedBy none
 filled borrows none
 filled catch none
+filled suppresses none
 
 appendIndex is call
 appendIndex in main
@@ -92,6 +94,7 @@ appendIndex ownedBy none
 appendIndex cleanedBy none
 appendIndex borrows none
 appendIndex catch none
+appendIndex suppresses none
 
 advance is call
 advance in main
@@ -103,3 +106,4 @@ advance ownedBy none
 advance cleanedBy none
 advance borrows none
 advance catch none
+advance suppresses none

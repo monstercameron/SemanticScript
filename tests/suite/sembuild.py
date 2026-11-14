@@ -71,7 +71,7 @@ def op(name, purpose, steps, invariant="none", tparams=("none",), inputs=("none"
 
 
 def call(name, owner, target, args=("none",), out="none", owned="none", cleaned="none", borrows="none",
-         catch="none", kind="call", rationale=None, reference=False):
+         catch="none", kind="call", rationale=None, reference=False, suppresses=None):
     rows = [f"{name} is {kind}"]
     if rationale:
         rows.append(f'{name} rationale "{rationale}"')
@@ -79,7 +79,20 @@ def call(name, owner, target, args=("none",), out="none", owned="none", cleaned=
     rows += [f"{name} argument {a}" for a in (args or ("none",))]
     rows += [f"{name} result {out}", f"{name} ownedBy {owned}", f"{name} cleanedBy {cleaned}",
              f"{name} borrows {borrows}", f"{name} catch {catch}"]
+    rows += [f"{name} suppresses {v}" for v in (suppresses or suppressed(catch, rationale))]
     return "\n".join(rows)
+
+
+def suppressed(catch: str, rationale) -> list[str]:
+    """D-54: the variants a discarding call names. A builder call with a rationale discards its failure; the
+    variants come from the library's error type (pass `suppresses=` for a program's own error types)."""
+    if not rationale or catch == "none":
+        return ["none"]
+    from refined.library import LIBRARY
+    error_type = catch.split()[1]
+    mod, name = error_type.split(".", 1)
+    info = LIBRARY[mod]["types"][name]
+    return [f"{error_type}.{v}" for v, _p in info.variants]
 
 
 STDOUT_CAP = """stdoutWriter is capability

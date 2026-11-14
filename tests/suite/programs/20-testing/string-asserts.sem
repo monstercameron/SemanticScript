@@ -42,3 +42,4 @@ concatenate ownedBy into
 concatenate cleanedBy none
 concatenate borrows none
 concatenate catch none
+concatenate suppresses none

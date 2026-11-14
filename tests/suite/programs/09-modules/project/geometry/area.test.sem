@@ -31,6 +31,7 @@ makeBox ownedBy none
 makeBox cleanedBy none
 makeBox borrows none
 makeBox catch none
+makeBox suppresses none
 
 runTarget is call
 runTarget in areaTest
@@ -41,6 +42,7 @@ runTarget ownedBy none
 runTarget cleanedBy none
 runTarget borrows none
 runTarget catch none
+runTarget suppresses none
 
 expectValue is call
 expectValue in areaTest
@@ -52,3 +54,4 @@ expectValue ownedBy none
 expectValue cleanedBy none
 expectValue borrows none
 expectValue catch none
+expectValue suppresses none

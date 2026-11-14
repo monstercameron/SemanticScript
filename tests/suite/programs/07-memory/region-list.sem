@@ -74,6 +74,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 Numbers is typeInstance
 Numbers purpose "A growable list of whole numbers"
@@ -181,6 +182,7 @@ makeNumbers ownedBy scratch
 makeNumbers cleanedBy none
 makeNumbers borrows none
 makeNumbers catch none
+makeNumbers suppresses none
 
 filled is call
 filled in main
@@ -192,6 +194,7 @@ filled ownedBy none
 filled cleanedBy none
 filled borrows none
 filled catch none
+filled suppresses none
 
 appendIndex is call
 appendIndex in main
@@ -203,6 +206,7 @@ appendIndex ownedBy none
 appendIndex cleanedBy none
 appendIndex borrows none
 appendIndex catch none
+appendIndex suppresses none
 
 advance is call
 advance in main
@@ -214,6 +218,7 @@ advance ownedBy none
 advance cleanedBy none
 advance borrows none
 advance catch none
+advance suppresses none
 
 countNumbers is call
 countNumbers in main
@@ -224,6 +229,7 @@ countNumbers ownedBy none
 countNumbers cleanedBy none
 countNumbers borrows none
 countNumbers catch none
+countNumbers suppresses none
 
 showCount is call
 showCount in main
@@ -234,6 +240,7 @@ showCount ownedBy none
 showCount cleanedBy none
 showCount borrows none
 showCount catch none
+showCount suppresses none
 
 readLast is call
 readLast in main
@@ -245,6 +252,7 @@ readLast ownedBy none
 readLast cleanedBy none
 readLast borrows none
 readLast catch lastError list.IndexOutOfRange
+readLast suppresses none
 
 showLast is call
 showLast in main
@@ -255,6 +263,7 @@ showLast ownedBy none
 showLast cleanedBy none
 showLast borrows none
 showLast catch none
+showLast suppresses none
 
 replaceFirst is call
 replaceFirst in main
@@ -267,6 +276,7 @@ replaceFirst ownedBy none
 replaceFirst cleanedBy none
 replaceFirst borrows none
 replaceFirst catch replaceError list.IndexOutOfRange
+replaceFirst suppresses none
 
 readFirst is call
 readFirst in main
@@ -278,6 +288,7 @@ readFirst ownedBy none
 readFirst cleanedBy none
 readFirst borrows none
 readFirst catch firstError list.IndexOutOfRange
+readFirst suppresses none
 
 showFirst is call
 showFirst in main
@@ -288,6 +299,7 @@ showFirst ownedBy none
 showFirst cleanedBy none
 showFirst borrows none
 showFirst catch none
+showFirst suppresses none
 
 readPastEnd is call
 readPastEnd in main
@@ -299,6 +311,7 @@ readPastEnd ownedBy none
 readPastEnd cleanedBy none
 readPastEnd borrows none
 readPastEnd catch pastEndError list.IndexOutOfRange
+readPastEnd suppresses none
 
 printBad is call
 printBad in main
@@ -309,6 +322,7 @@ printBad ownedBy none
 printBad cleanedBy none
 printBad borrows none
 printBad catch none
+printBad suppresses none
 
 addToTotal is call
 addToTotal in main
@@ -320,6 +334,7 @@ addToTotal ownedBy none
 addToTotal cleanedBy none
 addToTotal borrows none
 addToTotal catch none
+addToTotal suppresses none
 
 showTotal is call
 showTotal in main
@@ -330,6 +345,7 @@ showTotal ownedBy none
 showTotal cleanedBy none
 showTotal borrows none
 showTotal catch none
+showTotal suppresses none
 
 emptyIt is call
 emptyIt in main
@@ -340,6 +356,7 @@ emptyIt ownedBy none
 emptyIt cleanedBy none
 emptyIt borrows none
 emptyIt catch none
+emptyIt suppresses none
 
 countAgain is call
 countAgain in main
@@ -350,6 +367,7 @@ countAgain ownedBy none
 countAgain cleanedBy none
 countAgain borrows none
 countAgain catch none
+countAgain suppresses none
 
 showEmpty is call
 showEmpty in main
@@ -360,3 +378,4 @@ showEmpty ownedBy none
 showEmpty cleanedBy none
 showEmpty borrows none
 showEmpty catch none
+showEmpty suppresses none

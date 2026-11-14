@@ -49,8 +49,11 @@ def test_conformance(g, check, tmp_path):
         return
     assert not diags, "\n".join(d.format() for d in diags)
     proc = caselib.refined("run", project, "--no-cache", cwd=project)
-    if check.lines:
+    if check.lines is not None:
         assert proc.stdout.splitlines() == list(check.lines), (proc.stdout, proc.stderr)
+    if check.kind == "refused":
+        assert proc.returncode == check.exit and check.detail in proc.stderr, (proc.returncode, proc.stderr)
+        return
     if check.kind == "trap":
         assert proc.returncode == caselib.TRAP_EXIT_CODE and check.detail in proc.stderr, (proc.returncode, proc.stderr)
     else:

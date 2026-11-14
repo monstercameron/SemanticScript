@@ -106,6 +106,11 @@ void *refined_region_alloc(void *handle, int64_t size) {
     return b + 1;
 }
 
+int64_t refined_region_remaining(void *handle) {
+    Region *r = handle;
+    return r->capacity - r->used;
+}
+
 void refined_region_free(void *handle) {
     Region *r = handle;
     for (Block *b = r->blocks; b;) {

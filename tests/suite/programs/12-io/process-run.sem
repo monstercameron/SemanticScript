@@ -54,6 +54,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showText is operation
 showText purpose "Print one line of text"
@@ -87,6 +88,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 gitRunner is capability
 gitRunner purpose "Authority to run git and nothing else"
@@ -165,6 +167,7 @@ makeDeadline ownedBy none
 makeDeadline cleanedBy none
 makeDeadline borrows none
 makeDeadline catch none
+makeDeadline suppresses none
 
 newArguments is call
 newArguments in main
@@ -175,6 +178,7 @@ newArguments ownedBy args
 newArguments cleanedBy none
 newArguments borrows none
 newArguments catch none
+newArguments suppresses none
 
 addVersion is call
 addVersion in main
@@ -186,6 +190,7 @@ addVersion ownedBy none
 addVersion cleanedBy none
 addVersion borrows none
 addVersion catch none
+addVersion suppresses none
 
 runGit is task
 runGit in main
@@ -198,6 +203,7 @@ runGit ownedBy none
 runGit cleanedBy none
 runGit borrows none
 runGit catch runError process.RunError
+runGit suppresses none
 
 widenStatus is call
 widenStatus in main
@@ -208,6 +214,7 @@ widenStatus ownedBy none
 widenStatus cleanedBy none
 widenStatus borrows none
 widenStatus catch none
+widenStatus suppresses none
 
 showStatus is call
 showStatus in main
@@ -218,6 +225,7 @@ showStatus ownedBy none
 showStatus cleanedBy none
 showStatus borrows none
 showStatus catch none
+showStatus suppresses none
 
 runMissing is task
 runMissing in main
@@ -230,6 +238,7 @@ runMissing ownedBy none
 runMissing cleanedBy none
 runMissing borrows none
 runMissing catch missingError process.RunError
+runMissing suppresses none
 
 printNotFound is call
 printNotFound in main
@@ -240,3 +249,4 @@ printNotFound ownedBy none
 printNotFound cleanedBy none
 printNotFound borrows none
 printNotFound catch none
+printNotFound suppresses none

@@ -59,6 +59,7 @@ makeNever ownedBy none
 makeNever cleanedBy none
 makeNever borrows none
 makeNever catch none
+makeNever suppresses none
 
 makeMailbox is call
 makeMailbox in main
@@ -70,6 +71,7 @@ makeMailbox ownedBy mail
 makeMailbox cleanedBy none
 makeMailbox borrows none
 makeMailbox catch none
+makeMailbox suppresses none
 
 receiveOne is task
 receiveOne in main
@@ -81,3 +83,4 @@ receiveOne ownedBy none
 receiveOne cleanedBy none
 receiveOne borrows none
 receiveOne catch receiveError channel.ChannelError
+receiveOne suppresses none

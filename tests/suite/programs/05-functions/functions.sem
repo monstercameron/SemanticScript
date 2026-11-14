@@ -67,6 +67,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 IntStep is operationType
 IntStep purpose "One step that turns a whole number into another"
@@ -111,6 +112,7 @@ scale ownedBy none
 scale cleanedBy none
 scale borrows none
 scale catch none
+scale suppresses none
 
 triple is operation
 triple purpose "Multiply by three"
@@ -141,6 +143,7 @@ scale ownedBy none
 scale cleanedBy none
 scale borrows none
 scale catch none
+scale suppresses none
 
 applyTwice is operation
 applyTwice purpose "Apply a step to a value, then apply it again to the result"
@@ -172,6 +175,7 @@ first ownedBy none
 first cleanedBy none
 first borrows none
 first catch none
+first suppresses none
 
 second is call
 second in applyTwice
@@ -182,6 +186,7 @@ second ownedBy none
 second cleanedBy none
 second borrows none
 second catch none
+second suppresses none
 
 appendThree is operation
 appendThree purpose "Change a list the caller lends exclusively by appending three numbers"
@@ -216,6 +221,7 @@ appendOne ownedBy none
 appendOne cleanedBy none
 appendOne borrows none
 appendOne catch none
+appendOne suppresses none
 
 appendTwo is call
 appendTwo in appendThree
@@ -227,6 +233,7 @@ appendTwo ownedBy none
 appendTwo cleanedBy none
 appendTwo borrows none
 appendTwo catch none
+appendTwo suppresses none
 
 appendLast is call
 appendLast in appendThree
@@ -238,6 +245,7 @@ appendLast ownedBy none
 appendLast cleanedBy none
 appendLast borrows none
 appendLast catch none
+appendLast suppresses none
 
 main is operation
 main purpose "Run the case and print what it computes"
@@ -287,6 +295,7 @@ twiceDoubled ownedBy none
 twiceDoubled cleanedBy none
 twiceDoubled borrows none
 twiceDoubled catch none
+twiceDoubled suppresses none
 
 showDoubled is call
 showDoubled in main
@@ -297,6 +306,7 @@ showDoubled ownedBy none
 showDoubled cleanedBy none
 showDoubled borrows none
 showDoubled catch none
+showDoubled suppresses none
 
 twiceTripled is call
 twiceTripled in main
@@ -308,6 +318,7 @@ twiceTripled ownedBy none
 twiceTripled cleanedBy none
 twiceTripled borrows none
 twiceTripled catch none
+twiceTripled suppresses none
 
 showTripled is call
 showTripled in main
@@ -318,6 +329,7 @@ showTripled ownedBy none
 showTripled cleanedBy none
 showTripled borrows none
 showTripled catch none
+showTripled suppresses none
 
 makeNumbers is call
 makeNumbers in main
@@ -328,6 +340,7 @@ makeNumbers ownedBy scratch
 makeNumbers cleanedBy none
 makeNumbers borrows none
 makeNumbers catch none
+makeNumbers suppresses none
 
 fill is call
 fill in main
@@ -338,6 +351,7 @@ fill ownedBy none
 fill cleanedBy none
 fill borrows none
 fill catch none
+fill suppresses none
 
 countNumbers is call
 countNumbers in main
@@ -348,6 +362,7 @@ countNumbers ownedBy none
 countNumbers cleanedBy none
 countNumbers borrows none
 countNumbers catch none
+countNumbers suppresses none
 
 showCount is call
 showCount in main
@@ -358,6 +373,7 @@ showCount ownedBy none
 showCount cleanedBy none
 showCount borrows none
 showCount catch none
+showCount suppresses none
 
 doubleThenTriple is call
 doubleThenTriple in main
@@ -368,6 +384,7 @@ doubleThenTriple ownedBy none
 doubleThenTriple cleanedBy none
 doubleThenTriple borrows none
 doubleThenTriple catch none
+doubleThenTriple suppresses none
 
 showComposed is call
 showComposed in main
@@ -378,3 +395,4 @@ showComposed ownedBy none
 showComposed cleanedBy none
 showComposed borrows none
 showComposed catch none
+showComposed suppresses none

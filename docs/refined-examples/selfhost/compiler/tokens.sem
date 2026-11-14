@@ -106,6 +106,7 @@ measureSource ownedBy none
 measureSource cleanedBy none
 measureSource borrows none
 measureSource catch none
+measureSource suppresses none
 
 makeList is call
 makeList in tokenize
@@ -116,6 +117,7 @@ makeList ownedBy resultRegion
 makeList cleanedBy none
 makeList borrows none
 makeList catch none
+makeList suppresses none
 
 atEndCheck is call
 atEndCheck in tokenize
@@ -127,6 +129,7 @@ atEndCheck ownedBy none
 atEndCheck cleanedBy none
 atEndCheck borrows none
 atEndCheck catch none
+atEndCheck suppresses none
 
 readByte is call
 readByte in tokenize
@@ -138,6 +141,7 @@ readByte ownedBy none
 readByte cleanedBy none
 readByte borrows none
 readByte catch readByteError string.StringIndexError
+readByte suppresses none
 
 spaceCheck is call
 spaceCheck in tokenize
@@ -148,6 +152,7 @@ spaceCheck ownedBy none
 spaceCheck cleanedBy none
 spaceCheck borrows none
 spaceCheck catch none
+spaceCheck suppresses none
 
 letterCheck is call
 letterCheck in tokenize
@@ -158,6 +163,7 @@ letterCheck ownedBy none
 letterCheck cleanedBy none
 letterCheck borrows none
 letterCheck catch none
+letterCheck suppresses none
 
 scanOneWord is call
 scanOneWord in tokenize
@@ -169,6 +175,7 @@ scanOneWord ownedBy none
 scanOneWord cleanedBy none
 scanOneWord borrows none
 scanOneWord catch none
+scanOneWord suppresses none
 
 appendToken is call
 appendToken in tokenize
@@ -180,6 +187,7 @@ appendToken ownedBy none
 appendToken cleanedBy none
 appendToken borrows none
 appendToken catch none
+appendToken suppresses none
 
 readWordLength is call
 readWordLength in tokenize
@@ -190,6 +198,7 @@ readWordLength ownedBy none
 readWordLength cleanedBy none
 readWordLength borrows none
 readWordLength catch none
+readWordLength suppresses none
 
 advancePastWord is call
 advancePastWord in tokenize
@@ -201,6 +210,7 @@ advancePastWord ownedBy none
 advancePastWord cleanedBy none
 advancePastWord borrows none
 advancePastWord catch none
+advancePastWord suppresses none
 
 advanceOne is call
 advanceOne in tokenize
@@ -212,6 +222,7 @@ advanceOne ownedBy none
 advanceOne cleanedBy none
 advanceOne borrows none
 advanceOne catch none
+advanceOne suppresses none
 
 makeUnexpectedByte is call
 makeUnexpectedByte in tokenize
@@ -222,6 +233,7 @@ makeUnexpectedByte ownedBy none
 makeUnexpectedByte cleanedBy none
 makeUnexpectedByte borrows none
 makeUnexpectedByte catch none
+makeUnexpectedByte suppresses none
 
 # ---------------------------------------------------------------- firstKind
 
@@ -277,6 +289,7 @@ runTokenize ownedBy scratch
 runTokenize cleanedBy none
 runTokenize borrows none
 runTokenize catch tokenizeError LexError
+runTokenize suppresses none
 
 getFirst is call
 getFirst in firstKind
@@ -288,6 +301,7 @@ getFirst ownedBy none
 getFirst cleanedBy none
 getFirst borrows none
 getFirst catch firstMissing list.IndexOutOfRange
+getFirst suppresses none
 
 readKind is call
 readKind in firstKind
@@ -298,6 +312,7 @@ readKind ownedBy none
 readKind cleanedBy none
 readKind borrows none
 readKind catch none
+readKind suppresses none
 
 wrapKind is call
 wrapKind in firstKind
@@ -308,6 +323,7 @@ wrapKind ownedBy none
 wrapKind cleanedBy none
 wrapKind borrows none
 wrapKind catch none
+wrapKind suppresses none
 
 makeAbsent is call
 makeAbsent in firstKind
@@ -318,3 +334,4 @@ makeAbsent ownedBy none
 makeAbsent cleanedBy none
 makeAbsent borrows none
 makeAbsent catch none
+makeAbsent suppresses none

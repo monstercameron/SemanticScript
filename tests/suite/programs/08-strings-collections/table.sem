@@ -52,6 +52,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 Item is record
 Item purpose "One priced item"
@@ -120,6 +121,7 @@ readPrice ownedBy none
 readPrice cleanedBy none
 readPrice borrows none
 readPrice catch none
+readPrice suppresses none
 
 addToTotal is call
 addToTotal in main
@@ -131,6 +133,7 @@ addToTotal ownedBy none
 addToTotal cleanedBy none
 addToTotal borrows none
 addToTotal catch none
+addToTotal suppresses none
 
 countItem is call
 countItem in main
@@ -142,6 +145,7 @@ countItem ownedBy none
 countItem cleanedBy none
 countItem borrows none
 countItem catch none
+countItem suppresses none
 
 showCount is call
 showCount in main
@@ -152,6 +156,7 @@ showCount ownedBy none
 showCount cleanedBy none
 showCount borrows none
 showCount catch none
+showCount suppresses none
 
 showTotal is call
 showTotal in main
@@ -162,3 +167,4 @@ showTotal ownedBy none
 showTotal cleanedBy none
 showTotal borrows none
 showTotal catch none
+showTotal suppresses none

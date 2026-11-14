@@ -104,6 +104,7 @@ connections is taskGroup
 connections in main
 connections maxTasks 256
 connections catch none
+connections suppresses none
 
 makeNoDeadline is call
 makeNoDeadline in main
@@ -114,6 +115,7 @@ makeNoDeadline ownedBy none
 makeNoDeadline cleanedBy none
 makeNoDeadline borrows none
 makeNoDeadline catch none
+makeNoDeadline suppresses none
 
 openListener is call
 openListener in main
@@ -124,6 +126,7 @@ openListener ownedBy main
 openListener cleanedBy closeListenerCleanup
 openListener borrows none
 openListener catch listenError net.NetError
+openListener suppresses none
 
 closeListenerCleanup is cleanup
 closeListenerCleanup rationale "Nothing useful can be done if closing the listener fails at exit"
@@ -141,6 +144,11 @@ closeListener ownedBy none
 closeListener cleanedBy none
 closeListener borrows none
 closeListener catch closeListenerError net.NetError
+closeListener suppresses net.NetError.closed
+closeListener suppresses net.NetError.timedOut
+closeListener suppresses net.NetError.refused
+closeListener suppresses net.NetError.cancelled
+closeListener suppresses net.NetError.failed
 
 acceptConnection is task
 acceptConnection in main
@@ -152,6 +160,7 @@ acceptConnection ownedBy main
 acceptConnection cleanedBy none
 acceptConnection borrows none
 acceptConnection catch acceptError net.NetError
+acceptConnection suppresses none
 
 handleTask is task
 handleTask in main
@@ -162,6 +171,7 @@ handleTask ownedBy none
 handleTask cleanedBy none
 handleTask borrows none
 handleTask catch none
+handleTask suppresses none
 
 # ---------------------------------------------------------------- one connection
 
@@ -237,6 +247,11 @@ closeConnection ownedBy none
 closeConnection cleanedBy none
 closeConnection borrows none
 closeConnection catch closeConnectionError net.NetError
+closeConnection suppresses net.NetError.closed
+closeConnection suppresses net.NetError.timedOut
+closeConnection suppresses net.NetError.refused
+closeConnection suppresses net.NetError.cancelled
+closeConnection suppresses net.NetError.failed
 
 makeReadDeadline is call
 makeReadDeadline in handleConnection
@@ -247,6 +262,7 @@ makeReadDeadline ownedBy none
 makeReadDeadline cleanedBy none
 makeReadDeadline borrows none
 makeReadDeadline catch none
+makeReadDeadline suppresses none
 
 readRequest is task
 readRequest in handleConnection
@@ -260,6 +276,7 @@ readRequest ownedBy requestRegion
 readRequest cleanedBy none
 readRequest borrows none
 readRequest catch readError net.NetError
+readRequest suppresses none
 
 parseRequest is call
 parseRequest in handleConnection
@@ -271,6 +288,7 @@ parseRequest ownedBy requestRegion
 parseRequest cleanedBy none
 parseRequest borrows none
 parseRequest catch parseError http.HttpParseError
+parseRequest suppresses none
 
 findHandler is call
 findHandler in handleConnection
@@ -281,6 +299,7 @@ findHandler ownedBy none
 findHandler cleanedBy none
 findHandler borrows none
 findHandler catch none
+findHandler suppresses none
 
 runHandler is call
 runHandler in handleConnection
@@ -292,6 +311,7 @@ runHandler ownedBy requestRegion
 runHandler cleanedBy none
 runHandler borrows none
 runHandler catch none
+runHandler suppresses none
 
 makeBadRequest is call
 makeBadRequest in handleConnection
@@ -304,6 +324,7 @@ makeBadRequest ownedBy requestRegion
 makeBadRequest cleanedBy none
 makeBadRequest borrows none
 makeBadRequest catch none
+makeBadRequest suppresses none
 
 serializeResponse is call
 serializeResponse in handleConnection
@@ -315,6 +336,7 @@ serializeResponse ownedBy requestRegion
 serializeResponse cleanedBy none
 serializeResponse borrows none
 serializeResponse catch none
+serializeResponse suppresses none
 
 writeResponse is task
 writeResponse rationale "A failed write means the client is gone; there is nobody to tell"
@@ -328,6 +350,11 @@ writeResponse ownedBy none
 writeResponse cleanedBy none
 writeResponse borrows none
 writeResponse catch writeError net.NetError
+writeResponse suppresses net.NetError.closed
+writeResponse suppresses net.NetError.timedOut
+writeResponse suppresses net.NetError.refused
+writeResponse suppresses net.NetError.cancelled
+writeResponse suppresses net.NetError.failed
 
 # ---------------------------------------------------------------- routing
 
@@ -382,6 +409,7 @@ readMethod ownedBy none
 readMethod cleanedBy none
 readMethod borrows none
 readMethod catch none
+readMethod suppresses none
 
 readPath is call
 readPath in matchRoute
@@ -392,6 +420,7 @@ readPath ownedBy none
 readPath cleanedBy none
 readPath borrows request
 readPath catch none
+readPath suppresses none
 
 readCandidateMethod is call
 readCandidateMethod in matchRoute
@@ -402,6 +431,7 @@ readCandidateMethod ownedBy none
 readCandidateMethod cleanedBy none
 readCandidateMethod borrows none
 readCandidateMethod catch none
+readCandidateMethod suppresses none
 
 methodsEqual is call
 methodsEqual in matchRoute
@@ -413,6 +443,7 @@ methodsEqual ownedBy none
 methodsEqual cleanedBy none
 methodsEqual borrows none
 methodsEqual catch none
+methodsEqual suppresses none
 
 readCandidatePath is call
 readCandidatePath in matchRoute
@@ -423,6 +454,7 @@ readCandidatePath ownedBy none
 readCandidatePath cleanedBy none
 readCandidatePath borrows candidate
 readCandidatePath catch none
+readCandidatePath suppresses none
 
 pathsEqual is call
 pathsEqual in matchRoute
@@ -434,6 +466,7 @@ pathsEqual ownedBy none
 pathsEqual cleanedBy none
 pathsEqual borrows none
 pathsEqual catch none
+pathsEqual suppresses none
 
 readCandidateHandler is call
 readCandidateHandler in matchRoute
@@ -444,6 +477,7 @@ readCandidateHandler ownedBy none
 readCandidateHandler cleanedBy none
 readCandidateHandler borrows none
 readCandidateHandler catch none
+readCandidateHandler suppresses none
 
 # ---------------------------------------------------------------- handlers
 
@@ -479,6 +513,7 @@ buildHealthResponse ownedBy responseRegion
 buildHealthResponse cleanedBy none
 buildHealthResponse borrows none
 buildHealthResponse catch none
+buildHealthResponse suppresses none
 
 handleNotFound is operation
 handleNotFound purpose "Answer any unknown route"
@@ -512,3 +547,4 @@ buildNotFoundResponse ownedBy responseRegion
 buildNotFoundResponse cleanedBy none
 buildNotFoundResponse borrows none
 buildNotFoundResponse catch none
+buildNotFoundResponse suppresses none

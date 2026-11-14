@@ -66,6 +66,7 @@ writeValue ownedBy none
 writeValue cleanedBy none
 writeValue borrows none
 writeValue catch writeError console.WriteError
+writeValue suppresses console.WriteError.failed
 
 showBool is operation
 showBool purpose "Print true or false on its own line"
@@ -107,6 +108,7 @@ writeTrue ownedBy none
 writeTrue cleanedBy none
 writeTrue borrows none
 writeTrue catch trueError console.WriteError
+writeTrue suppresses console.WriteError.failed
 
 writeFalse is call
 writeFalse rationale "A test program has nowhere to report a failed write"
@@ -118,6 +120,7 @@ writeFalse ownedBy none
 writeFalse cleanedBy none
 writeFalse borrows none
 writeFalse catch falseError console.WriteError
+writeFalse suppresses console.WriteError.failed
 
 Point is record
 Point purpose "A position on a grid, returned as one value with two fields"
@@ -235,6 +238,7 @@ makePoint ownedBy none
 makePoint cleanedBy none
 makePoint borrows none
 makePoint catch none
+makePoint suppresses none
 
 readX is call
 readX in main
@@ -245,6 +249,7 @@ readX ownedBy none
 readX cleanedBy none
 readX borrows none
 readX catch none
+readX suppresses none
 
 showX is call
 showX in main
@@ -255,6 +260,7 @@ showX ownedBy none
 showX cleanedBy none
 showX borrows none
 showX catch none
+showX suppresses none
 
 movePoint is call
 movePoint in main
@@ -266,6 +272,7 @@ movePoint ownedBy none
 movePoint cleanedBy none
 movePoint borrows none
 movePoint catch none
+movePoint suppresses none
 
 readY is call
 readY in main
@@ -276,6 +283,7 @@ readY ownedBy none
 readY cleanedBy none
 readY borrows none
 readY catch none
+readY suppresses none
 
 showY is call
 showY in main
@@ -286,6 +294,7 @@ showY ownedBy none
 showY cleanedBy none
 showY borrows none
 showY catch none
+showY suppresses none
 
 samePoint is call
 samePoint in main
@@ -297,6 +306,7 @@ samePoint ownedBy none
 samePoint cleanedBy none
 samePoint borrows none
 samePoint catch none
+samePoint suppresses none
 
 showSame is call
 showSame in main
@@ -307,6 +317,7 @@ showSame ownedBy none
 showSame cleanedBy none
 showSame borrows none
 showSame catch none
+showSame suppresses none
 
 otherPoint is call
 otherPoint in main
@@ -318,6 +329,7 @@ otherPoint ownedBy none
 otherPoint cleanedBy none
 otherPoint borrows none
 otherPoint catch none
+otherPoint suppresses none
 
 differentPoint is call
 differentPoint in main
@@ -329,6 +341,7 @@ differentPoint ownedBy none
 differentPoint cleanedBy none
 differentPoint borrows none
 differentPoint catch none
+differentPoint suppresses none
 
 showDifferent is call
 showDifferent in main
@@ -339,6 +352,7 @@ showDifferent ownedBy none
 showDifferent cleanedBy none
 showDifferent borrows none
 showDifferent catch none
+showDifferent suppresses none
 
 makeBox is call
 makeBox in main
@@ -349,6 +363,7 @@ makeBox ownedBy none
 makeBox cleanedBy none
 makeBox borrows none
 makeBox catch none
+makeBox suppresses none
 
 openBox is call
 openBox in main
@@ -359,6 +374,7 @@ openBox ownedBy none
 openBox cleanedBy none
 openBox borrows none
 openBox catch none
+openBox suppresses none
 
 showBox is call
 showBox in main
@@ -369,6 +385,7 @@ showBox ownedBy none
 showBox cleanedBy none
 showBox borrows none
 showBox catch none
+showBox suppresses none
 
 makeSquare is call
 makeSquare in main
@@ -379,6 +396,7 @@ makeSquare ownedBy none
 makeSquare cleanedBy none
 makeSquare borrows none
 makeSquare catch none
+makeSquare suppresses none
 
 printSide is call
 printSide in main
@@ -389,6 +407,7 @@ printSide ownedBy none
 printSide cleanedBy none
 printSide borrows none
 printSide catch none
+printSide suppresses none
 
 printZero is call
 printZero in main
@@ -399,6 +418,7 @@ printZero ownedBy none
 printZero cleanedBy none
 printZero borrows none
 printZero catch none
+printZero suppresses none
 
 makeAbsent is call
 makeAbsent in main
@@ -409,6 +429,7 @@ makeAbsent ownedBy none
 makeAbsent cleanedBy none
 makeAbsent borrows none
 makeAbsent catch none
+makeAbsent suppresses none
 
 printFound is call
 printFound in main
@@ -419,6 +440,7 @@ printFound ownedBy none
 printFound cleanedBy none
 printFound borrows none
 printFound catch none
+printFound suppresses none
 
 printMissing is call
 printMissing in main
@@ -429,6 +451,7 @@ printMissing ownedBy none
 printMissing cleanedBy none
 printMissing borrows none
 printMissing catch none
+printMissing suppresses none
 
 printNine is call
 printNine in main
@@ -439,3 +462,4 @@ printNine ownedBy none
 printNine cleanedBy none
 printNine borrows none
 printNine catch none
+printNine suppresses none

@@ -51,6 +51,7 @@ baseCheck ownedBy none
 baseCheck cleanedBy none
 baseCheck borrows none
 baseCheck catch none
+baseCheck suppresses none
 
 decrement is call
 decrement in factorial
@@ -62,6 +63,7 @@ decrement ownedBy none
 decrement cleanedBy none
 decrement borrows none
 decrement catch none
+decrement suppresses none
 
 recurseCall is call
 recurseCall in factorial
@@ -72,6 +74,7 @@ recurseCall ownedBy none
 recurseCall cleanedBy none
 recurseCall borrows none
 recurseCall catch none
+recurseCall suppresses none
 
 multiply is call
 multiply in factorial
@@ -83,6 +86,7 @@ multiply ownedBy none
 multiply cleanedBy none
 multiply borrows none
 multiply catch none
+multiply suppresses none
 
 main is operation
 main purpose "Print five factorial"
@@ -121,6 +125,7 @@ computeFactorial ownedBy none
 computeFactorial cleanedBy none
 computeFactorial borrows none
 computeFactorial catch none
+computeFactorial suppresses none
 
 printResult is call
 printResult in main
@@ -131,3 +136,4 @@ printResult ownedBy none
 printResult cleanedBy none
 printResult borrows none
 printResult catch printError console.WriteError
+printResult suppresses none

@@ -30,6 +30,7 @@ run ownedBy none
 run cleanedBy none
 run borrows none
 run catch none
+run suppresses none
 
 expect is call
 expect in squareTest
@@ -41,3 +42,4 @@ expect ownedBy none
 expect cleanedBy none
 expect borrows none
 expect catch none
+expect suppresses none

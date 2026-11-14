@@ -383,3 +383,56 @@ def allows_rows(project: str, texts: list[str]) -> list[str]:
             if row not in rows:
                 rows.append(row)
     return rows or [f"{project} allows none"]
+
+
+# ---------------------------------------------------------------- D-53: authority is approved, not self-granted
+
+APPROVAL_FILE = "authority.approved"
+
+
+def find_build(path: str) -> Optional[str]:
+    """The build.sem a path names: the file itself, or the one in a project directory."""
+    if os.path.basename(path) == "build.sem" and os.path.isfile(path):
+        return path
+    candidate = os.path.join(path, "build.sem")
+    return candidate if os.path.isdir(path) and os.path.isfile(candidate) else None
+
+
+def requested_authority(build_path: str) -> list[str]:
+    """Every `<verb> <resource> <scope|none>` the project's `allows` rows ask for, in order."""
+    import re
+    with open(build_path, encoding="utf-8") as fh:
+        text = fh.read()
+    rows = []
+    for verb, res, scope in re.findall(r'^\w+ allows (\w+) ([\w.]+) (none|"[^"]*")\s*$', text, re.M):
+        row = f"{verb} {res} {scope}"
+        if row not in rows:
+            rows.append(row)
+    return rows
+
+
+def approved_authority(build_path: str) -> set[str]:
+    path = os.path.join(os.path.dirname(os.path.abspath(build_path)), APPROVAL_FILE)
+    if not os.path.isfile(path):
+        return set()
+    with open(path, encoding="utf-8") as fh:
+        return {line.strip() for line in fh if line.strip() and not line.startswith("#")}
+
+
+def unapproved_authority(build_path: str) -> list[str]:
+    """What build.sem asks for that nobody approved. A program runs only when this is empty."""
+    approved = approved_authority(build_path)
+    return [r for r in requested_authority(build_path) if r not in approved]
+
+
+def approve_authority(build_path: str) -> list[str]:
+    """Record the project's current `allows` rows as approved (`refined approve`): the step a person or a
+    trusted pipeline takes after reading them. Returns the rows."""
+    rows = requested_authority(build_path)
+    path = os.path.join(os.path.dirname(os.path.abspath(build_path)), APPROVAL_FILE)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Authority approved for this project (`refined approve`). A program runs only with authority\n"
+                 "# listed here; build.sem asking for more stops `refined run`, `test`, and executable builds.\n")
+        for r in rows:
+            fh.write(r + "\n")
+    return rows
