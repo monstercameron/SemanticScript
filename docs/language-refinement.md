@@ -2267,7 +2267,11 @@ The `warehouse` example (`docs/refined-examples/warehouse`) uses these rules
 together: build.sem `allows`, a scoped file capability, a table loaded into
 a list, operation references, two tasks borrowing one list, cancellation on
 the failure path, a cleanup that traps, exhaustive matches, and a test per
-invariant.
+invariant. It has since taken up the later rules: each order line's price
+is looked up in a `catalog` table by SKU (`catalog.find`, D-111, with an
+unknown SKU handled as exit 7), the report's path and labels are module
+constants (D-103), the report read back is checked with `string.contains`
+(D-110), and its order tests share a helper in the test file (D-112).
 
 ## Data structures for self-hosting (2026-11-14)
 

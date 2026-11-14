@@ -138,7 +138,7 @@ def test_base_matches_the_example_syntax():
 def test_warehouse_example_runs_and_reports_both_failures(tmp_path):
     """The warehouse example (docs/refined-examples/warehouse), rebuilt on these guarantees: it prices the order in
     two tasks and reports; when a line is invalid both tasks fail, the second failure is reported on standard
-    error, and the first decides the exit code."""
+    error, and the first decides the exit code; a SKU the catalog does not list exits 7 (D-111)."""
     example = os.path.join(caselib.ROOT, "docs", "refined-examples", "warehouse")
     good = str(tmp_path / "good")
     shutil.copytree(example, good)
@@ -155,3 +155,12 @@ def test_warehouse_example_runs_and_reports_both_failures(tmp_path):
     proc = caselib.refined("run", bad, "--no-cache", cwd=bad)
     assert proc.returncode == 2, (proc.stdout, proc.stderr)
     assert proc.stdout == "" and "the discount total failed too" in proc.stderr
+    unknown = str(tmp_path / "unknown")
+    shutil.copytree(example, unknown)
+    path = os.path.join(unknown, "warehouse.sem")
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text.replace("order cell gizmo sku 103", "order cell gizmo sku 999"))
+    proc = caselib.refined("run", unknown, "--no-cache", cwd=unknown)
+    assert (proc.returncode, proc.stdout) == (7, ""), (proc.stdout, proc.stderr)
