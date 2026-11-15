@@ -576,9 +576,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     assert approved_authority(find_build(RUNTIME)) == {"use machine.memory none", "use system.calls none"}
     from refined.runtime import default_triple
     triple = default_triple()
-    if os.name != "nt" and not (triple.startswith("x86_64") and "linux" in triple):
-        pytest.skip("the runtime's system targets are Windows functions and x86_64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME)
+    if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
+        pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 66 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
     assert "66 of 66 tests passed" in tested.stdout
 

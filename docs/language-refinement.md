@@ -2719,6 +2719,16 @@ The five modules stage 4 left to `refined run` (D-137) moved into `semanticscrip
   five seconds a try and two tries as glibc's defaults are, through the scheduler. A name that does not exist is
   EAI_NONAME (-2), one with no address EAI_NODATA (-5), and no answer or a server's failure EAI_AGAIN (-3), the
   errnos Python's gaierror carries; search domains and IPv6 are not used.
+- **D-150** Linux on AArch64 has the runtime's system layer too. A Linux `system` row is one `svc #0` there, the
+  number in x8 from `AARCH64_NUMBERS` (the kernel's generic table), the arguments in x0 to x5, the result in x0. The
+  three calls AArch64 lacks become what glibc makes of them: `poll` is `ppoll` (its milliseconds a timespec on the
+  stack, NULL for none), `fork` is `clone(SIGCHLD)`, `dup2` is `dup3(fd, target, 0)`. Where the kernel's structures
+  and flags differ the runtime asks `system.aarch64()`, a constant of the target like `system.linux()`: st_mode is at
+  16 in the generic struct stat (24 on x86_64), and O_DIRECTORY is 0x4000 (0x10000 on x86_64); everything else the
+  runtime uses (errnos, signals, sigaction, pollfd, dirent64, timespec, mmap and socket flags) is the same. The
+  process entry `_start` and the rt_sigreturn trampoline are AArch64 module assembly beside D-139's stack switches.
+  native.py builds `aarch64-unknown-linux-gnu` executables when the C compiler is an AArch64 Linux one, and CI runs
+  the whole suite on `ubuntu-24.04-arm` (Python 3.12).
 - **D-151** `json` is two modules: `values`, below `handles`, which keeps JSON values as `refined run` keeps Python
   objects (an array or object is shared, so what `field` and `item` give and what `setValue` stores is the same
   value, and a change shows through every handle and container that holds it; each value is counted, and the last
@@ -3255,7 +3265,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-126 to D-130 | The runtime in SemanticScript, stage 2: host dispatch by target number, Float64 bit conversions, the process heap, floating-point text as `refined run` writes it (C runtime fixed), host objects and R901 for host targets (by delegation) |
 | 2026-11-14 | D-131 to D-137 | The runtime in SemanticScript, stages 3 and 4: `machine.taskEntry`, kernel32 rows for files, processes, time, and fibers, tasks on fibers with deadlock detection and cancellation, test callbacks, one-module executables, channels, secrets, crypto, foreign libraries (by delegation) |
 | 2026-11-14 | D-138 to D-143 | The runtime in SemanticScript, stage 5: Linux through raw system calls (`LINUX_CALLS`, `system.linux`), the runtime's own stacks and heap on Linux, `ffi` refused there, the only runtime (macOS refused), stage0's C linking the runtime object, `native_runtime.c` deleted (by delegation) |
-| 2026-11-15 | D-144 to D-149, D-151, D-152 | The runtime in SemanticScript, the rest of the library: "no C library" worded (OS interfaces ws2_32 and bcrypt allowed, never a CRT), the platform limits (ffi on Linux, macOS), `random` (CPython's Mersenne Twister, the system's secure source), `signal` (console control handler, rt_sigaction), `net` (non-blocking sockets through the scheduler, a resolver for Linux), `json` (CPython's scanner and encoder, shared counted values), `http` (by delegation) |
+| 2026-11-15 | D-144 to D-152 | The runtime in SemanticScript, the rest of the library: "no C library" worded (OS interfaces ws2_32 and bcrypt allowed, never a CRT), the platform limits (ffi on Linux, macOS), `random` (CPython's Mersenne Twister, the system's secure source), `signal` (console control handler, rt_sigaction), `net` (non-blocking sockets through the scheduler, a resolver for Linux), `json` (CPython's scanner and encoder, shared counted values), `http`, AArch64 Linux (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

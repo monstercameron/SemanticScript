@@ -296,7 +296,7 @@ behaves, and the Linux system layer gains AArch64.
 | `values`, `documents` | `json`: shared, counted values; CPython's scanner (errors and positions) and encoder (D-151) | Done |
 | `interrupts` | `signal`: SetConsoleCtrlHandler, rt_sigaction for SIGINT (D-147) | Done |
 | `sockets` | `net`: IPv4 TCP through Winsock and socket system calls, a resolver for Linux (D-148, D-149) | Done |
-| AArch64 Linux | `svc #0`, the generic system call numbers (D-150) | |
+| AArch64 Linux | `svc #0`, the generic system call numbers; ppoll, clone, dup3; struct stat and O_DIRECTORY (D-150) | Done |
 
 ### What "no C library" means (D-144)
 

@@ -888,7 +888,7 @@ storeIt catch none
 storeIt suppresses none
 
 linuxMode is operation
-linuxMode purpose "The st_mode of a struct stat on Linux, its type bits only"
+linuxMode purpose "The st_mode of a struct stat on Linux, its type bits only: at 24 on x86_64, at 16 on AArch64, whose struct stat is the kernel's generic one (D-150)"
 linuxMode invariant none
 linuxMode typeParameter none
 linuxMode input status machine.Address copied
@@ -896,22 +896,44 @@ linuxMode output Int64
 linuxMode outputOwnedBy none
 linuxMode raises none
 linuxMode effect use machine.memory
+linuxMode effect use system.calls
 linuxMode uses memoryAccess
+linuxMode uses systemCalls
 linuxMode memoryHeap false
 linuxMode async false
 linuxMode maxRecursion none
 linuxMode label begin loopKind none
 linuxMode label begin within none
-linuxMode let twentyFour Int64 24 immutable
-linuxMode at begin do modeOf
-linuxMode at begin do typeOf
-linuxMode at begin return ok kind
+linuxMode label generic loopKind none
+linuxMode label generic within none
+linuxMode label read loopKind none
+linuxMode label read within none
+linuxMode let offset Int64 24 mutable
+linuxMode let genericOffset Int64 16 immutable
+linuxMode at begin do archCheck
+linuxMode at begin branch if onArm goto generic else goto read
+linuxMode at generic set offset genericOffset
+linuxMode at generic goto read
+linuxMode at read do modeOf
+linuxMode at read do typeOf
+linuxMode at read return ok kind
+
+archCheck is call
+archCheck in linuxMode
+archCheck invokes system.aarch64
+archCheck argument none
+archCheck result onArm Bool
+archCheck ownedBy none
+archCheck cleanedBy none
+archCheck borrows none
+archCheck catch none
+archCheck suppresses none
 
 modeOf is call
 modeOf in linuxMode
 modeOf invokes unsignedAt
 modeOf argument block machine.Address status copy
-modeOf argument offset Int64 twentyFour copy
+modeOf argument offset Int64 offset copy
 modeOf result mode Int64
 modeOf ownedBy none
 modeOf cleanedBy none
@@ -18925,6 +18947,10 @@ listDirectoryLinux async false
 listDirectoryLinux maxRecursion none
 listDirectoryLinux label begin loopKind none
 listDirectoryLinux label begin within none
+listDirectoryLinux label genericFlags loopKind none
+listDirectoryLinux label genericFlags within none
+listDirectoryLinux label open loopKind none
+listDirectoryLinux label open within none
 listDirectoryLinux label failedOpen loopKind none
 listDirectoryLinux label failedOpen within none
 listDirectoryLinux label listIt loopKind none
@@ -18953,18 +18979,23 @@ listDirectoryLinux let at Int64 0 mutable
 listDirectoryLinux let ok Int32 0 immutable
 listDirectoryLinux let forever Int64 9223372036854775807 immutable
 listDirectoryLinux let entriesBytes Int64 32768 immutable
-listDirectoryLinux let directoryFlags Int64 589824 immutable
+listDirectoryLinux let directoryFlags Int64 589824 mutable
+listDirectoryLinux let genericDirectoryFlags Int64 540672 immutable
 listDirectoryLinux let zero Int64 0 immutable
 listDirectoryLinux let twentyFour Int64 24 immutable
 listDirectoryLinux let sixteen Int64 16 immutable
 listDirectoryLinux let lowSixteen Int64 65535 immutable
 listDirectoryLinux let nineteen Int64 19 immutable
 listDirectoryLinux let one Int64 1 immutable
-listDirectoryLinux at begin do copyPath
-listDirectoryLinux at begin do openIt
-listDirectoryLinux at begin do giveName
-listDirectoryLinux at begin do openFailed
-listDirectoryLinux at begin branch if refused goto failedOpen else goto listIt
+listDirectoryLinux at begin do archCheck
+listDirectoryLinux at begin branch if onArm goto genericFlags else goto open
+listDirectoryLinux at genericFlags set directoryFlags genericDirectoryFlags
+listDirectoryLinux at genericFlags goto open
+listDirectoryLinux at open do copyPath
+listDirectoryLinux at open do openIt
+listDirectoryLinux at open do giveName
+listDirectoryLinux at open do openFailed
+listDirectoryLinux at open branch if refused goto failedOpen else goto listIt
 listDirectoryLinux at failedOpen do openErrno
 listDirectoryLinux at failedOpen do openStatus
 listDirectoryLinux at failedOpen return ok status1
@@ -19006,6 +19037,17 @@ listDirectoryLinux at finish do readRegion
 listDirectoryLinux at finish do makeHandle
 listDirectoryLinux at finish do storeListing
 listDirectoryLinux at finish return ok ok
+
+archCheck is call
+archCheck in listDirectoryLinux
+archCheck invokes system.aarch64
+archCheck argument none
+archCheck result onArm Bool
+archCheck ownedBy none
+archCheck cleanedBy none
+archCheck borrows none
+archCheck catch none
+archCheck suppresses none
 
 copyPath is call
 copyPath in listDirectoryLinux

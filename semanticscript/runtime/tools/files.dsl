@@ -256,13 +256,23 @@ op keepErrno "Keep the errno of a Linux system call's result that failed, for ke
   storeIt: machine.storeInt64(slot, errno)
   return
 
-op linuxMode "The st_mode of a struct stat on Linux, its type bits only"
+op linuxMode "The st_mode of a struct stat on Linux, its type bits only: at 24 on x86_64, at 16 on AArch64, whose struct stat is the kernel's generic one (D-150)"
   input status machine.Address copied
   output Int64
   effect use machine.memory
+  effect use system.calls
   uses memoryAccess
+  uses systemCalls
+  let offset Int64 24 mut
+  let genericOffset Int64 16
 :begin
-  modeOf: mode = unsignedAt(status, twentyFour=24)
+  archCheck: onArm = system.aarch64()
+  if onArm generic read
+:generic
+  set offset genericOffset
+  goto read
+:read
+  modeOf: mode = unsignedAt(status, offset)
   typeOf: kind = bits.andInt64(mode, typeMask)
   return kind
 
@@ -3193,8 +3203,15 @@ op listDirectoryLinux "fs.listDirectory on Linux: the names getdents64 gives for
   let ok Int32 0
   let forever Int64 9223372036854775807
   let entriesBytes Int64 32768
-  let directoryFlags Int64 589824
+  let directoryFlags Int64 589824 mut
+  let genericDirectoryFlags Int64 540672
 :begin
+  archCheck: onArm = system.aarch64()
+  if onArm genericFlags open
+:genericFlags
+  set directoryFlags genericDirectoryFlags
+  goto open
+:open
   copyPath: name = cPath(path, bytes)
   openIt: fd = system.openat(atWorkingDirectory, name, directoryFlags, zero=0)
   giveName: heap.give(name)

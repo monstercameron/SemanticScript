@@ -31,6 +31,10 @@ jobs:
           - os: ubuntu-latest
             os-name: Linux
             python-version: "3.12"
+          # D-150: the runtime's system layer on AArch64 Linux (svc #0, the kernel's generic system call numbers)
+          - os: ubuntu-24.04-arm
+            os-name: Linux AArch64
+            python-version: "3.12"
 
     steps:
       - name: Check out repository
