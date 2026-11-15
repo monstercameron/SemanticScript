@@ -95,6 +95,19 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   its error constants instead (D-143); every conformance program, the
   cancellation check included, runs as an executable.
 
+### The runtime in SemanticScript, stage 8: the whole C library
+
+- stdio (D-156 to D-160): the runtime's C library has FILE streams buffered as
+  glibc buffers them (fopen, freopen, fclose, fflush, fread, fwrite, fgetc, getc,
+  getchar, fgets, ungetc, fputc, putc, putchar, fputs, puts, fseek, ftell,
+  fgetpos, fsetpos, rewind, feof, ferror, clearerr, setvbuf, setbuf, remove,
+  rename, tmpfile, tmpnam, perror), the printf family (every conversion, flag,
+  and length, floating values with their exact digits, `%a`, `%n$`), and the
+  scanf family with glibc's `__isoc99_` names. `abi library` rows may be
+  `variadic`; on x86_64 calls through references are made as variadic calls, so
+  printf works through `ffi` with doubles. The runtime's DSL takes expressions.
+  Known gap: strerror gives `Unknown error N` for every number for now.
+
 ### The runtime in SemanticScript: `ffi` everywhere
 
 - A C standard library written in SemanticScript (D-153), the runtime module

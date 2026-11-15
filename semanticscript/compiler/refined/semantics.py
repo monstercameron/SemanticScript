@@ -1312,11 +1312,11 @@ def _check_op(world: World, m: Module, op: OpInfo) -> None:
         sink.error("R407", eline, f"`{ent.name}` declares `effect {verb} {res}`, but nothing it activates performs it")
     _check_uses(m, op, declared)
     _check_exact_facts(world, m, op)
-    _check_abi(m, op)
+    _check_abi(world, m, op)
 
 
 # D-123: what crosses the C boundary as it is: integers, `Byte`, `Bool`, `Float64`, and addresses
-ABI_TYPES = ("Int64", "Int32", "Byte", "Bool", "Float64", "machine.Address")
+ABI_TYPES = ("Int64", "Int32", "Byte", "Bool", "Float64", "Float32", "machine.Address")  # D-157: Float32, C's float
 C_SYMBOL = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
@@ -1332,7 +1332,20 @@ def library_symbol(ent) -> Optional[str]:
     return row.args[1].value if row is not None and len(row.args) > 1 and row.text(0) == "library" else None
 
 
-def _check_abi(m: Module, op: OpInfo) -> None:
+def library_variadic(ent) -> bool:
+    """Whether a C library function takes more arguments after its own (`abi library "<name>" variadic`, D-157)."""
+    row = ent.fact("abi")
+    return row is not None and len(row.args) > 2 and row.text(0) == "library" and row.text(2) == "variadic"
+
+
+def pair_record(world, canon: Optional[str]) -> bool:
+    """D-157: a record of two Int64 fields, which a C library function may give (`ldiv_t`): returned in two registers
+    on x86_64 Linux and AArch64, through memory the caller gives on Windows."""
+    info = world.type_info(canon) if canon else None
+    return info is not None and info.kind == "record" and [t for _n, t in info.fields] == ["Int64", "Int64"]
+
+
+def _check_abi(world: World, m: Module, op: OpInfo) -> None:
     """D-123: an operation exported to C takes and gives only values the C ABI passes as they are, raises nothing,
     and is neither generic nor async."""
     ent = op.entity
@@ -1357,7 +1370,8 @@ def _check_abi(m: Module, op: OpInfo) -> None:
         if p.type not in ABI_TYPES:
             sink.error("R403", row.line, f"input `{p.name}` is `{_show(p.type)}`; an operation exported to C takes "
                        f"only {shown}")
-    if op.sig.output is not None and op.sig.output not in ABI_TYPES:
+    if op.sig.output is not None and op.sig.output not in ABI_TYPES and not (
+            library_symbol(ent) is not None and pair_record(world, op.sig.output)):
         sink.error("R403", row.line, f"`{ent.name}` gives `{_show(op.sig.output)}`; an operation exported to C gives "
                    f"only {shown}, or nothing")
 

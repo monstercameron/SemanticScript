@@ -49,7 +49,7 @@ from .check import TEST_OFFSET
 from .runtime import default_triple
 from .host import HANDLERS as HOST_TARGETS
 from .library import INTEGER_RANGES, INTEGER_TYPES as INTEGER_TARGET_TYPES, LINUX_CALLS, STATE_BYTES, SYSTEM_CALLS
-from .semantics import (CallInfo, Module, OpInfo, World, abi_symbol, library_symbol, grant_scope, instance_scope, resolve_type,
+from .semantics import (CallInfo, Module, OpInfo, World, abi_symbol, library_symbol, library_variadic, pair_record, grant_scope, instance_scope, resolve_type,
                         resolve_variant, type_params_of)
 
 I1, I8, I16, I32, I64 = ir.IntType(1), ir.IntType(8), ir.IntType(16), ir.IntType(32), ir.IntType(64)
@@ -238,6 +238,46 @@ _AARCH64_START = [
     "  bl refined_entry",
     "  brk #0",
 ]
+# D-163: setjmp's and longjmp's routines. The buffer (glibc's __jmp_buf_tag, 200 bytes on x86_64 and 312 on AArch64,
+# opaque to the program) holds, on x86_64 Linux, rbx rbp r12 r13 r14 r15, the caller's stack pointer, and the return
+# address; on Windows x64 also rdi, rsi, and xmm6 to xmm15 (which Windows's convention keeps); on AArch64 x19 to x30,
+# sp, and d8 to d15. The signal mask is neither kept nor restored (sigsetjmp's `savemask` is noted and ignored).
+_CONTEXT_ROUTINES = {
+    ("x86_64", "linux", "save"): "\n".join([
+        "movq %rbx, 0(%rdi)", "movq %rbp, 8(%rdi)", "movq %r12, 16(%rdi)", "movq %r13, 24(%rdi)",
+        "movq %r14, 32(%rdi)", "movq %r15, 40(%rdi)", "leaq 8(%rsp), %rdx", "movq %rdx, 48(%rdi)",
+        "movq (%rsp), %rdx", "movq %rdx, 56(%rdi)", "movl $$0, 64(%rdi)", "xorl %eax, %eax", "retq"]),
+    ("x86_64", "linux", "resume"): "\n".join([
+        "movq 0(%rdi), %rbx", "movq 8(%rdi), %rbp", "movq 16(%rdi), %r12", "movq 24(%rdi), %r13",
+        "movq 32(%rdi), %r14", "movq 40(%rdi), %r15", "movq 48(%rdi), %rsp", "movl %esi, %eax", "testl %eax, %eax",
+        "jnz 1f", "incl %eax", "1:", "jmpq *56(%rdi)"]),
+    ("x86_64", "windows", "save"): "\n".join([
+        "movq %rbx, 0(%rcx)", "movq %rbp, 8(%rcx)", "movq %r12, 16(%rcx)", "movq %r13, 24(%rcx)",
+        "movq %r14, 32(%rcx)", "movq %r15, 40(%rcx)", "leaq 8(%rsp), %rdx", "movq %rdx, 48(%rcx)",
+        "movq (%rsp), %rdx", "movq %rdx, 56(%rcx)", "movq %rdi, 64(%rcx)", "movq %rsi, 72(%rcx)",
+        "movdqu %xmm6, 80(%rcx)", "movdqu %xmm7, 96(%rcx)", "movdqu %xmm8, 112(%rcx)", "movdqu %xmm9, 128(%rcx)",
+        "movdqu %xmm10, 144(%rcx)", "movdqu %xmm11, 160(%rcx)", "movdqu %xmm12, 176(%rcx)",
+        "movdqu %xmm13, 192(%rcx)", "movdqu %xmm14, 208(%rcx)", "movdqu %xmm15, 224(%rcx)", "xorl %eax, %eax",
+        "retq"]),
+    ("x86_64", "windows", "resume"): "\n".join([
+        "movq 0(%rcx), %rbx", "movq 8(%rcx), %rbp", "movq 16(%rcx), %r12", "movq 24(%rcx), %r13",
+        "movq 32(%rcx), %r14", "movq 40(%rcx), %r15", "movq 64(%rcx), %rdi", "movq 72(%rcx), %rsi",
+        "movdqu 80(%rcx), %xmm6", "movdqu 96(%rcx), %xmm7", "movdqu 112(%rcx), %xmm8", "movdqu 128(%rcx), %xmm9",
+        "movdqu 144(%rcx), %xmm10", "movdqu 160(%rcx), %xmm11", "movdqu 176(%rcx), %xmm12",
+        "movdqu 192(%rcx), %xmm13", "movdqu 208(%rcx), %xmm14", "movdqu 224(%rcx), %xmm15",
+        "movq 48(%rcx), %rsp", "movl %edx, %eax", "testl %eax, %eax", "jnz 1f", "incl %eax", "1:",
+        "jmpq *56(%rcx)"]),
+    ("aarch64", "linux", "save"): "\n".join([
+        "stp x19, x20, [x0, #0]", "stp x21, x22, [x0, #16]", "stp x23, x24, [x0, #32]", "stp x25, x26, [x0, #48]",
+        "stp x27, x28, [x0, #64]", "stp x29, x30, [x0, #80]", "mov x2, sp", "str x2, [x0, #104]",
+        "stp d8, d9, [x0, #112]", "stp d10, d11, [x0, #128]", "stp d12, d13, [x0, #144]", "stp d14, d15, [x0, #160]",
+        "str wzr, [x0, #176]", "mov w0, #0", "ret"]),
+    ("aarch64", "linux", "resume"): "\n".join([
+        "ldp x19, x20, [x0, #0]", "ldp x21, x22, [x0, #16]", "ldp x23, x24, [x0, #32]", "ldp x25, x26, [x0, #48]",
+        "ldp x27, x28, [x0, #64]", "ldp x29, x30, [x0, #80]", "ldr x2, [x0, #104]", "mov sp, x2",
+        "ldp d8, d9, [x0, #112]", "ldp d10, d11, [x0, #128]", "ldp d12, d13, [x0, #144]", "ldp d14, d15, [x0, #160]",
+        "cmp w1, #0", "csinc w0, w1, wzr, ne", "br x30"]),
+}
 # D-147: what a Linux signal handler returns through (SA_RESTORER): the rt_sigreturn system call
 _X86_64_RESTORER = [
     ".text",
@@ -353,8 +393,7 @@ class Backend:
             return g
         rows = []
         for symbol in sorted(self.library, key=lambda t: t.encode("utf-8")):
-            mod, op = self.library[symbol]
-            fn = self.function_for(mod, op, None, 0)
+            fn = self.library_function(symbol)
             self.string(symbol)
             data = symbol.encode("utf-8")
             rows.append([self.strings[data].gep([I32(0), I32(0)]), I64(len(data)), fn.bitcast(PTR)])
@@ -366,6 +405,27 @@ class Backend:
         g.global_constant = True
         g.linkage = "internal"
         return g
+
+    def library_function(self, symbol: str) -> ir.Function:
+        """The function a C caller calls for a name of the runtime's C library: the operation's own, except that on
+        Windows a function that gives a pair of Int64 (`ldiv_t`) takes the address of the 16 bytes it fills first and
+        gives that address back, as the Windows x64 ABI returns a 16-byte struct (D-157)."""
+        mod, op = self.library[symbol]
+        fn = self.function_for(mod, op, None, 0)
+        if not fn.name.endswith(".pair"):
+            return fn
+        wrapper = self.module.globals.get(f"refined.c.{symbol}")
+        if wrapper is not None:
+            return wrapper
+        pair = fn.ftype.return_type
+        wrapper = ir.Function(self.module, ir.FunctionType(PTR, [PTR] + list(fn.ftype.args)), name=f"refined.c.{symbol}")
+        wb = ir.IRBuilder(wrapper.append_basic_block("entry"))
+        out = wrapper.args[0]
+        value = wb.call(fn, list(wrapper.args[1:]))
+        slots = wb.bitcast(out, ir.PointerType(pair))
+        wb.store(value, slots, align=8)
+        wb.ret(out)
+        return wrapper
 
     def machine_state(self) -> ir.GlobalVariable:
         """D-121: one zeroed block of STATE_BYTES for the runtime's process-wide state, shared by every object that
@@ -393,6 +453,8 @@ class Backend:
             self.function_for(mod, op, None, 1)
         while self.pending:
             m, info, fn, sub = self.pending.pop()
+            if self.context_routine(info, fn):
+                continue
             OpGen(self, m, info, fn, sub).emit()
         if self.options.get("runtime_object") and "refined_entry" in self.abi and self.linux_arch():
             # D-139: the process entry calls refined_entry
@@ -457,6 +519,28 @@ class Backend:
         constraint = ",".join(["={x0}", "{x8}"] + [f"{{{r}}}" for r in regs] + ["~{memory}"])
         fty = ir.FunctionType(I64, [I64] * (len(values) + 1))
         return b.asm(fty, "svc #0", constraint, [I64(number)] + values, side_effect=True)
+
+    def context_routine(self, info: OpInfo, fn: ir.Function) -> bool:
+        """D-163: an `abi library` operation whose one call is `machine.saveContext` or `machine.resumeContext` is
+        setjmp's or longjmp's routine: emitted as a naked function of a few instructions for the module's
+        architecture and system (on Windows on ARM, where nothing calls it, it traps)."""
+        targets = {ci.entity.value("invokes") for ci in info.calls.values()}
+        kind = {"machine.saveContext": "save", "machine.resumeContext": "resume"}
+        found = [kind[t] for t in targets if t in kind]
+        if not found:
+            return False
+        if len(info.calls) != 1 or library_symbol(info.entity) is None:
+            raise Unsupported(info.module.file, info.entity.line, "`machine.saveContext` or `machine.resumeContext` "
+                              "outside an `abi library` operation whose one call it is (D-163)")
+        arch = self.module.triple.split("-")[0]
+        system = "windows" if self.os == "windows" else "linux"
+        text = _CONTEXT_ROUTINES.get((arch, system, found[0]), "brk #0" if arch in ("aarch64", "arm64") else "ud2")
+        fn.attributes.add("naked")
+        fn.attributes.add("noinline")
+        b = ir.IRBuilder(fn.append_basic_block("entry"))
+        b.asm(ir.FunctionType(ir.VoidType(), []), text, "~{memory}", [], side_effect=True)
+        b.unreachable()
+        return True
 
     def stack_routine(self, name: str, ftype: ir.FunctionType) -> Optional[ir.Function]:
         """D-139: one of the routines that switch stacks, written in the module's assembly for its architecture;
@@ -572,7 +656,11 @@ class Backend:
         name = symbol or name  # D-123: exported to C under its symbol
         if library_symbol(ent) is not None:  # D-153: reached through the C library's table, never by its C name
             name = f"refined.c.{library_symbol(ent)}"
+            if self.os == "windows" and pair_record(self.world, sig.output):
+                name += ".pair"  # D-157: Windows returns it through memory; `library_function` wraps it so
         ftype = self.fn_type(sig, m.file, ent.line)
+        if library_variadic(ent):  # D-157: `...` after its own arguments
+            ftype = ir.FunctionType(ftype.return_type, ftype.args, var_arg=True)
         if self.bare and name in CALLBACKS:
             # D-124: the runtime's own definition of a function compiled code calls has the type those calls have;
             # an address may be declared there as a pointer to what it points at (`i64*` for `machine.Address`)
@@ -1200,6 +1288,13 @@ class OpGen:
         inst = self._instance(inv) if inv else None
         if ci.reference is not None:
             fptr = b.load(self.allocas[ci.reference])
+            if self.be.module.triple.startswith("x86_64"):
+                # D-158: on x86_64 a call through a reference is made as a call of a C function of `...`, which
+                # passes every argument where a fixed one goes and also says how many vector registers it used (%al,
+                # Linux) or copies a double to its integer register (Windows): what a variadic C function such as
+                # printf reads its arguments by, and what any other function ignores
+                fty = fptr.type.pointee
+                fptr = b.bitcast(fptr, ir.FunctionType(fty.return_type, [], var_arg=True).as_pointer())
             res = b.call(fptr, [args[p.name] for p in self._ref_sig(ci).inputs])
             out, failed, err = self._split(b, res, self._ref_sig(ci))
         elif inst is not None:
@@ -1720,7 +1815,7 @@ class OpGen:
     def machine(self, b: ir.IRBuilder, name: str, args: dict, ci: CallInfo, line: int):
         """D-121: the `machine` targets, each a few instructions: addresses are `i8*`, loads and stores take any
         alignment, and nothing is checked."""
-        widths = {"Byte": I8, "Int32": I32, "Int64": I64, "UInt64": I64, "Float64": F64, "Address": PTR}
+        widths = {"Byte": I8, "Int32": I32, "Int64": I64, "UInt64": I64, "Float64": F64, "Float32": F32, "Address": PTR}
         if name == "zero":
             return ir.Constant(PTR, None), None, None
         if name == "state":
@@ -1811,6 +1906,16 @@ class OpGen:
         if name == "squareRoot":
             root = self.be.module.declare_intrinsic("llvm.sqrt", [F64])
             return b.call(root, [args["value"]]), None, None
+        if name == "variadicStart":
+            # D-157: the operation's own `va_list`, started on the arguments after its fixed ones
+            if not self.fn.ftype.var_arg:
+                self.unsupported(line, "`machine.variadicStart` outside an `abi library \"<name>\" variadic` operation")
+            area = self.fn_alloca(ir.ArrayType(I8, 32), f"{ci.entity.name}.arguments")
+            area.align = 16
+            start = self.be.module.globals.get("llvm.va_start") or                 ir.Function(self.be.module, ir.FunctionType(ir.VoidType(), [PTR]), name="llvm.va_start")
+            place = b.bitcast(area, PTR)
+            b.call(start, [place])
+            return place, None, None
         if name == "taskEntry":
             # D-131: only the runtime has it, and only for the operation a task's fiber starts in
             if "refined_task_entry" not in self.be.abi:

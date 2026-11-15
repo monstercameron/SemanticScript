@@ -1,0 +1,4 @@
+# printf's engine for the runtime's C library, written in SemanticScript (D-159): every conversion as glibc
+# writes it in the C locale, with a floating value's exact digits.
+#
+# This module is generated from tools/cformat.dsl by tools/build.py.

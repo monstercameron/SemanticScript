@@ -1,0 +1,166 @@
+# Tests of the `cstart` module; generated from tools/cstart.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+prepareTest is test
+prepareTest purpose "Preparing for a C program keeps the stack's argc and argv and points stdout at its FILE block"
+prepareTest verifies prepareProgram readiesProgram
+prepareTest typeParameter none
+prepareTest input none
+prepareTest output none
+prepareTest outputOwnedBy none
+prepareTest raises none
+prepareTest effect use machine.memory
+prepareTest effect use system.calls
+prepareTest uses memoryAccess
+prepareTest uses systemCalls
+prepareTest memoryHeap false
+prepareTest async false
+prepareTest maxRecursion none
+prepareTest label begin loopKind none
+prepareTest label begin within none
+prepareTest label run loopKind none
+prepareTest label run within none
+prepareTest label skip loopKind none
+prepareTest label skip within none
+prepareTest let sixtyFour Int64 64 immutable
+prepareTest let zero Int64 0 immutable
+prepareTest let n1544 Int64 1544 immutable
+prepareTest let n2048 Int64 2048 immutable
+prepareTest at begin do readOnLinux
+prepareTest at begin branch if onLinux goto skip else goto run
+prepareTest at run do readStack
+prepareTest at run do doStoreInt64
+prepareTest at run do doPrepareProgram
+prepareTest at run do readCount
+prepareTest at run do doAssertEqualInt64
+prepareTest at run do readStdoutCell
+prepareTest at run do readStdoutFile
+prepareTest at run do readExpected
+prepareTest at run do doAssertTrueStep1
+prepareTest at run do doAssertTrue
+prepareTest at run return ok none
+prepareTest at skip return ok none
+
+readOnLinux is call
+readOnLinux in prepareTest
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readStack is call
+readStack in prepareTest
+readStack invokes heap.take
+readStack argument bytes Int64 sixtyFour copy
+readStack result stack machine.Address
+readStack ownedBy none
+readStack cleanedBy none
+readStack borrows none
+readStack catch none
+readStack suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in prepareTest
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address stack copy
+doStoreInt64 argument value Int64 zero copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+doPrepareProgram is call
+doPrepareProgram in prepareTest
+doPrepareProgram invokes prepareProgram
+doPrepareProgram argument stack machine.Address stack copy
+doPrepareProgram result none
+doPrepareProgram ownedBy none
+doPrepareProgram cleanedBy none
+doPrepareProgram borrows none
+doPrepareProgram catch none
+doPrepareProgram suppresses none
+
+readCount is call
+readCount in prepareTest
+readCount invokes kernel.argumentCount
+readCount argument none
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in prepareTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 zero copy
+doAssertEqualInt64 argument actual Int64 count copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readStdoutCell is call
+readStdoutCell in prepareTest
+readStdoutCell invokes kernel.stateAt
+readStdoutCell argument offset Int64 n1544 copy
+readStdoutCell result stdoutCell machine.Address
+readStdoutCell ownedBy none
+readStdoutCell cleanedBy none
+readStdoutCell borrows none
+readStdoutCell catch none
+readStdoutCell suppresses none
+
+readStdoutFile is call
+readStdoutFile in prepareTest
+readStdoutFile invokes machine.loadAddress
+readStdoutFile argument address machine.Address stdoutCell copy
+readStdoutFile result stdoutFile machine.Address
+readStdoutFile ownedBy none
+readStdoutFile cleanedBy none
+readStdoutFile borrows none
+readStdoutFile catch none
+readStdoutFile suppresses none
+
+readExpected is call
+readExpected in prepareTest
+readExpected invokes kernel.stateAt
+readExpected argument offset Int64 n2048 copy
+readExpected result expected machine.Address
+readExpected ownedBy none
+readExpected cleanedBy none
+readExpected borrows none
+readExpected catch none
+readExpected suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in prepareTest
+doAssertTrueStep1 invokes machine.equal
+doAssertTrueStep1 argument left machine.Address stdoutFile copy
+doAssertTrueStep1 argument right machine.Address expected copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in prepareTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none

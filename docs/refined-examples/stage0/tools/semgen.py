@@ -520,6 +520,8 @@ class OpBuilder:
                     name = "byte" + str(n)
                 elif canon == "ExitCode":
                     name = "code" + str(n)
+                elif n < 0:
+                    name = canon[:1].lower() + canon[1:].replace(".", "") + "Minus" + str(-n)
                 else:
                     name = canon[:1].lower() + canon[1:].replace(".", "") + str(n)
             elif value in ("true", "false"):
@@ -581,11 +583,21 @@ class OpBuilder:
             for vname in list(self.match_cases):
                 self.stmt(f"case {vname} {t[1]}")
         elif k == "set":
+            if INT_RE.match(t[2]) or t[2] in ("true", "false") or re.match(r"^-?[0-9]+\.[0-9]+$", t[2]):
+                # D-156: a literal is a let of the target's type
+                lowering = Lowering(self)
+                t = [t[0], t[1], lowering.value(lowering.parse(t[2]), self.type_of(t[1]), t[1])]
             self.type_of(t[1]), self.type_of(t[2])
             self.step(f"set {t[1]} {t[2]}")
         elif k == "return":
             if len(t) == 1:
                 self.step("return ok none")
+            elif (INT_RE.match(t[1]) or t[1] in ("true", "false")) and self.output:
+                # D-156: a literal is a let of the output's type
+                lowering = Lowering(self)
+                kind = "bool" if t[1] in ("true", "false") else "int"
+                name = lowering.literal((kind, t[1]), self.prog.canon(self.m, self.output))
+                self.step(f"return ok {name}")
             else:
                 self.type_of(t[1])
                 self.step(f"return ok {t[1]}")
@@ -596,8 +608,17 @@ class OpBuilder:
             self.add_let(t[1], t[2], t[3], len(t) > 4 and t[4] == "mut")
         elif k == "task":
             self.call_stmt(line.strip()[5:].strip(), task=True)
+        elif k == "calc":
+            Lowering(self).calc(line.strip()[4:].strip())
+        elif k == "when":
+            Lowering(self).when(line.strip()[4:].strip())
         else:
-            self.call_stmt(line)
+            mt = CALL_RE.match(line.strip())
+            if mt and not mt.group(3).startswith("*") and not mt.group(3).endswith(".with") and \
+                    any(not _SIMPLE_ARG.match(a) for a in split_args(mt.group(4))):
+                Lowering(self).call(*mt.groups())  # D-156: an argument that is an expression
+            else:
+                self.call_stmt(line)
 
     def need(self, name, canon):
         c = self.type_of(name)
@@ -620,7 +641,7 @@ class OpBuilder:
         else:
             base = "do" + cap(last)
         name, i = base, 2
-        while name in self.names:
+        while name in self.names or name in self.m.ops or name in self.m.constants or name in self.m.tables:
             name = f"{base}{i}"
             i += 1
         return name
@@ -664,6 +685,13 @@ class OpBuilder:
                 self.type_of(v)
             values[p.name] = v
             rows_args.append((p.name, self.prog.spell(self.m, p.type), v, MODES[p.mode]))
+        if result is None and sig.output is not None and not task:
+            # D-156: a result the statement does not name is named for it, as every result must be
+            base, i = "unused" + cap(cname or target.split(".")[-1]), 1
+            result = base
+            while result in self.names or result in self.m.ops or result in self.m.constants:
+                i += 1
+                result = f"{base}{i}"
         if cname is None:
             cname = self.call_name(target, result)
         self.claim(cname)
@@ -788,6 +816,358 @@ class OpBuilder:
                                   f"{r} released {rel}"]))
         out += ["\n".join(c) for c in self.calls]
         return out
+
+
+# ---------------------------------------------------------------- expressions (D-156)
+#
+# `calc <name> = <expression>` and `calc <name> := <expression>` and `when <expression> <yes> <no>` are written out
+# as the calls they stand for, one call entity per operator, each spelled in full as any other call: `a * b + c` of
+# Float64 values is `math.multiplyFloat64` then `math.addFloat64`. Nothing here is SemanticScript syntax: the
+# generated module has only explicit calls, lets, `set` steps, and branches. Every operand is evaluated, left to right
+# (`&&` and `||` are `logic.and` and `logic.or`, which do not skip their right side). A literal takes the type of the
+# other operand or of the parameter it is passed to; a Float64 or Float32 literal (decimal or hexadecimal, `0x1.8p52`)
+# is a let of exactly that value. Operators: `* / %`, `+ -`, `<< >>` (the amount is an Int64), `< <= > >=`,
+# `== !=`, `&`, `^`, `|`, `&&`, `||`, unary `-`, `!`, `~`. On addresses, `+` and `-` with an Int64 are
+# `machine.offset`, `-` of two addresses is `machine.difference`, `==` and `!=` are `machine.equal`, `<` is
+# `machine.lessThan`.
+
+_EXPR_TOKEN = re.compile(r"\s*(?:(0[xX][0-9a-fA-F]*\.?[0-9a-fA-F]*[pP][-+]?[0-9]+)|(0[xX][0-9a-fA-F]+)|"
+                         r"([0-9]+\.[0-9]+(?:[eE][-+]?[0-9]+)?|[0-9]+[eE][-+]?[0-9]+)|([0-9]+)|"
+                         r"(\"(?:[^\"\\]|\\.)*\")|([A-Za-z_][A-Za-z0-9_.]*)|"
+                         r"(<<|>>|<=|>=|==|!=|&&|\|\||[-+*/%&|^~!<>(),]))")
+_BINARY = [("||",), ("&&",), ("|",), ("^",), ("&",), ("==", "!="), ("<", "<=", ">", ">="), ("<<", ">>"),
+           ("+", "-"), ("*", "/", "%")]
+_ARITH = {"+": "add", "-": "subtract", "*": "multiply", "/": "divide", "%": "remainder"}
+_BITS = {"&": "and", "|": "or", "^": "xor", "<<": "shiftLeft", ">>": "shiftRight"}
+_COMPARE = {"==": "equal", "!=": "notEqual", "<": "lessThan", "<=": "lessOrEqual", ">": "greaterThan",
+            ">=": "greaterOrEqual"}
+_SIMPLE_ARG = re.compile(r'^(?:[A-Za-z_][A-Za-z0-9_.]*|-?[0-9]+|-?[0-9]+\.[0-9]+|"(?:[^"\\]|\\.)*"|'
+                         r'[a-z][A-Za-z0-9]*=(?:-?[0-9]+|-?[0-9]+\.[0-9]+|"(?:[^"\\]|\\.)*"|true|false))$')
+_NAMED_LITERAL = re.compile(r'^[a-z][A-Za-z0-9]*=(?!=)')
+_NUMERIC = ("Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Byte", "Float32", "Float64")
+_ADDRESS = "machine.Address"
+
+
+def _hex_float(text: str) -> float:
+    return float.fromhex(text)
+
+
+class Lowering:
+    """One `calc` or `when` statement of an operation, written out as calls (D-156)."""
+
+    def __init__(self, ob: "OpBuilder"):
+        self.ob = ob
+
+    # ------------------------------------------------------------ parsing
+    def parse(self, text: str):
+        toks, pos = [], 0
+        while pos < len(text):
+            if text[pos:].strip() == "":
+                break
+            mt = _EXPR_TOKEN.match(text, pos)
+            if not mt or mt.end() == pos:
+                raise GenError(f"{self.ob.name}: cannot read expression at: {text[pos:]}")
+            pos = mt.end()
+            hexf, hexi, flo, dec, s, name, op = mt.groups()
+            if hexf:
+                toks.append(("float", repr(_hex_float(hexf))))
+            elif hexi:
+                toks.append(("int", str(int(hexi, 16))))
+            elif flo:
+                toks.append(("float", flo))
+            elif dec:
+                toks.append(("int", dec))
+            elif s:
+                toks.append(("str", s))
+            elif name:
+                toks.append(("name", name))
+            else:
+                toks.append(("op", op))
+        self.toks, self.at = toks, 0
+        node = self.binary(0)
+        if self.at != len(self.toks):
+            raise GenError(f"{self.ob.name}: unexpected {self.toks[self.at][1]} in expression: {text}")
+        return node
+
+    def peek(self):
+        return self.toks[self.at] if self.at < len(self.toks) else (None, None)
+
+    def take(self, value=None):
+        tok = self.peek()
+        if tok[0] is None or (value is not None and tok[1] != value):
+            raise GenError(f"{self.ob.name}: expected {value or 'more'} in expression")
+        self.at += 1
+        return tok
+
+    def binary(self, level):
+        if level == len(_BINARY):
+            return self.unary()
+        left = self.binary(level + 1)
+        while self.peek()[0] == "op" and self.peek()[1] in _BINARY[level]:
+            op = self.take()[1]
+            left = ("bin", op, left, self.binary(level + 1))
+        return left
+
+    def unary(self):
+        kind, value = self.peek()
+        if kind == "op" and value in ("-", "!", "~"):
+            self.take()
+            inner = self.unary()
+            if value == "-" and inner[0] in ("int", "float"):
+                return (inner[0], inner[1][1:] if inner[1].startswith("-") else "-" + inner[1])
+            return ("un", value, inner)
+        return self.primary()
+
+    def primary(self):
+        kind, value = self.take()
+        if kind in ("int", "float", "str"):
+            return (kind, value)
+        if kind == "op" and value == "(":
+            node = self.binary(0)
+            self.take(")")
+            return node
+        if kind == "name":
+            if self.peek() == ("op", "("):
+                self.take("(")
+                args = []
+                if self.peek() != ("op", ")"):
+                    args.append(self.binary(0))
+                    while self.peek() == ("op", ","):
+                        self.take(",")
+                        args.append(self.binary(0))
+                self.take(")")
+                return ("call", value, args)
+            if value in ("true", "false"):
+                return ("bool", value)
+            return ("name", value)
+        raise GenError(f"{self.ob.name}: unexpected {value} in expression")
+
+    # ------------------------------------------------------------ types
+    def static_type(self, node):
+        kind = node[0]
+        if kind == "name":
+            return self.ob.type_of(node[1])
+        if kind == "bool":
+            return "Bool"
+        if kind == "str":
+            return "String"
+        if kind == "call":
+            return self.ob.prog.target_sig(self.ob.m, node[1]).output
+        if kind == "un":
+            return "Bool" if node[1] == "!" else self.static_type(node[2])
+        if kind == "bin":
+            op = node[1]
+            if op in _COMPARE or op in ("&&", "||"):
+                return "Bool"
+            left, right = self.static_type(node[2]), self.static_type(node[3])
+            if op in ("<<", ">>"):
+                return left
+            if left == _ADDRESS and right == _ADDRESS and op == "-":
+                return "Int64"
+            if right == _ADDRESS:
+                return _ADDRESS
+            return left or right
+        return None
+
+    def default_type(self, node):
+        if node[0] == "float":
+            return "Float64"
+        if node[0] == "int":
+            return "Int64"
+        if node[0] in ("un", "bin"):
+            for sub in node[2:]:
+                found = self.default_type(sub)
+                if found == "Float64":
+                    return found
+            return "Int64"
+        return None
+
+    # ------------------------------------------------------------ names
+    def fresh(self, base):
+        ob, i = self.ob, 1
+        while True:
+            name = f"{base}{i}"
+            if name not in ob.names and name not in ob.m.constants and name not in ob.m.ops and \
+                    name not in ob.m.tables and name not in ob.lets:
+                return name
+            i += 1
+
+    def literal(self, node, canon):
+        kind, value = node
+        ob = self.ob
+        spelled = ob.prog.spell(ob.m, canon)
+        if kind == "bool":
+            if canon != "Bool":
+                raise GenError(f"{ob.name}: {value} is not a {spelled}")
+            return ob.literal_let(value, "Bool")
+        if kind == "str":
+            return ob.literal_let(value, canon)
+        if canon in ("Float64", "Float32"):
+            x = float(value)
+            if canon == "Float32":
+                import struct
+                x32 = struct.unpack("<f", struct.pack("<f", x))[0]
+                if x32 != x and not (x != x):
+                    raise GenError(f"{ob.name}: {value} is not exactly a Float32")
+                bits = struct.unpack("<I", struct.pack("<f", x))[0]
+                name = f"single{bits:08x}"
+            else:
+                import struct
+                bits = struct.unpack("<Q", struct.pack("<d", x))[0]
+                name = f"real{bits:016x}"
+            if x != x or x in (float("inf"), float("-inf")) or (canon == "Float64" and x != 0 and
+                                                                  not 1e-15 <= abs(x) < 1e17):
+                if canon == "Float32":
+                    raise GenError(f"{ob.name}: {value} cannot be a Float32 literal")
+                bits_name = ob.literal_let(str(bits), "UInt64", f"bits{bits:016x}")
+                out = self.fresh(f"real{bits:016x}v")
+                ob.call_stmt(f"{self.fresh('make' + cap(out))}: {out} = convert.uint64BitsToFloat64({bits_name})")
+                return out
+            from decimal import Decimal
+            text = format(Decimal(repr(x)), "f")
+            if "." not in text:
+                text += ".0"
+            if text.startswith("-") and float(text) == 0 and str(x).startswith("-"):
+                text = "-0.0"
+            return ob.literal_let(text, canon, name)
+        if kind != "int":
+            raise GenError(f"{ob.name}: {value} is not a {spelled}")
+        if canon not in _NUMERIC or canon in ("Float32", "Float64"):
+            raise GenError(f"{ob.name}: the number {value} is not a {spelled}")
+        n = int(value)
+        if canon.startswith("UInt") or canon == "Byte":
+            if n < 0:
+                raise GenError(f"{ob.name}: {value} is negative, not a {spelled}")
+        if n < 0 and canon != "Int64":
+            return ob.literal_let(str(n), canon, f"{canon[:1].lower()}{canon[1:]}Minus{-n}")
+        return ob.literal_let(str(n), canon)
+
+    # ------------------------------------------------------------ lowering
+    def emit_call(self, target, args, base, result=None):
+        ob = self.ob
+        out = result or self.fresh(base + "Part")
+        label = self.fresh(base + "Step") if result is None else self.fresh("find" + cap(result))
+        ob.call_stmt(f"{label}: {out} = {target}({', '.join(args)})")
+        return out
+
+    def value(self, node, want, base, result=None):
+        """Lower a node to the name of a value of type `want` (or its own type when want is None)."""
+        kind = node[0]
+        if kind in ("int", "float", "str", "bool"):
+            canon = want or ("Bool" if kind == "bool" else self.default_type(node) or "String")
+            return self.literal(node, canon)
+        if kind == "name":
+            found = self.ob.type_of(node[1])
+            if want is not None and found != want:
+                raise GenError(f"{self.ob.name}: {node[1]} is {found}, not {want}")
+            return node[1]
+        if kind == "call":
+            sig = self.ob.prog.target_sig(self.ob.m, node[1])
+            if len(node[2]) != len(sig.params):
+                raise GenError(f"{self.ob.name}: {node[1]} takes {len(sig.params)} arguments")
+            args = [self.value(a, p.type, base) for a, p in zip(node[2], sig.params)]
+            if want is not None and sig.output != want:
+                raise GenError(f"{self.ob.name}: {node[1]} gives {sig.output}, not {want}")
+            return self.emit_call(node[1], args, base, result)
+        if kind == "un":
+            op, inner = node[1], node[2]
+            if op == "!":
+                return self.emit_call("logic.not", [self.value(inner, "Bool", base)], base, result)
+            t = self.static_type(inner) or want or self.default_type(inner)
+            x = self.value(inner, t, base)
+            if op == "~":
+                return self.emit_call(f"bits.not{t}", [x], base, result)
+            if t in ("Float64", "Float32"):
+                return self.emit_call(f"math.multiply{t}", [x, self.literal(("float", "-1.0"), t)], base, result)
+            return self.emit_call(f"math.negate{t}", [x], base, result)
+        op, left, right = node[1], node[2], node[3]
+        if op in ("&&", "||"):
+            a, b = self.value(left, "Bool", base), self.value(right, "Bool", base)
+            return self.emit_call("logic.and" if op == "&&" else "logic.or", [a, b], base, result)
+        lt, rt = self.static_type(left), self.static_type(right)
+        if lt == _ADDRESS or rt == _ADDRESS:
+            if op in ("+", "-") and lt == _ADDRESS and rt != _ADDRESS:
+                a, b = self.value(left, _ADDRESS, base), self.value(right, "Int64", base)
+                if op == "-":
+                    b = self.emit_call("math.negateInt64", [b], base)
+                return self.emit_call("machine.offset", [a, b], base, result)
+            if op == "-" and lt == rt == _ADDRESS:
+                return self.emit_call("machine.difference", [self.value(left, _ADDRESS, base),
+                                                             self.value(right, _ADDRESS, base)], base, result)
+            if op in ("==", "!=", "<") and lt == rt == _ADDRESS:
+                same = self.emit_call("machine.equal" if op != "<" else "machine.lessThan",
+                                      [self.value(left, _ADDRESS, base), self.value(right, _ADDRESS, base)],
+                                      base, None if op == "!=" else result)
+                return self.emit_call("logic.not", [same], base, result) if op == "!=" else same
+            raise GenError(f"{self.ob.name}: {op} does not apply to addresses")
+        if op in ("<<", ">>"):
+            t = lt or (want if want in _NUMERIC else None) or "Int64"
+            a, b = self.value(left, t, base), self.value(right, "Int64", base)
+            return self.emit_call(f"bits.{_BITS[op]}{t}", [a, b], base, result)
+        t = lt or rt or (want if want in _NUMERIC and op not in _COMPARE else None) or \
+            self.default_type(node)
+        if lt and rt and lt != rt:
+            raise GenError(f"{self.ob.name}: {op} of {lt} and {rt}")
+        a, b = self.value(left, t, base), self.value(right, t, base)
+        if op in _COMPARE:
+            return self.emit_call(f"compare.{_COMPARE[op]}{t}", [a, b], base, result)
+        if op in _ARITH:
+            return self.emit_call(f"math.{_ARITH[op]}{t}", [a, b], base, result)
+        return self.emit_call(f"bits.{_BITS[op]}{t}", [a, b], base, result)
+
+    # ------------------------------------------------------------ statements
+    def calc(self, text):
+        mt = re.match(r"^([a-z][A-Za-z0-9]*)\s*(:=|=)\s*(.*)$", text)
+        if not mt:
+            raise GenError(f"{self.ob.name}: cannot read calc: {text}")
+        name, how, expr = mt.groups()
+        node = self.parse(expr)
+        ob = self.ob
+        if how == "=":
+            if node[0] in ("name", "int", "float", "str", "bool"):
+                raise GenError(f"{ob.name}: calc {name} = {expr} computes nothing; use the value itself")
+            self.value(node, None, name, result=name)
+            return
+        want = ob.type_of(name)
+        if node[0] in ("name", "int", "float", "str", "bool"):
+            ob.step(f"set {name} {self.value(node, want, name)}")
+            return
+        out = self.fresh(name + "Next")
+        self.value(node, want, name, result=out)
+        if ob.type_of(out) != want:
+            raise GenError(f"{ob.name}: {expr} is {ob.type_of(out)}, not {want} like {name}")
+        ob.step(f"set {name} {out}")
+
+    def call(self, label, result, target, argtext, mark):
+        """A call statement whose arguments may be expressions: each is written out first."""
+        ob = self.ob
+        sig = ob.prog.target_sig(ob.m, target)
+        args = split_args(argtext)
+        if len(args) != len(sig.params):
+            raise GenError(f"{ob.name}: {target} takes {len(sig.params)} arguments, given {len(args)}")
+        base = result or label or ("do" + cap(target.split(".")[-1]))
+        names = []
+        for a, p in zip(args, sig.params):
+            if _NAMED_LITERAL.match(a):
+                names.append(a)
+            else:
+                names.append(self.value(self.parse(a), p.type, base))
+        head = (f"{label}: " if label else "") + (f"{result} = " if result else "")
+        ob.call_stmt(f"{head}{target}({', '.join(names)}) {mark or ''}".rstrip())
+
+    def when(self, text):
+        parts = text.rsplit(None, 2)
+        if len(parts) != 3:
+            raise GenError(f"{self.ob.name}: when needs an expression and two labels: {text}")
+        expr, yes, no = parts
+        node = self.parse(expr)
+        if node[0] == "name":
+            cond = node[1]
+        else:
+            cond = self.fresh("check")
+            self.value(node, "Bool", cond, result=cond)
+        self.ob.need(cond, "Bool")
+        self.ob.step(f"branch if {cond} goto {yes} else goto {no}")
 
 
 class Generator:

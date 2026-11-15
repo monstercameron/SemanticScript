@@ -30,6 +30,9 @@ runtime includesModule bignum
 runtime includesModule floats
 runtime includesModule wide
 runtime includesModule clibrary
+runtime includesModule cformat
+runtime includesModule cstreams
+runtime includesModule cstart
 runtime includesModule loader
 runtime includesModule tasks
 runtime includesModule interrupts

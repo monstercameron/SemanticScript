@@ -24,9 +24,22 @@ clibrary imports output
 clibrary imports heap
 clibrary imports floats
 clibrary imports wide
+clibrary exports prepare
 clibrary exports lookup
 clibrary exports cStringLength
 clibrary exports cLibraryName
+clibrary exports byteAt
+clibrary exports setErrno
+clibrary exports lowInt32
+clibrary exports boundedLength
+clibrary exports errorText
+clibrary exports errorMessage
+clibrary exports memoryFind
+clibrary exports charOf
+clibrary exports isSpaceByte
+clibrary exports digitOf
+clibrary exports parseWhole
+clibrary exports parseReal
 
 memoryAccess is capability
 memoryAccess purpose "Authority to read and write the memory C callers hand the library"
@@ -44,11 +57,17 @@ systemCalls grants use system.calls none
 # data symbols `stdout` and `stderr` hold. machine.state bytes 1536 to 1663 belong to this module: 1536 errno, 1544
 # stdout's cell, 1552 stderr's, 1560 __stack_chk_guard, 1568 the block of ctype's tables (0 until first asked for),
 # 1576 to 1599 the three cells `__ctype_b_loc` and its kin give, 1600 the block getenv last gave on Windows, 1608 a
-# Float64 strtod reads into, 1616 the bits a hexadecimal strtod made.
+# Float64 strtod reads into, 1616 the bits a hexadecimal strtod made, 1624 the stdin cell. Bytes 1792 to 1887 too: strerror's text and
+# its digits.
 errnoAt is constant
 errnoAt purpose "Where errno is kept, in machine.state"
 errnoAt type Int64
 errnoAt value 1536
+
+stdinAt is constant
+stdinAt purpose "Where the stdin cell is kept, in machine.state"
+stdinAt type Int64
+stdinAt value 1624
 
 stdoutAt is constant
 stdoutAt purpose "Where the stdout cell is kept, in machine.state"
@@ -99,6 +118,16 @@ hexBitsAt is constant
 hexBitsAt purpose "Where a hexadecimal strtod puts the bits it made, in machine.state"
 hexBitsAt type Int64
 hexBitsAt value 1616
+
+errorTextAt is constant
+errorTextAt purpose "Where strerror writes its text, in machine.state (D-160): 64 bytes"
+errorTextAt type Int64
+errorTextAt value 1792
+
+errorDigitsAt is constant
+errorDigitsAt purpose "Where strerror writes a number's digits before copying them, in machine.state: 32 bytes"
+errorDigitsAt type Int64
+errorDigitsAt value 1856
 
 forever is constant
 forever purpose "The bound of a loop over text that ends at its 0 byte"
@@ -340,7 +369,7 @@ okCheck suppresses none
 # ---------------------------------------------------------------- small pieces
 byteAt is operation
 byteAt purpose "The byte at an address moved on by an offset"
-byteAt invariant none
+byteAt invariant readsByte "\"Gives the byte at the base moved on by the offset\""
 byteAt typeParameter none
 byteAt input base machine.Address copied
 byteAt input at Int64 copied
@@ -384,7 +413,7 @@ readByte suppresses none
 
 setErrno is operation
 setErrno purpose "Set errno, the cell __errno_location gives"
-setErrno invariant none
+setErrno invariant setsErrno "\"errno then holds the value\""
 setErrno typeParameter none
 setErrno input value Int32 copied
 setErrno output none
@@ -427,7 +456,7 @@ storeIt suppresses none
 
 lowInt32 is operation
 lowInt32 purpose "The low 32 bits of a whole number as an Int32, as C converts a long to an int"
-lowInt32 invariant none
+lowInt32 invariant wrapsLow "\"Keeps the low 32 bits as a signed int\""
 lowInt32 typeParameter none
 lowInt32 input value Int64 copied
 lowInt32 output Int32
@@ -516,7 +545,7 @@ narrowKept suppresses none
 
 charOf is operation
 charOf purpose "The unsigned char an int converts to: its low 8 bits"
-charOf invariant none
+charOf invariant keepsLowByte "\"Gives the int's low 8 bits\""
 charOf typeParameter none
 charOf input code Int32 copied
 charOf output Byte
@@ -717,7 +746,7 @@ lowerIt suppresses none
 
 isSpaceByte is operation
 isSpaceByte purpose "Whether a byte is white space in the C locale: space, or 9 to 13"
-isSpaceByte invariant none
+isSpaceByte invariant spacesLikeC "\"Space and 9 to 13 are white space, nothing else\""
 isSpaceByte typeParameter none
 isSpaceByte input value Byte copied
 isSpaceByte output Bool
@@ -860,7 +889,7 @@ bothCheck suppresses none
 
 digitOf is operation
 digitOf purpose "The value of a digit in bases up to 36 (0 to 9, then a or A for 10 to z or Z for 35), or 99 for any other byte"
-digitOf invariant none
+digitOf invariant readsDigits "\"0 to 9 then letters of either case give 0 to 35, other bytes 99\""
 digitOf typeParameter none
 digitOf input value Byte copied
 digitOf output UInt64
@@ -1356,8 +1385,8 @@ sameCheck catch none
 sameCheck suppresses none
 
 lookup is operation
-lookup purpose "The address of a function or variable of the C library by its name, or the address 0 when it has absent: the compiler's table of `abi library` operations, then the data symbols stdout, stderr, and __stack_chk_guard"
-lookup invariant findsByName "\"Finds strlen, abs, and toupper, stdout and stderr holding 1 and 2, and nothing for a name the library does not have\""
+lookup purpose "The address of a function or variable of the C library by its name, or the address 0 when it has absent: the compiler's table of `abi library` operations, then the data symbols stdin, stdout, stderr, and __stack_chk_guard"
+lookup invariant findsByName "\"Finds strlen, abs, and toupper, stdout holding the address of its FILE block, and nothing for a name the library does not have\""
 lookup typeParameter none
 lookup input name machine.Address copied
 lookup input bytes Int64 copied
@@ -1384,6 +1413,10 @@ lookup label found loopKind none
 lookup label found within none
 lookup label data loopKind none
 lookup label data within none
+lookup label giveStdin loopKind none
+lookup label giveStdin within none
+lookup label stdoutData loopKind none
+lookup label stdoutData within none
 lookup label giveStdout loopKind none
 lookup label giveStdout within none
 lookup label stderrCheck loopKind none
@@ -1397,6 +1430,7 @@ lookup label giveGuard within none
 lookup label absent loopKind none
 lookup label absent within none
 lookup let at Int64 0 mutable
+lookup let stdinText String "stdin" immutable
 lookup let stdoutText String "stdout" immutable
 lookup let stderrText String "stderr" immutable
 lookup let guardText String "__stack_chk_guard" immutable
@@ -1428,8 +1462,12 @@ lookup at advance goto eachRow
 lookup at found do findFunction
 lookup at found do readFunction
 lookup at found return ok function
-lookup at data do stdoutCheck
-lookup at data branch if isStdout goto giveStdout else goto stderrCheck
+lookup at data do readIsStdin
+lookup at data branch if isStdin goto giveStdin else goto stdoutData
+lookup at giveStdin do readStdinCell
+lookup at giveStdin return ok stdinCell
+lookup at stdoutData do stdoutCheck
+lookup at stdoutData branch if isStdout goto giveStdout else goto stderrCheck
 lookup at giveStdout do findStdout
 lookup at giveStdout return ok stdoutCell
 lookup at stderrCheck do matchStderr
@@ -1630,6 +1668,30 @@ readFunction borrows none
 readFunction catch none
 readFunction suppresses none
 
+readIsStdin is call
+readIsStdin in lookup
+readIsStdin invokes sameText
+readIsStdin argument name machine.Address name copy
+readIsStdin argument bytes Int64 bytes copy
+readIsStdin argument text String stdinText lend
+readIsStdin result isStdin Bool
+readIsStdin ownedBy none
+readIsStdin cleanedBy none
+readIsStdin borrows none
+readIsStdin catch none
+readIsStdin suppresses none
+
+readStdinCell is call
+readStdinCell in lookup
+readStdinCell invokes kernel.stateAt
+readStdinCell argument offset Int64 stdinAt copy
+readStdinCell result stdinCell machine.Address
+readStdinCell ownedBy none
+readStdinCell cleanedBy none
+readStdinCell borrows none
+readStdinCell catch none
+readStdinCell suppresses none
+
 stdoutCheck is call
 stdoutCheck in lookup
 stdoutCheck invokes sameText
@@ -1714,8 +1776,8 @@ nowhere catch none
 nowhere suppresses none
 
 prepare is operation
-prepare purpose "Set the data symbols' values, once: stdout holds 1 and stderr 2"
-prepare invariant none
+prepare purpose "Set the data symbols' values: stdin, stdout, and stderr hold the addresses of their FILE blocks in machine.state, which the stdio module fills in when a stream is first used (D-160)"
+prepare invariant pointsAtStreams "\"stdin, stdout, and stderr hold their FILE blocks' addresses\""
 prepare typeParameter none
 prepare input none
 prepare output none
@@ -1728,59 +1790,121 @@ prepare async false
 prepare maxRecursion none
 prepare label begin loopKind none
 prepare label begin within none
-prepare let one Int64 1 immutable
-prepare let two Int64 2 immutable
-prepare at begin do findStdout
-prepare at begin do storeStdout
-prepare at begin do findStderr
-prepare at begin do storeStderr
+prepare let n1920 Int64 1920 immutable
+prepare let n2048 Int64 2048 immutable
+prepare let n2176 Int64 2176 immutable
+prepare at begin do readStdinCell
+prepare at begin do readStdinFile
+prepare at begin do doStoreAddress
+prepare at begin do readStdoutCell
+prepare at begin do readStdoutFile
+prepare at begin do doStoreAddress2
+prepare at begin do readStderrCell
+prepare at begin do readStderrFile
+prepare at begin do doStoreAddress3
 prepare at begin return ok none
 
-findStdout is call
-findStdout in prepare
-findStdout invokes kernel.stateAt
-findStdout argument offset Int64 stdoutAt copy
-findStdout result stdoutCell machine.Address
-findStdout ownedBy none
-findStdout cleanedBy none
-findStdout borrows none
-findStdout catch none
-findStdout suppresses none
+readStdinCell is call
+readStdinCell in prepare
+readStdinCell invokes kernel.stateAt
+readStdinCell argument offset Int64 stdinAt copy
+readStdinCell result stdinCell machine.Address
+readStdinCell ownedBy none
+readStdinCell cleanedBy none
+readStdinCell borrows none
+readStdinCell catch none
+readStdinCell suppresses none
 
-storeStdout is call
-storeStdout in prepare
-storeStdout invokes machine.storeInt64
-storeStdout argument address machine.Address stdoutCell copy
-storeStdout argument value Int64 one copy
-storeStdout result none
-storeStdout ownedBy none
-storeStdout cleanedBy none
-storeStdout borrows none
-storeStdout catch none
-storeStdout suppresses none
+readStdinFile is call
+readStdinFile in prepare
+readStdinFile invokes kernel.stateAt
+readStdinFile argument offset Int64 n1920 copy
+readStdinFile result stdinFile machine.Address
+readStdinFile ownedBy none
+readStdinFile cleanedBy none
+readStdinFile borrows none
+readStdinFile catch none
+readStdinFile suppresses none
 
-findStderr is call
-findStderr in prepare
-findStderr invokes kernel.stateAt
-findStderr argument offset Int64 stderrAt copy
-findStderr result stderrCell machine.Address
-findStderr ownedBy none
-findStderr cleanedBy none
-findStderr borrows none
-findStderr catch none
-findStderr suppresses none
+doStoreAddress is call
+doStoreAddress in prepare
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address stdinCell copy
+doStoreAddress argument value machine.Address stdinFile copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
 
-storeStderr is call
-storeStderr in prepare
-storeStderr invokes machine.storeInt64
-storeStderr argument address machine.Address stderrCell copy
-storeStderr argument value Int64 two copy
-storeStderr result none
-storeStderr ownedBy none
-storeStderr cleanedBy none
-storeStderr borrows none
-storeStderr catch none
-storeStderr suppresses none
+readStdoutCell is call
+readStdoutCell in prepare
+readStdoutCell invokes kernel.stateAt
+readStdoutCell argument offset Int64 stdoutAt copy
+readStdoutCell result stdoutCell machine.Address
+readStdoutCell ownedBy none
+readStdoutCell cleanedBy none
+readStdoutCell borrows none
+readStdoutCell catch none
+readStdoutCell suppresses none
+
+readStdoutFile is call
+readStdoutFile in prepare
+readStdoutFile invokes kernel.stateAt
+readStdoutFile argument offset Int64 n2048 copy
+readStdoutFile result stdoutFile machine.Address
+readStdoutFile ownedBy none
+readStdoutFile cleanedBy none
+readStdoutFile borrows none
+readStdoutFile catch none
+readStdoutFile suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in prepare
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address stdoutCell copy
+doStoreAddress2 argument value machine.Address stdoutFile copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+readStderrCell is call
+readStderrCell in prepare
+readStderrCell invokes kernel.stateAt
+readStderrCell argument offset Int64 stderrAt copy
+readStderrCell result stderrCell machine.Address
+readStderrCell ownedBy none
+readStderrCell cleanedBy none
+readStderrCell borrows none
+readStderrCell catch none
+readStderrCell suppresses none
+
+readStderrFile is call
+readStderrFile in prepare
+readStderrFile invokes kernel.stateAt
+readStderrFile argument offset Int64 n2176 copy
+readStderrFile result stderrFile machine.Address
+readStderrFile ownedBy none
+readStderrFile cleanedBy none
+readStderrFile borrows none
+readStderrFile catch none
+readStderrFile suppresses none
+
+doStoreAddress3 is call
+doStoreAddress3 in prepare
+doStoreAddress3 invokes machine.storeAddress
+doStoreAddress3 argument address machine.Address stderrCell copy
+doStoreAddress3 argument value machine.Address stderrFile copy
+doStoreAddress3 result none
+doStoreAddress3 ownedBy none
+doStoreAddress3 cleanedBy none
+doStoreAddress3 borrows none
+doStoreAddress3 catch none
+doStoreAddress3 suppresses none
 
 # ---------------------------------------------------------------- ctype.h
 classBits is operation
@@ -3798,7 +3922,7 @@ stepIt suppresses none
 
 boundedLength is operation
 boundedLength purpose "strnlen: how many bytes come before the first 0 byte, at most a limit"
-boundedLength invariant none
+boundedLength invariant stopsAtBound "\"Counts to the 0 byte or the bound, whichever comes first\""
 boundedLength typeParameter none
 boundedLength input text machine.Address copied
 boundedLength input most Int64 copied
@@ -4445,7 +4569,7 @@ fillIt suppresses none
 
 memoryFind is operation
 memoryFind purpose "memchr: the address of the first byte of a range that is a value's unsigned char, or the address 0"
-memoryFind invariant none
+memoryFind invariant findsByte "\"Gives the first byte equal to the value's unsigned char, or 0\""
 memoryFind typeParameter none
 memoryFind input text machine.Address copied
 memoryFind input value Int32 copied
@@ -11573,6 +11697,477 @@ findCell borrows none
 findCell catch none
 findCell suppresses none
 
+errorText is operation
+errorText purpose "strerror: the text for an error number, in a block of machine.state the next call replaces; for now every number is `Unknown error N` (D-160: glibc's messages are a known gap)"
+errorText invariant namesErrors "\"Gives `Unknown error N` with N the number in decimal, negative ones with their sign\""
+errorText typeParameter none
+errorText input code Int32 copied
+errorText output machine.Address
+errorText outputOwnedBy none
+errorText raises none
+errorText effect use machine.memory
+errorText uses memoryAccess
+errorText memoryHeap false
+errorText async false
+errorText maxRecursion none
+errorText abi library "strerror"
+errorText label begin loopKind none
+errorText label begin within none
+errorText label eachDigit loopKind while
+errorText label eachDigit within none
+errorText label eachDigit maxIterations forever
+errorText label sign loopKind none
+errorText label sign within none
+errorText label minus loopKind none
+errorText label minus within none
+errorText label copyDigits loopKind none
+errorText label copyDigits within none
+errorText let prefix String "Unknown error " immutable
+errorText let place Int64 31 mutable
+errorText let rest Int64 0 mutable
+errorText let n14 Int64 14 immutable
+errorText let zero Int64 0 immutable
+errorText let one Int64 1 immutable
+errorText let ten Int64 10 immutable
+errorText let byte48 Byte 48 immutable
+errorText let byte45 Byte 45 immutable
+errorText let n31 Int64 31 immutable
+errorText let byte0 Byte 0 immutable
+errorText at begin do readBuffer
+errorText at begin do readPrefixAt
+errorText at begin do doCopy
+errorText at begin do findWideCode1
+errorText at begin do findNegative1
+errorText at begin do findRestNext11
+errorText at begin set rest restNext1
+errorText at begin do readDigits
+errorText at begin goto eachDigit
+errorText at eachDigit do findPlaceNext11
+errorText at eachDigit set place placeNext1
+errorText at eachDigit do digitStep1
+errorText at eachDigit do digitStep2
+errorText at eachDigit do findDigit1
+errorText at eachDigit do findDigitAt1
+errorText at eachDigit do doStoreByte
+errorText at eachDigit do findRestNext21
+errorText at eachDigit set rest restNext2
+errorText at eachDigit do findCheck11
+errorText at eachDigit branch if check1 goto sign else goto eachDigit
+errorText at sign branch if negative goto minus else goto copyDigits
+errorText at minus do findPlaceNext21
+errorText at minus set place placeNext2
+errorText at minus do findMinusAt1
+errorText at minus do doStoreByte2
+errorText at minus goto copyDigits
+errorText at copyDigits do findFromAt1
+errorText at copyDigits do findCount1
+errorText at copyDigits do findToAt1
+errorText at copyDigits do doCopy2
+errorText at copyDigits do endAtStep1
+errorText at copyDigits do findEndAt1
+errorText at copyDigits do doStoreByte3
+errorText at copyDigits return ok buffer
+
+readBuffer is call
+readBuffer in errorText
+readBuffer invokes kernel.stateAt
+readBuffer argument offset Int64 errorTextAt copy
+readBuffer result buffer machine.Address
+readBuffer ownedBy none
+readBuffer cleanedBy none
+readBuffer borrows none
+readBuffer catch none
+readBuffer suppresses none
+
+readPrefixAt is call
+readPrefixAt in errorText
+readPrefixAt invokes machine.addressOfString
+readPrefixAt argument text String prefix lend
+readPrefixAt result prefixAt machine.Address
+readPrefixAt ownedBy none
+readPrefixAt cleanedBy none
+readPrefixAt borrows none
+readPrefixAt catch none
+readPrefixAt suppresses none
+
+doCopy is call
+doCopy in errorText
+doCopy invokes machine.copy
+doCopy argument target machine.Address buffer copy
+doCopy argument source machine.Address prefixAt copy
+doCopy argument bytes Int64 n14 copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+findWideCode1 is call
+findWideCode1 in errorText
+findWideCode1 invokes convert.int32ToInt64
+findWideCode1 argument value Int32 code copy
+findWideCode1 result wideCode Int64
+findWideCode1 ownedBy none
+findWideCode1 cleanedBy none
+findWideCode1 borrows none
+findWideCode1 catch none
+findWideCode1 suppresses none
+
+findNegative1 is call
+findNegative1 in errorText
+findNegative1 invokes compare.lessThanInt64
+findNegative1 argument left Int64 wideCode copy
+findNegative1 argument right Int64 zero copy
+findNegative1 result negative Bool
+findNegative1 ownedBy none
+findNegative1 cleanedBy none
+findNegative1 borrows none
+findNegative1 catch none
+findNegative1 suppresses none
+
+findRestNext11 is call
+findRestNext11 in errorText
+findRestNext11 invokes absoluteWide
+findRestNext11 argument value Int64 wideCode copy
+findRestNext11 result restNext1 Int64
+findRestNext11 ownedBy none
+findRestNext11 cleanedBy none
+findRestNext11 borrows none
+findRestNext11 catch none
+findRestNext11 suppresses none
+
+readDigits is call
+readDigits in errorText
+readDigits invokes kernel.stateAt
+readDigits argument offset Int64 errorDigitsAt copy
+readDigits result digits machine.Address
+readDigits ownedBy none
+readDigits cleanedBy none
+readDigits borrows none
+readDigits catch none
+readDigits suppresses none
+
+findPlaceNext11 is call
+findPlaceNext11 in errorText
+findPlaceNext11 invokes math.subtractInt64
+findPlaceNext11 argument left Int64 place copy
+findPlaceNext11 argument right Int64 one copy
+findPlaceNext11 result placeNext1 Int64
+findPlaceNext11 ownedBy none
+findPlaceNext11 cleanedBy none
+findPlaceNext11 borrows none
+findPlaceNext11 catch none
+findPlaceNext11 suppresses none
+
+digitStep1 is call
+digitStep1 in errorText
+digitStep1 invokes math.remainderInt64
+digitStep1 argument left Int64 rest copy
+digitStep1 argument right Int64 ten copy
+digitStep1 result digitPart1 Int64
+digitStep1 ownedBy none
+digitStep1 cleanedBy none
+digitStep1 borrows none
+digitStep1 catch none
+digitStep1 suppresses none
+
+digitStep2 is call
+digitStep2 in errorText
+digitStep2 invokes convert.int64ToByte
+digitStep2 argument value Int64 digitPart1 copy
+digitStep2 result digitPart2 Byte
+digitStep2 ownedBy none
+digitStep2 cleanedBy none
+digitStep2 borrows none
+digitStep2 catch none
+digitStep2 suppresses none
+
+findDigit1 is call
+findDigit1 in errorText
+findDigit1 invokes math.addByte
+findDigit1 argument left Byte digitPart2 copy
+findDigit1 argument right Byte byte48 copy
+findDigit1 result digit Byte
+findDigit1 ownedBy none
+findDigit1 cleanedBy none
+findDigit1 borrows none
+findDigit1 catch none
+findDigit1 suppresses none
+
+findDigitAt1 is call
+findDigitAt1 in errorText
+findDigitAt1 invokes machine.offset
+findDigitAt1 argument address machine.Address digits copy
+findDigitAt1 argument bytes Int64 place copy
+findDigitAt1 result digitAt machine.Address
+findDigitAt1 ownedBy none
+findDigitAt1 cleanedBy none
+findDigitAt1 borrows none
+findDigitAt1 catch none
+findDigitAt1 suppresses none
+
+doStoreByte is call
+doStoreByte in errorText
+doStoreByte invokes machine.storeByte
+doStoreByte argument address machine.Address digitAt copy
+doStoreByte argument value Byte digit copy
+doStoreByte result none
+doStoreByte ownedBy none
+doStoreByte cleanedBy none
+doStoreByte borrows none
+doStoreByte catch none
+doStoreByte suppresses none
+
+findRestNext21 is call
+findRestNext21 in errorText
+findRestNext21 invokes math.divideInt64
+findRestNext21 argument left Int64 rest copy
+findRestNext21 argument right Int64 ten copy
+findRestNext21 result restNext2 Int64
+findRestNext21 ownedBy none
+findRestNext21 cleanedBy none
+findRestNext21 borrows none
+findRestNext21 catch none
+findRestNext21 suppresses none
+
+findCheck11 is call
+findCheck11 in errorText
+findCheck11 invokes compare.equalInt64
+findCheck11 argument left Int64 rest copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findPlaceNext21 is call
+findPlaceNext21 in errorText
+findPlaceNext21 invokes math.subtractInt64
+findPlaceNext21 argument left Int64 place copy
+findPlaceNext21 argument right Int64 one copy
+findPlaceNext21 result placeNext2 Int64
+findPlaceNext21 ownedBy none
+findPlaceNext21 cleanedBy none
+findPlaceNext21 borrows none
+findPlaceNext21 catch none
+findPlaceNext21 suppresses none
+
+findMinusAt1 is call
+findMinusAt1 in errorText
+findMinusAt1 invokes machine.offset
+findMinusAt1 argument address machine.Address digits copy
+findMinusAt1 argument bytes Int64 place copy
+findMinusAt1 result minusAt machine.Address
+findMinusAt1 ownedBy none
+findMinusAt1 cleanedBy none
+findMinusAt1 borrows none
+findMinusAt1 catch none
+findMinusAt1 suppresses none
+
+doStoreByte2 is call
+doStoreByte2 in errorText
+doStoreByte2 invokes machine.storeByte
+doStoreByte2 argument address machine.Address minusAt copy
+doStoreByte2 argument value Byte byte45 copy
+doStoreByte2 result none
+doStoreByte2 ownedBy none
+doStoreByte2 cleanedBy none
+doStoreByte2 borrows none
+doStoreByte2 catch none
+doStoreByte2 suppresses none
+
+findFromAt1 is call
+findFromAt1 in errorText
+findFromAt1 invokes machine.offset
+findFromAt1 argument address machine.Address digits copy
+findFromAt1 argument bytes Int64 place copy
+findFromAt1 result fromAt machine.Address
+findFromAt1 ownedBy none
+findFromAt1 cleanedBy none
+findFromAt1 borrows none
+findFromAt1 catch none
+findFromAt1 suppresses none
+
+findCount1 is call
+findCount1 in errorText
+findCount1 invokes math.subtractInt64
+findCount1 argument left Int64 n31 copy
+findCount1 argument right Int64 place copy
+findCount1 result count Int64
+findCount1 ownedBy none
+findCount1 cleanedBy none
+findCount1 borrows none
+findCount1 catch none
+findCount1 suppresses none
+
+findToAt1 is call
+findToAt1 in errorText
+findToAt1 invokes machine.offset
+findToAt1 argument address machine.Address buffer copy
+findToAt1 argument bytes Int64 n14 copy
+findToAt1 result toAt machine.Address
+findToAt1 ownedBy none
+findToAt1 cleanedBy none
+findToAt1 borrows none
+findToAt1 catch none
+findToAt1 suppresses none
+
+doCopy2 is call
+doCopy2 in errorText
+doCopy2 invokes machine.copy
+doCopy2 argument target machine.Address toAt copy
+doCopy2 argument source machine.Address fromAt copy
+doCopy2 argument bytes Int64 count copy
+doCopy2 result none
+doCopy2 ownedBy none
+doCopy2 cleanedBy none
+doCopy2 borrows none
+doCopy2 catch none
+doCopy2 suppresses none
+
+endAtStep1 is call
+endAtStep1 in errorText
+endAtStep1 invokes machine.offset
+endAtStep1 argument address machine.Address buffer copy
+endAtStep1 argument bytes Int64 n14 copy
+endAtStep1 result endAtPart1 machine.Address
+endAtStep1 ownedBy none
+endAtStep1 cleanedBy none
+endAtStep1 borrows none
+endAtStep1 catch none
+endAtStep1 suppresses none
+
+findEndAt1 is call
+findEndAt1 in errorText
+findEndAt1 invokes machine.offset
+findEndAt1 argument address machine.Address endAtPart1 copy
+findEndAt1 argument bytes Int64 count copy
+findEndAt1 result endAt machine.Address
+findEndAt1 ownedBy none
+findEndAt1 cleanedBy none
+findEndAt1 borrows none
+findEndAt1 catch none
+findEndAt1 suppresses none
+
+doStoreByte3 is call
+doStoreByte3 in errorText
+doStoreByte3 invokes machine.storeByte
+doStoreByte3 argument address machine.Address endAt copy
+doStoreByte3 argument value Byte byte0 copy
+doStoreByte3 result none
+doStoreByte3 ownedBy none
+doStoreByte3 cleanedBy none
+doStoreByte3 borrows none
+doStoreByte3 catch none
+doStoreByte3 suppresses none
+
+absoluteWide is operation
+absoluteWide purpose "The magnitude of an Int64 that came from an Int32 (so it never overflows)"
+absoluteWide invariant none
+absoluteWide typeParameter none
+absoluteWide input value Int64 copied
+absoluteWide output Int64
+absoluteWide outputOwnedBy none
+absoluteWide raises none
+absoluteWide effect none
+absoluteWide uses none
+absoluteWide memoryHeap false
+absoluteWide async false
+absoluteWide maxRecursion none
+absoluteWide label begin loopKind none
+absoluteWide label begin within none
+absoluteWide label flip loopKind none
+absoluteWide label flip within none
+absoluteWide label keep loopKind none
+absoluteWide label keep within none
+absoluteWide let zero Int64 0 immutable
+absoluteWide at begin do findCheck11
+absoluteWide at begin branch if check1 goto flip else goto keep
+absoluteWide at flip do findFlipped1
+absoluteWide at flip return ok flipped
+absoluteWide at keep return ok value
+
+findCheck11 is call
+findCheck11 in absoluteWide
+findCheck11 invokes compare.lessThanInt64
+findCheck11 argument left Int64 value copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findFlipped1 is call
+findFlipped1 in absoluteWide
+findFlipped1 invokes math.subtractInt64
+findFlipped1 argument left Int64 zero copy
+findFlipped1 argument right Int64 value copy
+findFlipped1 result flipped Int64
+findFlipped1 ownedBy none
+findFlipped1 cleanedBy none
+findFlipped1 borrows none
+findFlipped1 catch none
+findFlipped1 suppresses none
+
+errorMessage is operation
+errorMessage purpose "The text strerror gives for errno now"
+errorMessage invariant describesErrno "\"Gives strerror of errno\""
+errorMessage typeParameter none
+errorMessage input none
+errorMessage output machine.Address
+errorMessage outputOwnedBy none
+errorMessage raises none
+errorMessage effect use machine.memory
+errorMessage uses memoryAccess
+errorMessage memoryHeap false
+errorMessage async false
+errorMessage maxRecursion none
+errorMessage label begin loopKind none
+errorMessage label begin within none
+errorMessage let none
+errorMessage at begin do readCell
+errorMessage at begin do readCode
+errorMessage at begin do readText
+errorMessage at begin return ok text
+
+readCell is call
+readCell in errorMessage
+readCell invokes kernel.stateAt
+readCell argument offset Int64 errnoAt copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+readCode is call
+readCode in errorMessage
+readCode invokes machine.loadInt32
+readCode argument address machine.Address cell copy
+readCode result code Int32
+readCode ownedBy none
+readCode cleanedBy none
+readCode borrows none
+readCode catch none
+readCode suppresses none
+
+readText is call
+readText in errorMessage
+readText invokes errorText
+readText argument code Int32 code copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
 sortItems is operation
 sortItems purpose "qsort: sort a count of items of a size with a comparison, stably (glibc's merge sort keeps equal items in their order): runs of 1, 2, 4, and so on merged through a block of the same size"
 sortItems invariant sortsStably "\"Sorts by the comparison and keeps equal items in the order they were\""
@@ -12962,37 +13557,6 @@ storeLast cleanedBy none
 storeLast borrows none
 storeLast catch none
 storeLast suppresses none
-
-exitProcess is operation
-exitProcess purpose "exit and _exit: end the process with a status (the runtime's output is written as it goes, so there is nothing to flush)"
-exitProcess invariant none
-exitProcess typeParameter none
-exitProcess input code Int32 copied
-exitProcess output none
-exitProcess outputOwnedBy none
-exitProcess raises none
-exitProcess effect use system.calls
-exitProcess uses systemCalls
-exitProcess memoryHeap false
-exitProcess async false
-exitProcess maxRecursion none
-exitProcess abi library "exit"
-exitProcess label begin loopKind none
-exitProcess label begin within none
-exitProcess let none
-exitProcess at begin do endIt
-exitProcess at begin return ok none
-
-endIt is call
-endIt in exitProcess
-endIt invokes endProcess
-endIt argument code Int32 code copy
-endIt result none
-endIt ownedBy none
-endIt cleanedBy none
-endIt borrows none
-endIt catch none
-endIt suppresses none
 
 exitNow is operation
 exitNow purpose "_exit: end the process with a status at once"
@@ -14888,523 +15452,3 @@ remainderIt cleanedBy none
 remainderIt borrows none
 remainderIt catch none
 remainderIt suppresses none
-
-# ---------------------------------------------------------------- stdio.h
-putString is operation
-putString purpose "puts: a C string and a line feed on standard output; a nonnegative number (the bytes written, at most INT_MAX), or EOF (-1)"
-putString invariant none
-putString typeParameter none
-putString input text machine.Address copied
-putString output Int32
-putString outputOwnedBy none
-putString raises none
-putString effect use machine.memory
-putString effect use system.calls
-putString uses memoryAccess
-putString uses systemCalls
-putString memoryHeap false
-putString async false
-putString maxRecursion none
-putString abi library "puts"
-putString label begin loopKind none
-putString label begin within none
-putString label lineIt loopKind none
-putString label lineIt within none
-putString label counted loopKind none
-putString label counted within none
-putString label giveMost loopKind none
-putString label giveMost within none
-putString label giveCount loopKind none
-putString label giveCount within none
-putString label refuse loopKind none
-putString label refuse within none
-putString let lineEnd String "\n" immutable
-putString let failedStatus Int32 -1 immutable
-putString let mostInt Int32 2147483647 immutable
-putString let one Int64 1 immutable
-putString let ok32 Int32 0 immutable
-putString let intMax Int64 2147483647 immutable
-putString at begin do measure
-putString at begin do writeIt
-putString at begin do failedCheck
-putString at begin branch if failed goto refuse else goto lineIt
-putString at lineIt do findEnd
-putString at lineIt do writeEnd
-putString at lineIt do endFailed
-putString at lineIt branch if failedEnd goto refuse else goto counted
-putString at counted do withEnd
-putString at counted do bigCheck
-putString at counted branch if big goto giveMost else goto giveCount
-putString at giveMost return ok mostInt
-putString at giveCount do narrowIt
-putString at giveCount return ok count
-putString at refuse return ok failedStatus
-
-measure is call
-measure in putString
-measure invokes cStringLength
-measure argument text machine.Address text copy
-measure result length Int64
-measure ownedBy none
-measure cleanedBy none
-measure borrows none
-measure catch none
-measure suppresses none
-
-writeIt is call
-writeIt in putString
-writeIt invokes writeStream
-writeIt argument stream Int64 one copy
-writeIt argument text machine.Address text copy
-writeIt argument bytes Int64 length copy
-writeIt result status Int32
-writeIt ownedBy none
-writeIt cleanedBy none
-writeIt borrows none
-writeIt catch none
-writeIt suppresses none
-
-failedCheck is call
-failedCheck in putString
-failedCheck invokes compare.notEqualInt32
-failedCheck argument left Int32 status copy
-failedCheck argument right Int32 ok32 copy
-failedCheck result failed Bool
-failedCheck ownedBy none
-failedCheck cleanedBy none
-failedCheck borrows none
-failedCheck catch none
-failedCheck suppresses none
-
-findEnd is call
-findEnd in putString
-findEnd invokes machine.addressOfString
-findEnd argument text String lineEnd lend
-findEnd result endAt machine.Address
-findEnd ownedBy none
-findEnd cleanedBy none
-findEnd borrows none
-findEnd catch none
-findEnd suppresses none
-
-writeEnd is call
-writeEnd in putString
-writeEnd invokes writeStream
-writeEnd argument stream Int64 one copy
-writeEnd argument text machine.Address endAt copy
-writeEnd argument bytes Int64 one copy
-writeEnd result endStatus Int32
-writeEnd ownedBy none
-writeEnd cleanedBy none
-writeEnd borrows none
-writeEnd catch none
-writeEnd suppresses none
-
-endFailed is call
-endFailed in putString
-endFailed invokes compare.notEqualInt32
-endFailed argument left Int32 endStatus copy
-endFailed argument right Int32 ok32 copy
-endFailed result failedEnd Bool
-endFailed ownedBy none
-endFailed cleanedBy none
-endFailed borrows none
-endFailed catch none
-endFailed suppresses none
-
-withEnd is call
-withEnd in putString
-withEnd invokes math.addInt64
-withEnd argument left Int64 length copy
-withEnd argument right Int64 one copy
-withEnd result written Int64
-withEnd ownedBy none
-withEnd cleanedBy none
-withEnd borrows none
-withEnd catch none
-withEnd suppresses none
-
-bigCheck is call
-bigCheck in putString
-bigCheck invokes compare.greaterThanInt64
-bigCheck argument left Int64 written copy
-bigCheck argument right Int64 intMax copy
-bigCheck result big Bool
-bigCheck ownedBy none
-bigCheck cleanedBy none
-bigCheck borrows none
-bigCheck catch none
-bigCheck suppresses none
-
-narrowIt is call
-narrowIt in putString
-narrowIt invokes convert.int64ToInt32
-narrowIt argument value Int64 written copy
-narrowIt result count Int32
-narrowIt ownedBy none
-narrowIt cleanedBy none
-narrowIt borrows none
-narrowIt catch none
-narrowIt suppresses none
-
-putStream is operation
-putStream purpose "fputs: a C string on a stream (1 stdout, 2 stderr); 1, or EOF (-1)"
-putStream invariant none
-putStream typeParameter none
-putStream input text machine.Address copied
-putStream input stream Int64 copied
-putStream output Int32
-putStream outputOwnedBy none
-putStream raises none
-putStream effect use machine.memory
-putStream effect use system.calls
-putStream uses memoryAccess
-putStream uses systemCalls
-putStream memoryHeap false
-putStream async false
-putStream maxRecursion none
-putStream abi library "fputs"
-putStream label begin loopKind none
-putStream label begin within none
-putStream label done loopKind none
-putStream label done within none
-putStream label refuse loopKind none
-putStream label refuse within none
-putStream let failedStatus Int32 -1 immutable
-putStream let one32 Int32 1 immutable
-putStream let ok32 Int32 0 immutable
-putStream at begin do measure
-putStream at begin do writeIt
-putStream at begin do failedCheck
-putStream at begin branch if failed goto refuse else goto done
-putStream at done return ok one32
-putStream at refuse return ok failedStatus
-
-measure is call
-measure in putStream
-measure invokes cStringLength
-measure argument text machine.Address text copy
-measure result length Int64
-measure ownedBy none
-measure cleanedBy none
-measure borrows none
-measure catch none
-measure suppresses none
-
-writeIt is call
-writeIt in putStream
-writeIt invokes writeStream
-writeIt argument stream Int64 stream copy
-writeIt argument text machine.Address text copy
-writeIt argument bytes Int64 length copy
-writeIt result status Int32
-writeIt ownedBy none
-writeIt cleanedBy none
-writeIt borrows none
-writeIt catch none
-writeIt suppresses none
-
-failedCheck is call
-failedCheck in putStream
-failedCheck invokes compare.notEqualInt32
-failedCheck argument left Int32 status copy
-failedCheck argument right Int32 ok32 copy
-failedCheck result failed Bool
-failedCheck ownedBy none
-failedCheck cleanedBy none
-failedCheck borrows none
-failedCheck catch none
-failedCheck suppresses none
-
-putCharacterOn is operation
-putCharacterOn purpose "fputc and putc: a character's unsigned char on a stream; the character, or EOF (-1)"
-putCharacterOn invariant none
-putCharacterOn typeParameter none
-putCharacterOn input code Int32 copied
-putCharacterOn input stream Int64 copied
-putCharacterOn output Int32
-putCharacterOn outputOwnedBy none
-putCharacterOn raises none
-putCharacterOn effect use machine.memory
-putCharacterOn effect use system.calls
-putCharacterOn uses memoryAccess
-putCharacterOn uses systemCalls
-putCharacterOn memoryHeap false
-putCharacterOn async false
-putCharacterOn maxRecursion none
-putCharacterOn abi library "fputc"
-putCharacterOn label begin loopKind none
-putCharacterOn label begin within none
-putCharacterOn label done loopKind none
-putCharacterOn label done within none
-putCharacterOn label refuse loopKind none
-putCharacterOn label refuse within none
-putCharacterOn let failedStatus Int32 -1 immutable
-putCharacterOn let one Int64 1 immutable
-putCharacterOn let ok32 Int32 0 immutable
-putCharacterOn at begin do charIt
-putCharacterOn at begin do findCell
-putCharacterOn at begin do storeIt
-putCharacterOn at begin do writeIt
-putCharacterOn at begin do failedCheck
-putCharacterOn at begin branch if failed goto refuse else goto done
-putCharacterOn at done do widenIt
-putCharacterOn at done do narrowIt
-putCharacterOn at done return ok result
-putCharacterOn at refuse return ok failedStatus
-
-charIt is call
-charIt in putCharacterOn
-charIt invokes charOf
-charIt argument code Int32 code copy
-charIt result character Byte
-charIt ownedBy none
-charIt cleanedBy none
-charIt borrows none
-charIt catch none
-charIt suppresses none
-
-findCell is call
-findCell in putCharacterOn
-findCell invokes kernel.stateAt
-findCell argument offset Int64 realAt copy
-findCell result cell machine.Address
-findCell ownedBy none
-findCell cleanedBy none
-findCell borrows none
-findCell catch none
-findCell suppresses none
-
-storeIt is call
-storeIt in putCharacterOn
-storeIt invokes machine.storeByte
-storeIt argument address machine.Address cell copy
-storeIt argument value Byte character copy
-storeIt result none
-storeIt ownedBy none
-storeIt cleanedBy none
-storeIt borrows none
-storeIt catch none
-storeIt suppresses none
-
-writeIt is call
-writeIt in putCharacterOn
-writeIt invokes writeStream
-writeIt argument stream Int64 stream copy
-writeIt argument text machine.Address cell copy
-writeIt argument bytes Int64 one copy
-writeIt result status Int32
-writeIt ownedBy none
-writeIt cleanedBy none
-writeIt borrows none
-writeIt catch none
-writeIt suppresses none
-
-failedCheck is call
-failedCheck in putCharacterOn
-failedCheck invokes compare.notEqualInt32
-failedCheck argument left Int32 status copy
-failedCheck argument right Int32 ok32 copy
-failedCheck result failed Bool
-failedCheck ownedBy none
-failedCheck cleanedBy none
-failedCheck borrows none
-failedCheck catch none
-failedCheck suppresses none
-
-widenIt is call
-widenIt in putCharacterOn
-widenIt invokes convert.byteToInt64
-widenIt argument value Byte character copy
-widenIt result wideCharacter Int64
-widenIt ownedBy none
-widenIt cleanedBy none
-widenIt borrows none
-widenIt catch none
-widenIt suppresses none
-
-narrowIt is call
-narrowIt in putCharacterOn
-narrowIt invokes convert.int64ToInt32
-narrowIt argument value Int64 wideCharacter copy
-narrowIt result result Int32
-narrowIt ownedBy none
-narrowIt cleanedBy none
-narrowIt borrows none
-narrowIt catch none
-narrowIt suppresses none
-
-putCharacterStream is operation
-putCharacterStream purpose "putc: fputc, a character's unsigned char on a stream"
-putCharacterStream invariant none
-putCharacterStream typeParameter none
-putCharacterStream input code Int32 copied
-putCharacterStream input stream Int64 copied
-putCharacterStream output Int32
-putCharacterStream outputOwnedBy none
-putCharacterStream raises none
-putCharacterStream effect use machine.memory
-putCharacterStream effect use system.calls
-putCharacterStream uses memoryAccess
-putCharacterStream uses systemCalls
-putCharacterStream memoryHeap false
-putCharacterStream async false
-putCharacterStream maxRecursion none
-putCharacterStream abi library "putc"
-putCharacterStream label begin loopKind none
-putCharacterStream label begin within none
-putCharacterStream let none
-putCharacterStream at begin do putIt
-putCharacterStream at begin return ok result
-
-putIt is call
-putIt in putCharacterStream
-putIt invokes putCharacterOn
-putIt argument code Int32 code copy
-putIt argument stream Int64 stream copy
-putIt result result Int32
-putIt ownedBy none
-putIt cleanedBy none
-putIt borrows none
-putIt catch none
-putIt suppresses none
-
-putCharacter is operation
-putCharacter purpose "putchar: a character's unsigned char on standard output; the character, or EOF (-1)"
-putCharacter invariant none
-putCharacter typeParameter none
-putCharacter input code Int32 copied
-putCharacter output Int32
-putCharacter outputOwnedBy none
-putCharacter raises none
-putCharacter effect use machine.memory
-putCharacter effect use system.calls
-putCharacter uses memoryAccess
-putCharacter uses systemCalls
-putCharacter memoryHeap false
-putCharacter async false
-putCharacter maxRecursion none
-putCharacter abi library "putchar"
-putCharacter label begin loopKind none
-putCharacter label begin within none
-putCharacter let one Int64 1 immutable
-putCharacter at begin do putIt
-putCharacter at begin return ok result
-
-putIt is call
-putIt in putCharacter
-putIt invokes putCharacterOn
-putIt argument code Int32 code copy
-putIt argument stream Int64 one copy
-putIt result result Int32
-putIt ownedBy none
-putIt cleanedBy none
-putIt borrows none
-putIt catch none
-putIt suppresses none
-
-writeItems is operation
-writeItems purpose "fwrite: a count of items of a size on a stream; how many items were written (all of them, or 0 when the write fails)"
-writeItems invariant none
-writeItems typeParameter none
-writeItems input data machine.Address copied
-writeItems input size Int64 copied
-writeItems input count Int64 copied
-writeItems input stream Int64 copied
-writeItems output Int64
-writeItems outputOwnedBy none
-writeItems raises none
-writeItems effect use machine.memory
-writeItems effect use system.calls
-writeItems uses memoryAccess
-writeItems uses systemCalls
-writeItems memoryHeap false
-writeItems async false
-writeItems maxRecursion none
-writeItems abi library "fwrite"
-writeItems label begin loopKind none
-writeItems label begin within none
-writeItems label write loopKind none
-writeItems label write within none
-writeItems label done loopKind none
-writeItems label done within none
-writeItems label giveNone loopKind none
-writeItems label giveNone within none
-writeItems let noItems Int64 0 immutable
-writeItems let ok32 Int32 0 immutable
-writeItems at begin do bytesOf
-writeItems at begin do emptyCheck
-writeItems at begin branch if empty goto giveNone else goto write
-writeItems at write do writeIt
-writeItems at write do failedCheck
-writeItems at write branch if failed goto giveNone else goto done
-writeItems at done return ok count
-writeItems at giveNone return ok noItems
-
-bytesOf is call
-bytesOf in writeItems
-bytesOf invokes math.multiplyInt64
-bytesOf argument left Int64 size copy
-bytesOf argument right Int64 count copy
-bytesOf result bytes Int64
-bytesOf ownedBy none
-bytesOf cleanedBy none
-bytesOf borrows none
-bytesOf catch none
-bytesOf suppresses none
-
-emptyCheck is call
-emptyCheck in writeItems
-emptyCheck invokes compare.equalInt64
-emptyCheck argument left Int64 bytes copy
-emptyCheck argument right Int64 noItems copy
-emptyCheck result empty Bool
-emptyCheck ownedBy none
-emptyCheck cleanedBy none
-emptyCheck borrows none
-emptyCheck catch none
-emptyCheck suppresses none
-
-writeIt is call
-writeIt in writeItems
-writeIt invokes writeStream
-writeIt argument stream Int64 stream copy
-writeIt argument text machine.Address data copy
-writeIt argument bytes Int64 bytes copy
-writeIt result status Int32
-writeIt ownedBy none
-writeIt cleanedBy none
-writeIt borrows none
-writeIt catch none
-writeIt suppresses none
-
-failedCheck is call
-failedCheck in writeItems
-failedCheck invokes compare.notEqualInt32
-failedCheck argument left Int32 status copy
-failedCheck argument right Int32 ok32 copy
-failedCheck result failed Bool
-failedCheck ownedBy none
-failedCheck cleanedBy none
-failedCheck borrows none
-failedCheck catch none
-failedCheck suppresses none
-
-flushStream is operation
-flushStream purpose "fflush: nothing is buffered, so 0"
-flushStream invariant none
-flushStream typeParameter none
-flushStream input stream Int64 copied
-flushStream output Int32
-flushStream outputOwnedBy none
-flushStream raises none
-flushStream effect none
-flushStream uses none
-flushStream memoryHeap false
-flushStream async false
-flushStream maxRecursion none
-flushStream abi library "fflush"
-flushStream label begin loopKind none
-flushStream label begin within none
-flushStream let ok32 Int32 0 immutable
-flushStream at begin return ok ok32

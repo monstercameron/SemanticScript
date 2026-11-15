@@ -44,6 +44,14 @@ stackBytes purpose "The bytes of the program's stack on Linux: 256 MiB"
 stackBytes type Int64
 stackBytes value 268435456
 
+# D-160: a program that wrote to the C library's streams (through `ffi`) has them flushed when it ends, as the C
+# library's exit flushes them: the stdio module keeps the address of fflush at machine.state byte 2336 once a stream
+# is first used, and the entry calls it with NULL before the process ends.
+flushHookAt is constant
+flushHookAt purpose "Where the address of the C library's fflush is kept once a C stream was used, in machine.state"
+flushHookAt type Int64
+flushHookAt value 2336
+
 endProcess is operation
 endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
 endProcess invariant none
@@ -116,6 +124,105 @@ callExitProcess borrows none
 callExitProcess catch none
 callExitProcess suppresses none
 
+flushStreams is operation
+flushStreams purpose "Call the C library's fflush(NULL) when a C stream was used, so what the streams hold is written"
+flushStreams invariant none
+flushStreams typeParameter none
+flushStreams input none
+flushStreams output none
+flushStreams outputOwnedBy none
+flushStreams raises none
+flushStreams effect use machine.memory
+flushStreams uses memoryAccess
+flushStreams memoryHeap false
+flushStreams async false
+flushStreams maxRecursion none
+flushStreams label begin loopKind none
+flushStreams label begin within none
+flushStreams label flush loopKind none
+flushStreams label flush within none
+flushStreams label done loopKind none
+flushStreams label done within none
+flushStreams let none
+flushStreams at begin do readState
+flushStreams at begin do readHookCell
+flushStreams at begin do readHook
+flushStreams at begin do readNowhere
+flushStreams at begin do readUnused
+flushStreams at begin branch if unused goto done else goto flush
+flushStreams at flush do doCallWithAddress
+flushStreams at flush return ok none
+flushStreams at done return ok none
+
+readState is call
+readState in flushStreams
+readState invokes machine.state
+readState argument none
+readState result state machine.Address
+readState ownedBy none
+readState cleanedBy none
+readState borrows none
+readState catch none
+readState suppresses none
+
+readHookCell is call
+readHookCell in flushStreams
+readHookCell invokes machine.offset
+readHookCell argument address machine.Address state copy
+readHookCell argument bytes Int64 flushHookAt copy
+readHookCell result hookCell machine.Address
+readHookCell ownedBy none
+readHookCell cleanedBy none
+readHookCell borrows none
+readHookCell catch none
+readHookCell suppresses none
+
+readHook is call
+readHook in flushStreams
+readHook invokes machine.loadAddress
+readHook argument address machine.Address hookCell copy
+readHook result hook machine.Address
+readHook ownedBy none
+readHook cleanedBy none
+readHook borrows none
+readHook catch none
+readHook suppresses none
+
+readNowhere is call
+readNowhere in flushStreams
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readUnused is call
+readUnused in flushStreams
+readUnused invokes machine.equal
+readUnused argument left machine.Address hook copy
+readUnused argument right machine.Address nowhere copy
+readUnused result unused Bool
+readUnused ownedBy none
+readUnused cleanedBy none
+readUnused borrows none
+readUnused catch none
+readUnused suppresses none
+
+doCallWithAddress is call
+doCallWithAddress in flushStreams
+doCallWithAddress invokes machine.callWithAddress
+doCallWithAddress argument function machine.Address hook copy
+doCallWithAddress argument argument machine.Address nowhere copy
+doCallWithAddress result none
+doCallWithAddress ownedBy none
+doCallWithAddress cleanedBy none
+doCallWithAddress borrows none
+doCallWithAddress catch none
+doCallWithAddress suppresses none
+
 entry is operation
 entry purpose "Start the process: set the stack floor, run the program's entry operation, and end the process with its exit code: refined_entry. On Linux the kernel's stack, with argc, argv, and envp on it, is the input"
 entry invariant none
@@ -162,6 +269,7 @@ entry at runOnStack do findLinuxState
 entry at runOnStack do findLinuxFloorSlot
 entry at runOnStack do storeLinuxFloor
 entry at runOnStack do runLinux
+entry at runOnStack do doFlushStreams
 entry at runOnStack do exitLinux
 entry at runOnStack return ok none
 entry at windowsStart do findHere
@@ -171,6 +279,7 @@ entry at windowsStart do findState
 entry at windowsStart do findFloorSlot
 entry at windowsStart do storeFloor
 entry at windowsStart do run
+entry at windowsStart do doFlushStreams2
 entry at windowsStart do exit
 entry at windowsStart return ok none
 
@@ -359,6 +468,17 @@ runLinux borrows none
 runLinux catch none
 runLinux suppresses none
 
+doFlushStreams is call
+doFlushStreams in entry
+doFlushStreams invokes flushStreams
+doFlushStreams argument none
+doFlushStreams result none
+doFlushStreams ownedBy none
+doFlushStreams cleanedBy none
+doFlushStreams borrows none
+doFlushStreams catch none
+doFlushStreams suppresses none
+
 exitLinux is call
 exitLinux in entry
 exitLinux invokes endProcess
@@ -449,6 +569,17 @@ run cleanedBy none
 run borrows none
 run catch none
 run suppresses none
+
+doFlushStreams2 is call
+doFlushStreams2 in entry
+doFlushStreams2 invokes flushStreams
+doFlushStreams2 argument none
+doFlushStreams2 result none
+doFlushStreams2 ownedBy none
+doFlushStreams2 cleanedBy none
+doFlushStreams2 borrows none
+doFlushStreams2 catch none
+doFlushStreams2 suppresses none
 
 exit is call
 exit in entry

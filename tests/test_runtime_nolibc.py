@@ -310,11 +310,13 @@ def test_c_library_table_names_glibc_functions():
     glibc's headers and start files make compiled code call (`__ctype_b_loc`, `__errno_location`,
     `__stack_chk_fail`, `__cxa_finalize`, `__cxa_atexit`); every one is a name glibc exports (math.h's from libm)."""
     import re
-    with open(os.path.join(RUNTIME, "clibrary.sem"), encoding="utf-8") as fh:
-        names = set(re.findall(r'^\w+ abi library "(\w+)"$', fh.read(), re.M))
+    names = set()
+    for module in C_MODULES:
+        with open(os.path.join(RUNTIME, module), encoding="utf-8") as fh:
+            names |= set(re.findall(r'^\w+ abi library "(\w+)"(?: variadic)?$', fh.read(), re.M))
     assert names == C_LIBRARY, (names - C_LIBRARY, C_LIBRARY - names)
     for other in os.listdir(RUNTIME):
-        if other.endswith(".sem") and other != "clibrary.sem":
+        if other.endswith(".sem") and other not in C_MODULES:
             with open(os.path.join(RUNTIME, other), encoding="utf-8") as fh:
                 assert " abi library " not in fh.read(), other
     if not WINDOWS and PLATFORM:
@@ -337,7 +339,15 @@ C_LIBRARY = {
     "__errno_location", "__stack_chk_fail", "__cxa_finalize", "__cxa_atexit",
     "fabs", "floor", "ceil", "trunc", "round", "fmod", "sqrt", "copysign",
     "puts", "putchar", "fputs", "fputc", "putc", "fwrite", "fflush",
+    # D-160: the rest of stdio.h, and strerror (its messages a known gap: `Unknown error N` for every number)
+    "strerror", "fopen", "freopen", "fclose", "fread", "fgetc", "getc", "getchar", "fgets", "ungetc", "fseek", "ftell",
+    "fgetpos", "fsetpos", "rewind", "feof", "ferror", "clearerr", "setvbuf", "setbuf", "remove", "rename", "tmpfile",
+    "tmpnam", "perror", "printf", "fprintf", "sprintf", "snprintf", "vprintf", "vfprintf", "vsprintf", "vsnprintf",
+    "scanf", "fscanf", "sscanf", "vscanf", "vfscanf", "vsscanf", "__isoc99_scanf", "__isoc99_fscanf",
+    "__isoc99_sscanf", "__isoc99_vscanf", "__isoc99_vfscanf", "__isoc99_vsscanf",
 }
+# the modules whose `abi library` operations make up the C library (D-153, D-159, D-160)
+C_MODULES = ("clibrary.sem", "cstreams.sem")
 
 
 @pytest.mark.skipif(WINDOWS or not PLATFORM, reason="the runtime's loader maps ELF shared libraries on Linux")
@@ -712,9 +722,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 76 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 80 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "76 of 76 tests passed" in tested.stdout
+    assert "80 of 80 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

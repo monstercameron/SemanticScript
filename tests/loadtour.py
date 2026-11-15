@@ -80,6 +80,7 @@ double fabs(double); double floor(double); double ceil(double); double trunc(dou
 double sqrt(double); double fmod(double, double); double copysign(double, double);
 int puts(const char *); int putchar(int); int fputs(const char *, void *);
 size_t fwrite(const void *, size_t, size_t, void *);
+int fflush(void *);
 extern void *stdout;
 extern void *stderr;
 int dep_value(void);
@@ -395,6 +396,7 @@ long probe_hello(long unused) {
     putchar('\n');
     fputs("to stdout\n", stdout);
     fwrite("to stderr\n", 1, 10, stderr);
+    fflush(stdout); /* stdout is fully buffered in a pipe, as glibc's is (D-160) */
     return 7;
 }
 '''

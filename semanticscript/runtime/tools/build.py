@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(REPO, "docs", "refined-examples", "stage0", "too
 from semgen import Generator, Module, Program  # noqa: E402
 
 # in the order build.sem includes them: a module's DSL may call only the modules above it
-MODULES = ["kernel", "memory", "numbers", "output", "frames", "heap", "tables", "values", "handles", "regions", "slots", "bignum", "floats", "wide", "clibrary", "loader", "tasks", "interrupts", "files", "sockets", "processes", "hashes", "generators", "requests", "documents", "host", "start"]
+MODULES = ["kernel", "memory", "numbers", "output", "frames", "heap", "tables", "values", "handles", "regions", "slots", "bignum", "floats", "wide", "clibrary", "cformat", "cstreams", "cstart", "loader", "tasks", "interrupts", "files", "sockets", "processes", "hashes", "generators", "requests", "documents", "host", "start"]
 
 
 def lines_of(path):

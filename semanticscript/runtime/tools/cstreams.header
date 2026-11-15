@@ -1,0 +1,4 @@
+# stdio for the runtime's C library, written in SemanticScript (D-160): FILE streams buffered as glibc
+# buffers them, the printf and scanf families, and the files stdio names.
+#
+# This module is generated from tools/cstreams.dsl by tools/build.py.

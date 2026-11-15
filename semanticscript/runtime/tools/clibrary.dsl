@@ -1,7 +1,7 @@
 module clibrary "The C standard library written in SemanticScript: what ffi.open of c binds, and what a library the loader maps finds for its C imports (D-153)"
   path clibrary
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel memory output heap floats wide
-  exports lookup cStringLength cLibraryName
+  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal
 
 capability memoryAccess "Authority to read and write the memory C callers hand the library" use machine.memory none
 
@@ -15,8 +15,11 @@ capability systemCalls "Authority to write to standard output and error, read th
 ## data symbols `stdout` and `stderr` hold. machine.state bytes 1536 to 1663 belong to this module: 1536 errno, 1544
 ## stdout's cell, 1552 stderr's, 1560 __stack_chk_guard, 1568 the block of ctype's tables (0 until first asked for),
 ## 1576 to 1599 the three cells `__ctype_b_loc` and its kin give, 1600 the block getenv last gave on Windows, 1608 a
-## Float64 strtod reads into, 1616 the bits a hexadecimal strtod made.
+## Float64 strtod reads into, 1616 the bits a hexadecimal strtod made, 1624 the stdin cell. Bytes 1792 to 1887 too: strerror's text and
+## its digits.
 constant errnoAt "Where errno is kept, in machine.state" Int64 1536
+
+constant stdinAt "Where the stdin cell is kept, in machine.state" Int64 1624
 
 constant stdoutAt "Where the stdout cell is kept, in machine.state" Int64 1544
 
@@ -37,6 +40,10 @@ constant environmentAt "Where the block getenv last gave on Windows is kept, in 
 constant realAt "Where strtod reads a Float64 into, in machine.state" Int64 1608
 
 constant hexBitsAt "Where a hexadecimal strtod puts the bits it made, in machine.state" Int64 1616
+
+constant errorTextAt "Where strerror writes its text, in machine.state (D-160): 64 bytes" Int64 1792
+
+constant errorDigitsAt "Where strerror writes a number's digits before copying them, in machine.state: 32 bytes" Int64 1856
 
 constant forever "The bound of a loop over text that ends at its 0 byte" Int64 9223372036854775807
 
@@ -101,6 +108,7 @@ op writeStream "Write bytes to stream 1 (stdout) or 2 (stderr); gives 0, or -1 w
 ## ---------------------------------------------------------------- small pieces
 
 op byteAt "The byte at an address moved on by an offset"
+  invariant readsByte "Gives the byte at the base moved on by the offset"
   input base machine.Address copied
   input at Int64 copied
   output Byte
@@ -112,6 +120,7 @@ op byteAt "The byte at an address moved on by an offset"
   return value
 
 op setErrno "Set errno, the cell __errno_location gives"
+  invariant setsErrno "errno then holds the value"
   input value Int32 copied
   effect use machine.memory
   uses memoryAccess
@@ -121,6 +130,7 @@ op setErrno "Set errno, the cell __errno_location gives"
   return
 
 op lowInt32 "The low 32 bits of a whole number as an Int32, as C converts a long to an int"
+  invariant wrapsLow "Keeps the low 32 bits as a signed int"
   input value Int64 copied
   output Int32
 :begin
@@ -136,6 +146,7 @@ op lowInt32 "The low 32 bits of a whole number as an Int32, as C converts a long
   return keptValue
 
 op charOf "The unsigned char an int converts to: its low 8 bits"
+  invariant keepsLowByte "Gives the int's low 8 bits"
   input code Int32 copied
   output Byte
 :begin
@@ -170,6 +181,7 @@ op lowerByte "A byte with A to Z made a to z"
   return value
 
 op isSpaceByte "Whether a byte is white space in the C locale: space, or 9 to 13"
+  invariant spacesLikeC "Space and 9 to 13 are white space, nothing else"
   input value Byte copied
   output Bool
 :begin
@@ -190,6 +202,7 @@ op isDigitByte "Whether a byte is a decimal digit"
   return digit
 
 op digitOf "The value of a digit in bases up to 36 (0 to 9, then a or A for 10 to z or Z for 35), or 99 for any other byte"
+  invariant readsDigits "0 to 9 then letters of either case give 0 to 35, other bytes 99"
   input value Byte copied
   output UInt64
   let notDigit UInt64 99
@@ -309,14 +322,15 @@ op sameText "Whether a range of bytes is exactly a text"
 :differ
   return no
 
-op lookup "The address of a function or variable of the C library by its name, or the address 0 when it has absent: the compiler's table of `abi library` operations, then the data symbols stdout, stderr, and __stack_chk_guard"
-  invariant findsByName "Finds strlen, abs, and toupper, stdout and stderr holding 1 and 2, and nothing for a name the library does not have"
+op lookup "The address of a function or variable of the C library by its name, or the address 0 when it has absent: the compiler's table of `abi library` operations, then the data symbols stdin, stdout, stderr, and __stack_chk_guard"
+  invariant findsByName "Finds strlen, abs, and toupper, stdout holding the address of its FILE block, and nothing for a name the library does not have"
   input name machine.Address copied
   input bytes Int64 copied
   output machine.Address
   effect use machine.memory
   uses memoryAccess
   let at Int64 0 mut
+  let stdinText String "stdin"
   let stdoutText String "stdout"
   let stderrText String "stderr"
   let guardText String "__stack_chk_guard"
@@ -350,6 +364,12 @@ op lookup "The address of a function or variable of the C library by its name, o
   readFunction: function = machine.loadAddress(functionAt)
   return function
 :data
+  isStdin = sameText(name, bytes, stdinText)
+  if isStdin giveStdin stdoutData
+:giveStdin
+  stdinCell = kernel.stateAt(stdinAt)
+  return stdinCell
+:stdoutData
   stdoutCheck: isStdout = sameText(name, bytes, stdoutText)
   if isStdout giveStdout stderrCheck
 :giveStdout
@@ -371,14 +391,20 @@ op lookup "The address of a function or variable of the C library by its name, o
   nowhere: anywhere = machine.zero()
   return anywhere
 
-op prepare "Set the data symbols' values, once: stdout holds 1 and stderr 2"
+op prepare "Set the data symbols' values: stdin, stdout, and stderr hold the addresses of their FILE blocks in machine.state, which the stdio module fills in when a stream is first used (D-160)"
+  invariant pointsAtStreams "stdin, stdout, and stderr hold their FILE blocks' addresses"
   effect use machine.memory
   uses memoryAccess
 :begin
-  findStdout: stdoutCell = kernel.stateAt(stdoutAt)
-  storeStdout: machine.storeInt64(stdoutCell, one=1)
-  findStderr: stderrCell = kernel.stateAt(stderrAt)
-  storeStderr: machine.storeInt64(stderrCell, two=2)
+  stdinCell = kernel.stateAt(stdinAt)
+  stdinFile = kernel.stateAt(1920)
+  machine.storeAddress(stdinCell, stdinFile)
+  stdoutCell = kernel.stateAt(stdoutAt)
+  stdoutFile = kernel.stateAt(2048)
+  machine.storeAddress(stdoutCell, stdoutFile)
+  stderrCell = kernel.stateAt(stderrAt)
+  stderrFile = kernel.stateAt(2176)
+  machine.storeAddress(stderrCell, stderrFile)
   return
 
 ## ---------------------------------------------------------------- ctype.h
@@ -782,6 +808,7 @@ op cStringLength "strlen: how many bytes come before the first 0 byte"
   return at
 
 op boundedLength "strnlen: how many bytes come before the first 0 byte, at most a limit"
+  invariant stopsAtBound "Counts to the 0 byte or the bound, whichever comes first"
   input text machine.Address copied
   input most Int64 copied
   output Int64
@@ -963,6 +990,7 @@ op memorySet "memset: set every byte of a range to a value's low 8 bits; gives t
   return filled
 
 op memoryFind "memchr: the address of the first byte of a range that is a value's unsigned char, or the address 0"
+  invariant findsByte "Gives the first byte equal to the value's unsigned char, or 0"
   input text machine.Address copied
   input value Int32 copied
   input bytes Int64 copied
@@ -2425,6 +2453,70 @@ op errnoLocation "__errno_location: the address of errno, which strtol, strtod, 
   findCell: cell = kernel.stateAt(errnoAt)
   return cell
 
+op errorText "strerror: the text for an error number, in a block of machine.state the next call replaces; for now every number is `Unknown error N` (D-160: glibc's messages are a known gap)"
+  invariant namesErrors "Gives `Unknown error N` with N the number in decimal, negative ones with their sign"
+  input code Int32 copied
+  output machine.Address
+  effect use machine.memory
+  uses memoryAccess
+  abi library "strerror"
+  let prefix String "Unknown error "
+  let place Int64 31 mut
+  let rest Int64 0 mut
+:begin
+  buffer = kernel.stateAt(errorTextAt)
+  prefixAt = machine.addressOfString(prefix)
+  machine.copy(buffer, prefixAt, 14)
+  calc wideCode = convert.int32ToInt64(code)
+  calc negative = wideCode < 0
+  calc rest := absoluteWide(wideCode)
+  digits = kernel.stateAt(errorDigitsAt)
+  goto eachDigit
+:eachDigit loop=while max=forever
+  calc place := place - 1
+  calc digit = convert.int64ToByte(rest % 10) + 48
+  calc digitAt = digits + place
+  machine.storeByte(digitAt, digit)
+  calc rest := rest / 10
+  when rest == 0 sign eachDigit
+:sign
+  if negative minus copyDigits
+:minus
+  calc place := place - 1
+  calc minusAt = digits + place
+  machine.storeByte(minusAt, 45)
+  goto copyDigits
+:copyDigits
+  calc fromAt = digits + place
+  calc count = 31 - place
+  calc toAt = buffer + 14
+  machine.copy(toAt, fromAt, count)
+  calc endAt = buffer + 14 + count
+  machine.storeByte(endAt, 0)
+  return buffer
+
+op absoluteWide "The magnitude of an Int64 that came from an Int32 (so it never overflows)"
+  input value Int64 copied
+  output Int64
+:begin
+  when value < 0 flip keep
+:flip
+  calc flipped = 0 - value
+  return flipped
+:keep
+  return value
+
+op errorMessage "The text strerror gives for errno now"
+  invariant describesErrno "Gives strerror of errno"
+  output machine.Address
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  cell = kernel.stateAt(errnoAt)
+  code = machine.loadInt32(cell)
+  text = errorText(code)
+  return text
+
 op sortItems "qsort: sort a count of items of a size with a comparison, stably (glibc's merge sort keeps equal items in their order): runs of 1, 2, 4, and so on merged through a block of the same size"
   invariant sortsStably "Sorts by the comparison and keeps equal items in the order they were"
   input base machine.Address copied
@@ -2670,15 +2762,6 @@ op environmentValue "getenv: the address of a variable's value as a C string, or
   giveLast: heap.give(last)
   storeLast: machine.storeAddress(lastCell, narrowed)
   return narrowed
-
-op exitProcess "exit and _exit: end the process with a status (the runtime's output is written as it goes, so there is nothing to flush)"
-  input code Int32 copied
-  effect use system.calls
-  uses systemCalls
-  abi library "exit"
-:begin
-  endIt: endProcess(code)
-  return
 
 op exitNow "_exit: end the process with a status at once"
   input code Int32 copied
@@ -3035,144 +3118,6 @@ op floatRemainderC "fmod, as the C library names it: the exact remainder with th
 :begin
   remainderIt: remainder = floatRemainder(x, y)
   return remainder
-
-## ---------------------------------------------------------------- stdio.h
-
-op putString "puts: a C string and a line feed on standard output; a nonnegative number (the bytes written, at most INT_MAX), or EOF (-1)"
-  input text machine.Address copied
-  output Int32
-  effect use machine.memory
-  effect use system.calls
-  uses memoryAccess
-  uses systemCalls
-  abi library "puts"
-  let lineEnd String "\n"
-  let failedStatus Int32 -1
-  let mostInt Int32 2147483647
-:begin
-  measure: length = cStringLength(text)
-  writeIt: status = writeStream(one=1, text, length)
-  failedCheck: failed = compare.notEqualInt32(status, ok32=0)
-  if failed refuse lineIt
-:lineIt
-  findEnd: endAt = machine.addressOfString(lineEnd)
-  writeEnd: endStatus = writeStream(one, endAt, one)
-  endFailed: failedEnd = compare.notEqualInt32(endStatus, ok32)
-  if failedEnd refuse counted
-:counted
-  withEnd: written = math.addInt64(length, one)
-  bigCheck: big = compare.greaterThanInt64(written, intMax=2147483647)
-  if big giveMost giveCount
-:giveMost
-  return mostInt
-:giveCount
-  narrowIt: count = convert.int64ToInt32(written)
-  return count
-:refuse
-  return failedStatus
-
-op putStream "fputs: a C string on a stream (1 stdout, 2 stderr); 1, or EOF (-1)"
-  input text machine.Address copied
-  input stream Int64 copied
-  output Int32
-  effect use machine.memory
-  effect use system.calls
-  uses memoryAccess
-  uses systemCalls
-  abi library "fputs"
-  let failedStatus Int32 -1
-  let one32 Int32 1
-:begin
-  measure: length = cStringLength(text)
-  writeIt: status = writeStream(stream, text, length)
-  failedCheck: failed = compare.notEqualInt32(status, ok32=0)
-  if failed refuse done
-:done
-  return one32
-:refuse
-  return failedStatus
-
-op putCharacterOn "fputc and putc: a character's unsigned char on a stream; the character, or EOF (-1)"
-  input code Int32 copied
-  input stream Int64 copied
-  output Int32
-  effect use machine.memory
-  effect use system.calls
-  uses memoryAccess
-  uses systemCalls
-  abi library "fputc"
-  let failedStatus Int32 -1
-:begin
-  charIt: character = charOf(code)
-  findCell: cell = kernel.stateAt(realAt)
-  storeIt: machine.storeByte(cell, character)
-  writeIt: status = writeStream(stream, cell, one=1)
-  failedCheck: failed = compare.notEqualInt32(status, ok32=0)
-  if failed refuse done
-:done
-  widenIt: wideCharacter = convert.byteToInt64(character)
-  narrowIt: result = convert.int64ToInt32(wideCharacter)
-  return result
-:refuse
-  return failedStatus
-
-op putCharacterStream "putc: fputc, a character's unsigned char on a stream"
-  input code Int32 copied
-  input stream Int64 copied
-  output Int32
-  effect use machine.memory
-  effect use system.calls
-  uses memoryAccess
-  uses systemCalls
-  abi library "putc"
-:begin
-  putIt: result = putCharacterOn(code, stream)
-  return result
-
-op putCharacter "putchar: a character's unsigned char on standard output; the character, or EOF (-1)"
-  input code Int32 copied
-  output Int32
-  effect use machine.memory
-  effect use system.calls
-  uses memoryAccess
-  uses systemCalls
-  abi library "putchar"
-:begin
-  putIt: result = putCharacterOn(code, one=1)
-  return result
-
-op writeItems "fwrite: a count of items of a size on a stream; how many items were written (all of them, or 0 when the write fails)"
-  input data machine.Address copied
-  input size Int64 copied
-  input count Int64 copied
-  input stream Int64 copied
-  output Int64
-  effect use machine.memory
-  effect use system.calls
-  uses memoryAccess
-  uses systemCalls
-  abi library "fwrite"
-  let noItems Int64 0
-:begin
-  bytesOf: bytes = math.multiplyInt64(size, count)
-  emptyCheck: empty = compare.equalInt64(bytes, noItems)
-  if empty giveNone write
-:write
-  writeIt: status = writeStream(stream, data, bytes)
-  failedCheck: failed = compare.notEqualInt32(status, ok32=0)
-  if failed giveNone done
-:done
-  return count
-:giveNone
-  return noItems
-
-op flushStream "fflush: nothing is buffered, so 0"
-  input stream Int64 copied
-  output Int32
-  abi library "fflush"
-  let ok32 Int32 0
-:begin
-  return ok32
 
 @tests
 
@@ -3626,15 +3571,16 @@ test lookupTest "The table finds abs and stdout, which holds 1; a name the libra
   findStdoutName: stdoutNameAt = machine.addressOfString(stdoutName)
   stdoutLength: stdoutBytes = string.byteLength(stdoutName)
   findStdout: stdoutCell = lookup(stdoutNameAt, stdoutBytes)
-  readStdout: stdoutValue = machine.loadInt64(stdoutCell)
-  expectStdout: test.assertEqualInt64(one=1, stdoutValue)
+  readStdout: stdoutValue = machine.loadAddress(stdoutCell)
+  stdoutFile = kernel.stateAt(2048)
+  test.assertTrue(stdoutValue == stdoutFile)
   findMissingName: missingAt = machine.addressOfString(missingName)
   missingLength: missingBytes = string.byteLength(missingName)
   findMissing: missingFunction = lookup(missingAt, missingBytes)
   missingCheck: isMissing = machine.equal(missingFunction, anywhere)
   expectMissing: test.assertTrue(isMissing)
   findC: cAt = machine.addressOfString(cName)
-  checkC: isC = cLibraryName(cAt, one)
+  checkC: isC = cLibraryName(cAt, one=1)
   expectC: test.assertTrue(isC)
   findLibc: libcAt = machine.addressOfString(libcName)
   libcLength: libcBytes = string.byteLength(libcName)
@@ -3661,4 +3607,58 @@ test lookupTest "The table finds abs and stdout, which holds 1; a name the libra
   findUnset: unsetValue = environmentValue(unsetText)
   unsetCheck: noUnset = machine.equal(unsetValue, anywhere)
   expectUnset: test.assertTrue(noUnset)
+  return
+
+test helpersTest "The pieces the other C library modules call: a byte at an offset, errno set, an int's low 32 bits, and a length bounded"
+  verifies byteAt readsByte
+  verifies setErrno setsErrno
+  verifies lowInt32 wrapsLow
+  verifies boundedLength stopsAtBound
+  verifies errorText namesErrors
+  verifies errorMessage describesErrno
+  verifies memoryFind findsByte
+  verifies charOf keepsLowByte
+  verifies prepare pointsAtStreams
+  verifies isSpaceByte spacesLikeC
+  verifies digitOf readsDigits
+  effect use machine.memory
+  uses memoryAccess
+  let sample String "hello"
+:begin
+  place = firstScratch(sample)
+  second = byteAt(place, 1)
+  test.assertTrue(second == 101)
+  setErrno(34)
+  errnoCell = kernel.stateAt(errnoAt)
+  errno = machine.loadInt32(errnoCell)
+  test.assertTrue(errno == 34)
+  setErrno(0)
+  low = lowInt32(4294967295)
+  test.assertTrue(low == -1)
+  bounded = boundedLength(place, 3)
+  test.assertEqualInt64(3, bounded)
+  whole = boundedLength(place, 99)
+  test.assertEqualInt64(5, whole)
+  setErrno(-5)
+  message = errorMessage()
+  messageLength = cStringLength(message)
+  test.assertEqualInt64(16, messageLength)
+  shown = errorText(1234)
+  shownLength = cStringLength(shown)
+  test.assertEqualInt64(18, shownLength)
+  found = memoryFind(place, 108, 5)
+  calc foundAt = place + 2
+  test.assertTrue(found == foundAt)
+  lowByte = charOf(300)
+  test.assertTrue(lowByte == 44)
+  tabSpace = isSpaceByte(9)
+  test.assertTrue(tabSpace)
+  letterValue = digitOf(90)
+  test.assertTrue(letterValue == 35)
+  prepare()
+  stdinCell = kernel.stateAt(stdinAt)
+  stdinValue = machine.loadAddress(stdinCell)
+  stdinFile = kernel.stateAt(1920)
+  test.assertTrue(stdinValue == stdinFile)
+  setErrno(0)
   return

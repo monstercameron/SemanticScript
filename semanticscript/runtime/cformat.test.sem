@@ -1,0 +1,1425 @@
+# Tests of the `cformat` module; generated from tools/cformat.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+formatsTo is operation
+formatsTo purpose "Whether formatAll writes a format with up to five argument slots (doubles as their bits) as expected"
+formatsTo invariant none
+formatsTo typeParameter none
+formatsTo input format String borrowed
+formatsTo input first UInt64 copied
+formatsTo input second UInt64 copied
+formatsTo input third UInt64 copied
+formatsTo input fourth UInt64 copied
+formatsTo input fifth UInt64 copied
+formatsTo input expected String borrowed
+formatsTo output none
+formatsTo outputOwnedBy none
+formatsTo raises none
+formatsTo effect use machine.memory
+formatsTo effect use system.calls
+formatsTo uses memoryAccess
+formatsTo uses systemCalls
+formatsTo memoryHeap false
+formatsTo async false
+formatsTo maxRecursion none
+formatsTo label begin loopKind none
+formatsTo label begin within none
+formatsTo let one Int64 1 immutable
+formatsTo let n48 Int64 48 immutable
+formatsTo let eight Int64 8 immutable
+formatsTo let sixteen Int64 16 immutable
+formatsTo let n24 Int64 24 immutable
+formatsTo let thirtyTwo Int64 32 immutable
+formatsTo let three Int64 3 immutable
+formatsTo at begin do readFormatBytes
+formatsTo at begin do formatBlockStep1
+formatsTo at begin do findFormatBlock1
+formatsTo at begin do readFormatAt
+formatsTo at begin do doCopy
+formatsTo at begin do readSlots
+formatsTo at begin do doStoreUInt64
+formatsTo at begin do findSecondAt1
+formatsTo at begin do doStoreUInt642
+formatsTo at begin do findThirdAt1
+formatsTo at begin do doStoreUInt643
+formatsTo at begin do findFourthAt1
+formatsTo at begin do doStoreUInt644
+formatsTo at begin do findFifthAt1
+formatsTo at begin do doStoreUInt645
+formatsTo at begin do readCell
+formatsTo at begin do doStoreAddress
+formatsTo at begin do readCursor
+formatsTo at begin do doStoreInt64
+formatsTo at begin do findListAt1
+formatsTo at begin do doStoreAddress2
+formatsTo at begin do readBuilder
+formatsTo at begin do readCount
+formatsTo at begin do readText
+formatsTo at begin do readLength
+formatsTo at begin do doAssertEqualInt64
+formatsTo at begin do readWritten
+formatsTo at begin do doAssertEqualString
+formatsTo at begin do doGive
+formatsTo at begin do doGive2
+formatsTo at begin do doGive3
+formatsTo at begin do doGive4
+formatsTo at begin do doGive5
+formatsTo at begin do doGive6
+formatsTo at begin return ok none
+
+readFormatBytes is call
+readFormatBytes in formatsTo
+readFormatBytes invokes string.byteLength
+readFormatBytes argument text String format lend
+readFormatBytes result formatBytes Int64
+readFormatBytes ownedBy none
+readFormatBytes cleanedBy none
+readFormatBytes borrows none
+readFormatBytes catch none
+readFormatBytes suppresses none
+
+formatBlockStep1 is call
+formatBlockStep1 in formatsTo
+formatBlockStep1 invokes math.addInt64
+formatBlockStep1 argument left Int64 formatBytes copy
+formatBlockStep1 argument right Int64 one copy
+formatBlockStep1 result formatBlockPart1 Int64
+formatBlockStep1 ownedBy none
+formatBlockStep1 cleanedBy none
+formatBlockStep1 borrows none
+formatBlockStep1 catch none
+formatBlockStep1 suppresses none
+
+findFormatBlock1 is call
+findFormatBlock1 in formatsTo
+findFormatBlock1 invokes heap.take
+findFormatBlock1 argument bytes Int64 formatBlockPart1 copy
+findFormatBlock1 result formatBlock machine.Address
+findFormatBlock1 ownedBy none
+findFormatBlock1 cleanedBy none
+findFormatBlock1 borrows none
+findFormatBlock1 catch none
+findFormatBlock1 suppresses none
+
+readFormatAt is call
+readFormatAt in formatsTo
+readFormatAt invokes machine.addressOfString
+readFormatAt argument text String format lend
+readFormatAt result formatAt machine.Address
+readFormatAt ownedBy none
+readFormatAt cleanedBy none
+readFormatAt borrows none
+readFormatAt catch none
+readFormatAt suppresses none
+
+doCopy is call
+doCopy in formatsTo
+doCopy invokes machine.copy
+doCopy argument target machine.Address formatBlock copy
+doCopy argument source machine.Address formatAt copy
+doCopy argument bytes Int64 formatBytes copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+readSlots is call
+readSlots in formatsTo
+readSlots invokes heap.take
+readSlots argument bytes Int64 n48 copy
+readSlots result slots machine.Address
+readSlots ownedBy none
+readSlots cleanedBy none
+readSlots borrows none
+readSlots catch none
+readSlots suppresses none
+
+doStoreUInt64 is call
+doStoreUInt64 in formatsTo
+doStoreUInt64 invokes machine.storeUInt64
+doStoreUInt64 argument address machine.Address slots copy
+doStoreUInt64 argument value UInt64 first copy
+doStoreUInt64 result none
+doStoreUInt64 ownedBy none
+doStoreUInt64 cleanedBy none
+doStoreUInt64 borrows none
+doStoreUInt64 catch none
+doStoreUInt64 suppresses none
+
+findSecondAt1 is call
+findSecondAt1 in formatsTo
+findSecondAt1 invokes machine.offset
+findSecondAt1 argument address machine.Address slots copy
+findSecondAt1 argument bytes Int64 eight copy
+findSecondAt1 result secondAt machine.Address
+findSecondAt1 ownedBy none
+findSecondAt1 cleanedBy none
+findSecondAt1 borrows none
+findSecondAt1 catch none
+findSecondAt1 suppresses none
+
+doStoreUInt642 is call
+doStoreUInt642 in formatsTo
+doStoreUInt642 invokes machine.storeUInt64
+doStoreUInt642 argument address machine.Address secondAt copy
+doStoreUInt642 argument value UInt64 second copy
+doStoreUInt642 result none
+doStoreUInt642 ownedBy none
+doStoreUInt642 cleanedBy none
+doStoreUInt642 borrows none
+doStoreUInt642 catch none
+doStoreUInt642 suppresses none
+
+findThirdAt1 is call
+findThirdAt1 in formatsTo
+findThirdAt1 invokes machine.offset
+findThirdAt1 argument address machine.Address slots copy
+findThirdAt1 argument bytes Int64 sixteen copy
+findThirdAt1 result thirdAt machine.Address
+findThirdAt1 ownedBy none
+findThirdAt1 cleanedBy none
+findThirdAt1 borrows none
+findThirdAt1 catch none
+findThirdAt1 suppresses none
+
+doStoreUInt643 is call
+doStoreUInt643 in formatsTo
+doStoreUInt643 invokes machine.storeUInt64
+doStoreUInt643 argument address machine.Address thirdAt copy
+doStoreUInt643 argument value UInt64 third copy
+doStoreUInt643 result none
+doStoreUInt643 ownedBy none
+doStoreUInt643 cleanedBy none
+doStoreUInt643 borrows none
+doStoreUInt643 catch none
+doStoreUInt643 suppresses none
+
+findFourthAt1 is call
+findFourthAt1 in formatsTo
+findFourthAt1 invokes machine.offset
+findFourthAt1 argument address machine.Address slots copy
+findFourthAt1 argument bytes Int64 n24 copy
+findFourthAt1 result fourthAt machine.Address
+findFourthAt1 ownedBy none
+findFourthAt1 cleanedBy none
+findFourthAt1 borrows none
+findFourthAt1 catch none
+findFourthAt1 suppresses none
+
+doStoreUInt644 is call
+doStoreUInt644 in formatsTo
+doStoreUInt644 invokes machine.storeUInt64
+doStoreUInt644 argument address machine.Address fourthAt copy
+doStoreUInt644 argument value UInt64 fourth copy
+doStoreUInt644 result none
+doStoreUInt644 ownedBy none
+doStoreUInt644 cleanedBy none
+doStoreUInt644 borrows none
+doStoreUInt644 catch none
+doStoreUInt644 suppresses none
+
+findFifthAt1 is call
+findFifthAt1 in formatsTo
+findFifthAt1 invokes machine.offset
+findFifthAt1 argument address machine.Address slots copy
+findFifthAt1 argument bytes Int64 thirtyTwo copy
+findFifthAt1 result fifthAt machine.Address
+findFifthAt1 ownedBy none
+findFifthAt1 cleanedBy none
+findFifthAt1 borrows none
+findFifthAt1 catch none
+findFifthAt1 suppresses none
+
+doStoreUInt645 is call
+doStoreUInt645 in formatsTo
+doStoreUInt645 invokes machine.storeUInt64
+doStoreUInt645 argument address machine.Address fifthAt copy
+doStoreUInt645 argument value UInt64 fifth copy
+doStoreUInt645 result none
+doStoreUInt645 ownedBy none
+doStoreUInt645 cleanedBy none
+doStoreUInt645 borrows none
+doStoreUInt645 catch none
+doStoreUInt645 suppresses none
+
+readCell is call
+readCell in formatsTo
+readCell invokes heap.take
+readCell argument bytes Int64 eight copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+doStoreAddress is call
+doStoreAddress in formatsTo
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address cell copy
+doStoreAddress argument value machine.Address slots copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+readCursor is call
+readCursor in formatsTo
+readCursor invokes heap.take
+readCursor argument bytes Int64 sixteen copy
+readCursor result cursor machine.Address
+readCursor ownedBy none
+readCursor cleanedBy none
+readCursor borrows none
+readCursor catch none
+readCursor suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in formatsTo
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address cursor copy
+doStoreInt64 argument value Int64 three copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+findListAt1 is call
+findListAt1 in formatsTo
+findListAt1 invokes machine.offset
+findListAt1 argument address machine.Address cursor copy
+findListAt1 argument bytes Int64 eight copy
+findListAt1 result listAt machine.Address
+findListAt1 ownedBy none
+findListAt1 cleanedBy none
+findListAt1 borrows none
+findListAt1 catch none
+findListAt1 suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in formatsTo
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address listAt copy
+doStoreAddress2 argument value machine.Address cell copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+readBuilder is call
+readBuilder in formatsTo
+readBuilder invokes wide.builderNew
+readBuilder argument none
+readBuilder result builder machine.Address
+readBuilder ownedBy none
+readBuilder cleanedBy none
+readBuilder borrows none
+readBuilder catch none
+readBuilder suppresses none
+
+readCount is call
+readCount in formatsTo
+readCount invokes formatAll
+readCount argument format machine.Address formatBlock copy
+readCount argument cursor machine.Address cursor copy
+readCount argument builder machine.Address builder copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readText is call
+readText in formatsTo
+readText invokes wide.builderText
+readText argument builder machine.Address builder copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+readLength is call
+readLength in formatsTo
+readLength invokes wide.builderLength
+readLength argument builder machine.Address builder copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in formatsTo
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 length copy
+doAssertEqualInt64 argument actual Int64 count copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readWritten is call
+readWritten in formatsTo
+readWritten invokes machine.stringAt
+readWritten argument address machine.Address text copy
+readWritten argument bytes Int64 length copy
+readWritten result written String
+readWritten ownedBy none
+readWritten cleanedBy none
+readWritten borrows none
+readWritten catch none
+readWritten suppresses none
+
+doAssertEqualString is call
+doAssertEqualString in formatsTo
+doAssertEqualString invokes test.assertEqualString
+doAssertEqualString argument expected String expected lend
+doAssertEqualString argument actual String written lend
+doAssertEqualString result none
+doAssertEqualString ownedBy none
+doAssertEqualString cleanedBy none
+doAssertEqualString borrows none
+doAssertEqualString catch none
+doAssertEqualString suppresses none
+
+doGive is call
+doGive in formatsTo
+doGive invokes heap.give
+doGive argument block machine.Address text copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in formatsTo
+doGive2 invokes heap.give
+doGive2 argument block machine.Address builder copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doGive3 is call
+doGive3 in formatsTo
+doGive3 invokes heap.give
+doGive3 argument block machine.Address cursor copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+doGive4 is call
+doGive4 in formatsTo
+doGive4 invokes heap.give
+doGive4 argument block machine.Address cell copy
+doGive4 result none
+doGive4 ownedBy none
+doGive4 cleanedBy none
+doGive4 borrows none
+doGive4 catch none
+doGive4 suppresses none
+
+doGive5 is call
+doGive5 in formatsTo
+doGive5 invokes heap.give
+doGive5 argument block machine.Address slots copy
+doGive5 result none
+doGive5 ownedBy none
+doGive5 cleanedBy none
+doGive5 borrows none
+doGive5 catch none
+doGive5 suppresses none
+
+doGive6 is call
+doGive6 in formatsTo
+doGive6 invokes heap.give
+doGive6 argument block machine.Address formatBlock copy
+doGive6 result none
+doGive6 ownedBy none
+doGive6 cleanedBy none
+doGive6 borrows none
+doGive6 catch none
+doGive6 suppresses none
+
+formatTest is test
+formatTest purpose "Integers, strings of digits, and floating values are written as glibc writes them: flags, widths, precisions, lengths, `*`, `%n$`, exact digits rounded to even, %a, infinities and NaN"
+formatTest verifies formatAll writesLikeGlibc
+formatTest verifies decimalDigits exactDigits
+formatTest verifies roundingMode nearestByDefault
+formatTest verifies cursorNew readsInOrder
+formatTest verifies cursorFree releasesCursor
+formatTest verifies readWord readsWords
+formatTest typeParameter none
+formatTest input none
+formatTest output none
+formatTest outputOwnedBy none
+formatTest raises none
+formatTest effect use machine.memory
+formatTest effect use system.calls
+formatTest uses memoryAccess
+formatTest uses systemCalls
+formatTest memoryHeap false
+formatTest async false
+formatTest maxRecursion none
+formatTest label begin loopKind none
+formatTest label begin within none
+formatTest let format0 String "[%d] [%5d] [%-5d] [%05d]" immutable
+formatTest let expected0 String "[42] [  -42] [42   ] [-0042]" immutable
+formatTest let format1 String "[%x] [%#X] [%#o] [%.0d]" immutable
+formatTest let expected1 String "[ff] [0XFF] [010] []" immutable
+formatTest let format2 String "[%.3f] [%e] [%g] [%a]" immutable
+formatTest let expected2 String "[3.142] [1.234560e-04] [1e-05] [0x1p+0]" immutable
+formatTest let format3 String "[%.0f] [%.0f] [%g] [%G]" immutable
+formatTest let expected3 String "[0] [2] [100000] [1E+20]" immutable
+formatTest let format4 String "[%.10e] [%.20f]" immutable
+formatTest let expected4 String "[4.9406564584e-324] [0.10000000000000000555]" immutable
+formatTest let format5 String "%-10.4a|%lld %hhd %hu" immutable
+formatTest let expected5 String "0x1.5555p-2|-1 44 4464" immutable
+formatTest let format6 String "[%*d] [%.*f] %lu" immutable
+formatTest let expected6 String "[     7] [1.00] 18446744073709551615" immutable
+formatTest let format7 String "%2$d %1$d %%|%y" immutable
+formatTest let expected7 String "2 1 %|%y" immutable
+formatTest let format8 String "%f %F %e %+g" immutable
+formatTest let expected8 String "inf -INF nan -nan" immutable
+formatTest let format9 String "%08.3f|%-8.2e|%+.3g" immutable
+formatTest let expected9 String "-003.142|1.23e+04|+0.000123" immutable
+formatTest let format10 String "%#.3g|%#x|%#.0f|%.3a" immutable
+formatTest let expected10 String "1.00|0|3.|0x1.000p+0" immutable
+formatTest let format11 String "%a %A %.0e %g" immutable
+formatTest let expected11 String "0x0.0000000000001p-1022 -0X0P+0 2e+01 0" immutable
+formatTest let format12 String "%.17g %.0f %5.1f|%x" immutable
+formatTest let expected12 String "0.10000000000000001 10000000000000000000000  -0.0|deadbeef" immutable
+formatTest let uInt6442 UInt64 42 immutable
+formatTest let uInt6418446744073709551574 UInt64 18446744073709551574 immutable
+formatTest let uInt640 UInt64 0 immutable
+formatTest let uInt64255 UInt64 255 immutable
+formatTest let uInt648 UInt64 8 immutable
+formatTest let uInt644614256650576692846 UInt64 4614256650576692846 immutable
+formatTest let uInt644548686746489558237 UInt64 4548686746489558237 immutable
+formatTest let uInt644532020583610935537 UInt64 4532020583610935537 immutable
+formatTest let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+formatTest let uInt644602678819172646912 UInt64 4602678819172646912 immutable
+formatTest let uInt644612811918334230528 UInt64 4612811918334230528 immutable
+formatTest let uInt644681608360884174848 UInt64 4681608360884174848 immutable
+formatTest let uInt644906019910204099648 UInt64 4906019910204099648 immutable
+formatTest let uInt641 UInt64 1 immutable
+formatTest let uInt644591870180066957722 UInt64 4591870180066957722 immutable
+formatTest let uInt644599676419421066581 UInt64 4599676419421066581 immutable
+formatTest let uInt6418446744073709551615 UInt64 18446744073709551615 immutable
+formatTest let uInt64300 UInt64 300 immutable
+formatTest let uInt6470000 UInt64 70000 immutable
+formatTest let uInt646 UInt64 6 immutable
+formatTest let uInt647 UInt64 7 immutable
+formatTest let uInt642 UInt64 2 immutable
+formatTest let uInt644607204936798154260 UInt64 4607204936798154260 immutable
+formatTest let uInt649218868437227405312 UInt64 9218868437227405312 immutable
+formatTest let uInt6418442240474082181120 UInt64 18442240474082181120 immutable
+formatTest let uInt649221120237041090560 UInt64 9221120237041090560 immutable
+formatTest let uInt6418444492273895866368 UInt64 18444492273895866368 immutable
+formatTest let uInt6413837628687431468654 UInt64 13837628687431468654 immutable
+formatTest let uInt644668012722585352536 UInt64 4668012722585352536 immutable
+formatTest let uInt644548684680454221981 UInt64 4548684680454221981 immutable
+formatTest let uInt644613937818241073152 UInt64 4613937818241073152 immutable
+formatTest let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+formatTest let uInt644624633867356078080 UInt64 4624633867356078080 immutable
+formatTest let uInt644936209963552724370 UInt64 4936209963552724370 immutable
+formatTest let uInt6413809297465413604475 UInt64 13809297465413604475 immutable
+formatTest let uInt643735928559 UInt64 3735928559 immutable
+formatTest let eight Int64 8 immutable
+formatTest let byte120 Byte 120 immutable
+formatTest let one Int64 1 immutable
+formatTest let sixteen Int64 16 immutable
+formatTest let n77 Int64 77 immutable
+formatTest let three Int64 3 immutable
+formatTest let zero Int64 0 immutable
+formatTest let n24 Int64 24 immutable
+formatTest let uInt643602879701896397 UInt64 3602879701896397 immutable
+formatTest let minus55 Int64 -55 immutable
+formatTest let n55 Int64 55 immutable
+formatTest at begin do doFormatsTo
+formatTest at begin do doFormatsTo2
+formatTest at begin do doFormatsTo3
+formatTest at begin do doFormatsTo4
+formatTest at begin do doFormatsTo5
+formatTest at begin do doFormatsTo6
+formatTest at begin do doFormatsTo7
+formatTest at begin do doFormatsTo8
+formatTest at begin do doFormatsTo9
+formatTest at begin do doFormatsTo10
+formatTest at begin do doFormatsTo11
+formatTest at begin do doFormatsTo12
+formatTest at begin do doFormatsTo13
+formatTest at begin do readDirectFormat
+formatTest at begin do doStoreByte
+formatTest at begin do readDirectCursor
+formatTest at begin do readDirectBuilder
+formatTest at begin do readDirectCount
+formatTest at begin do doAssertEqualInt64
+formatTest at begin do readDirectText
+formatTest at begin do doGive
+formatTest at begin do doGive2
+formatTest at begin do doCursorFree
+formatTest at begin do doGive3
+formatTest at begin do readWordSlots
+formatTest at begin do findSecondSlot1
+formatTest at begin do doStoreInt64
+formatTest at begin do readWordCell
+formatTest at begin do doStoreAddress
+formatTest at begin do readWordCursor
+formatTest at begin do doStoreInt642
+formatTest at begin do findWordListAt1
+formatTest at begin do doStoreAddress2
+formatTest at begin do readFirstWord
+formatTest at begin do doAssertEqualInt642
+formatTest at begin do readSecondWord
+formatTest at begin do doAssertEqualInt643
+formatTest at begin do doGive4
+formatTest at begin do doGive5
+formatTest at begin do doGive6
+formatTest at begin do readResult
+formatTest at begin do doDecimalDigits
+formatTest at begin do findCountAt1
+formatTest at begin do readDigitsCount
+formatTest at begin do doAssertEqualInt644
+formatTest at begin do findFractionAt1
+formatTest at begin do readFractionCount
+formatTest at begin do doAssertEqualInt645
+formatTest at begin do readDigitsBlock
+formatTest at begin do doGive7
+formatTest at begin do doGive8
+formatTest at begin do readMode
+formatTest at begin do doAssertEqualInt646
+formatTest at begin do readNowhere
+formatTest at begin do readMade
+formatTest at begin do readLayout
+formatTest at begin do readOnLinux
+formatTest at begin do readOnArm
+formatTest at begin do findExpectedLayout1
+formatTest at begin do doAssertEqualInt647
+formatTest at begin do doCursorFree2
+formatTest at begin return ok none
+
+doFormatsTo is call
+doFormatsTo in formatTest
+doFormatsTo invokes formatsTo
+doFormatsTo argument format String format0 lend
+doFormatsTo argument first UInt64 uInt6442 copy
+doFormatsTo argument second UInt64 uInt6418446744073709551574 copy
+doFormatsTo argument third UInt64 uInt6442 copy
+doFormatsTo argument fourth UInt64 uInt6418446744073709551574 copy
+doFormatsTo argument fifth UInt64 uInt640 copy
+doFormatsTo argument expected String expected0 lend
+doFormatsTo result none
+doFormatsTo ownedBy none
+doFormatsTo cleanedBy none
+doFormatsTo borrows none
+doFormatsTo catch none
+doFormatsTo suppresses none
+
+doFormatsTo2 is call
+doFormatsTo2 in formatTest
+doFormatsTo2 invokes formatsTo
+doFormatsTo2 argument format String format1 lend
+doFormatsTo2 argument first UInt64 uInt64255 copy
+doFormatsTo2 argument second UInt64 uInt64255 copy
+doFormatsTo2 argument third UInt64 uInt648 copy
+doFormatsTo2 argument fourth UInt64 uInt640 copy
+doFormatsTo2 argument fifth UInt64 uInt640 copy
+doFormatsTo2 argument expected String expected1 lend
+doFormatsTo2 result none
+doFormatsTo2 ownedBy none
+doFormatsTo2 cleanedBy none
+doFormatsTo2 borrows none
+doFormatsTo2 catch none
+doFormatsTo2 suppresses none
+
+doFormatsTo3 is call
+doFormatsTo3 in formatTest
+doFormatsTo3 invokes formatsTo
+doFormatsTo3 argument format String format2 lend
+doFormatsTo3 argument first UInt64 uInt644614256650576692846 copy
+doFormatsTo3 argument second UInt64 uInt644548686746489558237 copy
+doFormatsTo3 argument third UInt64 uInt644532020583610935537 copy
+doFormatsTo3 argument fourth UInt64 uInt644607182418800017408 copy
+doFormatsTo3 argument fifth UInt64 uInt640 copy
+doFormatsTo3 argument expected String expected2 lend
+doFormatsTo3 result none
+doFormatsTo3 ownedBy none
+doFormatsTo3 cleanedBy none
+doFormatsTo3 borrows none
+doFormatsTo3 catch none
+doFormatsTo3 suppresses none
+
+doFormatsTo4 is call
+doFormatsTo4 in formatTest
+doFormatsTo4 invokes formatsTo
+doFormatsTo4 argument format String format3 lend
+doFormatsTo4 argument first UInt64 uInt644602678819172646912 copy
+doFormatsTo4 argument second UInt64 uInt644612811918334230528 copy
+doFormatsTo4 argument third UInt64 uInt644681608360884174848 copy
+doFormatsTo4 argument fourth UInt64 uInt644906019910204099648 copy
+doFormatsTo4 argument fifth UInt64 uInt640 copy
+doFormatsTo4 argument expected String expected3 lend
+doFormatsTo4 result none
+doFormatsTo4 ownedBy none
+doFormatsTo4 cleanedBy none
+doFormatsTo4 borrows none
+doFormatsTo4 catch none
+doFormatsTo4 suppresses none
+
+doFormatsTo5 is call
+doFormatsTo5 in formatTest
+doFormatsTo5 invokes formatsTo
+doFormatsTo5 argument format String format4 lend
+doFormatsTo5 argument first UInt64 uInt641 copy
+doFormatsTo5 argument second UInt64 uInt644591870180066957722 copy
+doFormatsTo5 argument third UInt64 uInt640 copy
+doFormatsTo5 argument fourth UInt64 uInt640 copy
+doFormatsTo5 argument fifth UInt64 uInt640 copy
+doFormatsTo5 argument expected String expected4 lend
+doFormatsTo5 result none
+doFormatsTo5 ownedBy none
+doFormatsTo5 cleanedBy none
+doFormatsTo5 borrows none
+doFormatsTo5 catch none
+doFormatsTo5 suppresses none
+
+doFormatsTo6 is call
+doFormatsTo6 in formatTest
+doFormatsTo6 invokes formatsTo
+doFormatsTo6 argument format String format5 lend
+doFormatsTo6 argument first UInt64 uInt644599676419421066581 copy
+doFormatsTo6 argument second UInt64 uInt6418446744073709551615 copy
+doFormatsTo6 argument third UInt64 uInt64300 copy
+doFormatsTo6 argument fourth UInt64 uInt6470000 copy
+doFormatsTo6 argument fifth UInt64 uInt640 copy
+doFormatsTo6 argument expected String expected5 lend
+doFormatsTo6 result none
+doFormatsTo6 ownedBy none
+doFormatsTo6 cleanedBy none
+doFormatsTo6 borrows none
+doFormatsTo6 catch none
+doFormatsTo6 suppresses none
+
+doFormatsTo7 is call
+doFormatsTo7 in formatTest
+doFormatsTo7 invokes formatsTo
+doFormatsTo7 argument format String format6 lend
+doFormatsTo7 argument first UInt64 uInt646 copy
+doFormatsTo7 argument second UInt64 uInt647 copy
+doFormatsTo7 argument third UInt64 uInt642 copy
+doFormatsTo7 argument fourth UInt64 uInt644607204936798154260 copy
+doFormatsTo7 argument fifth UInt64 uInt6418446744073709551615 copy
+doFormatsTo7 argument expected String expected6 lend
+doFormatsTo7 result none
+doFormatsTo7 ownedBy none
+doFormatsTo7 cleanedBy none
+doFormatsTo7 borrows none
+doFormatsTo7 catch none
+doFormatsTo7 suppresses none
+
+doFormatsTo8 is call
+doFormatsTo8 in formatTest
+doFormatsTo8 invokes formatsTo
+doFormatsTo8 argument format String format7 lend
+doFormatsTo8 argument first UInt64 uInt641 copy
+doFormatsTo8 argument second UInt64 uInt642 copy
+doFormatsTo8 argument third UInt64 uInt640 copy
+doFormatsTo8 argument fourth UInt64 uInt640 copy
+doFormatsTo8 argument fifth UInt64 uInt640 copy
+doFormatsTo8 argument expected String expected7 lend
+doFormatsTo8 result none
+doFormatsTo8 ownedBy none
+doFormatsTo8 cleanedBy none
+doFormatsTo8 borrows none
+doFormatsTo8 catch none
+doFormatsTo8 suppresses none
+
+doFormatsTo9 is call
+doFormatsTo9 in formatTest
+doFormatsTo9 invokes formatsTo
+doFormatsTo9 argument format String format8 lend
+doFormatsTo9 argument first UInt64 uInt649218868437227405312 copy
+doFormatsTo9 argument second UInt64 uInt6418442240474082181120 copy
+doFormatsTo9 argument third UInt64 uInt649221120237041090560 copy
+doFormatsTo9 argument fourth UInt64 uInt6418444492273895866368 copy
+doFormatsTo9 argument fifth UInt64 uInt640 copy
+doFormatsTo9 argument expected String expected8 lend
+doFormatsTo9 result none
+doFormatsTo9 ownedBy none
+doFormatsTo9 cleanedBy none
+doFormatsTo9 borrows none
+doFormatsTo9 catch none
+doFormatsTo9 suppresses none
+
+doFormatsTo10 is call
+doFormatsTo10 in formatTest
+doFormatsTo10 invokes formatsTo
+doFormatsTo10 argument format String format9 lend
+doFormatsTo10 argument first UInt64 uInt6413837628687431468654 copy
+doFormatsTo10 argument second UInt64 uInt644668012722585352536 copy
+doFormatsTo10 argument third UInt64 uInt644548684680454221981 copy
+doFormatsTo10 argument fourth UInt64 uInt640 copy
+doFormatsTo10 argument fifth UInt64 uInt640 copy
+doFormatsTo10 argument expected String expected9 lend
+doFormatsTo10 result none
+doFormatsTo10 ownedBy none
+doFormatsTo10 cleanedBy none
+doFormatsTo10 borrows none
+doFormatsTo10 catch none
+doFormatsTo10 suppresses none
+
+doFormatsTo11 is call
+doFormatsTo11 in formatTest
+doFormatsTo11 invokes formatsTo
+doFormatsTo11 argument format String format10 lend
+doFormatsTo11 argument first UInt64 uInt644607182418800017408 copy
+doFormatsTo11 argument second UInt64 uInt640 copy
+doFormatsTo11 argument third UInt64 uInt644613937818241073152 copy
+doFormatsTo11 argument fourth UInt64 uInt644607182418800017408 copy
+doFormatsTo11 argument fifth UInt64 uInt640 copy
+doFormatsTo11 argument expected String expected10 lend
+doFormatsTo11 result none
+doFormatsTo11 ownedBy none
+doFormatsTo11 cleanedBy none
+doFormatsTo11 borrows none
+doFormatsTo11 catch none
+doFormatsTo11 suppresses none
+
+doFormatsTo12 is call
+doFormatsTo12 in formatTest
+doFormatsTo12 invokes formatsTo
+doFormatsTo12 argument format String format11 lend
+doFormatsTo12 argument first UInt64 uInt641 copy
+doFormatsTo12 argument second UInt64 uInt649223372036854775808 copy
+doFormatsTo12 argument third UInt64 uInt644624633867356078080 copy
+doFormatsTo12 argument fourth UInt64 uInt640 copy
+doFormatsTo12 argument fifth UInt64 uInt640 copy
+doFormatsTo12 argument expected String expected11 lend
+doFormatsTo12 result none
+doFormatsTo12 ownedBy none
+doFormatsTo12 cleanedBy none
+doFormatsTo12 borrows none
+doFormatsTo12 catch none
+doFormatsTo12 suppresses none
+
+doFormatsTo13 is call
+doFormatsTo13 in formatTest
+doFormatsTo13 invokes formatsTo
+doFormatsTo13 argument format String format12 lend
+doFormatsTo13 argument first UInt64 uInt644591870180066957722 copy
+doFormatsTo13 argument second UInt64 uInt644936209963552724370 copy
+doFormatsTo13 argument third UInt64 uInt6413809297465413604475 copy
+doFormatsTo13 argument fourth UInt64 uInt643735928559 copy
+doFormatsTo13 argument fifth UInt64 uInt640 copy
+doFormatsTo13 argument expected String expected12 lend
+doFormatsTo13 result none
+doFormatsTo13 ownedBy none
+doFormatsTo13 cleanedBy none
+doFormatsTo13 borrows none
+doFormatsTo13 catch none
+doFormatsTo13 suppresses none
+
+readDirectFormat is call
+readDirectFormat in formatTest
+readDirectFormat invokes heap.take
+readDirectFormat argument bytes Int64 eight copy
+readDirectFormat result directFormat machine.Address
+readDirectFormat ownedBy none
+readDirectFormat cleanedBy none
+readDirectFormat borrows none
+readDirectFormat catch none
+readDirectFormat suppresses none
+
+doStoreByte is call
+doStoreByte in formatTest
+doStoreByte invokes machine.storeByte
+doStoreByte argument address machine.Address directFormat copy
+doStoreByte argument value Byte byte120 copy
+doStoreByte result none
+doStoreByte ownedBy none
+doStoreByte cleanedBy none
+doStoreByte borrows none
+doStoreByte catch none
+doStoreByte suppresses none
+
+readDirectCursor is call
+readDirectCursor in formatTest
+readDirectCursor invokes cursorNew
+readDirectCursor argument list machine.Address directFormat copy
+readDirectCursor result directCursor machine.Address
+readDirectCursor ownedBy none
+readDirectCursor cleanedBy none
+readDirectCursor borrows none
+readDirectCursor catch none
+readDirectCursor suppresses none
+
+readDirectBuilder is call
+readDirectBuilder in formatTest
+readDirectBuilder invokes wide.builderNew
+readDirectBuilder argument none
+readDirectBuilder result directBuilder machine.Address
+readDirectBuilder ownedBy none
+readDirectBuilder cleanedBy none
+readDirectBuilder borrows none
+readDirectBuilder catch none
+readDirectBuilder suppresses none
+
+readDirectCount is call
+readDirectCount in formatTest
+readDirectCount invokes formatAll
+readDirectCount argument format machine.Address directFormat copy
+readDirectCount argument cursor machine.Address directCursor copy
+readDirectCount argument builder machine.Address directBuilder copy
+readDirectCount result directCount Int64
+readDirectCount ownedBy none
+readDirectCount cleanedBy none
+readDirectCount borrows none
+readDirectCount catch none
+readDirectCount suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in formatTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 one copy
+doAssertEqualInt64 argument actual Int64 directCount copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readDirectText is call
+readDirectText in formatTest
+readDirectText invokes wide.builderText
+readDirectText argument builder machine.Address directBuilder copy
+readDirectText result directText machine.Address
+readDirectText ownedBy none
+readDirectText cleanedBy none
+readDirectText borrows none
+readDirectText catch none
+readDirectText suppresses none
+
+doGive is call
+doGive in formatTest
+doGive invokes heap.give
+doGive argument block machine.Address directText copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in formatTest
+doGive2 invokes heap.give
+doGive2 argument block machine.Address directBuilder copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doCursorFree is call
+doCursorFree in formatTest
+doCursorFree invokes cursorFree
+doCursorFree argument cursor machine.Address directCursor copy
+doCursorFree result none
+doCursorFree ownedBy none
+doCursorFree cleanedBy none
+doCursorFree borrows none
+doCursorFree catch none
+doCursorFree suppresses none
+
+doGive3 is call
+doGive3 in formatTest
+doGive3 invokes heap.give
+doGive3 argument block machine.Address directFormat copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+readWordSlots is call
+readWordSlots in formatTest
+readWordSlots invokes heap.take
+readWordSlots argument bytes Int64 sixteen copy
+readWordSlots result wordSlots machine.Address
+readWordSlots ownedBy none
+readWordSlots cleanedBy none
+readWordSlots borrows none
+readWordSlots catch none
+readWordSlots suppresses none
+
+findSecondSlot1 is call
+findSecondSlot1 in formatTest
+findSecondSlot1 invokes machine.offset
+findSecondSlot1 argument address machine.Address wordSlots copy
+findSecondSlot1 argument bytes Int64 eight copy
+findSecondSlot1 result secondSlot machine.Address
+findSecondSlot1 ownedBy none
+findSecondSlot1 cleanedBy none
+findSecondSlot1 borrows none
+findSecondSlot1 catch none
+findSecondSlot1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in formatTest
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address secondSlot copy
+doStoreInt64 argument value Int64 n77 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+readWordCell is call
+readWordCell in formatTest
+readWordCell invokes heap.take
+readWordCell argument bytes Int64 eight copy
+readWordCell result wordCell machine.Address
+readWordCell ownedBy none
+readWordCell cleanedBy none
+readWordCell borrows none
+readWordCell catch none
+readWordCell suppresses none
+
+doStoreAddress is call
+doStoreAddress in formatTest
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address wordCell copy
+doStoreAddress argument value machine.Address wordSlots copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+readWordCursor is call
+readWordCursor in formatTest
+readWordCursor invokes heap.take
+readWordCursor argument bytes Int64 sixteen copy
+readWordCursor result wordCursor machine.Address
+readWordCursor ownedBy none
+readWordCursor cleanedBy none
+readWordCursor borrows none
+readWordCursor catch none
+readWordCursor suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in formatTest
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address wordCursor copy
+doStoreInt642 argument value Int64 three copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+findWordListAt1 is call
+findWordListAt1 in formatTest
+findWordListAt1 invokes machine.offset
+findWordListAt1 argument address machine.Address wordCursor copy
+findWordListAt1 argument bytes Int64 eight copy
+findWordListAt1 result wordListAt machine.Address
+findWordListAt1 ownedBy none
+findWordListAt1 cleanedBy none
+findWordListAt1 borrows none
+findWordListAt1 catch none
+findWordListAt1 suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in formatTest
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address wordListAt copy
+doStoreAddress2 argument value machine.Address wordCell copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+readFirstWord is call
+readFirstWord in formatTest
+readFirstWord invokes readWord
+readFirstWord argument cursor machine.Address wordCursor copy
+readFirstWord result firstWord Int64
+readFirstWord ownedBy none
+readFirstWord cleanedBy none
+readFirstWord borrows none
+readFirstWord catch none
+readFirstWord suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in formatTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 zero copy
+doAssertEqualInt642 argument actual Int64 firstWord copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+readSecondWord is call
+readSecondWord in formatTest
+readSecondWord invokes readWord
+readSecondWord argument cursor machine.Address wordCursor copy
+readSecondWord result secondWord Int64
+readSecondWord ownedBy none
+readSecondWord cleanedBy none
+readSecondWord borrows none
+readSecondWord catch none
+readSecondWord suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in formatTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 n77 copy
+doAssertEqualInt643 argument actual Int64 secondWord copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+doGive4 is call
+doGive4 in formatTest
+doGive4 invokes heap.give
+doGive4 argument block machine.Address wordCursor copy
+doGive4 result none
+doGive4 ownedBy none
+doGive4 cleanedBy none
+doGive4 borrows none
+doGive4 catch none
+doGive4 suppresses none
+
+doGive5 is call
+doGive5 in formatTest
+doGive5 invokes heap.give
+doGive5 argument block machine.Address wordCell copy
+doGive5 result none
+doGive5 ownedBy none
+doGive5 cleanedBy none
+doGive5 borrows none
+doGive5 catch none
+doGive5 suppresses none
+
+doGive6 is call
+doGive6 in formatTest
+doGive6 invokes heap.give
+doGive6 argument block machine.Address wordSlots copy
+doGive6 result none
+doGive6 ownedBy none
+doGive6 cleanedBy none
+doGive6 borrows none
+doGive6 catch none
+doGive6 suppresses none
+
+readResult is call
+readResult in formatTest
+readResult invokes heap.take
+readResult argument bytes Int64 n24 copy
+readResult result result machine.Address
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doDecimalDigits is call
+doDecimalDigits in formatTest
+doDecimalDigits invokes decimalDigits
+doDecimalDigits argument high UInt64 uInt640 copy
+doDecimalDigits argument low UInt64 uInt643602879701896397 copy
+doDecimalDigits argument exponent Int64 minus55 copy
+doDecimalDigits argument result machine.Address result copy
+doDecimalDigits result none
+doDecimalDigits ownedBy none
+doDecimalDigits cleanedBy none
+doDecimalDigits borrows none
+doDecimalDigits catch none
+doDecimalDigits suppresses none
+
+findCountAt1 is call
+findCountAt1 in formatTest
+findCountAt1 invokes machine.offset
+findCountAt1 argument address machine.Address result copy
+findCountAt1 argument bytes Int64 eight copy
+findCountAt1 result countAt machine.Address
+findCountAt1 ownedBy none
+findCountAt1 cleanedBy none
+findCountAt1 borrows none
+findCountAt1 catch none
+findCountAt1 suppresses none
+
+readDigitsCount is call
+readDigitsCount in formatTest
+readDigitsCount invokes machine.loadInt64
+readDigitsCount argument address machine.Address countAt copy
+readDigitsCount result digitsCount Int64
+readDigitsCount ownedBy none
+readDigitsCount cleanedBy none
+readDigitsCount borrows none
+readDigitsCount catch none
+readDigitsCount suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in formatTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 n55 copy
+doAssertEqualInt644 argument actual Int64 digitsCount copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+findFractionAt1 is call
+findFractionAt1 in formatTest
+findFractionAt1 invokes machine.offset
+findFractionAt1 argument address machine.Address result copy
+findFractionAt1 argument bytes Int64 sixteen copy
+findFractionAt1 result fractionAt machine.Address
+findFractionAt1 ownedBy none
+findFractionAt1 cleanedBy none
+findFractionAt1 borrows none
+findFractionAt1 catch none
+findFractionAt1 suppresses none
+
+readFractionCount is call
+readFractionCount in formatTest
+readFractionCount invokes machine.loadInt64
+readFractionCount argument address machine.Address fractionAt copy
+readFractionCount result fractionCount Int64
+readFractionCount ownedBy none
+readFractionCount cleanedBy none
+readFractionCount borrows none
+readFractionCount catch none
+readFractionCount suppresses none
+
+doAssertEqualInt645 is call
+doAssertEqualInt645 in formatTest
+doAssertEqualInt645 invokes test.assertEqualInt64
+doAssertEqualInt645 argument expected Int64 n55 copy
+doAssertEqualInt645 argument actual Int64 fractionCount copy
+doAssertEqualInt645 result none
+doAssertEqualInt645 ownedBy none
+doAssertEqualInt645 cleanedBy none
+doAssertEqualInt645 borrows none
+doAssertEqualInt645 catch none
+doAssertEqualInt645 suppresses none
+
+readDigitsBlock is call
+readDigitsBlock in formatTest
+readDigitsBlock invokes machine.loadAddress
+readDigitsBlock argument address machine.Address result copy
+readDigitsBlock result digitsBlock machine.Address
+readDigitsBlock ownedBy none
+readDigitsBlock cleanedBy none
+readDigitsBlock borrows none
+readDigitsBlock catch none
+readDigitsBlock suppresses none
+
+doGive7 is call
+doGive7 in formatTest
+doGive7 invokes heap.give
+doGive7 argument block machine.Address digitsBlock copy
+doGive7 result none
+doGive7 ownedBy none
+doGive7 cleanedBy none
+doGive7 borrows none
+doGive7 catch none
+doGive7 suppresses none
+
+doGive8 is call
+doGive8 in formatTest
+doGive8 invokes heap.give
+doGive8 argument block machine.Address result copy
+doGive8 result none
+doGive8 ownedBy none
+doGive8 cleanedBy none
+doGive8 borrows none
+doGive8 catch none
+doGive8 suppresses none
+
+readMode is call
+readMode in formatTest
+readMode invokes roundingMode
+readMode argument none
+readMode result mode Int64
+readMode ownedBy none
+readMode cleanedBy none
+readMode borrows none
+readMode catch none
+readMode suppresses none
+
+doAssertEqualInt646 is call
+doAssertEqualInt646 in formatTest
+doAssertEqualInt646 invokes test.assertEqualInt64
+doAssertEqualInt646 argument expected Int64 zero copy
+doAssertEqualInt646 argument actual Int64 mode copy
+doAssertEqualInt646 result none
+doAssertEqualInt646 ownedBy none
+doAssertEqualInt646 cleanedBy none
+doAssertEqualInt646 borrows none
+doAssertEqualInt646 catch none
+doAssertEqualInt646 suppresses none
+
+readNowhere is call
+readNowhere in formatTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readMade is call
+readMade in formatTest
+readMade invokes cursorNew
+readMade argument list machine.Address nowhere copy
+readMade result made machine.Address
+readMade ownedBy none
+readMade cleanedBy none
+readMade borrows none
+readMade catch none
+readMade suppresses none
+
+readLayout is call
+readLayout in formatTest
+readLayout invokes machine.loadInt64
+readLayout argument address machine.Address made copy
+readLayout result layout Int64
+readLayout ownedBy none
+readLayout cleanedBy none
+readLayout borrows none
+readLayout catch none
+readLayout suppresses none
+
+readOnLinux is call
+readOnLinux in formatTest
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readOnArm is call
+readOnArm in formatTest
+readOnArm invokes system.aarch64
+readOnArm argument none
+readOnArm result onArm Bool
+readOnArm ownedBy none
+readOnArm cleanedBy none
+readOnArm borrows none
+readOnArm catch none
+readOnArm suppresses none
+
+findExpectedLayout1 is call
+findExpectedLayout1 in formatTest
+findExpectedLayout1 invokes layoutFor
+findExpectedLayout1 argument onLinux Bool onLinux copy
+findExpectedLayout1 argument onArm Bool onArm copy
+findExpectedLayout1 result expectedLayout Int64
+findExpectedLayout1 ownedBy none
+findExpectedLayout1 cleanedBy none
+findExpectedLayout1 borrows none
+findExpectedLayout1 catch none
+findExpectedLayout1 suppresses none
+
+doAssertEqualInt647 is call
+doAssertEqualInt647 in formatTest
+doAssertEqualInt647 invokes test.assertEqualInt64
+doAssertEqualInt647 argument expected Int64 expectedLayout copy
+doAssertEqualInt647 argument actual Int64 layout copy
+doAssertEqualInt647 result none
+doAssertEqualInt647 ownedBy none
+doAssertEqualInt647 cleanedBy none
+doAssertEqualInt647 borrows none
+doAssertEqualInt647 catch none
+doAssertEqualInt647 suppresses none
+
+doCursorFree2 is call
+doCursorFree2 in formatTest
+doCursorFree2 invokes cursorFree
+doCursorFree2 argument cursor machine.Address made copy
+doCursorFree2 result none
+doCursorFree2 ownedBy none
+doCursorFree2 cleanedBy none
+doCursorFree2 borrows none
+doCursorFree2 catch none
+doCursorFree2 suppresses none
+
+layoutFor is operation
+layoutFor purpose "The va_list layout this system has: 3 on Windows, 1 on x86_64 Linux, 2 on AArch64 Linux"
+layoutFor invariant none
+layoutFor typeParameter none
+layoutFor input onLinux Bool copied
+layoutFor input onArm Bool copied
+layoutFor output Int64
+layoutFor outputOwnedBy none
+layoutFor raises none
+layoutFor effect none
+layoutFor uses none
+layoutFor memoryHeap false
+layoutFor async false
+layoutFor maxRecursion none
+layoutFor label begin loopKind none
+layoutFor label begin within none
+layoutFor label windows loopKind none
+layoutFor label windows within none
+layoutFor label linux loopKind none
+layoutFor label linux within none
+layoutFor label arm loopKind none
+layoutFor label arm within none
+layoutFor label sysv loopKind none
+layoutFor label sysv within none
+layoutFor let windowsLayout Int64 3 immutable
+layoutFor let sysvLayout Int64 1 immutable
+layoutFor let armLayout Int64 2 immutable
+layoutFor at begin branch if onLinux goto linux else goto windows
+layoutFor at windows return ok windowsLayout
+layoutFor at linux branch if onArm goto arm else goto sysv
+layoutFor at arm return ok armLayout
+layoutFor at sysv return ok sysvLayout

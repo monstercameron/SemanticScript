@@ -1,0 +1,4 @@
+# What a C program linked with the runtime's C library has done before main (D-161), written in
+# SemanticScript.
+#
+# This module is generated from tools/cstart.dsl by tools/build.py.

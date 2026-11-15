@@ -1,0 +1,263 @@
+# What a C program linked with the runtime's C library has done before main (D-161), written in
+# SemanticScript.
+#
+# This module is generated from tools/cstart.dsl by tools/build.py.
+
+cstart is module
+cstart purpose "What a C program linked with the runtime's C library has done before main: the process's stack kept, the stack protector's canary, and the standard streams' data symbols (D-161)"
+cstart path cstart
+cstart imports standard.machine
+cstart imports standard.system
+cstart imports standard.test
+cstart imports kernel
+cstart imports heap
+cstart imports clibrary
+cstart exports none
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep what the process started with and fill the canary"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to set the thread pointer and read random bytes"
+systemCalls grants use system.calls none
+
+# D-161: `refined build semanticscript/runtime --kind clibrary` writes the C library as an object a C program links
+# instead of glibc on Linux. Its `_start` (the compiler's few instructions) calls `refined_c_prepare` with the stack the
+# kernel gave (argc, argv, envp), then the program's init arrays, then `main(argc, argv, envp)`, then `exit`. The code
+# gcc compiles reads the stack protector's canary at %fs:0x28 on x86_64, so the thread pointer is set to a block of
+# the library's own that points at itself, with a random canary at 0x28; on AArch64 the canary is the data symbol
+# `__stack_chk_guard`, filled from getrandom. machine.state byte 2352 holds the block's address.
+blockAt is constant
+blockAt purpose "Where the thread block's address is kept, in machine.state"
+blockAt type Int64
+blockAt value 2352
+
+prepareProgram is operation
+prepareProgram purpose "Make the process ready for a C program's main: keep argc, argv, and envp; set up the stack protector's canary; point stdin, stdout, and stderr at their FILE blocks"
+prepareProgram invariant readiesProgram "\"After it, argv and envp are what the stack held and the data symbols point at the FILE blocks\""
+prepareProgram typeParameter none
+prepareProgram input stack machine.Address copied
+prepareProgram output none
+prepareProgram outputOwnedBy none
+prepareProgram raises none
+prepareProgram effect use machine.memory
+prepareProgram effect use system.calls
+prepareProgram uses memoryAccess
+prepareProgram uses systemCalls
+prepareProgram memoryHeap false
+prepareProgram async false
+prepareProgram maxRecursion none
+prepareProgram abi c "refined_c_prepare"
+prepareProgram label begin loopKind none
+prepareProgram label begin within none
+prepareProgram label linux loopKind none
+prepareProgram label linux within none
+prepareProgram label armGuard loopKind none
+prepareProgram label armGuard within none
+prepareProgram label intelBlock loopKind none
+prepareProgram label intelBlock within none
+prepareProgram label done loopKind none
+prepareProgram label done within none
+prepareProgram let n1560 Int64 1560 immutable
+prepareProgram let eight Int64 8 immutable
+prepareProgram let zero Int64 0 immutable
+prepareProgram let n256 Int64 256 immutable
+prepareProgram let sixteen Int64 16 immutable
+prepareProgram let n40 Int64 40 immutable
+prepareProgram let n4098 Int64 4098 immutable
+prepareProgram at begin do doInitialStack
+prepareProgram at begin do doPrepare
+prepareProgram at begin do readOnLinux
+prepareProgram at begin branch if onLinux goto linux else goto done
+prepareProgram at linux do readOnArm
+prepareProgram at linux branch if onArm goto armGuard else goto intelBlock
+prepareProgram at armGuard do readGuard
+prepareProgram at armGuard do readUnusedGetrandom
+prepareProgram at armGuard return ok none
+prepareProgram at intelBlock do readSlot
+prepareProgram at intelBlock do readBlock
+prepareProgram at intelBlock do doStoreAddress
+prepareProgram at intelBlock do findSelfAt1
+prepareProgram at intelBlock do doStoreAddress2
+prepareProgram at intelBlock do findCanary1
+prepareProgram at intelBlock do readUnusedGetrandom2
+prepareProgram at intelBlock do readUnusedArchPrctl
+prepareProgram at intelBlock do doStoreAddress3
+prepareProgram at intelBlock return ok none
+prepareProgram at done return ok none
+
+doInitialStack is call
+doInitialStack in prepareProgram
+doInitialStack invokes kernel.initialStack
+doInitialStack argument stack machine.Address stack copy
+doInitialStack result none
+doInitialStack ownedBy none
+doInitialStack cleanedBy none
+doInitialStack borrows none
+doInitialStack catch none
+doInitialStack suppresses none
+
+doPrepare is call
+doPrepare in prepareProgram
+doPrepare invokes clibrary.prepare
+doPrepare argument none
+doPrepare result none
+doPrepare ownedBy none
+doPrepare cleanedBy none
+doPrepare borrows none
+doPrepare catch none
+doPrepare suppresses none
+
+readOnLinux is call
+readOnLinux in prepareProgram
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readOnArm is call
+readOnArm in prepareProgram
+readOnArm invokes system.aarch64
+readOnArm argument none
+readOnArm result onArm Bool
+readOnArm ownedBy none
+readOnArm cleanedBy none
+readOnArm borrows none
+readOnArm catch none
+readOnArm suppresses none
+
+readGuard is call
+readGuard in prepareProgram
+readGuard invokes kernel.stateAt
+readGuard argument offset Int64 n1560 copy
+readGuard result guard machine.Address
+readGuard ownedBy none
+readGuard cleanedBy none
+readGuard borrows none
+readGuard catch none
+readGuard suppresses none
+
+readUnusedGetrandom is call
+readUnusedGetrandom in prepareProgram
+readUnusedGetrandom invokes system.getrandom
+readUnusedGetrandom argument buffer machine.Address guard copy
+readUnusedGetrandom argument bytes Int64 eight copy
+readUnusedGetrandom argument flags Int64 zero copy
+readUnusedGetrandom result unusedGetrandom Int64
+readUnusedGetrandom ownedBy none
+readUnusedGetrandom cleanedBy none
+readUnusedGetrandom borrows none
+readUnusedGetrandom catch none
+readUnusedGetrandom suppresses none
+
+readSlot is call
+readSlot in prepareProgram
+readSlot invokes kernel.stateAt
+readSlot argument offset Int64 blockAt copy
+readSlot result slot machine.Address
+readSlot ownedBy none
+readSlot cleanedBy none
+readSlot borrows none
+readSlot catch none
+readSlot suppresses none
+
+readBlock is call
+readBlock in prepareProgram
+readBlock invokes heap.take
+readBlock argument bytes Int64 n256 copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+doStoreAddress is call
+doStoreAddress in prepareProgram
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address block copy
+doStoreAddress argument value machine.Address block copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+findSelfAt1 is call
+findSelfAt1 in prepareProgram
+findSelfAt1 invokes machine.offset
+findSelfAt1 argument address machine.Address block copy
+findSelfAt1 argument bytes Int64 sixteen copy
+findSelfAt1 result selfAt machine.Address
+findSelfAt1 ownedBy none
+findSelfAt1 cleanedBy none
+findSelfAt1 borrows none
+findSelfAt1 catch none
+findSelfAt1 suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in prepareProgram
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address selfAt copy
+doStoreAddress2 argument value machine.Address block copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+findCanary1 is call
+findCanary1 in prepareProgram
+findCanary1 invokes machine.offset
+findCanary1 argument address machine.Address block copy
+findCanary1 argument bytes Int64 n40 copy
+findCanary1 result canary machine.Address
+findCanary1 ownedBy none
+findCanary1 cleanedBy none
+findCanary1 borrows none
+findCanary1 catch none
+findCanary1 suppresses none
+
+readUnusedGetrandom2 is call
+readUnusedGetrandom2 in prepareProgram
+readUnusedGetrandom2 invokes system.getrandom
+readUnusedGetrandom2 argument buffer machine.Address canary copy
+readUnusedGetrandom2 argument bytes Int64 eight copy
+readUnusedGetrandom2 argument flags Int64 zero copy
+readUnusedGetrandom2 result unusedGetrandom2 Int64
+readUnusedGetrandom2 ownedBy none
+readUnusedGetrandom2 cleanedBy none
+readUnusedGetrandom2 borrows none
+readUnusedGetrandom2 catch none
+readUnusedGetrandom2 suppresses none
+
+readUnusedArchPrctl is call
+readUnusedArchPrctl in prepareProgram
+readUnusedArchPrctl invokes system.archPrctl
+readUnusedArchPrctl argument code Int64 n4098 copy
+readUnusedArchPrctl argument address machine.Address block copy
+readUnusedArchPrctl result unusedArchPrctl Int64
+readUnusedArchPrctl ownedBy none
+readUnusedArchPrctl cleanedBy none
+readUnusedArchPrctl borrows none
+readUnusedArchPrctl catch none
+readUnusedArchPrctl suppresses none
+
+doStoreAddress3 is call
+doStoreAddress3 in prepareProgram
+doStoreAddress3 invokes machine.storeAddress
+doStoreAddress3 argument address machine.Address slot copy
+doStoreAddress3 argument value machine.Address block copy
+doStoreAddress3 result none
+doStoreAddress3 ownedBy none
+doStoreAddress3 cleanedBy none
+doStoreAddress3 borrows none
+doStoreAddress3 catch none
+doStoreAddress3 suppresses none

@@ -2770,6 +2770,91 @@ The five modules stage 4 left to `refined run` (D-137) moved into `semanticscrip
   Method Not Allowed, Internal Server Error, else `Status`), then `Content-Type: text/plain; charset=utf-8`,
   `Content-Length`, `Connection: close`, a blank line, and the body.
 
+## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
+
+The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
+does in the C locale. Step one is stdio, which needs variadic functions. Decided by delegation:
+
+- **D-156** The runtime's DSL (docs/refined-examples/stage0/tools/semgen.py), which writes the runtime's `.sem` files,
+  gains `calc <name> = <expression>`, `calc <name> := <expression>` (a `set` of a mutable let), and
+  `when <expression> <yes> <no>`, and a call statement's arguments may be expressions. Each operator is written out
+  as the explicit call it stands for, one call entity each (`a * b + c` of Float64 values is `math.multiplyFloat64`
+  then `math.addFloat64`), with lets for literals of the operand's type (a Float64 written in hexadecimal, `0x1.8p52`,
+  is a let of exactly that value; one outside 1e-15 to 1e17 is its bits and `convert.uint64BitsToFloat64`). On
+  addresses `+` and `-` with an Int64 are `machine.offset`, and `==`, `!=`, `<` are `machine.equal` and
+  `machine.lessThan`. Every operand is evaluated, left to right (`&&` and `||` are `logic.and` and `logic.or`). `set`
+  and `return` take a literal, and a call whose result the statement does not name gets a name. Why: the C library
+  is tens of thousands of steps, and a DSL line per step made arithmetic unreadable; nothing of this is
+  SemanticScript syntax, and the generated modules hold only explicit calls, lets, and branches, as before (every
+  existing module regenerates byte for byte).
+- **D-157** An `abi library` row may end in `variadic` (`abi library "printf" variadic`): the function takes `...`
+  after its own arguments, and `machine.variadicStart()`, only in such an operation, is the address of its `va_list`
+  (32 bytes, `llvm.va_start`). The runtime reads the list as each system lays it out (cformat's cursor): x86_64 Linux
+  (`gp_offset`, `fp_offset`, `overflow_arg_area`, `reg_save_area`), AArch64 Linux (`__stack`, `__gr_top`, `__vr_top`,
+  `__gr_offs`, `__vr_offs`), and Windows (a pointer, eight bytes an argument, a double in its integer slot); a
+  v-function's `va_list` argument is the list's address on Linux (an array) and the list itself on Windows (a
+  pointer). Also for the C library: `Float32` crosses the C boundary (C's float), `machine.loadFloat32` and
+  `storeFloat32`, and an `abi library` operation may give a record of two `Int64` (`ldiv_t`): returned in two
+  registers on x86_64 Linux and AArch64, and on Windows through memory the caller passes first (the compiler wraps the
+  operation; Windows x64 returns a 16-byte struct so).
+- **D-158** On x86_64 a call through a reference (an operation reference or a bound foreign function) is made as a
+  call of a C function of `...`: every argument goes where a fixed one would, and the call also says in %al how many
+  vector registers it used (Linux) or copies a double to its integer register as well (Windows). That is what a
+  variadic C function such as printf reads its arguments by, and any other function ignores it; without it, printf
+  called through `ffi` with a double read garbage. AArch64 is left as it is: Linux passes variadic arguments as fixed
+  ones, and on Windows on ARM they differ, so the change would break fixed ones. An executable's program is now
+  compiled for the triple it is linked for (it was the host's, retargeted), so this holds in executables built on
+  another machine than the target.
+- **D-159** printf's engine is the module `cformat`: every conversion of glibc's printf in the C locale (`d i o u x X
+  c s p n m % f F e E g G a A`, `C` and `S`, the flags `- + space # 0` and `'` and `I`, which change nothing in the C
+  locale, `*` and `*n$` widths and precisions, `%n$` argument numbers, the lengths `hh h l ll q L j z Z t`), as glibc
+  writes them: `(nil)` for a null `%p`, `(null)` for a null `%s` unless the precision is below 6, `%p` and `%+p`
+  signed like a number, `-nan`, infinities and NaN padded with spaces, a conversion glibc does not know written as it
+  stands. Every argument is read first, in the order the format names them, so `*` and `%n$` read what they name.
+  A floating value is written from its exact digits: m * 2^e is m * 5^-e / 10^-e for a negative e, a whole number
+  kept in base 10^9, rounded at the digit the conversion keeps as the current rounding mode rounds (to nearest, ties
+  to even, as glibc's printf_fp does; reading the mode is step 3's). %a writes the hexadecimal digits of the
+  significand, without trailing zeros unless a precision asks, rounding there; a subnormal is `0x0.<digits>p-1022`
+  and x87's long double `0x8p-3` for 1, as glibc writes them. `L` reads a long double where the system has one (x87's
+  80 bits on x86_64 Linux, binary128 on AArch64 Linux) and writes its exact digits too; on Windows `long double` is
+  `double`. The text goes to a builder that the stdio functions copy to a stream or a string, and more than INT_MAX
+  bytes is -1 with EOVERFLOW.
+- **D-160** stdio is the module `cstreams`. A FILE is a block of the library's own (opaque to C, as glibc's is to a
+  program that does not look inside it); stdin, stdout, and stderr are blocks in machine.state that the data symbols
+  `stdin`, `stdout`, and `stderr` point at. Buffering is glibc's: a terminal is line buffered, other files fully
+  buffered with a buffer of the file's `st_blksize` (4096 on Windows), stderr unbuffered, setvbuf and setbuf choose
+  otherwise; reading a line-buffered or unbuffered stream first flushes a line-buffered stdout; end of file is sticky
+  (glibc 2.28 and later); ungetc keeps 8 bytes. fopen takes `r w a`, `+`, `b` (which changes nothing: no stream
+  translates line ends, on Windows either), `x` (O_EXCL, CREATE_NEW), and `e` (O_CLOEXEC); tmpfile is an O_TMPFILE
+  file in /tmp (else a named one removed at once) on Linux and a file deleted on close on Windows; tmpnam gives
+  `/tmp/file` and six letters or digits no file has on Linux, as glibc, and `file` and six in the current directory
+  on Windows, where /tmp is not; rename replaces a file that has the new name (renameat2, MoveFileExW with
+  MOVEFILE_REPLACE_EXISTING); remove deletes a file or an empty directory. scanf's engine follows glibc's C99 forms
+  (`__isoc99_scanf` and its kin are the same functions under the names glibc's headers give): a conversion gathers
+  the bytes that can still become its number and reads them with strtol's or strtod's own code, a byte that ends it
+  going back with ungetc, so a conversion consumes what it looked at but that byte; `%[` scansets with ranges and
+  `^`; `%l` with c, s, and [ stores wchar_t; `%Lf` stores the double's value as a long double, so it is read to a
+  double's precision only; EOF when the input ends before the first conversion is stored. exit and fflush(NULL) flush
+  every stream, and a program of SemanticScript that used a C stream through `ffi` has them flushed when it ends (the
+  stdio module keeps fflush's address at machine.state byte 2336 and the start module calls it), as glibc's exit
+  does under `refined run`. strerror (and so perror and `%m`) gives `Unknown error N` for every number for now: glibc's
+  messages are a known gap, left out of every glibc-equality test until they are written.
+
+- **D-161** `refined build semanticscript/runtime --kind clibrary` writes the runtime's C library as one object a C
+  program links instead of glibc on Linux, x86_64 and AArch64 (`cc -nostdlib -static program.o <object> -lgcc`): every
+  `abi library` function under its C name (the runtime's own `memcpy` and its kin give way to the library's), the data
+  symbols `stdin`, `stdout`, `stderr`, and `__stack_chk_guard` as globals filled before main, and a `_start` that keeps
+  the kernel's stack, readies the library (the module `cstart`: argv and envp kept, on x86_64 the thread pointer set to
+  a block of the library's own with a random canary at 0x28, which gcc's stack protector reads; on AArch64 a random
+  `__stack_chk_guard`), runs the program's preinit and init arrays, calls `main(argc, argv, envp)`, and exits with
+  what it gives; everything else is internal and what no exported name reaches is dropped. The runtime's own `_start`
+  (for programs of SemanticScript) is left out. An object rather than an archive, because there is nothing to choose
+  members from: the linker keeps what the program reaches with `--gc-sections` or not, and one file is simplest to
+  hand to `cc`. A program with thread-local variables of its own is not supported (the thread block has no TLS
+  area). Windows is refused (R901): MinGW's headers assume the Microsoft C runtime's ABI, so there programs reach the
+  library through `ffi`. tests/test_cprograms.py compiles each program in tests/cprograms with the system's gcc and
+  glibc's headers, links it both ways, and requires the same output, error output, and exit code, byte for byte.
+
 ## The runtime in SemanticScript, the C library and a loader (2026-11-15)
 
 `ffi` was the one module an executable on Linux refused (D-145): `ffi.open("c")` asked for glibc, which a static
@@ -3370,6 +3455,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-138 to D-143 | The runtime in SemanticScript, stage 5: Linux through raw system calls (`LINUX_CALLS`, `system.linux`), the runtime's own stacks and heap on Linux, `ffi` refused there, the only runtime (macOS refused), stage0's C linking the runtime object, `native_runtime.c` deleted (by delegation) |
 | 2026-11-15 | D-144 to D-152 | The runtime in SemanticScript, the rest of the library: "no C library" worded (OS interfaces ws2_32 and bcrypt allowed, never a CRT), the platform limits (ffi on Linux, macOS), `random` (CPython's Mersenne Twister, the system's secure source), `signal` (console control handler, rt_sigaction), `net` (non-blocking sockets through the scheduler, a resolver for Linux), `json` (CPython's scanner and encoder, shared counted values), `http`, AArch64 Linux (by delegation) |
 | 2026-11-15 | D-153 to D-155 | The runtime in SemanticScript, `ffi` everywhere: a C library written in SemanticScript (ctype, string, stdlib, math basics, stdio writes, as glibc in the C locale) that `ffi.open("c")` binds on Windows and Linux, an ELF shared-library loader for Linux (eager binding, refusals that trap), `abi library` rows and `machine.cLibrary` (by delegation) |
+| 2026-11-15 | D-156 to D-161 | The runtime in SemanticScript, the whole C library, stdio: expressions in the runtime's DSL, variadic `abi library` rows and `machine.variadicStart`, x86_64 calls through references made as variadic ones, printf's engine with exact digits, FILE streams buffered as glibc's, scanf (strerror's messages a known gap), the C library as a C program's libc on Linux (`--kind clibrary`) (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

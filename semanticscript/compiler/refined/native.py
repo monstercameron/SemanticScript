@@ -330,7 +330,125 @@ def runtime_object(output: str) -> tuple[bool, str]:
     return True, f"wrote {output} (the runtime in SemanticScript, {len(data)} bytes, {machine})"
 
 
+# D-161: the C library as a C program's libc on Linux: `_start` keeps the kernel's stack, readies the library, runs the
+# program's init arrays, calls main(argc, argv, envp), and exits with what main gives; the data symbols are globals of
+# the object, filled before main from the cells in machine.state the library keeps them in (their values never change:
+# freopen reuses a stream's FILE)
+_C_START_ASM = {
+    "x86_64": [".text", ".p2align 4", ".globl _start", ".type _start,@function", "_start:", "  xorl %ebp, %ebp",
+               "  movq %rsp, %rdi", "  andq $-16, %rsp", "  callq refined_c_start", "  ud2"],
+    "aarch64": [".text", ".p2align 4", ".globl _start", ".type _start,@function", "_start:", "  mov x29, xzr",
+                "  mov x30, xzr", "  mov x0, sp", "  and x9, x0, #-16", "  mov sp, x9", "  bl refined_c_start",
+                "  brk #0"],
+}
+_C_DATA = {"stdin": 1624, "stdout": 1544, "stderr": 1552, "__stack_chk_guard": 1560}
+_C_START_IR = """
+declare void @refined_c_prepare(ptr)
+declare i32 @main(i32, ptr, ptr)
+declare void @exit(i32)
+@__preinit_array_start = external hidden global [0 x ptr]
+@__preinit_array_end = external hidden global [0 x ptr]
+@__init_array_start = external hidden global [0 x ptr]
+@__init_array_end = external hidden global [0 x ptr]
+
+define internal void @refined_c_run_array(ptr %from, ptr %to, i32 %argc, ptr %argv, ptr %envp) {
+entry:
+  br label %head
+head:
+  %at = phi ptr [ %from, %entry ], [ %next, %body ]
+  %done = icmp uge ptr %at, %to
+  br i1 %done, label %out, label %body
+body:
+  %fn = load ptr, ptr %at
+  call void %fn(i32 %argc, ptr %argv, ptr %envp)
+  %next = getelementptr ptr, ptr %at, i64 1
+  br label %head
+out:
+  ret void
+}
+
+define void @refined_c_start(ptr %stack) {
+entry:
+  call void @refined_c_prepare(ptr %stack)
+  call void @refined_c_data()
+  %count = load i64, ptr %stack
+  %argc = trunc i64 %count to i32
+  %argv = getelementptr i8, ptr %stack, i64 8
+  %words = add i64 %count, 1
+  %envp = getelementptr ptr, ptr %argv, i64 %words
+  call void @refined_c_run_array(ptr @__preinit_array_start, ptr @__preinit_array_end, i32 %argc, ptr %argv, ptr %envp)
+  call void @refined_c_run_array(ptr @__init_array_start, ptr @__init_array_end, i32 %argc, ptr %argv, ptr %envp)
+  %code = call i32 @main(i32 %argc, ptr %argv, ptr %envp)
+  call void @exit(i32 %code)
+  unreachable
+}
+"""
+
+
+def clibrary_object(output: str, triple: str | None) -> tuple[bool, str]:
+    """D-161: the runtime's C library as one object for a C program to link instead of glibc on Linux (`cc -nostdlib
+    -static program.o <this> -lgcc`): every `abi library` function under its C name, the data symbols stdin, stdout,
+    stderr, and __stack_chk_guard, and `_start`; everything else is internal, and what no exported name reaches is
+    dropped."""
+    if triple is None:
+        cc = find_cc()
+        if cc is None:
+            return False, "no C compiler to link with: install one (cc, gcc, or clang) or set REFINED_CC"
+        machine, triple, problem = platform(cc)
+        if triple is None:
+            return False, problem
+    arch = triple.split("-")[0]
+    if "linux" not in triple or arch not in ("x86_64", "aarch64"):
+        return False, (f"R901 the C library is built as a C program's libc for Linux on x86_64 and AArch64 (D-161), "
+                       f"not `{triple}`; on Windows a program reaches it through `ffi`")
+    runtime_bitcode, _provided, problem = _ss_runtime_bitcode(triple)
+    if runtime_bitcode is None:
+        return False, problem
+    _init()
+    from .codegen import _AARCH64_START, _X86_64_START
+    text = str(llvm.parse_bitcode(runtime_bitcode))
+    own_start = "\n".join(f'module asm "{line}"' for line in (_AARCH64_START if arch == "aarch64" else _X86_64_START))
+    text = text.replace(own_start, "", 1)  # the runtime's own `_start` is for programs of SemanticScript
+    module = llvm.parse_assembly(text)
+    library = {fn.name[len("refined.c."):]: fn for fn in module.functions
+               if fn.name.startswith("refined.c.") and not fn.is_declaration}
+    exported = set(library)
+    for fn in module.functions:
+        if fn.is_declaration:
+            continue
+        if fn.name in exported:  # the runtime's own memcpy and the like give way to the library's
+            fn.name = "refined.own." + fn.name
+        fn.linkage = llvm.Linkage.internal
+    for name, fn in library.items():
+        fn.name = name
+        fn.linkage = llvm.Linkage.external
+    for fn in module.functions:
+        if fn.name == "refined_c_prepare":
+            fn.linkage = llvm.Linkage.external
+    data = "\n".join(f"@{name} = global i64 0, align 8" for name in _C_DATA)
+    copies = "\n".join(f"  %{name}.cell = getelementptr i8, ptr @refined_machine_state, i64 {offset}\n"
+                       f"  %{name}.value = load i64, ptr %{name}.cell\n  store i64 %{name}.value, ptr @{name}"
+                       for name, offset in _C_DATA.items())
+    start = (f"target triple = \"{triple}\"\n" + "\n".join(f'module asm "{line}"' for line in _C_START_ASM[arch]) +
+             "\n@refined_machine_state = external global [65536 x i8]\n" + _C_START_IR + data +
+             "\ndefine void @refined_c_data() {\nentry:\n" + copies + "\n  ret void\n}\n")
+    tm = llvm.Target.from_triple(triple).create_target_machine(reloc="pic", codemodel="default", opt=2)
+    module.triple = triple
+    module.link_in(llvm.parse_assembly(start))
+    module.data_layout = str(tm.target_data)
+    _simplify(module, tm)
+    module.verify()
+    data = tm.emit_object(module)
+    with open(output, "wb") as fh:
+        fh.write(data)
+    return True, f"wrote {output} (the runtime's C library for C programs, {len(exported)} functions, {len(data)} bytes, {triple})"
+
+
 def build(ir_text: str | None, output: str, triple: str | None, kind: str, entry: str | None = None) -> int:
+    if kind == "clibrary":
+        ok, message = clibrary_object(output, triple)
+        sys.stdout.write(message + "\n")
+        return 0 if ok else 1
     if kind == "runtime":
         ok, message = runtime_object(output)
         sys.stdout.write(message + "\n")

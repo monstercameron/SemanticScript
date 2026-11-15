@@ -19,6 +19,11 @@ constant stackBudget "How far below the entry's frame the stack floor is: 256 Mi
 
 constant stackBytes "The bytes of the program's stack on Linux: 256 MiB" Int64 268435456
 
+## D-160: a program that wrote to the C library's streams (through `ffi`) has them flushed when it ends, as the C
+## library's exit flushes them: the stdio module keeps the address of fflush at machine.state byte 2336 once a stream
+## is first used, and the entry calls it with NULL before the process ends.
+constant flushHookAt "Where the address of the C library's fflush is kept once a C stream was used, in machine.state" Int64 2336
+
 op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
   input code Int32 copied
   effect use system.calls
@@ -32,6 +37,22 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   return
 :windowsExit
   callExitProcess: system.exitProcess(code)
+  return
+
+op flushStreams "Call the C library's fflush(NULL) when a C stream was used, so what the streams hold is written"
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  state = machine.state()
+  hookCell = machine.offset(state, flushHookAt)
+  hook = machine.loadAddress(hookCell)
+  nowhere = machine.zero()
+  unused = machine.equal(hook, nowhere)
+  if unused done flush
+:flush
+  machine.callWithAddress(hook, nowhere)
+  return
+:done
   return
 
 op entry "Start the process: set the stack floor, run the program's entry operation, and end the process with its exit code: refined_entry. On Linux the kernel's stack, with argc, argv, and envp on it, is the input"
@@ -62,6 +83,7 @@ op entry "Start the process: set the stack floor, run the program's entry operat
   findLinuxFloorSlot: linuxFloorSlot = machine.offset(linuxState, floorAt)
   storeLinuxFloor: machine.storeInt64(linuxFloorSlot, linuxFloor)
   runLinux: linuxCode = machine.runEntryOnStack(top)
+  flushStreams()
   exitLinux: endProcess(linuxCode)
   return
 :windowsStart
@@ -72,5 +94,6 @@ op entry "Start the process: set the stack floor, run the program's entry operat
   findFloorSlot: floorSlot = machine.offset(state, floorAt)
   storeFloor: machine.storeInt64(floorSlot, floor)
   run: code = machine.runEntry()
+  flushStreams()
   exit: endProcess(code)
   return

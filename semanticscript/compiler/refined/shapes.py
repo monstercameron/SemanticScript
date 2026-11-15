@@ -204,7 +204,8 @@ _OP_SKELETON = [("typeParameter", "some"), ("input", "some"), ("output", "one"),
 # nothing a reader needs. It sits after `maxRecursion`, with the other facts about how the operation is called.
 # D-153: `abi library "<name>"` is a function of the runtime's C library, called with the C calling convention through
 # the address its table gives (`machine.cLibrary`), never exported to the linker under that name.
-_ABI = {"abi": [(kw("c", "library"), "string")]}
+# D-157: `abi library "<name>" variadic` is a C library function that takes more arguments after its own, as `...`
+_ABI = {"abi": [(kw("c", "library"), "string"), (kw("library"), "string", kw("variadic"))]}
 _OPERATION_SKELETON = _OP_SKELETON[:10] + [("abi", "optional")] + _OP_SKELETON[10:]
 
 _CALL_SHAPES = {

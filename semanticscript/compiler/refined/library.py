@@ -125,7 +125,7 @@ def scope_within(resource: str, inner: str, outer: str) -> bool:
     return False
 
 # Types that may cross the foreign function interface: numbers and `Bool`, passed by the C ABI as is.
-FOREIGN_TYPES = {"Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Byte", "Float64", "Bool"}
+FOREIGN_TYPES = {"Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Byte", "Float32", "Float64", "Bool"}
 
 
 def _bin(t: str, out: str) -> Sig:
@@ -268,8 +268,18 @@ def _machine() -> dict:
         "cLibrary": Sig((), _A, effects=_MEM),
         "callComparison": Sig((_at("function"), _at("left"), _at("right")), "Int32", effects=_MEM),
         "squareRoot": Sig((P("value", "Float64", "copied"),), "Float64", effects=_MEM),
+        # D-157: in an `abi library "<name>" variadic` operation, the address of its `va_list`, started
+        # (`llvm.va_start`) on the arguments after its own: 32 bytes the caller of this target reads as the system lays
+        # them out (x86_64 Linux, AArch64 Linux, and Windows each have their own)
+        "variadicStart": Sig((), _A, effects=_MEM),
+        # D-163: setjmp and longjmp. An `abi library` operation whose one call is `saveContext` is emitted as the
+        # routine itself: it keeps the caller's callee-saved registers, stack pointer, and return address in the
+        # buffer and gives 0; one whose one call is `resumeContext` restores them and returns from that setjmp again
+        # with the value (1 for 0). Nothing else may call them: only the routine itself sees its caller's frame
+        "saveContext": Sig((_at("buffer"),), "Int32", effects=_MEM),
+        "resumeContext": Sig((_at("buffer"), P("value", "Int32", "copied")), effects=_MEM),
     }
-    for t in ("Byte", "Int32", "Int64", "UInt64", "Float64", "Address"):
+    for t in ("Byte", "Int32", "Int64", "UInt64", "Float64", "Float32", "Address"):
         canon = _A if t == "Address" else t
         out[f"load{t}"] = Sig((_at("address"),), canon, effects=_MEM)
         out[f"store{t}"] = Sig((_at("address"), P("value", canon, "copied")), effects=_MEM)
@@ -334,6 +344,8 @@ SYSTEM_CALLS.update({
     "createDirectoryW": _sys("CreateDirectoryW", ("name:A", "security:A"), "Int32"),
     "removeDirectoryW": _sys("RemoveDirectoryW", ("name:A",), "Int32"),
     "deleteFileW": _sys("DeleteFileW", ("name:A",), "Int32"),
+    # D-160: stdio's `rename`, which replaces a file that is there as POSIX's rename does
+    "moveFileExW": _sys("MoveFileExW", ("existing:A", "replacement:A", "flags:Int32"), "Int32"),
     "lockFile": _sys("LockFile", ("handle:A", "offsetLow:Int32", "offsetHigh:Int32", "bytesLow:Int32",
                                   "bytesHigh:Int32"), "Int32"),
     "unlockFile": _sys("UnlockFile", ("handle:A", "offsetLow:Int32", "offsetHigh:Int32", "bytesLow:Int32",
@@ -364,6 +376,9 @@ SYSTEM_CALLS.update({
     "terminateProcess": _sys("TerminateProcess", ("process:A", "code:Int32"), "Int32"),
     "getTickCount64": _sys("GetTickCount64", (), "Int64"),
     "getSystemTimeAsFileTime": _sys("GetSystemTimeAsFileTime", ("time:A",)),
+    "getProcessTimes": _sys("GetProcessTimes", ("process:A", "created:A", "exited:A", "kernel:A", "user:A"),
+                            "Int32"),
+    "getDynamicTimeZoneInformation": _sys("GetDynamicTimeZoneInformation", ("information:A",), "Int32"),
     "sleep": _sys("Sleep", ("milliseconds:Int32",)),
     "convertThreadToFiber": _sys("ConvertThreadToFiber", ("parameter:A",), "A"),
     "createFiberEx": _sys("CreateFiberEx", ("commitBytes:Int64", "reserveBytes:Int64", "flags:Int32", "start:A",
@@ -474,6 +489,8 @@ LINUX_CALLS: dict[str, tuple[int, Sig]] = {
     "getrandom": _linux(318, ("buffer:A", "bytes", "flags")),
     # D-155: the thread pointer a loaded library's code reads (its stack protector's canary at %fs:0x28); x86_64 only
     "archPrctl": _linux(158, ("code", "address:A")),
+    # D-160: stdio's `rename`
+    "renameat2": _linux(316, ("oldDirectory", "oldPath:A", "newDirectory", "newPath:A", "flags")),
 }
 
 # D-150: the same system calls on AArch64, by the kernel's generic numbers. AArch64 has no `poll`, `fork`, or `dup2`:
@@ -485,7 +502,7 @@ AARCH64_NUMBERS: dict[str, int] = {
     "getdents64": 61, "clockGettime": 113, "exitGroup": 94, "openat": 56, "mkdirat": 34, "newfstatat": 79,
     "unlinkat": 35, "readlinkat": 78, "pipe2": 59, "pidfdOpen": 434, "socket": 198, "connect": 203, "sendto": 206,
     "recvfrom": 207, "shutdown": 210, "bind": 200, "listen": 201, "setsockopt": 208, "getsockopt": 209,
-    "accept4": 242, "getrandom": 278,
+    "accept4": 242, "getrandom": 278, "renameat2": 276,
 }  # D-155: `archPrctl` has no AArch64 number (the thread pointer is a register there); the backend lowers it to a trap
 
 LIBRARY: dict[str, dict] = {

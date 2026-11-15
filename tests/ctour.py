@@ -15,6 +15,9 @@ import os
 import struct
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cstdio  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "docs", "refined-examples", "stage0", "tools"))
 
@@ -43,6 +46,7 @@ def _bits(x: float) -> int:
 
 
 def _dsl() -> str:
+    stdio_caps, stdio_optypes, stdio_helpers, stdio_body = cstdio.dsl_parts()
     caps, ops, lets = [], [], []
     for name in CTYPE + ["abs", "div"] + LONGS + DOUBLES + PAIRS + POINTERS + ["semanticscriptNoSuchSymbol"]:
         caps.append(f'capability {name}Symbol "Authority to bind the C function {name}" load ffi.symbols "{name}"')
@@ -90,8 +94,10 @@ def _dsl() -> str:
   readDouble: sevensDouble = *strtodFn(block, noEnd)
   showSevensDouble: sayDouble(sevensDouble)
   freeBlock: freed = *freeFn(block)
+STDIO_BODY
   bindMissing: missingFn = IntBinding.bind(libc, missingName="semanticscriptNoSuchSymbol") ! missingError
   iferr bindMissing reportMissing failed''')
+    body[-1] = body[-1].replace("STDIO_BODY", chr(10).join(stdio_body))
     dsl = f'''module ctour "Call the runtime's C library through ffi and print what each function gives"
   path ctour
   imports standard.console standard.ffi standard.convert standard.compare standard.math
@@ -101,7 +107,8 @@ capability stdoutWriter "Authority to write lines to standard output" write cons
 
 capability cLibrary "Authority to load the C library and nothing else" load ffi.libraries "c"
 
-{chr(10).join(c + chr(10) for c in caps)}
+{chr(10).join(c + chr(10) for c in caps + stdio_caps)}
+{stdio_optypes}
 optype IntFunction "int f(int)"
   input value Int32 copied
   output Int32
@@ -194,6 +201,7 @@ op sayDouble "Write a double on a line, as repr writes it"
   write: console.writeFloatLine(value) ~
   return
 
+{stdio_helpers}
 op everyCode "Call a function of an int with every code from -128 to 255 and write what it gives"
   input callee IntFunction copied
   effect write console.stdout
@@ -240,6 +248,7 @@ op main "Open the C library, call each function, and report a name it does not h
   effect write console.stdout
   uses cLibrary
 {uses}
+{chr(10).join("  uses " + c.split()[1] for c in stdio_caps)}
   uses stdoutWriter
   let okCode ExitCode 0
   let failCode ExitCode 1
@@ -400,5 +409,7 @@ def expected() -> list[str]:
     for name in PAIRS:
         for a, b in PAIR_INPUTS:
             out.append(repr(_c_fmod(a, b) if name == "fmod" else math.copysign(a, b)))
-    out += ["15", "777", "777", "777.0", "symbolMissing"]
+    out += ["15", "777", "777", "777.0"]
+    out += cstdio.expected()  # D-159, D-160: printf and sscanf through ffi
+    out += ["symbolMissing"]
     return out

@@ -1,0 +1,1263 @@
+# Tests of the `cstreams` module; generated from tools/cstreams.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+cText is operation
+cText purpose "A C string in a new heap block: a text's bytes and a 0"
+cText invariant none
+cText typeParameter none
+cText input text String borrowed
+cText output machine.Address
+cText outputOwnedBy none
+cText raises none
+cText effect use machine.memory
+cText effect use system.calls
+cText uses memoryAccess
+cText uses systemCalls
+cText memoryHeap false
+cText async false
+cText maxRecursion none
+cText label begin loopKind none
+cText label begin within none
+cText let one Int64 1 immutable
+cText at begin do readBytes
+cText at begin do blockStep1
+cText at begin do findBlock1
+cText at begin do readAt
+cText at begin do doCopy
+cText at begin return ok block
+
+readBytes is call
+readBytes in cText
+readBytes invokes string.byteLength
+readBytes argument text String text lend
+readBytes result bytes Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+blockStep1 is call
+blockStep1 in cText
+blockStep1 invokes math.addInt64
+blockStep1 argument left Int64 bytes copy
+blockStep1 argument right Int64 one copy
+blockStep1 result blockPart1 Int64
+blockStep1 ownedBy none
+blockStep1 cleanedBy none
+blockStep1 borrows none
+blockStep1 catch none
+blockStep1 suppresses none
+
+findBlock1 is call
+findBlock1 in cText
+findBlock1 invokes heap.take
+findBlock1 argument bytes Int64 blockPart1 copy
+findBlock1 result block machine.Address
+findBlock1 ownedBy none
+findBlock1 cleanedBy none
+findBlock1 borrows none
+findBlock1 catch none
+findBlock1 suppresses none
+
+readAt is call
+readAt in cText
+readAt invokes machine.addressOfString
+readAt argument text String text lend
+readAt result at machine.Address
+readAt ownedBy none
+readAt cleanedBy none
+readAt borrows none
+readAt catch none
+readAt suppresses none
+
+doCopy is call
+doCopy in cText
+doCopy invokes machine.copy
+doCopy argument target machine.Address block copy
+doCopy argument source machine.Address at copy
+doCopy argument bytes Int64 bytes copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+slotCursor is operation
+slotCursor purpose "A cursor over eight-byte argument slots (the layout the tests use on every system), the slots holding the addresses of a block's cells: the first cell's at 0, the next 8 bytes on"
+slotCursor invariant none
+slotCursor typeParameter none
+slotCursor input cells machine.Address copied
+slotCursor input count Int64 copied
+slotCursor output machine.Address
+slotCursor outputOwnedBy none
+slotCursor raises none
+slotCursor effect use machine.memory
+slotCursor effect use system.calls
+slotCursor uses memoryAccess
+slotCursor uses systemCalls
+slotCursor memoryHeap false
+slotCursor async false
+slotCursor maxRecursion none
+slotCursor label begin loopKind none
+slotCursor label begin within none
+slotCursor label eachSlot loopKind while
+slotCursor label eachSlot within none
+slotCursor label eachSlot maxIterations count
+slotCursor label fill loopKind none
+slotCursor label fill within eachSlot
+slotCursor label finish loopKind none
+slotCursor label finish within none
+slotCursor let at Int64 0 mutable
+slotCursor let eight Int64 8 immutable
+slotCursor let sixtyFour Int64 64 immutable
+slotCursor let one Int64 1 immutable
+slotCursor let sixteen Int64 16 immutable
+slotCursor let three Int64 3 immutable
+slotCursor at begin do slotsStep1
+slotCursor at begin do slotsStep2
+slotCursor at begin do findSlots1
+slotCursor at begin goto eachSlot
+slotCursor at eachSlot do findCheck11
+slotCursor at eachSlot branch if check1 goto finish else goto fill
+slotCursor at fill do cellAtStep1
+slotCursor at fill do findCellAt1
+slotCursor at fill do slotAtStep1
+slotCursor at fill do findSlotAt1
+slotCursor at fill do doStoreAddress
+slotCursor at fill do findAtNext11
+slotCursor at fill set at atNext1
+slotCursor at fill goto eachSlot
+slotCursor at finish do readCell
+slotCursor at finish do doStoreAddress2
+slotCursor at finish do readCursor
+slotCursor at finish do doStoreInt64
+slotCursor at finish do findCursorListAt1
+slotCursor at finish do doStoreAddress3
+slotCursor at finish return ok cursor
+
+slotsStep1 is call
+slotsStep1 in slotCursor
+slotsStep1 invokes math.multiplyInt64
+slotsStep1 argument left Int64 count copy
+slotsStep1 argument right Int64 eight copy
+slotsStep1 result slotsPart1 Int64
+slotsStep1 ownedBy none
+slotsStep1 cleanedBy none
+slotsStep1 borrows none
+slotsStep1 catch none
+slotsStep1 suppresses none
+
+slotsStep2 is call
+slotsStep2 in slotCursor
+slotsStep2 invokes math.addInt64
+slotsStep2 argument left Int64 slotsPart1 copy
+slotsStep2 argument right Int64 eight copy
+slotsStep2 result slotsPart2 Int64
+slotsStep2 ownedBy none
+slotsStep2 cleanedBy none
+slotsStep2 borrows none
+slotsStep2 catch none
+slotsStep2 suppresses none
+
+findSlots1 is call
+findSlots1 in slotCursor
+findSlots1 invokes heap.take
+findSlots1 argument bytes Int64 slotsPart2 copy
+findSlots1 result slots machine.Address
+findSlots1 ownedBy none
+findSlots1 cleanedBy none
+findSlots1 borrows none
+findSlots1 catch none
+findSlots1 suppresses none
+
+findCheck11 is call
+findCheck11 in slotCursor
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 at copy
+findCheck11 argument right Int64 count copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+cellAtStep1 is call
+cellAtStep1 in slotCursor
+cellAtStep1 invokes math.multiplyInt64
+cellAtStep1 argument left Int64 at copy
+cellAtStep1 argument right Int64 sixtyFour copy
+cellAtStep1 result cellAtPart1 Int64
+cellAtStep1 ownedBy none
+cellAtStep1 cleanedBy none
+cellAtStep1 borrows none
+cellAtStep1 catch none
+cellAtStep1 suppresses none
+
+findCellAt1 is call
+findCellAt1 in slotCursor
+findCellAt1 invokes machine.offset
+findCellAt1 argument address machine.Address cells copy
+findCellAt1 argument bytes Int64 cellAtPart1 copy
+findCellAt1 result cellAt machine.Address
+findCellAt1 ownedBy none
+findCellAt1 cleanedBy none
+findCellAt1 borrows none
+findCellAt1 catch none
+findCellAt1 suppresses none
+
+slotAtStep1 is call
+slotAtStep1 in slotCursor
+slotAtStep1 invokes math.multiplyInt64
+slotAtStep1 argument left Int64 at copy
+slotAtStep1 argument right Int64 eight copy
+slotAtStep1 result slotAtPart1 Int64
+slotAtStep1 ownedBy none
+slotAtStep1 cleanedBy none
+slotAtStep1 borrows none
+slotAtStep1 catch none
+slotAtStep1 suppresses none
+
+findSlotAt1 is call
+findSlotAt1 in slotCursor
+findSlotAt1 invokes machine.offset
+findSlotAt1 argument address machine.Address slots copy
+findSlotAt1 argument bytes Int64 slotAtPart1 copy
+findSlotAt1 result slotAt machine.Address
+findSlotAt1 ownedBy none
+findSlotAt1 cleanedBy none
+findSlotAt1 borrows none
+findSlotAt1 catch none
+findSlotAt1 suppresses none
+
+doStoreAddress is call
+doStoreAddress in slotCursor
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address slotAt copy
+doStoreAddress argument value machine.Address cellAt copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+findAtNext11 is call
+findAtNext11 in slotCursor
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+readCell is call
+readCell in slotCursor
+readCell invokes heap.take
+readCell argument bytes Int64 eight copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in slotCursor
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address cell copy
+doStoreAddress2 argument value machine.Address slots copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+readCursor is call
+readCursor in slotCursor
+readCursor invokes heap.take
+readCursor argument bytes Int64 sixteen copy
+readCursor result cursor machine.Address
+readCursor ownedBy none
+readCursor cleanedBy none
+readCursor borrows none
+readCursor catch none
+readCursor suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in slotCursor
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address cursor copy
+doStoreInt64 argument value Int64 three copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+findCursorListAt1 is call
+findCursorListAt1 in slotCursor
+findCursorListAt1 invokes machine.offset
+findCursorListAt1 argument address machine.Address cursor copy
+findCursorListAt1 argument bytes Int64 eight copy
+findCursorListAt1 result cursorListAt machine.Address
+findCursorListAt1 ownedBy none
+findCursorListAt1 cleanedBy none
+findCursorListAt1 borrows none
+findCursorListAt1 catch none
+findCursorListAt1 suppresses none
+
+doStoreAddress3 is call
+doStoreAddress3 in slotCursor
+doStoreAddress3 invokes machine.storeAddress
+doStoreAddress3 argument address machine.Address cursorListAt copy
+doStoreAddress3 argument value machine.Address cell copy
+doStoreAddress3 result none
+doStoreAddress3 ownedBy none
+doStoreAddress3 cleanedBy none
+doStoreAddress3 borrows none
+doStoreAddress3 catch none
+doStoreAddress3 suppresses none
+
+streamTest is test
+streamTest purpose "A temporary file is written through its buffer, flushed, read back by line, and scanned: %s %d %i %lf %3c read what glibc's scanf reads; sscanf of blanks is EOF, of a letter 0, and %n counts"
+streamTest verifies flushAll flushesEvery
+streamTest verifies scanAll scansLikeGlibc
+streamTest typeParameter none
+streamTest input none
+streamTest output none
+streamTest outputOwnedBy none
+streamTest raises none
+streamTest effect use machine.memory
+streamTest effect use system.calls
+streamTest uses memoryAccess
+streamTest uses systemCalls
+streamTest memoryHeap false
+streamTest async false
+streamTest maxRecursion none
+streamTest label begin loopKind none
+streamTest label begin within none
+streamTest let line String "abc 42 -0x1f 3.25 xyzw" immutable
+streamTest let firstFormat String "%s %d %i %lf %3c" immutable
+streamTest let blankText String "   " immutable
+streamTest let letterText String "x" immutable
+streamTest let numberText String "12abc" immutable
+streamTest let numberFormat String "%d" immutable
+streamTest let countFormat String "%d%n" immutable
+streamTest let word String "abc" immutable
+streamTest let int320 Int32 0 immutable
+streamTest let n22 Int64 22 immutable
+streamTest let sixtyFour Int64 64 immutable
+streamTest let int3264 Int32 64 immutable
+streamTest let n320 Int64 320 immutable
+streamTest let five Int64 5 immutable
+streamTest let int325 Int32 5 immutable
+streamTest let three Int64 3 immutable
+streamTest let int3242 Int32 42 immutable
+streamTest let n128 Int64 128 immutable
+streamTest let int32Minus31 Int32 -31 immutable
+streamTest let n192 Int64 192 immutable
+streamTest let real400a000000000000 Float64 3.25 immutable
+streamTest let n256 Int64 256 immutable
+streamTest let byte120 Byte 120 immutable
+streamTest let one Int64 1 immutable
+streamTest let int32Minus1 Int32 -1 immutable
+streamTest let two Int64 2 immutable
+streamTest let int321 Int32 1 immutable
+streamTest let int3212 Int32 12 immutable
+streamTest let int322 Int32 2 immutable
+streamTest at begin do readFile
+streamTest at begin do readNowhere
+streamTest at begin do doAssertTrueStep1
+streamTest at begin do doAssertTrueStep2
+streamTest at begin do doAssertTrue
+streamTest at begin do readLineText
+streamTest at begin do readUnusedPutStream
+streamTest at begin do readStatus
+streamTest at begin do doAssertTrueStep3
+streamTest at begin do doAssertTrue2
+streamTest at begin do readWhere
+streamTest at begin do doAssertEqualInt64
+streamTest at begin do doRewindStream
+streamTest at begin do readBuffer
+streamTest at begin do readBack
+streamTest at begin do doAssertTrueStep4
+streamTest at begin do doAssertTrue3
+streamTest at begin do readBackLength
+streamTest at begin do doAssertEqualInt642
+streamTest at begin do doRewindStream2
+streamTest at begin do readCells
+streamTest at begin do readCursor
+streamTest at begin do readFormatText
+streamTest at begin do readStored
+streamTest at begin do doAssertTrueStep5
+streamTest at begin do doAssertTrue4
+streamTest at begin do readWordLength
+streamTest at begin do doAssertEqualInt643
+streamTest at begin do findSecondCell1
+streamTest at begin do readSecond
+streamTest at begin do doAssertTrueStep6
+streamTest at begin do doAssertTrue5
+streamTest at begin do findThirdCell1
+streamTest at begin do readThird
+streamTest at begin do doAssertTrueStep7
+streamTest at begin do doAssertTrue6
+streamTest at begin do findFourthCell1
+streamTest at begin do readFourth
+streamTest at begin do doAssertTrueStep8
+streamTest at begin do doAssertTrue7
+streamTest at begin do findFifthCell1
+streamTest at begin do readFifth
+streamTest at begin do doAssertTrueStep9
+streamTest at begin do doAssertTrue8
+streamTest at begin do readUnusedCloseFile
+streamTest at begin do readBlank
+streamTest at begin do readBlankStream
+streamTest at begin do readNumberFormatText
+streamTest at begin do readBlankCursor
+streamTest at begin do readBlankResult
+streamTest at begin do doAssertTrueStep10
+streamTest at begin do doAssertTrue9
+streamTest at begin do readLetter
+streamTest at begin do readLetterStream
+streamTest at begin do readLetterCursor
+streamTest at begin do readLetterResult
+streamTest at begin do doAssertTrueStep11
+streamTest at begin do doAssertTrue10
+streamTest at begin do readNumber
+streamTest at begin do readNumberStream
+streamTest at begin do readCountFormatText
+streamTest at begin do readCountCursor
+streamTest at begin do readCountResult
+streamTest at begin do doAssertTrueStep12
+streamTest at begin do doAssertTrue11
+streamTest at begin do readFirstNumber
+streamTest at begin do doAssertTrueStep13
+streamTest at begin do doAssertTrue12
+streamTest at begin do readCounted
+streamTest at begin do doAssertTrueStep14
+streamTest at begin do doAssertTrue13
+streamTest at begin return ok none
+
+readFile is call
+readFile in streamTest
+readFile invokes temporaryFile
+readFile argument none
+readFile result file machine.Address
+readFile ownedBy none
+readFile cleanedBy none
+readFile borrows none
+readFile catch none
+readFile suppresses none
+
+readNowhere is call
+readNowhere in streamTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in streamTest
+doAssertTrueStep1 invokes machine.equal
+doAssertTrueStep1 argument left machine.Address file copy
+doAssertTrueStep1 argument right machine.Address nowhere copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in streamTest
+doAssertTrueStep2 invokes logic.not
+doAssertTrueStep2 argument value Bool doAssertTruePart1 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue is call
+doAssertTrue in streamTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart2 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readLineText is call
+readLineText in streamTest
+readLineText invokes cText
+readLineText argument text String line lend
+readLineText result lineText machine.Address
+readLineText ownedBy none
+readLineText cleanedBy none
+readLineText borrows none
+readLineText catch none
+readLineText suppresses none
+
+readUnusedPutStream is call
+readUnusedPutStream in streamTest
+readUnusedPutStream invokes putStream
+readUnusedPutStream argument text machine.Address lineText copy
+readUnusedPutStream argument stream machine.Address file copy
+readUnusedPutStream result unusedPutStream Int32
+readUnusedPutStream ownedBy none
+readUnusedPutStream cleanedBy none
+readUnusedPutStream borrows none
+readUnusedPutStream catch none
+readUnusedPutStream suppresses none
+
+readStatus is call
+readStatus in streamTest
+readStatus invokes flushAll
+readStatus argument none
+readStatus result status Int32
+readStatus ownedBy none
+readStatus cleanedBy none
+readStatus borrows none
+readStatus catch none
+readStatus suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in streamTest
+doAssertTrueStep3 invokes compare.equalInt32
+doAssertTrueStep3 argument left Int32 status copy
+doAssertTrueStep3 argument right Int32 int320 copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in streamTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool doAssertTruePart3 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+readWhere is call
+readWhere in streamTest
+readWhere invokes tellStream
+readWhere argument stream machine.Address file copy
+readWhere result where Int64
+readWhere ownedBy none
+readWhere cleanedBy none
+readWhere borrows none
+readWhere catch none
+readWhere suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in streamTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 n22 copy
+doAssertEqualInt64 argument actual Int64 where copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+doRewindStream is call
+doRewindStream in streamTest
+doRewindStream invokes rewindStream
+doRewindStream argument stream machine.Address file copy
+doRewindStream result none
+doRewindStream ownedBy none
+doRewindStream cleanedBy none
+doRewindStream borrows none
+doRewindStream catch none
+doRewindStream suppresses none
+
+readBuffer is call
+readBuffer in streamTest
+readBuffer invokes heap.take
+readBuffer argument bytes Int64 sixtyFour copy
+readBuffer result buffer machine.Address
+readBuffer ownedBy none
+readBuffer cleanedBy none
+readBuffer borrows none
+readBuffer catch none
+readBuffer suppresses none
+
+readBack is call
+readBack in streamTest
+readBack invokes getLine
+readBack argument buffer machine.Address buffer copy
+readBack argument limit Int32 int3264 copy
+readBack argument stream machine.Address file copy
+readBack result back machine.Address
+readBack ownedBy none
+readBack cleanedBy none
+readBack borrows none
+readBack catch none
+readBack suppresses none
+
+doAssertTrueStep4 is call
+doAssertTrueStep4 in streamTest
+doAssertTrueStep4 invokes machine.equal
+doAssertTrueStep4 argument left machine.Address back copy
+doAssertTrueStep4 argument right machine.Address buffer copy
+doAssertTrueStep4 result doAssertTruePart4 Bool
+doAssertTrueStep4 ownedBy none
+doAssertTrueStep4 cleanedBy none
+doAssertTrueStep4 borrows none
+doAssertTrueStep4 catch none
+doAssertTrueStep4 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in streamTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart4 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+readBackLength is call
+readBackLength in streamTest
+readBackLength invokes clibrary.cStringLength
+readBackLength argument text machine.Address buffer copy
+readBackLength result backLength Int64
+readBackLength ownedBy none
+readBackLength cleanedBy none
+readBackLength borrows none
+readBackLength catch none
+readBackLength suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in streamTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 n22 copy
+doAssertEqualInt642 argument actual Int64 backLength copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+doRewindStream2 is call
+doRewindStream2 in streamTest
+doRewindStream2 invokes rewindStream
+doRewindStream2 argument stream machine.Address file copy
+doRewindStream2 result none
+doRewindStream2 ownedBy none
+doRewindStream2 cleanedBy none
+doRewindStream2 borrows none
+doRewindStream2 catch none
+doRewindStream2 suppresses none
+
+readCells is call
+readCells in streamTest
+readCells invokes heap.take
+readCells argument bytes Int64 n320 copy
+readCells result cells machine.Address
+readCells ownedBy none
+readCells cleanedBy none
+readCells borrows none
+readCells catch none
+readCells suppresses none
+
+readCursor is call
+readCursor in streamTest
+readCursor invokes slotCursor
+readCursor argument cells machine.Address cells copy
+readCursor argument count Int64 five copy
+readCursor result cursor machine.Address
+readCursor ownedBy none
+readCursor cleanedBy none
+readCursor borrows none
+readCursor catch none
+readCursor suppresses none
+
+readFormatText is call
+readFormatText in streamTest
+readFormatText invokes cText
+readFormatText argument text String firstFormat lend
+readFormatText result formatText machine.Address
+readFormatText ownedBy none
+readFormatText cleanedBy none
+readFormatText borrows none
+readFormatText catch none
+readFormatText suppresses none
+
+readStored is call
+readStored in streamTest
+readStored invokes scanAll
+readStored argument stream machine.Address file copy
+readStored argument format machine.Address formatText copy
+readStored argument cursor machine.Address cursor copy
+readStored result stored Int32
+readStored ownedBy none
+readStored cleanedBy none
+readStored borrows none
+readStored catch none
+readStored suppresses none
+
+doAssertTrueStep5 is call
+doAssertTrueStep5 in streamTest
+doAssertTrueStep5 invokes compare.equalInt32
+doAssertTrueStep5 argument left Int32 stored copy
+doAssertTrueStep5 argument right Int32 int325 copy
+doAssertTrueStep5 result doAssertTruePart5 Bool
+doAssertTrueStep5 ownedBy none
+doAssertTrueStep5 cleanedBy none
+doAssertTrueStep5 borrows none
+doAssertTrueStep5 catch none
+doAssertTrueStep5 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in streamTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool doAssertTruePart5 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+readWordLength is call
+readWordLength in streamTest
+readWordLength invokes clibrary.cStringLength
+readWordLength argument text machine.Address cells copy
+readWordLength result wordLength Int64
+readWordLength ownedBy none
+readWordLength cleanedBy none
+readWordLength borrows none
+readWordLength catch none
+readWordLength suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in streamTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 three copy
+doAssertEqualInt643 argument actual Int64 wordLength copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+findSecondCell1 is call
+findSecondCell1 in streamTest
+findSecondCell1 invokes machine.offset
+findSecondCell1 argument address machine.Address cells copy
+findSecondCell1 argument bytes Int64 sixtyFour copy
+findSecondCell1 result secondCell machine.Address
+findSecondCell1 ownedBy none
+findSecondCell1 cleanedBy none
+findSecondCell1 borrows none
+findSecondCell1 catch none
+findSecondCell1 suppresses none
+
+readSecond is call
+readSecond in streamTest
+readSecond invokes machine.loadInt32
+readSecond argument address machine.Address secondCell copy
+readSecond result second Int32
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+readSecond suppresses none
+
+doAssertTrueStep6 is call
+doAssertTrueStep6 in streamTest
+doAssertTrueStep6 invokes compare.equalInt32
+doAssertTrueStep6 argument left Int32 second copy
+doAssertTrueStep6 argument right Int32 int3242 copy
+doAssertTrueStep6 result doAssertTruePart6 Bool
+doAssertTrueStep6 ownedBy none
+doAssertTrueStep6 cleanedBy none
+doAssertTrueStep6 borrows none
+doAssertTrueStep6 catch none
+doAssertTrueStep6 suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in streamTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool doAssertTruePart6 copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+findThirdCell1 is call
+findThirdCell1 in streamTest
+findThirdCell1 invokes machine.offset
+findThirdCell1 argument address machine.Address cells copy
+findThirdCell1 argument bytes Int64 n128 copy
+findThirdCell1 result thirdCell machine.Address
+findThirdCell1 ownedBy none
+findThirdCell1 cleanedBy none
+findThirdCell1 borrows none
+findThirdCell1 catch none
+findThirdCell1 suppresses none
+
+readThird is call
+readThird in streamTest
+readThird invokes machine.loadInt32
+readThird argument address machine.Address thirdCell copy
+readThird result third Int32
+readThird ownedBy none
+readThird cleanedBy none
+readThird borrows none
+readThird catch none
+readThird suppresses none
+
+doAssertTrueStep7 is call
+doAssertTrueStep7 in streamTest
+doAssertTrueStep7 invokes compare.equalInt32
+doAssertTrueStep7 argument left Int32 third copy
+doAssertTrueStep7 argument right Int32 int32Minus31 copy
+doAssertTrueStep7 result doAssertTruePart7 Bool
+doAssertTrueStep7 ownedBy none
+doAssertTrueStep7 cleanedBy none
+doAssertTrueStep7 borrows none
+doAssertTrueStep7 catch none
+doAssertTrueStep7 suppresses none
+
+doAssertTrue6 is call
+doAssertTrue6 in streamTest
+doAssertTrue6 invokes test.assertTrue
+doAssertTrue6 argument value Bool doAssertTruePart7 copy
+doAssertTrue6 result none
+doAssertTrue6 ownedBy none
+doAssertTrue6 cleanedBy none
+doAssertTrue6 borrows none
+doAssertTrue6 catch none
+doAssertTrue6 suppresses none
+
+findFourthCell1 is call
+findFourthCell1 in streamTest
+findFourthCell1 invokes machine.offset
+findFourthCell1 argument address machine.Address cells copy
+findFourthCell1 argument bytes Int64 n192 copy
+findFourthCell1 result fourthCell machine.Address
+findFourthCell1 ownedBy none
+findFourthCell1 cleanedBy none
+findFourthCell1 borrows none
+findFourthCell1 catch none
+findFourthCell1 suppresses none
+
+readFourth is call
+readFourth in streamTest
+readFourth invokes machine.loadFloat64
+readFourth argument address machine.Address fourthCell copy
+readFourth result fourth Float64
+readFourth ownedBy none
+readFourth cleanedBy none
+readFourth borrows none
+readFourth catch none
+readFourth suppresses none
+
+doAssertTrueStep8 is call
+doAssertTrueStep8 in streamTest
+doAssertTrueStep8 invokes compare.equalFloat64
+doAssertTrueStep8 argument left Float64 fourth copy
+doAssertTrueStep8 argument right Float64 real400a000000000000 copy
+doAssertTrueStep8 result doAssertTruePart8 Bool
+doAssertTrueStep8 ownedBy none
+doAssertTrueStep8 cleanedBy none
+doAssertTrueStep8 borrows none
+doAssertTrueStep8 catch none
+doAssertTrueStep8 suppresses none
+
+doAssertTrue7 is call
+doAssertTrue7 in streamTest
+doAssertTrue7 invokes test.assertTrue
+doAssertTrue7 argument value Bool doAssertTruePart8 copy
+doAssertTrue7 result none
+doAssertTrue7 ownedBy none
+doAssertTrue7 cleanedBy none
+doAssertTrue7 borrows none
+doAssertTrue7 catch none
+doAssertTrue7 suppresses none
+
+findFifthCell1 is call
+findFifthCell1 in streamTest
+findFifthCell1 invokes machine.offset
+findFifthCell1 argument address machine.Address cells copy
+findFifthCell1 argument bytes Int64 n256 copy
+findFifthCell1 result fifthCell machine.Address
+findFifthCell1 ownedBy none
+findFifthCell1 cleanedBy none
+findFifthCell1 borrows none
+findFifthCell1 catch none
+findFifthCell1 suppresses none
+
+readFifth is call
+readFifth in streamTest
+readFifth invokes machine.loadByte
+readFifth argument address machine.Address fifthCell copy
+readFifth result fifth Byte
+readFifth ownedBy none
+readFifth cleanedBy none
+readFifth borrows none
+readFifth catch none
+readFifth suppresses none
+
+doAssertTrueStep9 is call
+doAssertTrueStep9 in streamTest
+doAssertTrueStep9 invokes compare.equalByte
+doAssertTrueStep9 argument left Byte fifth copy
+doAssertTrueStep9 argument right Byte byte120 copy
+doAssertTrueStep9 result doAssertTruePart9 Bool
+doAssertTrueStep9 ownedBy none
+doAssertTrueStep9 cleanedBy none
+doAssertTrueStep9 borrows none
+doAssertTrueStep9 catch none
+doAssertTrueStep9 suppresses none
+
+doAssertTrue8 is call
+doAssertTrue8 in streamTest
+doAssertTrue8 invokes test.assertTrue
+doAssertTrue8 argument value Bool doAssertTruePart9 copy
+doAssertTrue8 result none
+doAssertTrue8 ownedBy none
+doAssertTrue8 cleanedBy none
+doAssertTrue8 borrows none
+doAssertTrue8 catch none
+doAssertTrue8 suppresses none
+
+readUnusedCloseFile is call
+readUnusedCloseFile in streamTest
+readUnusedCloseFile invokes closeFile
+readUnusedCloseFile argument stream machine.Address file copy
+readUnusedCloseFile result unusedCloseFile Int32
+readUnusedCloseFile ownedBy none
+readUnusedCloseFile cleanedBy none
+readUnusedCloseFile borrows none
+readUnusedCloseFile catch none
+readUnusedCloseFile suppresses none
+
+readBlank is call
+readBlank in streamTest
+readBlank invokes cText
+readBlank argument text String blankText lend
+readBlank result blank machine.Address
+readBlank ownedBy none
+readBlank cleanedBy none
+readBlank borrows none
+readBlank catch none
+readBlank suppresses none
+
+readBlankStream is call
+readBlankStream in streamTest
+readBlankStream invokes textStream
+readBlankStream argument text machine.Address blank copy
+readBlankStream result blankStream machine.Address
+readBlankStream ownedBy none
+readBlankStream cleanedBy none
+readBlankStream borrows none
+readBlankStream catch none
+readBlankStream suppresses none
+
+readNumberFormatText is call
+readNumberFormatText in streamTest
+readNumberFormatText invokes cText
+readNumberFormatText argument text String numberFormat lend
+readNumberFormatText result numberFormatText machine.Address
+readNumberFormatText ownedBy none
+readNumberFormatText cleanedBy none
+readNumberFormatText borrows none
+readNumberFormatText catch none
+readNumberFormatText suppresses none
+
+readBlankCursor is call
+readBlankCursor in streamTest
+readBlankCursor invokes slotCursor
+readBlankCursor argument cells machine.Address cells copy
+readBlankCursor argument count Int64 one copy
+readBlankCursor result blankCursor machine.Address
+readBlankCursor ownedBy none
+readBlankCursor cleanedBy none
+readBlankCursor borrows none
+readBlankCursor catch none
+readBlankCursor suppresses none
+
+readBlankResult is call
+readBlankResult in streamTest
+readBlankResult invokes scanAll
+readBlankResult argument stream machine.Address blankStream copy
+readBlankResult argument format machine.Address numberFormatText copy
+readBlankResult argument cursor machine.Address blankCursor copy
+readBlankResult result blankResult Int32
+readBlankResult ownedBy none
+readBlankResult cleanedBy none
+readBlankResult borrows none
+readBlankResult catch none
+readBlankResult suppresses none
+
+doAssertTrueStep10 is call
+doAssertTrueStep10 in streamTest
+doAssertTrueStep10 invokes compare.equalInt32
+doAssertTrueStep10 argument left Int32 blankResult copy
+doAssertTrueStep10 argument right Int32 int32Minus1 copy
+doAssertTrueStep10 result doAssertTruePart10 Bool
+doAssertTrueStep10 ownedBy none
+doAssertTrueStep10 cleanedBy none
+doAssertTrueStep10 borrows none
+doAssertTrueStep10 catch none
+doAssertTrueStep10 suppresses none
+
+doAssertTrue9 is call
+doAssertTrue9 in streamTest
+doAssertTrue9 invokes test.assertTrue
+doAssertTrue9 argument value Bool doAssertTruePart10 copy
+doAssertTrue9 result none
+doAssertTrue9 ownedBy none
+doAssertTrue9 cleanedBy none
+doAssertTrue9 borrows none
+doAssertTrue9 catch none
+doAssertTrue9 suppresses none
+
+readLetter is call
+readLetter in streamTest
+readLetter invokes cText
+readLetter argument text String letterText lend
+readLetter result letter machine.Address
+readLetter ownedBy none
+readLetter cleanedBy none
+readLetter borrows none
+readLetter catch none
+readLetter suppresses none
+
+readLetterStream is call
+readLetterStream in streamTest
+readLetterStream invokes textStream
+readLetterStream argument text machine.Address letter copy
+readLetterStream result letterStream machine.Address
+readLetterStream ownedBy none
+readLetterStream cleanedBy none
+readLetterStream borrows none
+readLetterStream catch none
+readLetterStream suppresses none
+
+readLetterCursor is call
+readLetterCursor in streamTest
+readLetterCursor invokes slotCursor
+readLetterCursor argument cells machine.Address cells copy
+readLetterCursor argument count Int64 one copy
+readLetterCursor result letterCursor machine.Address
+readLetterCursor ownedBy none
+readLetterCursor cleanedBy none
+readLetterCursor borrows none
+readLetterCursor catch none
+readLetterCursor suppresses none
+
+readLetterResult is call
+readLetterResult in streamTest
+readLetterResult invokes scanAll
+readLetterResult argument stream machine.Address letterStream copy
+readLetterResult argument format machine.Address numberFormatText copy
+readLetterResult argument cursor machine.Address letterCursor copy
+readLetterResult result letterResult Int32
+readLetterResult ownedBy none
+readLetterResult cleanedBy none
+readLetterResult borrows none
+readLetterResult catch none
+readLetterResult suppresses none
+
+doAssertTrueStep11 is call
+doAssertTrueStep11 in streamTest
+doAssertTrueStep11 invokes compare.equalInt32
+doAssertTrueStep11 argument left Int32 letterResult copy
+doAssertTrueStep11 argument right Int32 int320 copy
+doAssertTrueStep11 result doAssertTruePart11 Bool
+doAssertTrueStep11 ownedBy none
+doAssertTrueStep11 cleanedBy none
+doAssertTrueStep11 borrows none
+doAssertTrueStep11 catch none
+doAssertTrueStep11 suppresses none
+
+doAssertTrue10 is call
+doAssertTrue10 in streamTest
+doAssertTrue10 invokes test.assertTrue
+doAssertTrue10 argument value Bool doAssertTruePart11 copy
+doAssertTrue10 result none
+doAssertTrue10 ownedBy none
+doAssertTrue10 cleanedBy none
+doAssertTrue10 borrows none
+doAssertTrue10 catch none
+doAssertTrue10 suppresses none
+
+readNumber is call
+readNumber in streamTest
+readNumber invokes cText
+readNumber argument text String numberText lend
+readNumber result number machine.Address
+readNumber ownedBy none
+readNumber cleanedBy none
+readNumber borrows none
+readNumber catch none
+readNumber suppresses none
+
+readNumberStream is call
+readNumberStream in streamTest
+readNumberStream invokes textStream
+readNumberStream argument text machine.Address number copy
+readNumberStream result numberStream machine.Address
+readNumberStream ownedBy none
+readNumberStream cleanedBy none
+readNumberStream borrows none
+readNumberStream catch none
+readNumberStream suppresses none
+
+readCountFormatText is call
+readCountFormatText in streamTest
+readCountFormatText invokes cText
+readCountFormatText argument text String countFormat lend
+readCountFormatText result countFormatText machine.Address
+readCountFormatText ownedBy none
+readCountFormatText cleanedBy none
+readCountFormatText borrows none
+readCountFormatText catch none
+readCountFormatText suppresses none
+
+readCountCursor is call
+readCountCursor in streamTest
+readCountCursor invokes slotCursor
+readCountCursor argument cells machine.Address cells copy
+readCountCursor argument count Int64 two copy
+readCountCursor result countCursor machine.Address
+readCountCursor ownedBy none
+readCountCursor cleanedBy none
+readCountCursor borrows none
+readCountCursor catch none
+readCountCursor suppresses none
+
+readCountResult is call
+readCountResult in streamTest
+readCountResult invokes scanAll
+readCountResult argument stream machine.Address numberStream copy
+readCountResult argument format machine.Address countFormatText copy
+readCountResult argument cursor machine.Address countCursor copy
+readCountResult result countResult Int32
+readCountResult ownedBy none
+readCountResult cleanedBy none
+readCountResult borrows none
+readCountResult catch none
+readCountResult suppresses none
+
+doAssertTrueStep12 is call
+doAssertTrueStep12 in streamTest
+doAssertTrueStep12 invokes compare.equalInt32
+doAssertTrueStep12 argument left Int32 countResult copy
+doAssertTrueStep12 argument right Int32 int321 copy
+doAssertTrueStep12 result doAssertTruePart12 Bool
+doAssertTrueStep12 ownedBy none
+doAssertTrueStep12 cleanedBy none
+doAssertTrueStep12 borrows none
+doAssertTrueStep12 catch none
+doAssertTrueStep12 suppresses none
+
+doAssertTrue11 is call
+doAssertTrue11 in streamTest
+doAssertTrue11 invokes test.assertTrue
+doAssertTrue11 argument value Bool doAssertTruePart12 copy
+doAssertTrue11 result none
+doAssertTrue11 ownedBy none
+doAssertTrue11 cleanedBy none
+doAssertTrue11 borrows none
+doAssertTrue11 catch none
+doAssertTrue11 suppresses none
+
+readFirstNumber is call
+readFirstNumber in streamTest
+readFirstNumber invokes machine.loadInt32
+readFirstNumber argument address machine.Address cells copy
+readFirstNumber result firstNumber Int32
+readFirstNumber ownedBy none
+readFirstNumber cleanedBy none
+readFirstNumber borrows none
+readFirstNumber catch none
+readFirstNumber suppresses none
+
+doAssertTrueStep13 is call
+doAssertTrueStep13 in streamTest
+doAssertTrueStep13 invokes compare.equalInt32
+doAssertTrueStep13 argument left Int32 firstNumber copy
+doAssertTrueStep13 argument right Int32 int3212 copy
+doAssertTrueStep13 result doAssertTruePart13 Bool
+doAssertTrueStep13 ownedBy none
+doAssertTrueStep13 cleanedBy none
+doAssertTrueStep13 borrows none
+doAssertTrueStep13 catch none
+doAssertTrueStep13 suppresses none
+
+doAssertTrue12 is call
+doAssertTrue12 in streamTest
+doAssertTrue12 invokes test.assertTrue
+doAssertTrue12 argument value Bool doAssertTruePart13 copy
+doAssertTrue12 result none
+doAssertTrue12 ownedBy none
+doAssertTrue12 cleanedBy none
+doAssertTrue12 borrows none
+doAssertTrue12 catch none
+doAssertTrue12 suppresses none
+
+readCounted is call
+readCounted in streamTest
+readCounted invokes machine.loadInt32
+readCounted argument address machine.Address secondCell copy
+readCounted result counted Int32
+readCounted ownedBy none
+readCounted cleanedBy none
+readCounted borrows none
+readCounted catch none
+readCounted suppresses none
+
+doAssertTrueStep14 is call
+doAssertTrueStep14 in streamTest
+doAssertTrueStep14 invokes compare.equalInt32
+doAssertTrueStep14 argument left Int32 counted copy
+doAssertTrueStep14 argument right Int32 int322 copy
+doAssertTrueStep14 result doAssertTruePart14 Bool
+doAssertTrueStep14 ownedBy none
+doAssertTrueStep14 cleanedBy none
+doAssertTrueStep14 borrows none
+doAssertTrueStep14 catch none
+doAssertTrueStep14 suppresses none
+
+doAssertTrue13 is call
+doAssertTrue13 in streamTest
+doAssertTrue13 invokes test.assertTrue
+doAssertTrue13 argument value Bool doAssertTruePart14 copy
+doAssertTrue13 result none
+doAssertTrue13 ownedBy none
+doAssertTrue13 cleanedBy none
+doAssertTrue13 borrows none
+doAssertTrue13 catch none
+doAssertTrue13 suppresses none

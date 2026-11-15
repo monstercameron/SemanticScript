@@ -3927,6 +3927,7 @@ lookupTest let cName String "c" immutable
 lookupTest let libcName String "libc.so.6" immutable
 lookupTest let pathName String "PATH" immutable
 lookupTest let unsetName String "SEMANTICSCRIPT_SURELY_UNSET_42" immutable
+lookupTest let n2048 Int64 2048 immutable
 lookupTest let one Int64 1 immutable
 lookupTest let hundred Int64 100 immutable
 lookupTest let minusOne Int64 -1 immutable
@@ -3941,7 +3942,9 @@ lookupTest at begin do findStdoutName
 lookupTest at begin do stdoutLength
 lookupTest at begin do findStdout
 lookupTest at begin do readStdout
-lookupTest at begin do expectStdout
+lookupTest at begin do readStdoutFile
+lookupTest at begin do doAssertTrueStep1
+lookupTest at begin do doAssertTrue
 lookupTest at begin do findMissingName
 lookupTest at begin do missingLength
 lookupTest at begin do findMissing
@@ -4092,26 +4095,48 @@ findStdout suppresses none
 
 readStdout is call
 readStdout in lookupTest
-readStdout invokes machine.loadInt64
+readStdout invokes machine.loadAddress
 readStdout argument address machine.Address stdoutCell copy
-readStdout result stdoutValue Int64
+readStdout result stdoutValue machine.Address
 readStdout ownedBy none
 readStdout cleanedBy none
 readStdout borrows none
 readStdout catch none
 readStdout suppresses none
 
-expectStdout is call
-expectStdout in lookupTest
-expectStdout invokes test.assertEqualInt64
-expectStdout argument expected Int64 one copy
-expectStdout argument actual Int64 stdoutValue copy
-expectStdout result none
-expectStdout ownedBy none
-expectStdout cleanedBy none
-expectStdout borrows none
-expectStdout catch none
-expectStdout suppresses none
+readStdoutFile is call
+readStdoutFile in lookupTest
+readStdoutFile invokes kernel.stateAt
+readStdoutFile argument offset Int64 n2048 copy
+readStdoutFile result stdoutFile machine.Address
+readStdoutFile ownedBy none
+readStdoutFile cleanedBy none
+readStdoutFile borrows none
+readStdoutFile catch none
+readStdoutFile suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in lookupTest
+doAssertTrueStep1 invokes machine.equal
+doAssertTrueStep1 argument left machine.Address stdoutValue copy
+doAssertTrueStep1 argument right machine.Address stdoutFile copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in lookupTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
 
 findMissingName is call
 findMissingName in lookupTest
@@ -4485,3 +4510,585 @@ expectUnset cleanedBy none
 expectUnset borrows none
 expectUnset catch none
 expectUnset suppresses none
+
+helpersTest is test
+helpersTest purpose "The pieces the other C library modules call: a byte at an offset, errno set, an int's low 32 bits, and a length bounded"
+helpersTest verifies byteAt readsByte
+helpersTest verifies setErrno setsErrno
+helpersTest verifies lowInt32 wrapsLow
+helpersTest verifies boundedLength stopsAtBound
+helpersTest verifies errorText namesErrors
+helpersTest verifies errorMessage describesErrno
+helpersTest verifies memoryFind findsByte
+helpersTest verifies charOf keepsLowByte
+helpersTest verifies prepare pointsAtStreams
+helpersTest verifies isSpaceByte spacesLikeC
+helpersTest verifies digitOf readsDigits
+helpersTest typeParameter none
+helpersTest input none
+helpersTest output none
+helpersTest outputOwnedBy none
+helpersTest raises none
+helpersTest effect use machine.memory
+helpersTest uses memoryAccess
+helpersTest memoryHeap false
+helpersTest async false
+helpersTest maxRecursion none
+helpersTest label begin loopKind none
+helpersTest label begin within none
+helpersTest let sample String "hello" immutable
+helpersTest let one Int64 1 immutable
+helpersTest let byte101 Byte 101 immutable
+helpersTest let int3234 Int32 34 immutable
+helpersTest let int320 Int32 0 immutable
+helpersTest let n4294967295 Int64 4294967295 immutable
+helpersTest let int32Minus1 Int32 -1 immutable
+helpersTest let three Int64 3 immutable
+helpersTest let n99 Int64 99 immutable
+helpersTest let five Int64 5 immutable
+helpersTest let int32Minus5 Int32 -5 immutable
+helpersTest let sixteen Int64 16 immutable
+helpersTest let int321234 Int32 1234 immutable
+helpersTest let n18 Int64 18 immutable
+helpersTest let int32108 Int32 108 immutable
+helpersTest let two Int64 2 immutable
+helpersTest let int32300 Int32 300 immutable
+helpersTest let byte44 Byte 44 immutable
+helpersTest let byte9 Byte 9 immutable
+helpersTest let byte90 Byte 90 immutable
+helpersTest let uInt6435 UInt64 35 immutable
+helpersTest let n1920 Int64 1920 immutable
+helpersTest at begin do readPlace
+helpersTest at begin do readSecond
+helpersTest at begin do doAssertTrueStep1
+helpersTest at begin do doAssertTrue
+helpersTest at begin do doSetErrno
+helpersTest at begin do readErrnoCell
+helpersTest at begin do readErrno
+helpersTest at begin do doAssertTrueStep2
+helpersTest at begin do doAssertTrue2
+helpersTest at begin do doSetErrno2
+helpersTest at begin do readLow
+helpersTest at begin do doAssertTrueStep3
+helpersTest at begin do doAssertTrue3
+helpersTest at begin do readBounded
+helpersTest at begin do doAssertEqualInt64
+helpersTest at begin do readWhole
+helpersTest at begin do doAssertEqualInt642
+helpersTest at begin do doSetErrno3
+helpersTest at begin do readMessage
+helpersTest at begin do readMessageLength
+helpersTest at begin do doAssertEqualInt643
+helpersTest at begin do readShown
+helpersTest at begin do readShownLength
+helpersTest at begin do doAssertEqualInt644
+helpersTest at begin do readFound
+helpersTest at begin do findFoundAt1
+helpersTest at begin do doAssertTrueStep4
+helpersTest at begin do doAssertTrue4
+helpersTest at begin do readLowByte
+helpersTest at begin do doAssertTrueStep5
+helpersTest at begin do doAssertTrue5
+helpersTest at begin do readTabSpace
+helpersTest at begin do doAssertTrue6
+helpersTest at begin do readLetterValue
+helpersTest at begin do doAssertTrueStep6
+helpersTest at begin do doAssertTrue7
+helpersTest at begin do doPrepare
+helpersTest at begin do readStdinCell
+helpersTest at begin do readStdinValue
+helpersTest at begin do readStdinFile
+helpersTest at begin do doAssertTrueStep7
+helpersTest at begin do doAssertTrue8
+helpersTest at begin do doSetErrno4
+helpersTest at begin return ok none
+
+readPlace is call
+readPlace in helpersTest
+readPlace invokes firstScratch
+readPlace argument text String sample lend
+readPlace result place machine.Address
+readPlace ownedBy none
+readPlace cleanedBy none
+readPlace borrows none
+readPlace catch none
+readPlace suppresses none
+
+readSecond is call
+readSecond in helpersTest
+readSecond invokes byteAt
+readSecond argument base machine.Address place copy
+readSecond argument at Int64 one copy
+readSecond result second Byte
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+readSecond suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in helpersTest
+doAssertTrueStep1 invokes compare.equalByte
+doAssertTrueStep1 argument left Byte second copy
+doAssertTrueStep1 argument right Byte byte101 copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in helpersTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+doSetErrno is call
+doSetErrno in helpersTest
+doSetErrno invokes setErrno
+doSetErrno argument value Int32 int3234 copy
+doSetErrno result none
+doSetErrno ownedBy none
+doSetErrno cleanedBy none
+doSetErrno borrows none
+doSetErrno catch none
+doSetErrno suppresses none
+
+readErrnoCell is call
+readErrnoCell in helpersTest
+readErrnoCell invokes kernel.stateAt
+readErrnoCell argument offset Int64 errnoAt copy
+readErrnoCell result errnoCell machine.Address
+readErrnoCell ownedBy none
+readErrnoCell cleanedBy none
+readErrnoCell borrows none
+readErrnoCell catch none
+readErrnoCell suppresses none
+
+readErrno is call
+readErrno in helpersTest
+readErrno invokes machine.loadInt32
+readErrno argument address machine.Address errnoCell copy
+readErrno result errno Int32
+readErrno ownedBy none
+readErrno cleanedBy none
+readErrno borrows none
+readErrno catch none
+readErrno suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in helpersTest
+doAssertTrueStep2 invokes compare.equalInt32
+doAssertTrueStep2 argument left Int32 errno copy
+doAssertTrueStep2 argument right Int32 int3234 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in helpersTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool doAssertTruePart2 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+doSetErrno2 is call
+doSetErrno2 in helpersTest
+doSetErrno2 invokes setErrno
+doSetErrno2 argument value Int32 int320 copy
+doSetErrno2 result none
+doSetErrno2 ownedBy none
+doSetErrno2 cleanedBy none
+doSetErrno2 borrows none
+doSetErrno2 catch none
+doSetErrno2 suppresses none
+
+readLow is call
+readLow in helpersTest
+readLow invokes lowInt32
+readLow argument value Int64 n4294967295 copy
+readLow result low Int32
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in helpersTest
+doAssertTrueStep3 invokes compare.equalInt32
+doAssertTrueStep3 argument left Int32 low copy
+doAssertTrueStep3 argument right Int32 int32Minus1 copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in helpersTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart3 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+readBounded is call
+readBounded in helpersTest
+readBounded invokes boundedLength
+readBounded argument text machine.Address place copy
+readBounded argument most Int64 three copy
+readBounded result bounded Int64
+readBounded ownedBy none
+readBounded cleanedBy none
+readBounded borrows none
+readBounded catch none
+readBounded suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in helpersTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 three copy
+doAssertEqualInt64 argument actual Int64 bounded copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readWhole is call
+readWhole in helpersTest
+readWhole invokes boundedLength
+readWhole argument text machine.Address place copy
+readWhole argument most Int64 n99 copy
+readWhole result whole Int64
+readWhole ownedBy none
+readWhole cleanedBy none
+readWhole borrows none
+readWhole catch none
+readWhole suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in helpersTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 five copy
+doAssertEqualInt642 argument actual Int64 whole copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+doSetErrno3 is call
+doSetErrno3 in helpersTest
+doSetErrno3 invokes setErrno
+doSetErrno3 argument value Int32 int32Minus5 copy
+doSetErrno3 result none
+doSetErrno3 ownedBy none
+doSetErrno3 cleanedBy none
+doSetErrno3 borrows none
+doSetErrno3 catch none
+doSetErrno3 suppresses none
+
+readMessage is call
+readMessage in helpersTest
+readMessage invokes errorMessage
+readMessage argument none
+readMessage result message machine.Address
+readMessage ownedBy none
+readMessage cleanedBy none
+readMessage borrows none
+readMessage catch none
+readMessage suppresses none
+
+readMessageLength is call
+readMessageLength in helpersTest
+readMessageLength invokes cStringLength
+readMessageLength argument text machine.Address message copy
+readMessageLength result messageLength Int64
+readMessageLength ownedBy none
+readMessageLength cleanedBy none
+readMessageLength borrows none
+readMessageLength catch none
+readMessageLength suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in helpersTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 sixteen copy
+doAssertEqualInt643 argument actual Int64 messageLength copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+readShown is call
+readShown in helpersTest
+readShown invokes errorText
+readShown argument code Int32 int321234 copy
+readShown result shown machine.Address
+readShown ownedBy none
+readShown cleanedBy none
+readShown borrows none
+readShown catch none
+readShown suppresses none
+
+readShownLength is call
+readShownLength in helpersTest
+readShownLength invokes cStringLength
+readShownLength argument text machine.Address shown copy
+readShownLength result shownLength Int64
+readShownLength ownedBy none
+readShownLength cleanedBy none
+readShownLength borrows none
+readShownLength catch none
+readShownLength suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in helpersTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 n18 copy
+doAssertEqualInt644 argument actual Int64 shownLength copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+readFound is call
+readFound in helpersTest
+readFound invokes memoryFind
+readFound argument text machine.Address place copy
+readFound argument value Int32 int32108 copy
+readFound argument bytes Int64 five copy
+readFound result found machine.Address
+readFound ownedBy none
+readFound cleanedBy none
+readFound borrows none
+readFound catch none
+readFound suppresses none
+
+findFoundAt1 is call
+findFoundAt1 in helpersTest
+findFoundAt1 invokes machine.offset
+findFoundAt1 argument address machine.Address place copy
+findFoundAt1 argument bytes Int64 two copy
+findFoundAt1 result foundAt machine.Address
+findFoundAt1 ownedBy none
+findFoundAt1 cleanedBy none
+findFoundAt1 borrows none
+findFoundAt1 catch none
+findFoundAt1 suppresses none
+
+doAssertTrueStep4 is call
+doAssertTrueStep4 in helpersTest
+doAssertTrueStep4 invokes machine.equal
+doAssertTrueStep4 argument left machine.Address found copy
+doAssertTrueStep4 argument right machine.Address foundAt copy
+doAssertTrueStep4 result doAssertTruePart4 Bool
+doAssertTrueStep4 ownedBy none
+doAssertTrueStep4 cleanedBy none
+doAssertTrueStep4 borrows none
+doAssertTrueStep4 catch none
+doAssertTrueStep4 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in helpersTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool doAssertTruePart4 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+readLowByte is call
+readLowByte in helpersTest
+readLowByte invokes charOf
+readLowByte argument code Int32 int32300 copy
+readLowByte result lowByte Byte
+readLowByte ownedBy none
+readLowByte cleanedBy none
+readLowByte borrows none
+readLowByte catch none
+readLowByte suppresses none
+
+doAssertTrueStep5 is call
+doAssertTrueStep5 in helpersTest
+doAssertTrueStep5 invokes compare.equalByte
+doAssertTrueStep5 argument left Byte lowByte copy
+doAssertTrueStep5 argument right Byte byte44 copy
+doAssertTrueStep5 result doAssertTruePart5 Bool
+doAssertTrueStep5 ownedBy none
+doAssertTrueStep5 cleanedBy none
+doAssertTrueStep5 borrows none
+doAssertTrueStep5 catch none
+doAssertTrueStep5 suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in helpersTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool doAssertTruePart5 copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+readTabSpace is call
+readTabSpace in helpersTest
+readTabSpace invokes isSpaceByte
+readTabSpace argument value Byte byte9 copy
+readTabSpace result tabSpace Bool
+readTabSpace ownedBy none
+readTabSpace cleanedBy none
+readTabSpace borrows none
+readTabSpace catch none
+readTabSpace suppresses none
+
+doAssertTrue6 is call
+doAssertTrue6 in helpersTest
+doAssertTrue6 invokes test.assertTrue
+doAssertTrue6 argument value Bool tabSpace copy
+doAssertTrue6 result none
+doAssertTrue6 ownedBy none
+doAssertTrue6 cleanedBy none
+doAssertTrue6 borrows none
+doAssertTrue6 catch none
+doAssertTrue6 suppresses none
+
+readLetterValue is call
+readLetterValue in helpersTest
+readLetterValue invokes digitOf
+readLetterValue argument value Byte byte90 copy
+readLetterValue result letterValue UInt64
+readLetterValue ownedBy none
+readLetterValue cleanedBy none
+readLetterValue borrows none
+readLetterValue catch none
+readLetterValue suppresses none
+
+doAssertTrueStep6 is call
+doAssertTrueStep6 in helpersTest
+doAssertTrueStep6 invokes compare.equalUInt64
+doAssertTrueStep6 argument left UInt64 letterValue copy
+doAssertTrueStep6 argument right UInt64 uInt6435 copy
+doAssertTrueStep6 result doAssertTruePart6 Bool
+doAssertTrueStep6 ownedBy none
+doAssertTrueStep6 cleanedBy none
+doAssertTrueStep6 borrows none
+doAssertTrueStep6 catch none
+doAssertTrueStep6 suppresses none
+
+doAssertTrue7 is call
+doAssertTrue7 in helpersTest
+doAssertTrue7 invokes test.assertTrue
+doAssertTrue7 argument value Bool doAssertTruePart6 copy
+doAssertTrue7 result none
+doAssertTrue7 ownedBy none
+doAssertTrue7 cleanedBy none
+doAssertTrue7 borrows none
+doAssertTrue7 catch none
+doAssertTrue7 suppresses none
+
+doPrepare is call
+doPrepare in helpersTest
+doPrepare invokes prepare
+doPrepare argument none
+doPrepare result none
+doPrepare ownedBy none
+doPrepare cleanedBy none
+doPrepare borrows none
+doPrepare catch none
+doPrepare suppresses none
+
+readStdinCell is call
+readStdinCell in helpersTest
+readStdinCell invokes kernel.stateAt
+readStdinCell argument offset Int64 stdinAt copy
+readStdinCell result stdinCell machine.Address
+readStdinCell ownedBy none
+readStdinCell cleanedBy none
+readStdinCell borrows none
+readStdinCell catch none
+readStdinCell suppresses none
+
+readStdinValue is call
+readStdinValue in helpersTest
+readStdinValue invokes machine.loadAddress
+readStdinValue argument address machine.Address stdinCell copy
+readStdinValue result stdinValue machine.Address
+readStdinValue ownedBy none
+readStdinValue cleanedBy none
+readStdinValue borrows none
+readStdinValue catch none
+readStdinValue suppresses none
+
+readStdinFile is call
+readStdinFile in helpersTest
+readStdinFile invokes kernel.stateAt
+readStdinFile argument offset Int64 n1920 copy
+readStdinFile result stdinFile machine.Address
+readStdinFile ownedBy none
+readStdinFile cleanedBy none
+readStdinFile borrows none
+readStdinFile catch none
+readStdinFile suppresses none
+
+doAssertTrueStep7 is call
+doAssertTrueStep7 in helpersTest
+doAssertTrueStep7 invokes machine.equal
+doAssertTrueStep7 argument left machine.Address stdinValue copy
+doAssertTrueStep7 argument right machine.Address stdinFile copy
+doAssertTrueStep7 result doAssertTruePart7 Bool
+doAssertTrueStep7 ownedBy none
+doAssertTrueStep7 cleanedBy none
+doAssertTrueStep7 borrows none
+doAssertTrueStep7 catch none
+doAssertTrueStep7 suppresses none
+
+doAssertTrue8 is call
+doAssertTrue8 in helpersTest
+doAssertTrue8 invokes test.assertTrue
+doAssertTrue8 argument value Bool doAssertTruePart7 copy
+doAssertTrue8 result none
+doAssertTrue8 ownedBy none
+doAssertTrue8 cleanedBy none
+doAssertTrue8 borrows none
+doAssertTrue8 catch none
+doAssertTrue8 suppresses none
+
+doSetErrno4 is call
+doSetErrno4 in helpersTest
+doSetErrno4 invokes setErrno
+doSetErrno4 argument value Int32 int320 copy
+doSetErrno4 result none
+doSetErrno4 ownedBy none
+doSetErrno4 cleanedBy none
+doSetErrno4 borrows none
+doSetErrno4 catch none
+doSetErrno4 suppresses none

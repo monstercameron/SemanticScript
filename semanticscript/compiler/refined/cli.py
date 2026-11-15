@@ -148,9 +148,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("path")
     p.add_argument("--output", required=True)
     p.add_argument("--target", default=None, help="an LLVM target triple; the host's when omitted")
-    p.add_argument("--kind", choices=("object", "assembly", "wasm", "executable", "runtime"), default="object",
+    p.add_argument("--kind", choices=("object", "assembly", "wasm", "executable", "runtime", "clibrary"), default="object",
                    help="`executable` links the program with the runtime in SemanticScript and no C library; `runtime` "
-                        "writes that runtime (the project at PATH, semanticscript/runtime) as an object for C to link")
+                        "writes that runtime (the project at PATH, semanticscript/runtime) as an object for C to link; `clibrary` "
+                        "writes its C library as a C program's libc for Linux (D-161)")
     p.add_argument("--runtime", choices=("semanticscript",), default="semanticscript",
                    help="accepted for compatibility: the runtime in SemanticScript is the only runtime (D-141)")
     p = sub.add_parser("stale")
@@ -281,13 +282,13 @@ def main(argv: list[str] | None = None) -> int:
     if res is None:
         return 1
 
-    if args.command == "build" and args.kind == "runtime":
+    if args.command == "build" and args.kind in ("runtime", "clibrary"):
         from .native import RUNTIME_PROJECT, build
         given = args.path[:-len("build.sem")] if args.path.endswith("build.sem") else args.path
         if os.path.normcase(os.path.realpath(given)) != os.path.normcase(os.path.realpath(RUNTIME_PROJECT)):
-            sys.stdout.write(f"`--kind runtime` builds the runtime project, {RUNTIME_PROJECT}\n")
+            sys.stdout.write(f"`--kind {args.kind}` builds the runtime project, {RUNTIME_PROJECT}\n")
             return 1
-        return build(None, args.output, args.target, "runtime")
+        return build(None, args.output, args.target, args.kind)
 
     if args.command in ("emit-ir", "build"):
         if getattr(args, "test", None):
@@ -296,7 +297,15 @@ def main(argv: list[str] | None = None) -> int:
             entry = res.project.value("entry")
             roots = [tuple(entry.split(".", 1))] if entry != "none" else \
                 [(m.short, op) for m in res.world.modules.values() for op, i in m.op_infos.items() if not i.tparams]
-        module, diags = _compile(res, roots)
+        options = None
+        if args.command == "build" and args.kind == "executable":
+            # D-158: the program is compiled for the machine it is linked for, as the runtime is: a call through a
+            # reference is made differently on x86_64
+            from .native import find_cc, platform
+            cc = find_cc()
+            triple = platform(cc)[1] if cc else None
+            options = {"triple": triple} if triple else None
+        module, diags = _compile(res, roots, options)
         if diags:
             _emit(diags, False, f"refined.{args.command}.v1")
             return 1

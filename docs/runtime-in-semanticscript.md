@@ -352,3 +352,35 @@ DLL; Linux executables are static, with no PT_DYNAMIC or PT_INTERP and no trace 
   malloc and its kin, math, qsort, bsearch, getenv, div) gives exactly what the same library gives calling glibc
   through ctypes; a library linked with no C library calls strlen through the loader; thread-local storage, an
   ifunc, and a missing function trap with their reasons. The runtime's own tests number 76.
+
+## Stage 8: the whole C library (in progress)
+
+The runtime's C library grows toward all of ISO C's (C11/C17 hosted), behaving as glibc does in the C locale, proved
+two ways: through `ffi` (tests/ctour.py, checked against glibc's behaviour on every system and against `refined run`,
+which calls glibc, on Linux) and, on Linux, as the C library of C programs.
+
+| Header | Provides | State |
+| --- | --- | --- |
+| stdio.h | FILE streams buffered as glibc's, the printf family (`cformat`: every conversion, exact digits), the scanf family and glibc's `__isoc99_` names, remove, rename, tmpfile, tmpnam, perror (D-156 to D-160) | Done |
+| string.h | strerror: `Unknown error N` for every number (glibc's messages are a known gap) | Gap |
+
+- **stdio** (D-159, D-160). `printf` and its kin read their arguments from the system's own `va_list` (x86_64 Linux,
+  AArch64 Linux, Windows), every one first, then write each conversion as glibc does; a floating value's digits are
+  exact (m * 5^-e kept in base 10^9) and rounded as glibc rounds them. Streams are buffered as glibc's are, and
+  every stream is flushed by exit and when a program of SemanticScript that used one ends. D-153's streams 1 and 2,
+  written at once, are replaced: the data symbols `stdin`, `stdout`, and `stderr` point at FILE blocks.
+- **Evidence.** tests/ctour.py prints through `ffi`'s printf (each line flushed, so C's lines and the program's keep
+  their order) 14 floating formats over 29 doubles (zeros, halves, subnormals, the largest double, infinities, NaN)
+  and 8 integer formats over 6 pairs (the limits of int and long), and sscanf's stored values compared byte for byte:
+  all 6,527 lines are what glibc prints (here on Windows; on Linux also exactly what `refined run` prints). The
+  runtime's tests (cformat's formatTest, cstreams' streamTest: a temporary file written, flushed, read back, and
+  scanned) number 80.
+- **C programs** (D-161). `refined build semanticscript/runtime --kind clibrary` writes the library as an object with a
+  `_start` of its own; a C program compiled with glibc's headers and linked `cc -nostdlib -static program.o
+  <object> -lgcc` is static, with nothing of glibc in it. tests/test_cprograms.py builds every program in
+  tests/cprograms both ways on Linux (x86_64 and AArch64 in CI) and requires the same output, error output, and exit
+  code: stdio_printf.c (17 formats over 15 doubles, every integer length, `%n`, `%n$`, `*`, long double, snprintf),
+  stdio_files.c (writing, reading, positions, pushback, end of file, errors, r+ and a, rename, remove, tmpfile,
+  setvbuf and setbuf), stdio_scanf.c (sscanf's conversions, scansets, widths, and scanf with getchar on standard
+  input).
+
