@@ -331,10 +331,13 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(json.dumps({"status": "fail" if failures else "pass", "failures": failures}) + "\n")
         return 0
 
-    # test: each test runs in its own process, so a trap ends only that test
-    results = []
+    # test: each test runs in its own process, so a trap ends only that test; the processes run side by side
+    # (as many as the machine has processors), and the results are reported in the tests' own order
+    from concurrent.futures import ThreadPoolExecutor
     me = os.path.dirname(os.path.abspath(__file__))
-    for mod, test in _tests(res):
+
+    def run_one(named):
+        mod, test = named
         proc = subprocess.run([sys.executable, me, "run-one-test", args.path, f"{mod}.{test}"],
                               capture_output=True, text=True, encoding="utf-8", errors="replace")
         line = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
@@ -345,7 +348,10 @@ def main(argv: list[str] | None = None) -> int:
         if proc.returncode not in (0,) and r.get("status") not in ("pass", "fail", "unsupported"):
             r = {"status": "trapped", "failures": [proc.stderr.strip()]}
         r["test"] = f"{mod}.{test}"
-        results.append(r)
+        return r
+
+    with ThreadPoolExecutor(max(1, os.cpu_count() or 1)) as pool:
+        results = list(pool.map(run_one, _tests(res)))
     ok = all(r["status"] == "pass" for r in results)
     if args.json:
         sys.stdout.write(json.dumps({"surface": "refined.test.v1", "ok": ok, "results": results}, indent=2) + "\n")
