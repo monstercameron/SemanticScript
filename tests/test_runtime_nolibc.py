@@ -35,6 +35,7 @@ import jsoncases  # noqa: E402
 import jsontour  # noqa: E402
 import interrupttour  # noqa: E402
 import nettour  # noqa: E402
+import httptour  # noqa: E402
 
 RUNTIME = os.path.join(caselib.ROOT, "semanticscript", "runtime")
 EXAMPLES = os.path.join(caselib.ROOT, "docs", "refined-examples")
@@ -262,6 +263,21 @@ def test_program_needing_more_runtime_is_refused(tmp_path):
     compatible = caselib.refined("build", project, "--kind", "executable", "--runtime", "semanticscript", "--output",
                                  exe)
     assert compatible.returncode != 0 and compatible.stdout == built.stdout, compatible.stdout
+
+
+@needs_windows_cc
+def test_http_targets_match_the_jit(tmp_path):
+    """19 HTTP (D-152): a program that parses requests of every shape (each method in any case, line ends of both
+    kinds, headers trimmed, repeated, not ASCII, and malformed after others were copied; request lines with too many
+    or too few parts, unknown methods, relative paths, other protocols; empty text) and looks headers up in other
+    cases, and writes responses of named and unnamed statuses, prints exactly what `refined run` prints, the region's
+    remaining bytes after each parse included."""
+    project = str(tmp_path / "httptour")
+    httptour.write_project(project)
+    caselib.approve(project)
+    ran, jit = _same_as_jit(project)
+    assert ran == jit and ran[0] == 0
+    assert "malformed" in ran[1] and "HTTP/1.1 418 Status" in ran[1], ran[1]
 
 
 @needs_windows_cc
