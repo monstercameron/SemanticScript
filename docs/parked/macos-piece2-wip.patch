@@ -1,0 +1,1872 @@
+diff --git a/semanticscript/compiler/refined/codegen.py b/semanticscript/compiler/refined/codegen.py
+index 87d32dd..6afddd3 100644
+--- a/semanticscript/compiler/refined/codegen.py
++++ b/semanticscript/compiler/refined/codegen.py
+@@ -409,6 +409,30 @@ _AARCH64_RESTORER = [
+ ]
+ 
+ 
++# D-189: Darwin calls a signal's handler through the trampoline its sigaction names (sa_tramp), as
++# tramp(handler, infostyle, signal, siginfo, ucontext, token); the trampoline calls the handler and returns to the
++# interrupted code with sigreturn(ucontext, infostyle, token), as libSystem's _sigtramp does
++_DARWIN_TRAMPOLINE = [
++    ".text",
++    ".p2align 4",
++    ".globl refined_signal_restorer",
++    "refined_signal_restorer:",
++    "  mov x19, x4",
++    "  mov x20, x1",
++    "  mov x21, x5",
++    "  mov x9, x0",
++    "  mov x0, x2",
++    "  mov x1, x3",
++    "  mov x2, x4",
++    "  blr x9",
++    "  mov x0, x19",
++    "  mov x1, x20",
++    "  mov x2, x21",
++    "  mov x16, #184",
++    "  svc #0x80",
++    "  brk #0",
++]
++
+ class _Callbacks:
+     """The runtime functions compiled code calls, declared when first used. In a program that implements the runtime
+     (D-124) a callback its `abi c` operations define is that operation, so the runtime calls itself directly."""
+@@ -2460,9 +2484,12 @@ class OpGen:
+             return b.bitcast(self.be.function_for(mod, op, None, 0), PTR), None, None
+         if name == "signalRestorer":
+             arch = self.be.linux_arch()
+-            if not arch:
++            if self.be.darwin():
++                self.be.module.asm_parts["restorer"] = _macho(_DARWIN_TRAMPOLINE)  # D-189
++            elif not arch:
+                 return ir.Constant(PTR, None), None, None
+-            self.be.module.asm_parts["restorer"] = _AARCH64_RESTORER if arch == "aarch64" else _X86_64_RESTORER
++            else:
++                self.be.module.asm_parts["restorer"] = _AARCH64_RESTORER if arch == "aarch64" else _X86_64_RESTORER
+             fn = self.be.module.globals.get("refined_signal_restorer") or                 ir.Function(self.be.module, ir.FunctionType(ir.VoidType(), []), name="refined_signal_restorer")
+             return b.bitcast(fn, PTR), None, None
+         if name == "cLibrary":
+diff --git a/semanticscript/runtime/files.sem b/semanticscript/runtime/files.sem
+index dd96b71..d703dc0 100644
+--- a/semanticscript/runtime/files.sem
++++ b/semanticscript/runtime/files.sem
+@@ -888,7 +888,7 @@ storeIt catch none
+ storeIt suppresses none
+ 
+ linuxMode is operation
+-linuxMode purpose "The st_mode of a struct stat on Linux, its type bits only: at 24 on x86_64, at 16 on AArch64, whose struct stat is the kernel's generic one (D-150)"
++linuxMode purpose "The st_mode of a struct stat on Linux, its type bits only: at 24 on x86_64, at 16 on AArch64, whose struct stat is the kernel's generic one (D-150); at 4 in Darwin's struct stat64, a 16-bit field (D-189)"
+ linuxMode invariant none
+ linuxMode typeParameter none
+ linuxMode input status machine.Address copied
+@@ -904,30 +904,50 @@ linuxMode async false
+ linuxMode maxRecursion none
+ linuxMode label begin loopKind none
+ linuxMode label begin within none
++linuxMode label darwin loopKind none
++linuxMode label darwin within none
++linuxMode label archStep loopKind none
++linuxMode label archStep within none
+ linuxMode label generic loopKind none
+ linuxMode label generic within none
+ linuxMode label read loopKind none
+ linuxMode label read within none
+ linuxMode let offset Int64 24 mutable
+ linuxMode let genericOffset Int64 16 immutable
+-linuxMode at begin do archCheck
+-linuxMode at begin branch if onArm goto generic else goto read
++linuxMode let darwinOffset Int64 4 immutable
++linuxMode at begin do darwinCheck
++linuxMode at begin branch if onDarwin goto darwin else goto archStep
++linuxMode at darwin set offset darwinOffset
++linuxMode at darwin goto read
++linuxMode at archStep do archOf
++linuxMode at archStep branch if onArm goto generic else goto read
+ linuxMode at generic set offset genericOffset
+ linuxMode at generic goto read
+ linuxMode at read do modeOf
+ linuxMode at read do typeOf
+ linuxMode at read return ok kind
+ 
+-archCheck is call
+-archCheck in linuxMode
+-archCheck invokes system.aarch64
+-archCheck argument none
+-archCheck result onArm Bool
+-archCheck ownedBy none
+-archCheck cleanedBy none
+-archCheck borrows none
+-archCheck catch none
+-archCheck suppresses none
++darwinCheck is call
++darwinCheck in linuxMode
++darwinCheck invokes system.darwin
++darwinCheck argument none
++darwinCheck result onDarwin Bool
++darwinCheck ownedBy none
++darwinCheck cleanedBy none
++darwinCheck borrows none
++darwinCheck catch none
++darwinCheck suppresses none
++
++archOf is call
++archOf in linuxMode
++archOf invokes system.aarch64
++archOf argument none
++archOf result onArm Bool
++archOf ownedBy none
++archOf cleanedBy none
++archOf borrows none
++archOf catch none
++archOf suppresses none
+ 
+ modeOf is call
+ modeOf in linuxMode
+@@ -10503,7 +10523,7 @@ giveBuilder catch none
+ giveBuilder suppresses none
+ 
+ statusIdentity is operation
+-statusIdentity purpose "D-109 on Linux: the file a struct stat describes, `#<st_dev>:<st_ino>` as host.py writes it, in a new heap block (its length stored at an address); the address 0 when st_ino is 0"
++statusIdentity purpose "D-109 on Linux: the file a struct stat describes, `#<st_dev>:<st_ino>` as host.py writes it, in a new heap block (its length stored at an address); the address 0 when st_ino is 0. Darwin's st_dev is 32 bits (D-189)"
+ statusIdentity invariant none
+ statusIdentity typeParameter none
+ statusIdentity input status machine.Address copied
+@@ -10520,19 +10540,31 @@ statusIdentity async false
+ statusIdentity maxRecursion none
+ statusIdentity label begin loopKind none
+ statusIdentity label begin within none
++statusIdentity label darwinDevice loopKind none
++statusIdentity label darwinDevice within none
++statusIdentity label identityStep loopKind none
++statusIdentity label identityStep within none
+ statusIdentity label giveNothing loopKind none
+ statusIdentity label giveNothing within none
+ statusIdentity label format loopKind none
+ statusIdentity label format within none
++statusIdentity let device Int64 0 mutable
+ statusIdentity let eight Int64 8 immutable
+ statusIdentity let zero Int64 0 immutable
+ statusIdentity let hash Byte 35 immutable
+ statusIdentity let colon Byte 58 immutable
+-statusIdentity at begin do readDevice
+-statusIdentity at begin do findInode
+-statusIdentity at begin do readInode
+-statusIdentity at begin do zeroCheck
+-statusIdentity at begin branch if noInode goto giveNothing else goto format
++statusIdentity at begin do readLinuxDevice
++statusIdentity at begin set device linuxDevice
++statusIdentity at begin do darwinCheck
++statusIdentity at begin branch if onDarwin goto darwinDevice else goto identityStep
++statusIdentity at darwinDevice do readDarwinDevice
++statusIdentity at darwinDevice do widenDevice
++statusIdentity at darwinDevice set device darwinDeviceValue
++statusIdentity at darwinDevice goto identityStep
++statusIdentity at identityStep do findInode
++statusIdentity at identityStep do readInode
++statusIdentity at identityStep do zeroCheck
++statusIdentity at identityStep branch if noInode goto giveNothing else goto format
+ statusIdentity at giveNothing do nowhere
+ statusIdentity at giveNothing return ok anywhere
+ statusIdentity at format do makeKey
+@@ -10546,16 +10578,49 @@ statusIdentity at format do storeLength
+ statusIdentity at format do giveBuilder
+ statusIdentity at format return ok key
+ 
+-readDevice is call
+-readDevice in statusIdentity
+-readDevice invokes machine.loadInt64
+-readDevice argument address machine.Address status copy
+-readDevice result device Int64
+-readDevice ownedBy none
+-readDevice cleanedBy none
+-readDevice borrows none
+-readDevice catch none
+-readDevice suppresses none
++readLinuxDevice is call
++readLinuxDevice in statusIdentity
++readLinuxDevice invokes machine.loadInt64
++readLinuxDevice argument address machine.Address status copy
++readLinuxDevice result linuxDevice Int64
++readLinuxDevice ownedBy none
++readLinuxDevice cleanedBy none
++readLinuxDevice borrows none
++readLinuxDevice catch none
++readLinuxDevice suppresses none
++
++darwinCheck is call
++darwinCheck in statusIdentity
++darwinCheck invokes system.darwin
++darwinCheck argument none
++darwinCheck result onDarwin Bool
++darwinCheck ownedBy none
++darwinCheck cleanedBy none
++darwinCheck borrows none
++darwinCheck catch none
++darwinCheck suppresses none
++
++readDarwinDevice is call
++readDarwinDevice in statusIdentity
++readDarwinDevice invokes machine.loadInt32
++readDarwinDevice argument address machine.Address status copy
++readDarwinDevice result shortDevice Int32
++readDarwinDevice ownedBy none
++readDarwinDevice cleanedBy none
++readDarwinDevice borrows none
++readDarwinDevice catch none
++readDarwinDevice suppresses none
++
++widenDevice is call
++widenDevice in statusIdentity
++widenDevice invokes convert.int32ToInt64
++widenDevice argument value Int32 shortDevice copy
++widenDevice result darwinDeviceValue Int64
++widenDevice ownedBy none
++widenDevice cleanedBy none
++widenDevice borrows none
++widenDevice catch none
++widenDevice suppresses none
+ 
+ findInode is call
+ findInode in statusIdentity
+@@ -17455,6 +17520,7 @@ fsLock at lockLinux do flockIt
+ fsLock at lockLinux do flockFailed
+ fsLock at lockLinux branch if refusedLinux goto heldCheck else goto done
+ fsLock at heldCheck do flockErrno
++fsLock at heldCheck do againOf
+ fsLock at heldCheck do againCheck
+ fsLock at heldCheck branch if isAgain goto pastCheck else goto failedLock
+ fsLock at failedLock do lockStatus
+@@ -17601,11 +17667,22 @@ flockErrno borrows none
+ flockErrno catch none
+ flockErrno suppresses none
+ 
++againOf is call
++againOf in fsLock
++againOf invokes kernel.errnoNamed
++againOf argument linux Int64 eagain copy
++againOf result again Int64
++againOf ownedBy none
++againOf cleanedBy none
++againOf borrows none
++againOf catch none
++againOf suppresses none
++
+ againCheck is call
+ againCheck in fsLock
+ againCheck invokes compare.equalInt64
+ againCheck argument left Int64 linuxErrno copy
+-againCheck argument right Int64 eagain copy
++againCheck argument right Int64 again copy
+ againCheck result isAgain Bool
+ againCheck ownedBy none
+ againCheck cleanedBy none
+@@ -18947,6 +19024,10 @@ listDirectoryLinux async false
+ listDirectoryLinux maxRecursion none
+ listDirectoryLinux label begin loopKind none
+ listDirectoryLinux label begin within none
++listDirectoryLinux label darwinEntries loopKind none
++listDirectoryLinux label darwinEntries within none
++listDirectoryLinux label archStep loopKind none
++listDirectoryLinux label archStep within none
+ listDirectoryLinux label genericFlags loopKind none
+ listDirectoryLinux label genericFlags within none
+ listDirectoryLinux label open loopKind none
+@@ -18981,14 +19062,19 @@ listDirectoryLinux let forever Int64 9223372036854775807 immutable
+ listDirectoryLinux let entriesBytes Int64 32768 immutable
+ listDirectoryLinux let directoryFlags Int64 589824 mutable
+ listDirectoryLinux let genericDirectoryFlags Int64 540672 immutable
++listDirectoryLinux let nameOffset Int64 19 mutable
++listDirectoryLinux let darwinNameOffset Int64 21 immutable
+ listDirectoryLinux let zero Int64 0 immutable
+ listDirectoryLinux let twentyFour Int64 24 immutable
+ listDirectoryLinux let sixteen Int64 16 immutable
+ listDirectoryLinux let lowSixteen Int64 65535 immutable
+-listDirectoryLinux let nineteen Int64 19 immutable
+ listDirectoryLinux let one Int64 1 immutable
+-listDirectoryLinux at begin do archCheck
+-listDirectoryLinux at begin branch if onArm goto genericFlags else goto open
++listDirectoryLinux at begin do darwinCheck
++listDirectoryLinux at begin branch if onDarwin goto darwinEntries else goto archStep
++listDirectoryLinux at darwinEntries set nameOffset darwinNameOffset
++listDirectoryLinux at darwinEntries goto archStep
++listDirectoryLinux at archStep do archOf
++listDirectoryLinux at archStep branch if onArm goto genericFlags else goto open
+ listDirectoryLinux at genericFlags set directoryFlags genericDirectoryFlags
+ listDirectoryLinux at genericFlags goto open
+ listDirectoryLinux at open do copyPath
+@@ -19038,16 +19124,27 @@ listDirectoryLinux at finish do makeHandle
+ listDirectoryLinux at finish do storeListing
+ listDirectoryLinux at finish return ok ok
+ 
+-archCheck is call
+-archCheck in listDirectoryLinux
+-archCheck invokes system.aarch64
+-archCheck argument none
+-archCheck result onArm Bool
+-archCheck ownedBy none
+-archCheck cleanedBy none
+-archCheck borrows none
+-archCheck catch none
+-archCheck suppresses none
++darwinCheck is call
++darwinCheck in listDirectoryLinux
++darwinCheck invokes system.darwin
++darwinCheck argument none
++darwinCheck result onDarwin Bool
++darwinCheck ownedBy none
++darwinCheck cleanedBy none
++darwinCheck borrows none
++darwinCheck catch none
++darwinCheck suppresses none
++
++archOf is call
++archOf in listDirectoryLinux
++archOf invokes system.aarch64
++archOf argument none
++archOf result onArm Bool
++archOf ownedBy none
++archOf cleanedBy none
++archOf borrows none
++archOf catch none
++archOf suppresses none
+ 
+ copyPath is call
+ copyPath in listDirectoryLinux
+@@ -19242,7 +19339,7 @@ findEntryName is call
+ findEntryName in listDirectoryLinux
+ findEntryName invokes machine.offset
+ findEntryName argument address machine.Address entry copy
+-findEntryName argument bytes Int64 nineteen copy
++findEntryName argument bytes Int64 nameOffset copy
+ findEntryName result entryName machine.Address
+ findEntryName ownedBy none
+ findEntryName cleanedBy none
+diff --git a/semanticscript/runtime/interrupts.sem b/semanticscript/runtime/interrupts.sem
+index 22b96c7..5a7ac64 100644
+--- a/semanticscript/runtime/interrupts.sem
++++ b/semanticscript/runtime/interrupts.sem
+@@ -433,7 +433,7 @@ setIt catch none
+ setIt suppresses none
+ 
+ installInterrupts is operation
+-installInterrupts purpose "Install the interrupt handler before the program's entry runs, as `refined run` installs its handler for a program that reads `signal`: SetConsoleCtrlHandler on Windows (with the event the scheduler's sleep waits on), rt_sigaction for SIGINT on Linux: refined_signals_start"
++installInterrupts purpose "Install the interrupt handler before the program's entry runs, as `refined run` installs its handler for a program that reads `signal`: SetConsoleCtrlHandler on Windows (with the event the scheduler's sleep waits on), rt_sigaction for SIGINT on Linux; on Darwin sigaction with its struct __sigaction: the handler, the trampoline the kernel calls it through (machine.signalRestorer), the mask, and SA_RESTART (2) at 20 (D-189): refined_signals_start"
+ installInterrupts invariant none
+ installInterrupts typeParameter none
+ installInterrupts input none
+@@ -454,6 +454,10 @@ installInterrupts label windowsInstall loopKind none
+ installInterrupts label windowsInstall within none
+ installInterrupts label linuxInstall loopKind none
+ installInterrupts label linuxInstall within none
++installInterrupts label darwinInstall loopKind none
++installInterrupts label darwinInstall within none
++installInterrupts label linuxFlags loopKind none
++installInterrupts label linuxFlags within none
+ installInterrupts let sigint Int64 2 immutable
+ installInterrupts let flags Int64 335544320 immutable
+ installInterrupts let one Int64 1 immutable
+@@ -462,6 +466,8 @@ installInterrupts let noSignal Int32 0 immutable
+ installInterrupts let addIt Int32 1 immutable
+ installInterrupts let thirtyTwo Int64 32 immutable
+ installInterrupts let eight Int64 8 immutable
++installInterrupts let twenty Int64 20 immutable
++installInterrupts let restartDarwin Int32 2 immutable
+ installInterrupts let sixteen Int64 16 immutable
+ installInterrupts at begin do storeInstalled
+ installInterrupts at begin do findHandler
+@@ -475,14 +481,24 @@ installInterrupts at windowsInstall do addHandler
+ installInterrupts at windowsInstall return ok none
+ installInterrupts at linuxInstall do takeAction
+ installInterrupts at linuxInstall do storeHandler
+-installInterrupts at linuxInstall do findFlags
+-installInterrupts at linuxInstall do storeFlags
+-installInterrupts at linuxInstall do findRestorer
+-installInterrupts at linuxInstall do restorerOf
+-installInterrupts at linuxInstall do storeRestorer
+-installInterrupts at linuxInstall do noOld
+-installInterrupts at linuxInstall do installIt
+-installInterrupts at linuxInstall return ok none
++installInterrupts at linuxInstall do darwinCheck
++installInterrupts at linuxInstall branch if onDarwin goto darwinInstall else goto linuxFlags
++installInterrupts at darwinInstall do findTrampoline
++installInterrupts at darwinInstall do trampolineOf
++installInterrupts at darwinInstall do storeTrampoline
++installInterrupts at darwinInstall do findDarwinFlags
++installInterrupts at darwinInstall do storeDarwinFlags
++installInterrupts at darwinInstall do noDarwinOld
++installInterrupts at darwinInstall do installDarwin
++installInterrupts at darwinInstall return ok none
++installInterrupts at linuxFlags do findFlags
++installInterrupts at linuxFlags do storeFlags
++installInterrupts at linuxFlags do findRestorer
++installInterrupts at linuxFlags do restorerOf
++installInterrupts at linuxFlags do storeRestorer
++installInterrupts at linuxFlags do noOld
++installInterrupts at linuxFlags do installIt
++installInterrupts at linuxFlags return ok none
+ 
+ storeInstalled is call
+ storeInstalled in installInterrupts
+@@ -601,6 +617,101 @@ storeHandler borrows none
+ storeHandler catch none
+ storeHandler suppresses none
+ 
++darwinCheck is call
++darwinCheck in installInterrupts
++darwinCheck invokes system.darwin
++darwinCheck argument none
++darwinCheck result onDarwin Bool
++darwinCheck ownedBy none
++darwinCheck cleanedBy none
++darwinCheck borrows none
++darwinCheck catch none
++darwinCheck suppresses none
++
++findTrampoline is call
++findTrampoline in installInterrupts
++findTrampoline invokes machine.offset
++findTrampoline argument address machine.Address block copy
++findTrampoline argument bytes Int64 eight copy
++findTrampoline result trampolineSlot machine.Address
++findTrampoline ownedBy none
++findTrampoline cleanedBy none
++findTrampoline borrows none
++findTrampoline catch none
++findTrampoline suppresses none
++
++trampolineOf is call
++trampolineOf in installInterrupts
++trampolineOf invokes machine.signalRestorer
++trampolineOf argument none
++trampolineOf result trampoline machine.Address
++trampolineOf ownedBy none
++trampolineOf cleanedBy none
++trampolineOf borrows none
++trampolineOf catch none
++trampolineOf suppresses none
++
++storeTrampoline is call
++storeTrampoline in installInterrupts
++storeTrampoline invokes machine.storeAddress
++storeTrampoline argument address machine.Address trampolineSlot copy
++storeTrampoline argument value machine.Address trampoline copy
++storeTrampoline result none
++storeTrampoline ownedBy none
++storeTrampoline cleanedBy none
++storeTrampoline borrows none
++storeTrampoline catch none
++storeTrampoline suppresses none
++
++findDarwinFlags is call
++findDarwinFlags in installInterrupts
++findDarwinFlags invokes machine.offset
++findDarwinFlags argument address machine.Address block copy
++findDarwinFlags argument bytes Int64 twenty copy
++findDarwinFlags result darwinFlagsSlot machine.Address
++findDarwinFlags ownedBy none
++findDarwinFlags cleanedBy none
++findDarwinFlags borrows none
++findDarwinFlags catch none
++findDarwinFlags suppresses none
++
++storeDarwinFlags is call
++storeDarwinFlags in installInterrupts
++storeDarwinFlags invokes machine.storeInt32
++storeDarwinFlags argument address machine.Address darwinFlagsSlot copy
++storeDarwinFlags argument value Int32 restartDarwin copy
++storeDarwinFlags result none
++storeDarwinFlags ownedBy none
++storeDarwinFlags cleanedBy none
++storeDarwinFlags borrows none
++storeDarwinFlags catch none
++storeDarwinFlags suppresses none
++
++noDarwinOld is call
++noDarwinOld in installInterrupts
++noDarwinOld invokes machine.zero
++noDarwinOld argument none
++noDarwinOld result noDarwinAddress machine.Address
++noDarwinOld ownedBy none
++noDarwinOld cleanedBy none
++noDarwinOld borrows none
++noDarwinOld catch none
++noDarwinOld suppresses none
++
++installDarwin is call
++installDarwin in installInterrupts
++installDarwin invokes system.rtSigaction
++installDarwin argument signal Int64 sigint copy
++installDarwin argument action machine.Address block copy
++installDarwin argument old machine.Address noDarwinAddress copy
++installDarwin argument maskBytes Int64 eight copy
++installDarwin result installedDarwin Int64
++installDarwin ownedBy none
++installDarwin cleanedBy none
++installDarwin borrows none
++installDarwin catch none
++installDarwin suppresses none
++
+ findFlags is call
+ findFlags in installInterrupts
+ findFlags invokes machine.offset
+diff --git a/semanticscript/runtime/kernel.sem b/semanticscript/runtime/kernel.sem
+index d9e47ba..7b40b64 100644
+--- a/semanticscript/runtime/kernel.sem
++++ b/semanticscript/runtime/kernel.sem
+@@ -22,6 +22,7 @@ kernel exports argumentVector
+ kernel exports environmentVector
+ kernel exports failed
+ kernel exports errnoOf
++kernel exports errnoNamed
+ kernel exports mapMemory
+ kernel exports mapStack
+ kernel exports unmapMemory
+@@ -527,6 +528,533 @@ negateIt borrows none
+ negateIt catch none
+ negateIt suppresses none
+ 
++errnoNamed is operation
++errnoNamed purpose "An errno named by its number on Linux, as this kernel numbers it: the same number on Linux, Darwin's own on macOS, where the numbers from 35 on differ (D-189)"
++errnoNamed invariant numbersErrno "\"On Linux every number is itself; on Darwin EAGAIN (11) is 35, EINPROGRESS (115) 36, ETIMEDOUT (110) 60, ECONNREFUSED (111) 61, ENOTEMPTY (39) 66, and the like, and the numbers below 35 are themselves\""
++errnoNamed typeParameter none
++errnoNamed input linux Int64 copied
++errnoNamed output Int64
++errnoNamed outputOwnedBy none
++errnoNamed raises none
++errnoNamed effect use system.calls
++errnoNamed uses systemCalls
++errnoNamed memoryHeap false
++errnoNamed async false
++errnoNamed maxRecursion none
++errnoNamed label begin loopKind none
++errnoNamed label begin within none
++errnoNamed label same loopKind none
++errnoNamed label same within none
++errnoNamed label darwin loopKind none
++errnoNamed label darwin within none
++errnoNamed let found Int64 0 mutable
++errnoNamed let eagain Int64 11 immutable
++errnoNamed let darwinEagain Int64 35 immutable
++errnoNamed let einprogress Int64 115 immutable
++errnoNamed let darwinEinprogress Int64 36 immutable
++errnoNamed let ealready Int64 114 immutable
++errnoNamed let darwinEalready Int64 37 immutable
++errnoNamed let enotsock Int64 88 immutable
++errnoNamed let darwinEnotsock Int64 38 immutable
++errnoNamed let eafnosupport Int64 97 immutable
++errnoNamed let darwinEafnosupport Int64 47 immutable
++errnoNamed let eaddrinuse Int64 98 immutable
++errnoNamed let darwinEaddrinuse Int64 48 immutable
++errnoNamed let eaddrnotavail Int64 99 immutable
++errnoNamed let darwinEaddrnotavail Int64 49 immutable
++errnoNamed let enetdown Int64 100 immutable
++errnoNamed let darwinEnetdown Int64 50 immutable
++errnoNamed let enetunreach Int64 101 immutable
++errnoNamed let darwinEnetunreach Int64 51 immutable
++errnoNamed let econnaborted Int64 103 immutable
++errnoNamed let darwinEconnaborted Int64 53 immutable
++errnoNamed let econnreset Int64 104 immutable
++errnoNamed let darwinEconnreset Int64 54 immutable
++errnoNamed let enobufs Int64 105 immutable
++errnoNamed let darwinEnobufs Int64 55 immutable
++errnoNamed let eisconn Int64 106 immutable
++errnoNamed let darwinEisconn Int64 56 immutable
++errnoNamed let enotconn Int64 107 immutable
++errnoNamed let darwinEnotconn Int64 57 immutable
++errnoNamed let eshutdown Int64 108 immutable
++errnoNamed let darwinEshutdown Int64 58 immutable
++errnoNamed let etimedout Int64 110 immutable
++errnoNamed let darwinEtimedout Int64 60 immutable
++errnoNamed let econnrefused Int64 111 immutable
++errnoNamed let darwinEconnrefused Int64 61 immutable
++errnoNamed let eloop Int64 40 immutable
++errnoNamed let darwinEloop Int64 62 immutable
++errnoNamed let enametoolong Int64 36 immutable
++errnoNamed let darwinEnametoolong Int64 63 immutable
++errnoNamed let ehostunreach Int64 113 immutable
++errnoNamed let darwinEhostunreach Int64 65 immutable
++errnoNamed let enotempty Int64 39 immutable
++errnoNamed let darwinEnotempty Int64 66 immutable
++errnoNamed let enosys Int64 38 immutable
++errnoNamed let darwinEnosys Int64 78 immutable
++errnoNamed let eoverflow Int64 75 immutable
++errnoNamed let darwinEoverflow Int64 84 immutable
++errnoNamed let eilseq Int64 84 immutable
++errnoNamed let darwinEilseq Int64 92 immutable
++errnoNamed let ecanceled Int64 125 immutable
++errnoNamed let darwinEcanceled Int64 89 immutable
++errnoNamed at begin set found linux
++errnoNamed at begin do osCheck
++errnoNamed at begin branch if onDarwin goto darwin else goto same
++errnoNamed at same return ok linux
++errnoNamed at darwin do pickEagain
++errnoNamed at darwin set found afterEagain
++errnoNamed at darwin do pickEinprogress
++errnoNamed at darwin set found afterEinprogress
++errnoNamed at darwin do pickEalready
++errnoNamed at darwin set found afterEalready
++errnoNamed at darwin do pickEnotsock
++errnoNamed at darwin set found afterEnotsock
++errnoNamed at darwin do pickEafnosupport
++errnoNamed at darwin set found afterEafnosupport
++errnoNamed at darwin do pickEaddrinuse
++errnoNamed at darwin set found afterEaddrinuse
++errnoNamed at darwin do pickEaddrnotavail
++errnoNamed at darwin set found afterEaddrnotavail
++errnoNamed at darwin do pickEnetdown
++errnoNamed at darwin set found afterEnetdown
++errnoNamed at darwin do pickEnetunreach
++errnoNamed at darwin set found afterEnetunreach
++errnoNamed at darwin do pickEconnaborted
++errnoNamed at darwin set found afterEconnaborted
++errnoNamed at darwin do pickEconnreset
++errnoNamed at darwin set found afterEconnreset
++errnoNamed at darwin do pickEnobufs
++errnoNamed at darwin set found afterEnobufs
++errnoNamed at darwin do pickEisconn
++errnoNamed at darwin set found afterEisconn
++errnoNamed at darwin do pickEnotconn
++errnoNamed at darwin set found afterEnotconn
++errnoNamed at darwin do pickEshutdown
++errnoNamed at darwin set found afterEshutdown
++errnoNamed at darwin do pickEtimedout
++errnoNamed at darwin set found afterEtimedout
++errnoNamed at darwin do pickEconnrefused
++errnoNamed at darwin set found afterEconnrefused
++errnoNamed at darwin do pickEloop
++errnoNamed at darwin set found afterEloop
++errnoNamed at darwin do pickEnametoolong
++errnoNamed at darwin set found afterEnametoolong
++errnoNamed at darwin do pickEhostunreach
++errnoNamed at darwin set found afterEhostunreach
++errnoNamed at darwin do pickEnotempty
++errnoNamed at darwin set found afterEnotempty
++errnoNamed at darwin do pickEnosys
++errnoNamed at darwin set found afterEnosys
++errnoNamed at darwin do pickEoverflow
++errnoNamed at darwin set found afterEoverflow
++errnoNamed at darwin do pickEilseq
++errnoNamed at darwin set found afterEilseq
++errnoNamed at darwin do pickEcanceled
++errnoNamed at darwin set found afterEcanceled
++errnoNamed at darwin return ok found
++
++osCheck is call
++osCheck in errnoNamed
++osCheck invokes system.darwin
++osCheck argument none
++osCheck result onDarwin Bool
++osCheck ownedBy none
++osCheck cleanedBy none
++osCheck borrows none
++osCheck catch none
++osCheck suppresses none
++
++pickEagain is call
++pickEagain in errnoNamed
++pickEagain invokes pickNumber
++pickEagain argument value Int64 linux copy
++pickEagain argument found Int64 found copy
++pickEagain argument from Int64 eagain copy
++pickEagain argument to Int64 darwinEagain copy
++pickEagain result afterEagain Int64
++pickEagain ownedBy none
++pickEagain cleanedBy none
++pickEagain borrows none
++pickEagain catch none
++pickEagain suppresses none
++
++pickEinprogress is call
++pickEinprogress in errnoNamed
++pickEinprogress invokes pickNumber
++pickEinprogress argument value Int64 linux copy
++pickEinprogress argument found Int64 found copy
++pickEinprogress argument from Int64 einprogress copy
++pickEinprogress argument to Int64 darwinEinprogress copy
++pickEinprogress result afterEinprogress Int64
++pickEinprogress ownedBy none
++pickEinprogress cleanedBy none
++pickEinprogress borrows none
++pickEinprogress catch none
++pickEinprogress suppresses none
++
++pickEalready is call
++pickEalready in errnoNamed
++pickEalready invokes pickNumber
++pickEalready argument value Int64 linux copy
++pickEalready argument found Int64 found copy
++pickEalready argument from Int64 ealready copy
++pickEalready argument to Int64 darwinEalready copy
++pickEalready result afterEalready Int64
++pickEalready ownedBy none
++pickEalready cleanedBy none
++pickEalready borrows none
++pickEalready catch none
++pickEalready suppresses none
++
++pickEnotsock is call
++pickEnotsock in errnoNamed
++pickEnotsock invokes pickNumber
++pickEnotsock argument value Int64 linux copy
++pickEnotsock argument found Int64 found copy
++pickEnotsock argument from Int64 enotsock copy
++pickEnotsock argument to Int64 darwinEnotsock copy
++pickEnotsock result afterEnotsock Int64
++pickEnotsock ownedBy none
++pickEnotsock cleanedBy none
++pickEnotsock borrows none
++pickEnotsock catch none
++pickEnotsock suppresses none
++
++pickEafnosupport is call
++pickEafnosupport in errnoNamed
++pickEafnosupport invokes pickNumber
++pickEafnosupport argument value Int64 linux copy
++pickEafnosupport argument found Int64 found copy
++pickEafnosupport argument from Int64 eafnosupport copy
++pickEafnosupport argument to Int64 darwinEafnosupport copy
++pickEafnosupport result afterEafnosupport Int64
++pickEafnosupport ownedBy none
++pickEafnosupport cleanedBy none
++pickEafnosupport borrows none
++pickEafnosupport catch none
++pickEafnosupport suppresses none
++
++pickEaddrinuse is call
++pickEaddrinuse in errnoNamed
++pickEaddrinuse invokes pickNumber
++pickEaddrinuse argument value Int64 linux copy
++pickEaddrinuse argument found Int64 found copy
++pickEaddrinuse argument from Int64 eaddrinuse copy
++pickEaddrinuse argument to Int64 darwinEaddrinuse copy
++pickEaddrinuse result afterEaddrinuse Int64
++pickEaddrinuse ownedBy none
++pickEaddrinuse cleanedBy none
++pickEaddrinuse borrows none
++pickEaddrinuse catch none
++pickEaddrinuse suppresses none
++
++pickEaddrnotavail is call
++pickEaddrnotavail in errnoNamed
++pickEaddrnotavail invokes pickNumber
++pickEaddrnotavail argument value Int64 linux copy
++pickEaddrnotavail argument found Int64 found copy
++pickEaddrnotavail argument from Int64 eaddrnotavail copy
++pickEaddrnotavail argument to Int64 darwinEaddrnotavail copy
++pickEaddrnotavail result afterEaddrnotavail Int64
++pickEaddrnotavail ownedBy none
++pickEaddrnotavail cleanedBy none
++pickEaddrnotavail borrows none
++pickEaddrnotavail catch none
++pickEaddrnotavail suppresses none
++
++pickEnetdown is call
++pickEnetdown in errnoNamed
++pickEnetdown invokes pickNumber
++pickEnetdown argument value Int64 linux copy
++pickEnetdown argument found Int64 found copy
++pickEnetdown argument from Int64 enetdown copy
++pickEnetdown argument to Int64 darwinEnetdown copy
++pickEnetdown result afterEnetdown Int64
++pickEnetdown ownedBy none
++pickEnetdown cleanedBy none
++pickEnetdown borrows none
++pickEnetdown catch none
++pickEnetdown suppresses none
++
++pickEnetunreach is call
++pickEnetunreach in errnoNamed
++pickEnetunreach invokes pickNumber
++pickEnetunreach argument value Int64 linux copy
++pickEnetunreach argument found Int64 found copy
++pickEnetunreach argument from Int64 enetunreach copy
++pickEnetunreach argument to Int64 darwinEnetunreach copy
++pickEnetunreach result afterEnetunreach Int64
++pickEnetunreach ownedBy none
++pickEnetunreach cleanedBy none
++pickEnetunreach borrows none
++pickEnetunreach catch none
++pickEnetunreach suppresses none
++
++pickEconnaborted is call
++pickEconnaborted in errnoNamed
++pickEconnaborted invokes pickNumber
++pickEconnaborted argument value Int64 linux copy
++pickEconnaborted argument found Int64 found copy
++pickEconnaborted argument from Int64 econnaborted copy
++pickEconnaborted argument to Int64 darwinEconnaborted copy
++pickEconnaborted result afterEconnaborted Int64
++pickEconnaborted ownedBy none
++pickEconnaborted cleanedBy none
++pickEconnaborted borrows none
++pickEconnaborted catch none
++pickEconnaborted suppresses none
++
++pickEconnreset is call
++pickEconnreset in errnoNamed
++pickEconnreset invokes pickNumber
++pickEconnreset argument value Int64 linux copy
++pickEconnreset argument found Int64 found copy
++pickEconnreset argument from Int64 econnreset copy
++pickEconnreset argument to Int64 darwinEconnreset copy
++pickEconnreset result afterEconnreset Int64
++pickEconnreset ownedBy none
++pickEconnreset cleanedBy none
++pickEconnreset borrows none
++pickEconnreset catch none
++pickEconnreset suppresses none
++
++pickEnobufs is call
++pickEnobufs in errnoNamed
++pickEnobufs invokes pickNumber
++pickEnobufs argument value Int64 linux copy
++pickEnobufs argument found Int64 found copy
++pickEnobufs argument from Int64 enobufs copy
++pickEnobufs argument to Int64 darwinEnobufs copy
++pickEnobufs result afterEnobufs Int64
++pickEnobufs ownedBy none
++pickEnobufs cleanedBy none
++pickEnobufs borrows none
++pickEnobufs catch none
++pickEnobufs suppresses none
++
++pickEisconn is call
++pickEisconn in errnoNamed
++pickEisconn invokes pickNumber
++pickEisconn argument value Int64 linux copy
++pickEisconn argument found Int64 found copy
++pickEisconn argument from Int64 eisconn copy
++pickEisconn argument to Int64 darwinEisconn copy
++pickEisconn result afterEisconn Int64
++pickEisconn ownedBy none
++pickEisconn cleanedBy none
++pickEisconn borrows none
++pickEisconn catch none
++pickEisconn suppresses none
++
++pickEnotconn is call
++pickEnotconn in errnoNamed
++pickEnotconn invokes pickNumber
++pickEnotconn argument value Int64 linux copy
++pickEnotconn argument found Int64 found copy
++pickEnotconn argument from Int64 enotconn copy
++pickEnotconn argument to Int64 darwinEnotconn copy
++pickEnotconn result afterEnotconn Int64
++pickEnotconn ownedBy none
++pickEnotconn cleanedBy none
++pickEnotconn borrows none
++pickEnotconn catch none
++pickEnotconn suppresses none
++
++pickEshutdown is call
++pickEshutdown in errnoNamed
++pickEshutdown invokes pickNumber
++pickEshutdown argument value Int64 linux copy
++pickEshutdown argument found Int64 found copy
++pickEshutdown argument from Int64 eshutdown copy
++pickEshutdown argument to Int64 darwinEshutdown copy
++pickEshutdown result afterEshutdown Int64
++pickEshutdown ownedBy none
++pickEshutdown cleanedBy none
++pickEshutdown borrows none
++pickEshutdown catch none
++pickEshutdown suppresses none
++
++pickEtimedout is call
++pickEtimedout in errnoNamed
++pickEtimedout invokes pickNumber
++pickEtimedout argument value Int64 linux copy
++pickEtimedout argument found Int64 found copy
++pickEtimedout argument from Int64 etimedout copy
++pickEtimedout argument to Int64 darwinEtimedout copy
++pickEtimedout result afterEtimedout Int64
++pickEtimedout ownedBy none
++pickEtimedout cleanedBy none
++pickEtimedout borrows none
++pickEtimedout catch none
++pickEtimedout suppresses none
++
++pickEconnrefused is call
++pickEconnrefused in errnoNamed
++pickEconnrefused invokes pickNumber
++pickEconnrefused argument value Int64 linux copy
++pickEconnrefused argument found Int64 found copy
++pickEconnrefused argument from Int64 econnrefused copy
++pickEconnrefused argument to Int64 darwinEconnrefused copy
++pickEconnrefused result afterEconnrefused Int64
++pickEconnrefused ownedBy none
++pickEconnrefused cleanedBy none
++pickEconnrefused borrows none
++pickEconnrefused catch none
++pickEconnrefused suppresses none
++
++pickEloop is call
++pickEloop in errnoNamed
++pickEloop invokes pickNumber
++pickEloop argument value Int64 linux copy
++pickEloop argument found Int64 found copy
++pickEloop argument from Int64 eloop copy
++pickEloop argument to Int64 darwinEloop copy
++pickEloop result afterEloop Int64
++pickEloop ownedBy none
++pickEloop cleanedBy none
++pickEloop borrows none
++pickEloop catch none
++pickEloop suppresses none
++
++pickEnametoolong is call
++pickEnametoolong in errnoNamed
++pickEnametoolong invokes pickNumber
++pickEnametoolong argument value Int64 linux copy
++pickEnametoolong argument found Int64 found copy
++pickEnametoolong argument from Int64 enametoolong copy
++pickEnametoolong argument to Int64 darwinEnametoolong copy
++pickEnametoolong result afterEnametoolong Int64
++pickEnametoolong ownedBy none
++pickEnametoolong cleanedBy none
++pickEnametoolong borrows none
++pickEnametoolong catch none
++pickEnametoolong suppresses none
++
++pickEhostunreach is call
++pickEhostunreach in errnoNamed
++pickEhostunreach invokes pickNumber
++pickEhostunreach argument value Int64 linux copy
++pickEhostunreach argument found Int64 found copy
++pickEhostunreach argument from Int64 ehostunreach copy
++pickEhostunreach argument to Int64 darwinEhostunreach copy
++pickEhostunreach result afterEhostunreach Int64
++pickEhostunreach ownedBy none
++pickEhostunreach cleanedBy none
++pickEhostunreach borrows none
++pickEhostunreach catch none
++pickEhostunreach suppresses none
++
++pickEnotempty is call
++pickEnotempty in errnoNamed
++pickEnotempty invokes pickNumber
++pickEnotempty argument value Int64 linux copy
++pickEnotempty argument found Int64 found copy
++pickEnotempty argument from Int64 enotempty copy
++pickEnotempty argument to Int64 darwinEnotempty copy
++pickEnotempty result afterEnotempty Int64
++pickEnotempty ownedBy none
++pickEnotempty cleanedBy none
++pickEnotempty borrows none
++pickEnotempty catch none
++pickEnotempty suppresses none
++
++pickEnosys is call
++pickEnosys in errnoNamed
++pickEnosys invokes pickNumber
++pickEnosys argument value Int64 linux copy
++pickEnosys argument found Int64 found copy
++pickEnosys argument from Int64 enosys copy
++pickEnosys argument to Int64 darwinEnosys copy
++pickEnosys result afterEnosys Int64
++pickEnosys ownedBy none
++pickEnosys cleanedBy none
++pickEnosys borrows none
++pickEnosys catch none
++pickEnosys suppresses none
++
++pickEoverflow is call
++pickEoverflow in errnoNamed
++pickEoverflow invokes pickNumber
++pickEoverflow argument value Int64 linux copy
++pickEoverflow argument found Int64 found copy
++pickEoverflow argument from Int64 eoverflow copy
++pickEoverflow argument to Int64 darwinEoverflow copy
++pickEoverflow result afterEoverflow Int64
++pickEoverflow ownedBy none
++pickEoverflow cleanedBy none
++pickEoverflow borrows none
++pickEoverflow catch none
++pickEoverflow suppresses none
++
++pickEilseq is call
++pickEilseq in errnoNamed
++pickEilseq invokes pickNumber
++pickEilseq argument value Int64 linux copy
++pickEilseq argument found Int64 found copy
++pickEilseq argument from Int64 eilseq copy
++pickEilseq argument to Int64 darwinEilseq copy
++pickEilseq result afterEilseq Int64
++pickEilseq ownedBy none
++pickEilseq cleanedBy none
++pickEilseq borrows none
++pickEilseq catch none
++pickEilseq suppresses none
++
++pickEcanceled is call
++pickEcanceled in errnoNamed
++pickEcanceled invokes pickNumber
++pickEcanceled argument value Int64 linux copy
++pickEcanceled argument found Int64 found copy
++pickEcanceled argument from Int64 ecanceled copy
++pickEcanceled argument to Int64 darwinEcanceled copy
++pickEcanceled result afterEcanceled Int64
++pickEcanceled ownedBy none
++pickEcanceled cleanedBy none
++pickEcanceled borrows none
++pickEcanceled catch none
++pickEcanceled suppresses none
++
++pickNumber is operation
++pickNumber purpose "The number another stands for: `to` when the value is `from`, otherwise what was found so far"
++pickNumber invariant none
++pickNumber typeParameter none
++pickNumber input value Int64 copied
++pickNumber input found Int64 copied
++pickNumber input from Int64 copied
++pickNumber input to Int64 copied
++pickNumber output Int64
++pickNumber outputOwnedBy none
++pickNumber raises none
++pickNumber effect none
++pickNumber uses none
++pickNumber memoryHeap false
++pickNumber async false
++pickNumber maxRecursion none
++pickNumber label begin loopKind none
++pickNumber label begin within none
++pickNumber label giveTo loopKind none
++pickNumber label giveTo within none
++pickNumber label giveFound loopKind none
++pickNumber label giveFound within none
++pickNumber let none
++pickNumber at begin do sameCheck
++pickNumber at begin branch if same goto giveTo else goto giveFound
++pickNumber at giveTo return ok to
++pickNumber at giveFound return ok found
++
++sameCheck is call
++sameCheck in pickNumber
++sameCheck invokes compare.equalInt64
++sameCheck argument left Int64 value copy
++sameCheck argument right Int64 from copy
++sameCheck result same Bool
++sameCheck ownedBy none
++sameCheck cleanedBy none
++sameCheck borrows none
++sameCheck catch none
++sameCheck suppresses none
++
+ # ---------------------------------------------------------------- memory
+ mapMemory is operation
+ mapMemory purpose "Zeroed memory of a number of bytes from the operating system, readable and writable (VirtualAlloc, or an anonymous mmap); the address 0 when there is none"
+diff --git a/semanticscript/runtime/kernel.test.sem b/semanticscript/runtime/kernel.test.sem
+index 3dc5588..b26dbad 100644
+--- a/semanticscript/runtime/kernel.test.sem
++++ b/semanticscript/runtime/kernel.test.sem
+@@ -486,6 +486,126 @@ expectNone borrows none
+ expectNone catch none
+ expectNone suppresses none
+ 
++errnoTest is test
++errnoTest purpose "An errno named by Linux's number is this kernel's: itself on Linux and Windows, Darwin's on macOS"
++errnoTest verifies errnoNamed numbersErrno
++errnoTest typeParameter none
++errnoTest input none
++errnoTest output none
++errnoTest outputOwnedBy none
++errnoTest raises none
++errnoTest effect use system.calls
++errnoTest uses systemCalls
++errnoTest memoryHeap false
++errnoTest async false
++errnoTest maxRecursion none
++errnoTest label begin loopKind none
++errnoTest label begin within none
++errnoTest label darwin loopKind none
++errnoTest label darwin within none
++errnoTest label check loopKind none
++errnoTest label check within none
++errnoTest let wantAgain Int64 11 mutable
++errnoTest let wantRefused Int64 111 mutable
++errnoTest let darwinAgain Int64 35 immutable
++errnoTest let darwinRefused Int64 61 immutable
++errnoTest let eagain Int64 11 immutable
++errnoTest let econnrefused Int64 111 immutable
++errnoTest let enoent Int64 2 immutable
++errnoTest let two Int64 2 immutable
++errnoTest at begin do osCheck
++errnoTest at begin branch if onDarwin goto darwin else goto check
++errnoTest at darwin set wantAgain darwinAgain
++errnoTest at darwin set wantRefused darwinRefused
++errnoTest at darwin goto check
++errnoTest at check do againOf
++errnoTest at check do expectAgain
++errnoTest at check do refusedOf
++errnoTest at check do expectRefused
++errnoTest at check do noentOf
++errnoTest at check do expectNoent
++errnoTest at check return ok none
++
++osCheck is call
++osCheck in errnoTest
++osCheck invokes system.darwin
++osCheck argument none
++osCheck result onDarwin Bool
++osCheck ownedBy none
++osCheck cleanedBy none
++osCheck borrows none
++osCheck catch none
++osCheck suppresses none
++
++againOf is call
++againOf in errnoTest
++againOf invokes errnoNamed
++againOf argument linux Int64 eagain copy
++againOf result again Int64
++againOf ownedBy none
++againOf cleanedBy none
++againOf borrows none
++againOf catch none
++againOf suppresses none
++
++expectAgain is call
++expectAgain in errnoTest
++expectAgain invokes test.assertEqualInt64
++expectAgain argument expected Int64 wantAgain copy
++expectAgain argument actual Int64 again copy
++expectAgain result none
++expectAgain ownedBy none
++expectAgain cleanedBy none
++expectAgain borrows none
++expectAgain catch none
++expectAgain suppresses none
++
++refusedOf is call
++refusedOf in errnoTest
++refusedOf invokes errnoNamed
++refusedOf argument linux Int64 econnrefused copy
++refusedOf result refused Int64
++refusedOf ownedBy none
++refusedOf cleanedBy none
++refusedOf borrows none
++refusedOf catch none
++refusedOf suppresses none
++
++expectRefused is call
++expectRefused in errnoTest
++expectRefused invokes test.assertEqualInt64
++expectRefused argument expected Int64 wantRefused copy
++expectRefused argument actual Int64 refused copy
++expectRefused result none
++expectRefused ownedBy none
++expectRefused cleanedBy none
++expectRefused borrows none
++expectRefused catch none
++expectRefused suppresses none
++
++noentOf is call
++noentOf in errnoTest
++noentOf invokes errnoNamed
++noentOf argument linux Int64 enoent copy
++noentOf result noent Int64
++noentOf ownedBy none
++noentOf cleanedBy none
++noentOf borrows none
++noentOf catch none
++noentOf suppresses none
++
++expectNoent is call
++expectNoent in errnoTest
++expectNoent invokes test.assertEqualInt64
++expectNoent argument expected Int64 two copy
++expectNoent argument actual Int64 noent copy
++expectNoent result none
++expectNoent ownedBy none
++expectNoent cleanedBy none
++expectNoent borrows none
++expectNoent catch none
++expectNoent suppresses none
++
+ memoryTest is test
+ memoryTest purpose "Memory from the system is zeroed and writable, and goes back; on Linux a stack's memory too, and the clocks and sleep"
+ memoryTest verifies mapMemory mapsZeroed
+diff --git a/semanticscript/runtime/sockets.sem b/semanticscript/runtime/sockets.sem
+index dd02fbe..745a030 100644
+--- a/semanticscript/runtime/sockets.sem
++++ b/semanticscript/runtime/sockets.sem
+@@ -134,12 +134,12 @@ wouldBlock type Int64
+ wouldBlock value 10035
+ 
+ again is constant
+-again purpose "EAGAIN on Linux"
++again purpose "EAGAIN, by its number on Linux (kernel.errnoNamed)"
+ again type Int64
+ again value 11
+ 
+ inProgress is constant
+-inProgress purpose "EINPROGRESS on Linux"
++inProgress purpose "EINPROGRESS, by its number on Linux (kernel.errnoNamed)"
+ inProgress type Int64
+ inProgress value 115
+ 
+@@ -667,7 +667,7 @@ mapIt catch none
+ mapIt suppresses none
+ 
+ netError is operation
+-netError purpose "The NetError host.py's _net_error makes of an errno: timedOut, refused, closed, or failed with it (1 for 0)"
++netError purpose "The NetError host.py's _net_error makes of an errno: timedOut, refused, closed, or failed with it (1 for 0); the errnos are this kernel's (D-189)"
+ netError invariant none
+ netError typeParameter none
+ netError input payload machine.Address copied
+@@ -676,7 +676,9 @@ netError output Int32
+ netError outputOwnedBy none
+ netError raises none
+ netError effect use machine.memory
++netError effect use system.calls
+ netError uses memoryAccess
++netError uses systemCalls
+ netError memoryHeap false
+ netError async false
+ netError maxRecursion none
+@@ -713,21 +715,26 @@ netError let n10054 Int64 10054 immutable
+ netError let n10053 Int64 10053 immutable
+ netError let n10058 Int64 10058 immutable
+ netError at begin set value errno
++netError at begin do timeLinuxOf
+ netError at begin do timeLinux
+ netError at begin do timeWindows
+ netError at begin do timeCheck
+ netError at begin branch if isTime goto giveTimedOut else goto refusedCheck
+ netError at giveTimedOut do timedStatus
+ netError at giveTimedOut return ok status1
++netError at refusedCheck do refusedLinuxOf
+ netError at refusedCheck do refusedLinux
+ netError at refusedCheck do refusedWindows
+ netError at refusedCheck do checkRefused
+ netError at refusedCheck branch if isRefused goto giveRefused else goto closedCheck
+ netError at giveRefused do refusedStatus
+ netError at giveRefused return ok status2
++netError at closedCheck do resetLinuxOf
+ netError at closedCheck do resetLinux
++netError at closedCheck do abortLinuxOf
+ netError at closedCheck do abortLinux
+ netError at closedCheck do pipeLinux
++netError at closedCheck do downLinuxOf
+ netError at closedCheck do downLinux
+ netError at closedCheck do resetWindows
+ netError at closedCheck do abortWindows
+@@ -748,11 +755,22 @@ netError at one1 goto giveFailed
+ netError at giveFailed do failedStatus
+ netError at giveFailed return ok status4
+ 
++timeLinuxOf is call
++timeLinuxOf in netError
++timeLinuxOf invokes kernel.errnoNamed
++timeLinuxOf argument linux Int64 n110 copy
++timeLinuxOf result n110Here Int64
++timeLinuxOf ownedBy none
++timeLinuxOf cleanedBy none
++timeLinuxOf borrows none
++timeLinuxOf catch none
++timeLinuxOf suppresses none
++
+ timeLinux is call
+ timeLinux in netError
+ timeLinux invokes compare.equalInt64
+ timeLinux argument left Int64 errno copy
+-timeLinux argument right Int64 n110 copy
++timeLinux argument right Int64 n110Here copy
+ timeLinux result isTimeLinux Bool
+ timeLinux ownedBy none
+ timeLinux cleanedBy none
+@@ -797,11 +815,22 @@ timedStatus borrows none
+ timedStatus catch none
+ timedStatus suppresses none
+ 
++refusedLinuxOf is call
++refusedLinuxOf in netError
++refusedLinuxOf invokes kernel.errnoNamed
++refusedLinuxOf argument linux Int64 n111 copy
++refusedLinuxOf result n111Here Int64
++refusedLinuxOf ownedBy none
++refusedLinuxOf cleanedBy none
++refusedLinuxOf borrows none
++refusedLinuxOf catch none
++refusedLinuxOf suppresses none
++
+ refusedLinux is call
+ refusedLinux in netError
+ refusedLinux invokes compare.equalInt64
+ refusedLinux argument left Int64 errno copy
+-refusedLinux argument right Int64 n111 copy
++refusedLinux argument right Int64 n111Here copy
+ refusedLinux result isRefusedLinux Bool
+ refusedLinux ownedBy none
+ refusedLinux cleanedBy none
+@@ -846,11 +875,22 @@ refusedStatus borrows none
+ refusedStatus catch none
+ refusedStatus suppresses none
+ 
++resetLinuxOf is call
++resetLinuxOf in netError
++resetLinuxOf invokes kernel.errnoNamed
++resetLinuxOf argument linux Int64 n104 copy
++resetLinuxOf result n104Here Int64
++resetLinuxOf ownedBy none
++resetLinuxOf cleanedBy none
++resetLinuxOf borrows none
++resetLinuxOf catch none
++resetLinuxOf suppresses none
++
+ resetLinux is call
+ resetLinux in netError
+ resetLinux invokes compare.equalInt64
+ resetLinux argument left Int64 errno copy
+-resetLinux argument right Int64 n104 copy
++resetLinux argument right Int64 n104Here copy
+ resetLinux result isResetLinux Bool
+ resetLinux ownedBy none
+ resetLinux cleanedBy none
+@@ -858,11 +898,22 @@ resetLinux borrows none
+ resetLinux catch none
+ resetLinux suppresses none
+ 
++abortLinuxOf is call
++abortLinuxOf in netError
++abortLinuxOf invokes kernel.errnoNamed
++abortLinuxOf argument linux Int64 n103 copy
++abortLinuxOf result n103Here Int64
++abortLinuxOf ownedBy none
++abortLinuxOf cleanedBy none
++abortLinuxOf borrows none
++abortLinuxOf catch none
++abortLinuxOf suppresses none
++
+ abortLinux is call
+ abortLinux in netError
+ abortLinux invokes compare.equalInt64
+ abortLinux argument left Int64 errno copy
+-abortLinux argument right Int64 n103 copy
++abortLinux argument right Int64 n103Here copy
+ abortLinux result isAbortLinux Bool
+ abortLinux ownedBy none
+ abortLinux cleanedBy none
+@@ -882,11 +933,22 @@ pipeLinux borrows none
+ pipeLinux catch none
+ pipeLinux suppresses none
+ 
++downLinuxOf is call
++downLinuxOf in netError
++downLinuxOf invokes kernel.errnoNamed
++downLinuxOf argument linux Int64 n108 copy
++downLinuxOf result n108Here Int64
++downLinuxOf ownedBy none
++downLinuxOf cleanedBy none
++downLinuxOf borrows none
++downLinuxOf catch none
++downLinuxOf suppresses none
++
+ downLinux is call
+ downLinux in netError
+ downLinux invokes compare.equalInt64
+ downLinux argument left Int64 errno copy
+-downLinux argument right Int64 n108 copy
++downLinux argument right Int64 n108Here copy
+ downLinux result isDownLinux Bool
+ downLinux ownedBy none
+ downLinux cleanedBy none
+@@ -9063,6 +9125,7 @@ acceptTarget at linuxAccept do acceptIt
+ acceptTarget at linuxAccept do acceptFailed
+ acceptTarget at linuxAccept branch if refused goto linuxRefused else goto linuxDone
+ acceptTarget at linuxRefused do acceptErrno
++acceptTarget at linuxRefused do againOf
+ acceptTarget at linuxRefused do againCheck
+ acceptTarget at linuxRefused do interruptedCheck
+ acceptTarget at linuxRefused do retryCheck
+@@ -9238,11 +9301,22 @@ acceptErrno borrows none
+ acceptErrno catch none
+ acceptErrno suppresses none
+ 
++againOf is call
++againOf in acceptTarget
++againOf invokes kernel.errnoNamed
++againOf argument linux Int64 again copy
++againOf result againHere Int64
++againOf ownedBy none
++againOf cleanedBy none
++againOf borrows none
++againOf catch none
++againOf suppresses none
++
+ againCheck is call
+ againCheck in acceptTarget
+ againCheck invokes compare.equalInt64
+ againCheck argument left Int64 code copy
+-againCheck argument right Int64 again copy
++againCheck argument right Int64 againHere copy
+ againCheck result isAgain Bool
+ againCheck ownedBy none
+ againCheck cleanedBy none
+@@ -10333,6 +10407,7 @@ connectSocket at linuxConnect do connectIt
+ connectSocket at linuxConnect do connectFailed
+ connectSocket at linuxConnect branch if notConnected goto linuxPending else goto linuxDone
+ connectSocket at linuxPending do pendingErrno
++connectSocket at linuxPending do progressOf
+ connectSocket at linuxPending do progressCheck
+ connectSocket at linuxPending branch if inProgress2 goto linuxWaitCheck else goto linuxClose
+ connectSocket at linuxWaitCheck branch if immediate goto linuxClose else goto linuxObject
+@@ -10504,11 +10579,22 @@ pendingErrno borrows none
+ pendingErrno catch none
+ pendingErrno suppresses none
+ 
++progressOf is call
++progressOf in connectSocket
++progressOf invokes kernel.errnoNamed
++progressOf argument linux Int64 inProgress copy
++progressOf result progressHere Int64
++progressOf ownedBy none
++progressOf cleanedBy none
++progressOf borrows none
++progressOf catch none
++progressOf suppresses none
++
+ progressCheck is call
+ progressCheck in connectSocket
+ progressCheck invokes compare.equalInt64
+ progressCheck argument left Int64 pendingCode copy
+-progressCheck argument right Int64 inProgress copy
++progressCheck argument right Int64 progressHere copy
+ progressCheck result inProgress2 Bool
+ progressCheck ownedBy none
+ progressCheck cleanedBy none
+@@ -12593,6 +12679,7 @@ readTarget at linuxRead do receiveIt
+ readTarget at linuxRead do receiveFailed
+ readTarget at linuxRead branch if refused goto linuxRefused else goto received
+ readTarget at linuxRefused do receiveErrno
++readTarget at linuxRefused do againOf
+ readTarget at linuxRefused do againCheck
+ readTarget at linuxRefused do interruptedCheck
+ readTarget at linuxRefused do retryCheck
+@@ -12839,11 +12926,22 @@ receiveErrno borrows none
+ receiveErrno catch none
+ receiveErrno suppresses none
+ 
++againOf is call
++againOf in readTarget
++againOf invokes kernel.errnoNamed
++againOf argument linux Int64 again copy
++againOf result againHere Int64
++againOf ownedBy none
++againOf cleanedBy none
++againOf borrows none
++againOf catch none
++againOf suppresses none
++
+ againCheck is call
+ againCheck in readTarget
+ againCheck invokes compare.equalInt64
+ againCheck argument left Int64 code copy
+-againCheck argument right Int64 again copy
++againCheck argument right Int64 againHere copy
+ againCheck result isAgain Bool
+ againCheck ownedBy none
+ againCheck cleanedBy none
+@@ -13240,6 +13338,7 @@ writeTarget at counted do moreSent
+ writeTarget at counted set sent afterSent
+ writeTarget at counted goto eachSend
+ writeTarget at linuxRefused do sendErrno
++writeTarget at linuxRefused do againOf
+ writeTarget at linuxRefused do againCheck
+ writeTarget at linuxRefused do interruptedCheck
+ writeTarget at linuxRefused branch if isInterrupted goto eachSend else goto againOrError
+@@ -13475,11 +13574,22 @@ sendErrno borrows none
+ sendErrno catch none
+ sendErrno suppresses none
+ 
++againOf is call
++againOf in writeTarget
++againOf invokes kernel.errnoNamed
++againOf argument linux Int64 again copy
++againOf result againHere Int64
++againOf ownedBy none
++againOf cleanedBy none
++againOf borrows none
++againOf catch none
++againOf suppresses none
++
+ againCheck is call
+ againCheck in writeTarget
+ againCheck invokes compare.equalInt64
+ againCheck argument left Int64 code copy
+-againCheck argument right Int64 again copy
++againCheck argument right Int64 againHere copy
+ againCheck result isAgain Bool
+ againCheck ownedBy none
+ againCheck cleanedBy none
+diff --git a/semanticscript/runtime/tools/files.dsl b/semanticscript/runtime/tools/files.dsl
+index 2d7d22f..b666d9a 100644
+--- a/semanticscript/runtime/tools/files.dsl
++++ b/semanticscript/runtime/tools/files.dsl
+@@ -256,7 +256,7 @@ op keepErrno "Keep the errno of a Linux system call's result that failed, for ke
+   storeIt: machine.storeInt64(slot, errno)
+   return
+ 
+-op linuxMode "The st_mode of a struct stat on Linux, its type bits only: at 24 on x86_64, at 16 on AArch64, whose struct stat is the kernel's generic one (D-150)"
++op linuxMode "The st_mode of a struct stat on Linux, its type bits only: at 24 on x86_64, at 16 on AArch64, whose struct stat is the kernel's generic one (D-150); at 4 in Darwin's struct stat64, a 16-bit field (D-189)"
+   input status machine.Address copied
+   output Int64
+   effect use machine.memory
+@@ -265,8 +265,15 @@ op linuxMode "The st_mode of a struct stat on Linux, its type bits only: at 24 o
+   uses systemCalls
+   let offset Int64 24 mut
+   let genericOffset Int64 16
++  let darwinOffset Int64 4
+ :begin
+-  archCheck: onArm = system.aarch64()
++  darwinCheck: onDarwin = system.darwin()
++  if onDarwin darwin archStep
++:darwin
++  set offset darwinOffset
++  goto read
++:archStep
++  archOf: onArm = system.aarch64()
+   if onArm generic read
+ :generic
+   set offset genericOffset
+@@ -1826,7 +1833,7 @@ op identityKey "D-109: the file itself, `#<volume>:<index high>:<index low>`, in
+   giveBuilder: heap.give(builder)
+   return key
+ 
+-op statusIdentity "D-109 on Linux: the file a struct stat describes, `#<st_dev>:<st_ino>` as host.py writes it, in a new heap block (its length stored at an address); the address 0 when st_ino is 0"
++op statusIdentity "D-109 on Linux: the file a struct stat describes, `#<st_dev>:<st_ino>` as host.py writes it, in a new heap block (its length stored at an address); the address 0 when st_ino is 0. Darwin's st_dev is 32 bits (D-189)"
+   input status machine.Address copied
+   input lengthAt machine.Address copied
+   output machine.Address
+@@ -1834,8 +1841,18 @@ op statusIdentity "D-109 on Linux: the file a struct stat describes, `#<st_dev>:
+   effect use system.calls
+   uses memoryAccess
+   uses systemCalls
+-:begin
+-  readDevice: device = machine.loadInt64(status)
++  let device Int64 0 mut
++:begin
++  readLinuxDevice: linuxDevice = machine.loadInt64(status)
++  set device linuxDevice
++  darwinCheck: onDarwin = system.darwin()
++  if onDarwin darwinDevice identityStep
++:darwinDevice
++  readDarwinDevice: shortDevice = machine.loadInt32(status)
++  widenDevice: darwinDeviceValue = convert.int32ToInt64(shortDevice)
++  set device darwinDeviceValue
++  goto identityStep
++:identityStep
+   findInode: inodeSlot = machine.offset(status, eight=8)
+   readInode: inode = machine.loadInt64(inodeSlot)
+   zeroCheck: noInode = compare.equalInt64(inode, zero=0)
+@@ -2978,7 +2995,8 @@ op fsLock "fs.lock: take an exclusive lock on a file, trying every 50 ms until t
+   if refusedLinux heldCheck done
+ :heldCheck in=eachTry
+   flockErrno: linuxErrno = kernel.errnoOf(flocked)
+-  againCheck: isAgain = compare.equalInt64(linuxErrno, eagain=11)
++  againOf: again = kernel.errnoNamed(eagain=11)
++  againCheck: isAgain = compare.equalInt64(linuxErrno, again)
+   if isAgain pastCheck failedLock
+ :failedLock
+   lockStatus: status3 = fileError(payload, linuxErrno)
+@@ -3205,8 +3223,16 @@ op listDirectoryLinux "fs.listDirectory on Linux: the names getdents64 gives for
+   let entriesBytes Int64 32768
+   let directoryFlags Int64 589824 mut
+   let genericDirectoryFlags Int64 540672
+-:begin
+-  archCheck: onArm = system.aarch64()
++  let nameOffset Int64 19 mut
++  let darwinNameOffset Int64 21
++:begin
++  darwinCheck: onDarwin = system.darwin()
++  if onDarwin darwinEntries archStep
++:darwinEntries
++  set nameOffset darwinNameOffset
++  goto archStep
++:archStep
++  archOf: onArm = system.aarch64()
+   if onArm genericFlags open
+ :genericFlags
+   set directoryFlags genericDirectoryFlags
+@@ -3243,7 +3269,7 @@ op listDirectoryLinux "fs.listDirectory on Linux: the names getdents64 gives for
+   findLength: lengthAt = machine.offset(entry, sixteen=16)
+   readLength: recordBytes = unsignedAt(lengthAt, zero)
+   shortLength: recordLength = bits.andInt64(recordBytes, lowSixteen=65535)
+-  findEntryName: entryName = machine.offset(entry, nineteen=19)
++  findEntryName: entryName = machine.offset(entry, nameOffset)
+   measure: nameBytes = cLength(entryName, recordLength)
+   dotCheck: isDot = isDots(entryName, nameBytes)
+   if isDot skip add
+diff --git a/semanticscript/runtime/tools/interrupts.dsl b/semanticscript/runtime/tools/interrupts.dsl
+index b893377..1da05dd 100644
+--- a/semanticscript/runtime/tools/interrupts.dsl
++++ b/semanticscript/runtime/tools/interrupts.dsl
+@@ -105,7 +105,7 @@ op interruptHandler "What the operating system calls on an interrupt: CTRL_C_EVE
+ :done
+   return handled
+ 
+-op installInterrupts "Install the interrupt handler before the program's entry runs, as `refined run` installs its handler for a program that reads `signal`: SetConsoleCtrlHandler on Windows (with the event the scheduler's sleep waits on), rt_sigaction for SIGINT on Linux: refined_signals_start"
++op installInterrupts "Install the interrupt handler before the program's entry runs, as `refined run` installs its handler for a program that reads `signal`: SetConsoleCtrlHandler on Windows (with the event the scheduler's sleep waits on), rt_sigaction for SIGINT on Linux; on Darwin sigaction with its struct __sigaction: the handler, the trampoline the kernel calls it through (machine.signalRestorer), the mask, and SA_RESTART (2) at 20 (D-189): refined_signals_start"
+   effect use machine.memory
+   effect use system.calls
+   uses memoryAccess
+@@ -128,7 +128,19 @@ op installInterrupts "Install the interrupt handler before the program's entry r
+ :linuxInstall
+   takeAction: block = heap.take(thirtyTwo=32)
+   storeHandler: machine.storeAddress(block, handler)
+-  findFlags: flagsSlot = machine.offset(block, eight=8)
++  darwinCheck: onDarwin = system.darwin()
++  if onDarwin darwinInstall linuxFlags
++:darwinInstall
++  findTrampoline: trampolineSlot = machine.offset(block, eight=8)
++  trampolineOf: trampoline = machine.signalRestorer()
++  storeTrampoline: machine.storeAddress(trampolineSlot, trampoline)
++  findDarwinFlags: darwinFlagsSlot = machine.offset(block, twenty=20)
++  storeDarwinFlags: machine.storeInt32(darwinFlagsSlot, restartDarwin=2)
++  noDarwinOld: noDarwinAddress = machine.zero()
++  installDarwin: installedDarwin = system.rtSigaction(sigint, block, noDarwinAddress, eight=8)
++  return
++:linuxFlags
++  findFlags: flagsSlot = machine.offset(block, eight)
+   storeFlags: machine.storeInt64(flagsSlot, flags)
+   findRestorer: restorerSlot = machine.offset(block, sixteen=16)
+   restorerOf: restorer = machine.signalRestorer()
+diff --git a/semanticscript/runtime/tools/kernel.dsl b/semanticscript/runtime/tools/kernel.dsl
+index 1836204..35f91a2 100644
+--- a/semanticscript/runtime/tools/kernel.dsl
++++ b/semanticscript/runtime/tools/kernel.dsl
+@@ -1,7 +1,7 @@
+ module kernel "The operating system as the runtime reaches it: Windows through kernel32, Linux through system calls; memory from the system, Linux's clocks, and what a Linux process is started with"
+   path kernel
+   imports standard.machine standard.system standard.math standard.compare standard.logic standard.test
+-  exports stateAt initialStack argumentCount argumentVector environmentVector failed errnoOf mapMemory mapStack unmapMemory monotonic wallClock sleepFor
++  exports stateAt initialStack argumentCount argumentVector environmentVector failed errnoOf errnoNamed mapMemory mapStack unmapMemory monotonic wallClock sleepFor
+ 
+ capability memoryAccess "Authority to keep what the process was started with in machine.state" use machine.memory none
+ 
+@@ -112,6 +112,86 @@ op errnoOf "The errno of a Linux system call's result: 0 when it did not fail"
+ :giveNone
+   return noErrno
+ 
++op errnoNamed "An errno named by its number on Linux, as this kernel numbers it: the same number on Linux, Darwin's own on macOS, where the numbers from 35 on differ (D-189)"
++  invariant numbersErrno "On Linux every number is itself; on Darwin EAGAIN (11) is 35, EINPROGRESS (115) 36, ETIMEDOUT (110) 60, ECONNREFUSED (111) 61, ENOTEMPTY (39) 66, and the like, and the numbers below 35 are themselves"
++  input linux Int64 copied
++  output Int64
++  effect use system.calls
++  uses systemCalls
++  let found Int64 0 mut
++:begin
++  set found linux
++  osCheck: onDarwin = system.darwin()
++  if onDarwin darwin same
++:same
++  return linux
++:darwin
++  pickEagain: afterEagain = pickNumber(linux, found, eagain=11, darwinEagain=35)
++  set found afterEagain
++  pickEinprogress: afterEinprogress = pickNumber(linux, found, einprogress=115, darwinEinprogress=36)
++  set found afterEinprogress
++  pickEalready: afterEalready = pickNumber(linux, found, ealready=114, darwinEalready=37)
++  set found afterEalready
++  pickEnotsock: afterEnotsock = pickNumber(linux, found, enotsock=88, darwinEnotsock=38)
++  set found afterEnotsock
++  pickEafnosupport: afterEafnosupport = pickNumber(linux, found, eafnosupport=97, darwinEafnosupport=47)
++  set found afterEafnosupport
++  pickEaddrinuse: afterEaddrinuse = pickNumber(linux, found, eaddrinuse=98, darwinEaddrinuse=48)
++  set found afterEaddrinuse
++  pickEaddrnotavail: afterEaddrnotavail = pickNumber(linux, found, eaddrnotavail=99, darwinEaddrnotavail=49)
++  set found afterEaddrnotavail
++  pickEnetdown: afterEnetdown = pickNumber(linux, found, enetdown=100, darwinEnetdown=50)
++  set found afterEnetdown
++  pickEnetunreach: afterEnetunreach = pickNumber(linux, found, enetunreach=101, darwinEnetunreach=51)
++  set found afterEnetunreach
++  pickEconnaborted: afterEconnaborted = pickNumber(linux, found, econnaborted=103, darwinEconnaborted=53)
++  set found afterEconnaborted
++  pickEconnreset: afterEconnreset = pickNumber(linux, found, econnreset=104, darwinEconnreset=54)
++  set found afterEconnreset
++  pickEnobufs: afterEnobufs = pickNumber(linux, found, enobufs=105, darwinEnobufs=55)
++  set found afterEnobufs
++  pickEisconn: afterEisconn = pickNumber(linux, found, eisconn=106, darwinEisconn=56)
++  set found afterEisconn
++  pickEnotconn: afterEnotconn = pickNumber(linux, found, enotconn=107, darwinEnotconn=57)
++  set found afterEnotconn
++  pickEshutdown: afterEshutdown = pickNumber(linux, found, eshutdown=108, darwinEshutdown=58)
++  set found afterEshutdown
++  pickEtimedout: afterEtimedout = pickNumber(linux, found, etimedout=110, darwinEtimedout=60)
++  set found afterEtimedout
++  pickEconnrefused: afterEconnrefused = pickNumber(linux, found, econnrefused=111, darwinEconnrefused=61)
++  set found afterEconnrefused
++  pickEloop: afterEloop = pickNumber(linux, found, eloop=40, darwinEloop=62)
++  set found afterEloop
++  pickEnametoolong: afterEnametoolong = pickNumber(linux, found, enametoolong=36, darwinEnametoolong=63)
++  set found afterEnametoolong
++  pickEhostunreach: afterEhostunreach = pickNumber(linux, found, ehostunreach=113, darwinEhostunreach=65)
++  set found afterEhostunreach
++  pickEnotempty: afterEnotempty = pickNumber(linux, found, enotempty=39, darwinEnotempty=66)
++  set found afterEnotempty
++  pickEnosys: afterEnosys = pickNumber(linux, found, enosys=38, darwinEnosys=78)
++  set found afterEnosys
++  pickEoverflow: afterEoverflow = pickNumber(linux, found, eoverflow=75, darwinEoverflow=84)
++  set found afterEoverflow
++  pickEilseq: afterEilseq = pickNumber(linux, found, eilseq=84, darwinEilseq=92)
++  set found afterEilseq
++  pickEcanceled: afterEcanceled = pickNumber(linux, found, ecanceled=125, darwinEcanceled=89)
++  set found afterEcanceled
++  return found
++
++op pickNumber "The number another stands for: `to` when the value is `from`, otherwise what was found so far"
++  input value Int64 copied
++  input found Int64 copied
++  input from Int64 copied
++  input to Int64 copied
++  output Int64
++:begin
++  sameCheck: same = compare.equalInt64(value, from)
++  if same giveTo giveFound
++:giveTo
++  return to
++:giveFound
++  return found
++
+ ## ---------------------------------------------------------------- memory
+ 
+ op mapMemory "Zeroed memory of a number of bytes from the operating system, readable and writable (VirtualAlloc, or an anonymous mmap); the address 0 when there is none"
+@@ -291,6 +371,30 @@ test resultTest "A Linux system call's result fails from -4095 to -1, with its e
+   expectNone: test.assertEqualInt64(zero, noErrno)
+   return
+ 
++test errnoTest "An errno named by Linux's number is this kernel's: itself on Linux and Windows, Darwin's on macOS"
++  verifies errnoNamed numbersErrno
++  effect use system.calls
++  uses systemCalls
++  let wantAgain Int64 11 mut
++  let wantRefused Int64 111 mut
++  let darwinAgain Int64 35
++  let darwinRefused Int64 61
++:begin
++  osCheck: onDarwin = system.darwin()
++  if onDarwin darwin check
++:darwin
++  set wantAgain darwinAgain
++  set wantRefused darwinRefused
++  goto check
++:check
++  againOf: again = errnoNamed(eagain=11)
++  expectAgain: test.assertEqualInt64(wantAgain, again)
++  refusedOf: refused = errnoNamed(econnrefused=111)
++  expectRefused: test.assertEqualInt64(wantRefused, refused)
++  noentOf: noent = errnoNamed(enoent=2)
++  expectNoent: test.assertEqualInt64(two=2, noent)
++  return
++
+ test memoryTest "Memory from the system is zeroed and writable, and goes back; on Linux a stack's memory too, and the clocks and sleep"
+   verifies mapMemory mapsZeroed
+   verifies unmapMemory givesBack
+diff --git a/semanticscript/runtime/tools/sockets.dsl b/semanticscript/runtime/tools/sockets.dsl
+index 89bae49..ddc9c17 100644
+--- a/semanticscript/runtime/tools/sockets.dsl
++++ b/semanticscript/runtime/tools/sockets.dsl
+@@ -57,9 +57,9 @@ constant failedError "net.NetError.failed, numbered from 1" Int32 5
+ 
+ constant wouldBlock "WSAEWOULDBLOCK" Int64 10035
+ 
+-constant again "EAGAIN on Linux" Int64 11
++constant again "EAGAIN, by its number on Linux (kernel.errnoNamed)" Int64 11
+ 
+-constant inProgress "EINPROGRESS on Linux" Int64 115
++constant inProgress "EINPROGRESS, by its number on Linux (kernel.errnoNamed)" Int64 115
+ 
+ constant never "time.Deadline.never" Int64 -1
+ 
+@@ -184,17 +184,20 @@ op lastWinsock "The last Winsock error as Python's errno"
+   mapIt: errno = winsockErrno(wide1)
+   return errno
+ 
+-op netError "The NetError host.py's _net_error makes of an errno: timedOut, refused, closed, or failed with it (1 for 0)"
++op netError "The NetError host.py's _net_error makes of an errno: timedOut, refused, closed, or failed with it (1 for 0); the errnos are this kernel's (D-189)"
+   input payload machine.Address copied
+   input errno Int64 copied
+   output Int32
+   effect use machine.memory
++  effect use system.calls
+   uses memoryAccess
++  uses systemCalls
+   let value Int64 0 mut
+   let one Int64 1
+ :begin
+   set value errno
+-  timeLinux: isTimeLinux = compare.equalInt64(errno, n110=110)
++  timeLinuxOf: n110Here = kernel.errnoNamed(n110=110)
++  timeLinux: isTimeLinux = compare.equalInt64(errno, n110Here)
+   timeWindows: isTimeWindows = compare.equalInt64(errno, n10060=10060)
+   timeCheck: isTime = logic.or(isTimeLinux, isTimeWindows)
+   if isTime giveTimedOut refusedCheck
+@@ -202,7 +205,8 @@ op netError "The NetError host.py's _net_error makes of an errno: timedOut, refu
+   timedStatus: status1 = slots.failWith(payload, timedOutError, zero=0)
+   return status1
+ :refusedCheck
+-  refusedLinux: isRefusedLinux = compare.equalInt64(errno, n111=111)
++  refusedLinuxOf: n111Here = kernel.errnoNamed(n111=111)
++  refusedLinux: isRefusedLinux = compare.equalInt64(errno, n111Here)
+   refusedWindows: isRefusedWindows = compare.equalInt64(errno, n10061=10061)
+   checkRefused: isRefused = logic.or(isRefusedLinux, isRefusedWindows)
+   if isRefused giveRefused closedCheck
+@@ -210,10 +214,13 @@ op netError "The NetError host.py's _net_error makes of an errno: timedOut, refu
+   refusedStatus: status2 = slots.failWith(payload, refusedError, zero)
+   return status2
+ :closedCheck
+-  resetLinux: isResetLinux = compare.equalInt64(errno, n104=104)
+-  abortLinux: isAbortLinux = compare.equalInt64(errno, n103=103)
++  resetLinuxOf: n104Here = kernel.errnoNamed(n104=104)
++  resetLinux: isResetLinux = compare.equalInt64(errno, n104Here)
++  abortLinuxOf: n103Here = kernel.errnoNamed(n103=103)
++  abortLinux: isAbortLinux = compare.equalInt64(errno, n103Here)
+   pipeLinux: isPipe = compare.equalInt64(errno, n32=32)
+-  downLinux: isDownLinux = compare.equalInt64(errno, n108=108)
++  downLinuxOf: n108Here = kernel.errnoNamed(n108=108)
++  downLinux: isDownLinux = compare.equalInt64(errno, n108Here)
+   resetWindows: isResetWindows = compare.equalInt64(errno, n10054=10054)
+   abortWindows: isAbortWindows = compare.equalInt64(errno, n10053=10053)
+   downWindows: isDownWindows = compare.equalInt64(errno, n10058=10058)
+@@ -1634,7 +1641,8 @@ op acceptTarget "net.accept: the next connection to a listener, waiting through
+   if refused linuxRefused linuxDone
+ :linuxRefused in=eachTry
+   acceptErrno: code = kernel.errnoOf(fd)
+-  againCheck: isAgain = compare.equalInt64(code, again)
++  againOf: againHere = kernel.errnoNamed(again)
++  againCheck: isAgain = compare.equalInt64(code, againHere)
+   interruptedCheck: isInterrupted = compare.equalInt64(code, four=4)
+   retryCheck: retry = logic.or(isAgain, isInterrupted)
+   if retry waitIt giveError
+@@ -1862,7 +1870,8 @@ op connectSocket "Connect a new non-blocking socket to an address and port, wait
+   if notConnected linuxPending linuxDone
+ :linuxPending
+   pendingErrno: pendingCode = kernel.errnoOf(connected)
+-  progressCheck: inProgress2 = compare.equalInt64(pendingCode, inProgress)
++  progressOf: progressHere = kernel.errnoNamed(inProgress)
++  progressCheck: inProgress2 = compare.equalInt64(pendingCode, progressHere)
+   if inProgress2 linuxWaitCheck linuxClose
+ :linuxWaitCheck
+   if immediate linuxClose linuxObject
+@@ -2209,7 +2218,8 @@ op readTarget "net.read: up to a number of bytes a connection has (at least one)
+   if refused linuxRefused received
+ :linuxRefused in=eachTry
+   receiveErrno: code = kernel.errnoOf(got)
+-  againCheck: isAgain = compare.equalInt64(code, again)
++  againOf: againHere = kernel.errnoNamed(again)
++  againCheck: isAgain = compare.equalInt64(code, againHere)
+   interruptedCheck: isInterrupted = compare.equalInt64(code, four=4)
+   retryCheck: retry = logic.or(isAgain, isInterrupted)
+   if retry waitIt giveError
+@@ -2313,7 +2323,8 @@ op writeTarget "net.write: every byte to a connection, as sendall sends them wit
+   goto eachSend
+ :linuxRefused in=eachSend
+   sendErrno: code = kernel.errnoOf(got)
+-  againCheck: isAgain = compare.equalInt64(code, again)
++  againOf: againHere = kernel.errnoNamed(again)
++  againCheck: isAgain = compare.equalInt64(code, againHere)
+   interruptedCheck: isInterrupted = compare.equalInt64(code, four=4)
+   if isInterrupted eachSend againOrError
+ :againOrError in=eachSend
