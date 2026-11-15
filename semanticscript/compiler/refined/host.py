@@ -1378,8 +1378,8 @@ def _run_captured(p):
 # ---------------------------------------------------------------- foreign functions
 
 class Library:
-    def __init__(self, lib):
-        self.lib = lib
+    def __init__(self, libs):
+        self.libs = libs  # searched in order by `bind`
 
 
 def _load(name: str):
@@ -1403,10 +1403,18 @@ def _load(name: str):
 
 @target("ffi.open")
 def _ffi_open(p):
-    lib = _load(text(p[0]))
+    name = text(p[0])
+    lib = _load(name)
     if lib is None:
         fail("ffi.LoadError", "notFound")
-    return ok(new_handle(Library(lib)))
+    libs = [lib]
+    if name == "c" and os.name != "nt":
+        # D-153: `c` is the C library with math.h, as the executable's own C library is; glibc keeps math.h's
+        # functions in libm.so.6, so on Linux `c` binds from libc.so.6 and then libm.so.6
+        maths = _load("m")
+        if maths is not None:
+            libs.append(maths)
+    return ok(new_handle(Library(libs)))
 
 
 @target("ffi.close")
@@ -1418,11 +1426,13 @@ def _ffi_close(p):
 @target("ffi.Function.bind")
 def _ffi_bind(p):
     lib = get(p[0][0], Library)
-    try:
-        fn = getattr(lib.lib, text(p[1]))
-    except AttributeError:
-        fail("ffi.LoadError", "symbolMissing")
-    return ok(ctypes.cast(fn, ctypes.c_void_p).value)
+    for one in lib.libs:
+        try:
+            fn = getattr(one, text(p[1]))
+        except AttributeError:
+            continue
+        return ok(ctypes.cast(fn, ctypes.c_void_p).value)
+    fail("ffi.LoadError", "symbolMissing")
 
 
 # ---------------------------------------------------------------- capability scopes at run time (D-38)

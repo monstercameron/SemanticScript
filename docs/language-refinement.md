@@ -2817,8 +2817,10 @@ Linux. Decided by delegation:
   other names still load with LoadLibraryW. The executable stays free of the C library (D-144): `libc.so.6` and
   `ld-linux-*` appear in an executable that reaches `ffi` only as names the runtime recognizes, so `assert_no_libc`
   now looks for what linking glibc would leave (`GLIBC_` versions, `__libc_start_main`, an interpreter path) besides
-  a dynamic section. tests/ctour.py binds the scalar functions and builds strings in memory the library gave; the
-  executable prints what glibc gives (`expected()`), and on Linux exactly what `refined run` prints.
+  a dynamic section. `c` is the C library with math.h on every system: glibc keeps math.h's functions in libm.so.6,
+  so `refined run` on Linux binds `c`'s names from libc.so.6 and then libm.so.6 (host.py), as the executable finds
+  them in its one library. tests/ctour.py binds the scalar functions and builds strings in memory the library gave;
+  the executable prints what glibc gives (`expected()`), and on Linux exactly what `refined run` prints.
 - **D-154** `ffi.open` of any other name on Linux maps an ELF shared library with the runtime's loader, the module
   `loader`, as `dlopen(name, RTLD_NOW)` would: a name with `/` is a path, any other is looked for in
   LD_LIBRARY_PATH, then the asking library's RUNPATH (or RPATH) with `$ORIGIN`, then the system's library

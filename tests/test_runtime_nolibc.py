@@ -308,7 +308,7 @@ def test_c_library_table_names_glibc_functions():
     """D-153: the runtime's C library is the `abi library` operations of its `clibrary` module, each under its C
     name, and nothing else: ctype.h, string.h, stdlib.h, math.h's basics, a little of stdio.h, and the few names
     glibc's headers and start files make compiled code call (`__ctype_b_loc`, `__errno_location`,
-    `__stack_chk_fail`, `__cxa_finalize`, `__cxa_atexit`); every one is a name glibc exports."""
+    `__stack_chk_fail`, `__cxa_finalize`, `__cxa_atexit`); every one is a name glibc exports (math.h's from libm)."""
     import re
     with open(os.path.join(RUNTIME, "clibrary.sem"), encoding="utf-8") as fh:
         names = set(re.findall(r'^\w+ abi library "(\w+)"$', fh.read(), re.M))
@@ -321,7 +321,8 @@ def test_c_library_table_names_glibc_functions():
         import ctypes
         import ctypes.util
         glibc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
-        assert [n for n in sorted(names) if not hasattr(glibc, n)] == []
+        libm = ctypes.CDLL(ctypes.util.find_library("m") or "libm.so.6")  # math.h's functions are glibc's libm's
+        assert [n for n in sorted(names) if not hasattr(glibc, n) and not hasattr(libm, n)] == []
 
 
 C_LIBRARY = {
@@ -582,6 +583,10 @@ def test_conformance_programs_without_libc(tmp_path):
             with open(path, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
         ran, jit = _same_as_jit(project, check.args)
+        if "(in a task started with `start`)" in ran[2] + jit[2]:
+            # as test_conformance.py compares them: started tasks run concurrently under the JIT and in turn in an
+            # executable, so when more than one would trap, which reports first is not part of the language
+            ran, jit = (ran[0], ran[1], ran[2].splitlines()[0]), (jit[0], jit[1], jit[2].splitlines()[0])
         return check.id, ran, jit
 
     with ThreadPoolExecutor(6) as pool:
