@@ -2770,6 +2770,23 @@ The five modules stage 4 left to `refined run` (D-137) moved into `semanticscrip
   Method Not Allowed, Internal Server Error, else `Status`), then `Content-Type: text/plain; charset=utf-8`,
   `Content-Length`, `Connection: close`, a blank line, and the body.
 
+## The runtime in SemanticScript, the whole C library: the parallel modules (2026-11-15)
+
+The rest of ISO C's library is written as modules of their own (cmathbits, cmathexp, cmathtrig, cmathspecial,
+ctime, cwide, cextra), each by its own agent working at the same time in this checkout, each with a tour that calls
+its functions through `ffi` in an executable with no C library and compares them with exact values, and on Linux
+with glibc. Decided by delegation:
+
+- **D-180** math.h's hyperbolic, error, and gamma functions (`cmathspecial`): sinh, cosh, tanh, asinh, acosh, atanh,
+  erf, erfc, tgamma, lgamma, their `f` forms, and lgamma_r and lgammaf_r. They compute in double-double (Dekker
+  products; a private exp with ln 2 in three parts and a log by one Newton step on it; gamma by Stirling's series
+  after shifting the argument to 24 or more, Taylor series about 1 and 2, and reflection with sin(pi x) below 0; erf
+  by its series below 3; erfc by Laplace's continued fraction from 3), so each is within 1 ulp of the exact value
+  (lgamma near its zeros below -2 within 2^-72 absolutely); in the tour's 980 calls every finite result is the
+  correctly rounded one. The `f` forms compute in double and round once. Annex F's special values are exact; errno is
+  ERANGE on overflow and poles, EDOM on domain errors. `signgam` is not exported (it is POSIX's, not ISO C's): the
+  sign is kept at machine.state 24592 and given by lgamma_r and lgammaf_r. The module's state is machine.state 24576
+  to 24831 (each parallel module has a range of its own, 24576 to 27903).
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3490,6 +3507,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-156 to D-161 | The runtime in SemanticScript, the whole C library, stdio: expressions in the runtime's DSL, variadic `abi library` rows and `machine.variadicStart`, x86_64 calls through references made as variadic ones, printf's engine with exact digits, FILE streams buffered as glibc's, scanf (strerror's messages a known gap), the C library as a C program's libc on Linux (`--kind clibrary`) (by delegation) |
 | 2026-11-15 | D-162 to D-164 | The runtime in SemanticScript, the whole C library: exit handlers and the div family, setjmp and longjmp as routines the compiler emits, signal, raise, abort, and system (by delegation) |
 | 2026-11-15 | D-165 | The runtime in SemanticScript, the whole C library: the `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call (by delegation) |
+| 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

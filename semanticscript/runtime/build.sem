@@ -34,6 +34,7 @@ runtime includesModule cformat
 runtime includesModule cstreams
 runtime includesModule cstart
 runtime includesModule cprocess
+runtime includesModule cmathspecial
 runtime includesModule loader
 runtime includesModule tasks
 runtime includesModule interrupts
