@@ -553,7 +553,7 @@ op ilogbSignals "ilogb of 0, infinity, or NaN raises invalid and sets EDOM"
   uses systemCalls
 :begin
   calc wide = convert.int32ToInt64(result)
-  calc special = wide == -2147483648 || wide == 2147483647
+  calc special = wide == -2147483648 || wide == -2147483647 || wide == 2147483647
   when special raise done
 :raise
   raiseFlags(flagConstant(0))
@@ -939,19 +939,30 @@ op scalblnSingle "scalblnf: x times 2 to the n, n a long"
   scaleSignals(wide, back, n, tinyLimit, no)
   return narrowed
 
-op ilogbCore "The unbiased exponent of a double as an int: the least int for 0 and for NaN, the greatest for infinity (x86_64's FP_ILOGB0, FP_ILOGBNAN, and INT_MAX)"
+op ilogbCore "The unbiased exponent of a double as an int: FP_ILOGB0 for 0 and FP_ILOGBNAN for NaN (x86_64: the least int for both; AArch64: minus the greatest int, and the greatest int), the greatest int for infinity"
   input x Float64 copied
   output Int32
+  effect use system.calls
+  uses systemCalls
   let leastInt Int32 -2147483648
+  let minusGreatest Int32 -2147483647
   let greatestInt Int32 2147483647
 :begin
   bits = convert.float64BitsToUInt64(x)
   calc magnitude = bits & 0x7fffffffffffffff
-  when magnitude == 0 least checkSpecial
+  when magnitude == 0 zeroCase checkSpecial
 :checkSpecial
-  when magnitude > 0x7ff0000000000000 least checkInfinite
+  when magnitude > 0x7ff0000000000000 nanCase checkInfinite
 :checkInfinite
   when magnitude == 0x7ff0000000000000 greatest finite
+:zeroCase
+  onArm = system.aarch64()
+  when onArm armZero least
+:armZero
+  return minusGreatest
+:nanCase
+  onArmNan = system.aarch64()
+  when onArmNan greatest least
 :least
   return leastInt
 :greatest
@@ -1612,7 +1623,7 @@ op nanPayload "The number strtod makes of a NAN(tag) sequence: the tag read as s
   goto scan
 :scanEnd
   calc stop = convert.byteToInt64(machine.loadByte(tag + length))
-  calc closed = stop == 0 || stop == 41
+  calc closed = stop == 0
   calc usable = closed && length > 0
   when usable classify noPayload
 :noPayload
@@ -2197,65 +2208,55 @@ test logTest "ilogb and logb give the exponent, with the least int, the greatest
   v2 = logbDouble(convert.uint64BitsToFloat64(4620693217682128896))
   v3 = sameBits(4613937818241073152, v2)
   test.assertTrue(v3)
-  v4 = ilogbDouble(convert.uint64BitsToFloat64(0))
-  test.assertEqualInt64(-2147483648, convert.int32ToInt64(v4))
-  v5 = logbDouble(convert.uint64BitsToFloat64(0))
-  v6 = sameBits(18442240474082181120, v5)
-  test.assertTrue(v6)
-  v7 = ilogbDouble(convert.uint64BitsToFloat64(9218868437227405312))
-  test.assertEqualInt64(2147483647, convert.int32ToInt64(v7))
-  v8 = logbDouble(convert.uint64BitsToFloat64(9218868437227405312))
-  v9 = sameBits(9218868437227405312, v8)
-  test.assertTrue(v9)
-  v10 = ilogbDouble(convert.uint64BitsToFloat64(18442240474082181120))
-  test.assertEqualInt64(2147483647, convert.int32ToInt64(v10))
-  v11 = logbDouble(convert.uint64BitsToFloat64(18442240474082181120))
-  v12 = sameBits(9218868437227405312, v11)
-  test.assertTrue(v12)
-  v13 = ilogbDouble(convert.uint64BitsToFloat64(1))
-  test.assertEqualInt64(-1074, convert.int32ToInt64(v13))
-  v14 = logbDouble(convert.uint64BitsToFloat64(1))
-  v15 = sameBits(13875810354254053376, v14)
-  test.assertTrue(v15)
-  v16 = ilogbDouble(convert.uint64BitsToFloat64(9221120237041090560))
-  test.assertEqualInt64(-2147483648, convert.int32ToInt64(v16))
-  v17 = logbDouble(convert.uint64BitsToFloat64(9221120237041090560))
-  v18 = sameBits(9221120237041090560, v17)
-  test.assertTrue(v18)
-  v19 = ilogbDouble(convert.uint64BitsToFloat64(9214871658872686752))
-  test.assertEqualInt64(1023, convert.int32ToInt64(v19))
-  v20 = logbDouble(convert.uint64BitsToFloat64(9214871658872686752))
-  v21 = sameBits(4652209618980700160, v20)
-  test.assertTrue(v21)
-  v22 = ilogbDouble(convert.uint64BitsToFloat64(4604930618986332160))
-  test.assertEqualInt64(-1, convert.int32ToInt64(v22))
-  v23 = logbDouble(convert.uint64BitsToFloat64(4604930618986332160))
-  v24 = sameBits(13830554455654793216, v23)
-  test.assertTrue(v24)
-  v25 = ilogbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(4620693217682128896)))
-  test.assertEqualInt64(3, convert.int32ToInt64(v25))
-  v26 = logbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(4620693217682128896)))
-  v27 = convert.float32ToFloat64(v26)
-  v28 = sameBits(4613937818241073152, v27)
-  test.assertTrue(v28)
-  v29 = ilogbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(0)))
-  test.assertEqualInt64(-2147483648, convert.int32ToInt64(v29))
-  v30 = logbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(0)))
-  v31 = convert.float32ToFloat64(v30)
-  v32 = sameBits(18442240474082181120, v31)
-  test.assertTrue(v32)
-  v33 = ilogbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(3936146074321813504)))
-  test.assertEqualInt64(-149, convert.int32ToInt64(v33))
-  v34 = logbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(3936146074321813504)))
-  v35 = convert.float32ToFloat64(v34)
-  v36 = sameBits(13862818524860252160, v35)
-  test.assertTrue(v36)
-  v37 = ilogbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(9218868437227405312)))
-  test.assertEqualInt64(2147483647, convert.int32ToInt64(v37))
-  v38 = logbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(9218868437227405312)))
-  v39 = convert.float32ToFloat64(v38)
-  v40 = sameBits(9218868437227405312, v39)
-  test.assertTrue(v40)
+  v4 = logbDouble(convert.uint64BitsToFloat64(0))
+  v5 = sameBits(18442240474082181120, v4)
+  test.assertTrue(v5)
+  v6 = ilogbDouble(convert.uint64BitsToFloat64(9218868437227405312))
+  test.assertEqualInt64(2147483647, convert.int32ToInt64(v6))
+  v7 = logbDouble(convert.uint64BitsToFloat64(9218868437227405312))
+  v8 = sameBits(9218868437227405312, v7)
+  test.assertTrue(v8)
+  v9 = ilogbDouble(convert.uint64BitsToFloat64(18442240474082181120))
+  test.assertEqualInt64(2147483647, convert.int32ToInt64(v9))
+  v10 = logbDouble(convert.uint64BitsToFloat64(18442240474082181120))
+  v11 = sameBits(9218868437227405312, v10)
+  test.assertTrue(v11)
+  v12 = ilogbDouble(convert.uint64BitsToFloat64(1))
+  test.assertEqualInt64(-1074, convert.int32ToInt64(v12))
+  v13 = logbDouble(convert.uint64BitsToFloat64(1))
+  v14 = sameBits(13875810354254053376, v13)
+  test.assertTrue(v14)
+  v15 = logbDouble(convert.uint64BitsToFloat64(9221120237041090560))
+  v16 = sameBits(9221120237041090560, v15)
+  test.assertTrue(v16)
+  v17 = ilogbDouble(convert.uint64BitsToFloat64(9214871658872686752))
+  test.assertEqualInt64(1023, convert.int32ToInt64(v17))
+  v18 = logbDouble(convert.uint64BitsToFloat64(9214871658872686752))
+  v19 = sameBits(4652209618980700160, v18)
+  test.assertTrue(v19)
+  v20 = ilogbDouble(convert.uint64BitsToFloat64(4604930618986332160))
+  test.assertEqualInt64(-1, convert.int32ToInt64(v20))
+  v21 = logbDouble(convert.uint64BitsToFloat64(4604930618986332160))
+  v22 = sameBits(13830554455654793216, v21)
+  test.assertTrue(v22)
+  v23 = ilogbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(4620693217682128896)))
+  test.assertEqualInt64(3, convert.int32ToInt64(v23))
+  v24 = logbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(4620693217682128896)))
+  v25 = convert.float32ToFloat64(v24)
+  v26 = sameBits(4613937818241073152, v25)
+  test.assertTrue(v26)
+  v27 = ilogbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(3936146074321813504)))
+  test.assertEqualInt64(-149, convert.int32ToInt64(v27))
+  v28 = logbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(3936146074321813504)))
+  v29 = convert.float32ToFloat64(v28)
+  v30 = sameBits(13862818524860252160, v29)
+  test.assertTrue(v30)
+  v31 = ilogbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(9218868437227405312)))
+  test.assertEqualInt64(2147483647, convert.int32ToInt64(v31))
+  v32 = logbSingle(convert.float64ToFloat32(convert.uint64BitsToFloat64(9218868437227405312)))
+  v33 = convert.float32ToFloat64(v32)
+  v34 = sameBits(9218868437227405312, v33)
+  test.assertTrue(v34)
   return
 
 test modfTest "modf and modff give the fraction with the sign of x and store the whole part toward zero"
@@ -3060,11 +3061,11 @@ test nanTest "nan and nanf give a quiet NaN whose payload is the tag read as str
   test.assertTrue(v35)
   place56 = scratchText("5)7")
   v36 = nanDouble(place56)
-  v37 = sameBits(9221120237041090565, v36)
+  v37 = sameBits(9221120237041090560, v36)
   test.assertTrue(v37)
   v38 = nanSingle(place56)
   v39 = convert.float32ToFloat64(v38)
-  v40 = sameBits(9221120239725445120, v39)
+  v40 = sameBits(9221120237041090560, v39)
   test.assertTrue(v40)
   place64 = scratchText("18446744073709551616")
   v41 = nanDouble(place64)

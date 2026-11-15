@@ -4667,7 +4667,6 @@ logTest let uInt644620693217682128896 UInt64 4620693217682128896 immutable
 logTest let three Int64 3 immutable
 logTest let uInt644613937818241073152 UInt64 4613937818241073152 immutable
 logTest let uInt640 UInt64 0 immutable
-logTest let minus2147483648 Int64 -2147483648 immutable
 logTest let uInt6418442240474082181120 UInt64 18442240474082181120 immutable
 logTest let uInt649218868437227405312 UInt64 9218868437227405312 immutable
 logTest let n2147483647 Int64 2147483647 immutable
@@ -4694,104 +4693,85 @@ logTest at begin do readV3
 logTest at begin do doAssertTrue
 logTest at begin do v4Step1
 logTest at begin do readV4
+logTest at begin do readV5
+logTest at begin do doAssertTrue2
+logTest at begin do v6Step1
+logTest at begin do readV6
 logTest at begin do doAssertEqualInt64Step2
 logTest at begin do doAssertEqualInt642
-logTest at begin do v5Step1
-logTest at begin do readV5
-logTest at begin do readV6
-logTest at begin do doAssertTrue2
 logTest at begin do v7Step1
 logTest at begin do readV7
+logTest at begin do readV8
+logTest at begin do doAssertTrue3
+logTest at begin do v9Step1
+logTest at begin do readV9
 logTest at begin do doAssertEqualInt64Step3
 logTest at begin do doAssertEqualInt643
-logTest at begin do v8Step1
-logTest at begin do readV8
-logTest at begin do readV9
-logTest at begin do doAssertTrue3
 logTest at begin do v10Step1
 logTest at begin do readV10
+logTest at begin do readV11
+logTest at begin do doAssertTrue4
+logTest at begin do v12Step1
+logTest at begin do readV12
 logTest at begin do doAssertEqualInt64Step4
 logTest at begin do doAssertEqualInt644
-logTest at begin do v11Step1
-logTest at begin do readV11
-logTest at begin do readV12
-logTest at begin do doAssertTrue4
 logTest at begin do v13Step1
 logTest at begin do readV13
-logTest at begin do doAssertEqualInt64Step5
-logTest at begin do doAssertEqualInt645
-logTest at begin do v14Step1
 logTest at begin do readV14
-logTest at begin do readV15
 logTest at begin do doAssertTrue5
-logTest at begin do v16Step1
+logTest at begin do v15Step1
+logTest at begin do readV15
 logTest at begin do readV16
-logTest at begin do doAssertEqualInt64Step6
-logTest at begin do doAssertEqualInt646
+logTest at begin do doAssertTrue6
 logTest at begin do v17Step1
 logTest at begin do readV17
+logTest at begin do doAssertEqualInt64Step5
+logTest at begin do doAssertEqualInt645
+logTest at begin do v18Step1
 logTest at begin do readV18
-logTest at begin do doAssertTrue6
-logTest at begin do v19Step1
 logTest at begin do readV19
-logTest at begin do doAssertEqualInt64Step7
-logTest at begin do doAssertEqualInt647
+logTest at begin do doAssertTrue7
 logTest at begin do v20Step1
 logTest at begin do readV20
+logTest at begin do doAssertEqualInt64Step6
+logTest at begin do doAssertEqualInt646
+logTest at begin do v21Step1
 logTest at begin do readV21
-logTest at begin do doAssertTrue7
-logTest at begin do v22Step1
 logTest at begin do readV22
+logTest at begin do doAssertTrue8
+logTest at begin do v23Step1
+logTest at begin do v23Step2
+logTest at begin do readV23
+logTest at begin do doAssertEqualInt64Step7
+logTest at begin do doAssertEqualInt647
+logTest at begin do v24Step1
+logTest at begin do v24Step2
+logTest at begin do readV24
+logTest at begin do readV25
+logTest at begin do readV26
+logTest at begin do doAssertTrue9
+logTest at begin do v27Step1
+logTest at begin do v27Step2
+logTest at begin do readV27
 logTest at begin do doAssertEqualInt64Step8
 logTest at begin do doAssertEqualInt648
-logTest at begin do v23Step1
-logTest at begin do readV23
-logTest at begin do readV24
-logTest at begin do doAssertTrue8
-logTest at begin do v25Step1
-logTest at begin do v25Step2
-logTest at begin do readV25
+logTest at begin do v28Step1
+logTest at begin do v28Step2
+logTest at begin do readV28
+logTest at begin do readV29
+logTest at begin do readV30
+logTest at begin do doAssertTrue10
+logTest at begin do v31Step1
+logTest at begin do v31Step2
+logTest at begin do readV31
 logTest at begin do doAssertEqualInt64Step9
 logTest at begin do doAssertEqualInt649
-logTest at begin do v26Step1
-logTest at begin do v26Step2
-logTest at begin do readV26
-logTest at begin do readV27
-logTest at begin do readV28
-logTest at begin do doAssertTrue9
-logTest at begin do v29Step1
-logTest at begin do v29Step2
-logTest at begin do readV29
-logTest at begin do doAssertEqualInt64Step10
-logTest at begin do doAssertEqualInt6410
-logTest at begin do v30Step1
-logTest at begin do v30Step2
-logTest at begin do readV30
-logTest at begin do readV31
+logTest at begin do v32Step1
+logTest at begin do v32Step2
 logTest at begin do readV32
-logTest at begin do doAssertTrue10
-logTest at begin do v33Step1
-logTest at begin do v33Step2
 logTest at begin do readV33
-logTest at begin do doAssertEqualInt64Step11
-logTest at begin do doAssertEqualInt6411
-logTest at begin do v34Step1
-logTest at begin do v34Step2
 logTest at begin do readV34
-logTest at begin do readV35
-logTest at begin do readV36
 logTest at begin do doAssertTrue11
-logTest at begin do v37Step1
-logTest at begin do v37Step2
-logTest at begin do readV37
-logTest at begin do doAssertEqualInt64Step12
-logTest at begin do doAssertEqualInt6412
-logTest at begin do v38Step1
-logTest at begin do v38Step2
-logTest at begin do readV38
-logTest at begin do readV39
-logTest at begin do readV40
-logTest at begin do doAssertTrue12
 logTest at begin return ok none
 
 v1Step1 is call
@@ -4897,19 +4877,64 @@ v4Step1 suppresses none
 
 readV4 is call
 readV4 in logTest
-readV4 invokes ilogbDouble
+readV4 invokes logbDouble
 readV4 argument x Float64 v4Part1 copy
-readV4 result v4 Int32
+readV4 result v4 Float64
 readV4 ownedBy none
 readV4 cleanedBy none
 readV4 borrows none
 readV4 catch none
 readV4 suppresses none
 
+readV5 is call
+readV5 in logTest
+readV5 invokes sameBits
+readV5 argument expected UInt64 uInt6418442240474082181120 copy
+readV5 argument actual Float64 v4 copy
+readV5 result v5 Bool
+readV5 ownedBy none
+readV5 cleanedBy none
+readV5 borrows none
+readV5 catch none
+readV5 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in logTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool v5 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+v6Step1 is call
+v6Step1 in logTest
+v6Step1 invokes convert.uint64BitsToFloat64
+v6Step1 argument value UInt64 uInt649218868437227405312 copy
+v6Step1 result v6Part1 Float64
+v6Step1 ownedBy none
+v6Step1 cleanedBy none
+v6Step1 borrows none
+v6Step1 catch none
+v6Step1 suppresses none
+
+readV6 is call
+readV6 in logTest
+readV6 invokes ilogbDouble
+readV6 argument x Float64 v6Part1 copy
+readV6 result v6 Int32
+readV6 ownedBy none
+readV6 cleanedBy none
+readV6 borrows none
+readV6 catch none
+readV6 suppresses none
+
 doAssertEqualInt64Step2 is call
 doAssertEqualInt64Step2 in logTest
 doAssertEqualInt64Step2 invokes convert.int32ToInt64
-doAssertEqualInt64Step2 argument value Int32 v4 copy
+doAssertEqualInt64Step2 argument value Int32 v6 copy
 doAssertEqualInt64Step2 result doAssertEqualInt64Part2 Int64
 doAssertEqualInt64Step2 ownedBy none
 doAssertEqualInt64Step2 cleanedBy none
@@ -4920,7 +4945,7 @@ doAssertEqualInt64Step2 suppresses none
 doAssertEqualInt642 is call
 doAssertEqualInt642 in logTest
 doAssertEqualInt642 invokes test.assertEqualInt64
-doAssertEqualInt642 argument expected Int64 minus2147483648 copy
+doAssertEqualInt642 argument expected Int64 n2147483647 copy
 doAssertEqualInt642 argument actual Int64 doAssertEqualInt64Part2 copy
 doAssertEqualInt642 result none
 doAssertEqualInt642 ownedBy none
@@ -4928,51 +4953,6 @@ doAssertEqualInt642 cleanedBy none
 doAssertEqualInt642 borrows none
 doAssertEqualInt642 catch none
 doAssertEqualInt642 suppresses none
-
-v5Step1 is call
-v5Step1 in logTest
-v5Step1 invokes convert.uint64BitsToFloat64
-v5Step1 argument value UInt64 uInt640 copy
-v5Step1 result v5Part1 Float64
-v5Step1 ownedBy none
-v5Step1 cleanedBy none
-v5Step1 borrows none
-v5Step1 catch none
-v5Step1 suppresses none
-
-readV5 is call
-readV5 in logTest
-readV5 invokes logbDouble
-readV5 argument x Float64 v5Part1 copy
-readV5 result v5 Float64
-readV5 ownedBy none
-readV5 cleanedBy none
-readV5 borrows none
-readV5 catch none
-readV5 suppresses none
-
-readV6 is call
-readV6 in logTest
-readV6 invokes sameBits
-readV6 argument expected UInt64 uInt6418442240474082181120 copy
-readV6 argument actual Float64 v5 copy
-readV6 result v6 Bool
-readV6 ownedBy none
-readV6 cleanedBy none
-readV6 borrows none
-readV6 catch none
-readV6 suppresses none
-
-doAssertTrue2 is call
-doAssertTrue2 in logTest
-doAssertTrue2 invokes test.assertTrue
-doAssertTrue2 argument value Bool v6 copy
-doAssertTrue2 result none
-doAssertTrue2 ownedBy none
-doAssertTrue2 cleanedBy none
-doAssertTrue2 borrows none
-doAssertTrue2 catch none
-doAssertTrue2 suppresses none
 
 v7Step1 is call
 v7Step1 in logTest
@@ -4987,19 +4967,64 @@ v7Step1 suppresses none
 
 readV7 is call
 readV7 in logTest
-readV7 invokes ilogbDouble
+readV7 invokes logbDouble
 readV7 argument x Float64 v7Part1 copy
-readV7 result v7 Int32
+readV7 result v7 Float64
 readV7 ownedBy none
 readV7 cleanedBy none
 readV7 borrows none
 readV7 catch none
 readV7 suppresses none
 
+readV8 is call
+readV8 in logTest
+readV8 invokes sameBits
+readV8 argument expected UInt64 uInt649218868437227405312 copy
+readV8 argument actual Float64 v7 copy
+readV8 result v8 Bool
+readV8 ownedBy none
+readV8 cleanedBy none
+readV8 borrows none
+readV8 catch none
+readV8 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in logTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool v8 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+v9Step1 is call
+v9Step1 in logTest
+v9Step1 invokes convert.uint64BitsToFloat64
+v9Step1 argument value UInt64 uInt6418442240474082181120 copy
+v9Step1 result v9Part1 Float64
+v9Step1 ownedBy none
+v9Step1 cleanedBy none
+v9Step1 borrows none
+v9Step1 catch none
+v9Step1 suppresses none
+
+readV9 is call
+readV9 in logTest
+readV9 invokes ilogbDouble
+readV9 argument x Float64 v9Part1 copy
+readV9 result v9 Int32
+readV9 ownedBy none
+readV9 cleanedBy none
+readV9 borrows none
+readV9 catch none
+readV9 suppresses none
+
 doAssertEqualInt64Step3 is call
 doAssertEqualInt64Step3 in logTest
 doAssertEqualInt64Step3 invokes convert.int32ToInt64
-doAssertEqualInt64Step3 argument value Int32 v7 copy
+doAssertEqualInt64Step3 argument value Int32 v9 copy
 doAssertEqualInt64Step3 result doAssertEqualInt64Part3 Int64
 doAssertEqualInt64Step3 ownedBy none
 doAssertEqualInt64Step3 cleanedBy none
@@ -5019,51 +5044,6 @@ doAssertEqualInt643 borrows none
 doAssertEqualInt643 catch none
 doAssertEqualInt643 suppresses none
 
-v8Step1 is call
-v8Step1 in logTest
-v8Step1 invokes convert.uint64BitsToFloat64
-v8Step1 argument value UInt64 uInt649218868437227405312 copy
-v8Step1 result v8Part1 Float64
-v8Step1 ownedBy none
-v8Step1 cleanedBy none
-v8Step1 borrows none
-v8Step1 catch none
-v8Step1 suppresses none
-
-readV8 is call
-readV8 in logTest
-readV8 invokes logbDouble
-readV8 argument x Float64 v8Part1 copy
-readV8 result v8 Float64
-readV8 ownedBy none
-readV8 cleanedBy none
-readV8 borrows none
-readV8 catch none
-readV8 suppresses none
-
-readV9 is call
-readV9 in logTest
-readV9 invokes sameBits
-readV9 argument expected UInt64 uInt649218868437227405312 copy
-readV9 argument actual Float64 v8 copy
-readV9 result v9 Bool
-readV9 ownedBy none
-readV9 cleanedBy none
-readV9 borrows none
-readV9 catch none
-readV9 suppresses none
-
-doAssertTrue3 is call
-doAssertTrue3 in logTest
-doAssertTrue3 invokes test.assertTrue
-doAssertTrue3 argument value Bool v9 copy
-doAssertTrue3 result none
-doAssertTrue3 ownedBy none
-doAssertTrue3 cleanedBy none
-doAssertTrue3 borrows none
-doAssertTrue3 catch none
-doAssertTrue3 suppresses none
-
 v10Step1 is call
 v10Step1 in logTest
 v10Step1 invokes convert.uint64BitsToFloat64
@@ -5077,19 +5057,64 @@ v10Step1 suppresses none
 
 readV10 is call
 readV10 in logTest
-readV10 invokes ilogbDouble
+readV10 invokes logbDouble
 readV10 argument x Float64 v10Part1 copy
-readV10 result v10 Int32
+readV10 result v10 Float64
 readV10 ownedBy none
 readV10 cleanedBy none
 readV10 borrows none
 readV10 catch none
 readV10 suppresses none
 
+readV11 is call
+readV11 in logTest
+readV11 invokes sameBits
+readV11 argument expected UInt64 uInt649218868437227405312 copy
+readV11 argument actual Float64 v10 copy
+readV11 result v11 Bool
+readV11 ownedBy none
+readV11 cleanedBy none
+readV11 borrows none
+readV11 catch none
+readV11 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in logTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool v11 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+v12Step1 is call
+v12Step1 in logTest
+v12Step1 invokes convert.uint64BitsToFloat64
+v12Step1 argument value UInt64 uInt641 copy
+v12Step1 result v12Part1 Float64
+v12Step1 ownedBy none
+v12Step1 cleanedBy none
+v12Step1 borrows none
+v12Step1 catch none
+v12Step1 suppresses none
+
+readV12 is call
+readV12 in logTest
+readV12 invokes ilogbDouble
+readV12 argument x Float64 v12Part1 copy
+readV12 result v12 Int32
+readV12 ownedBy none
+readV12 cleanedBy none
+readV12 borrows none
+readV12 catch none
+readV12 suppresses none
+
 doAssertEqualInt64Step4 is call
 doAssertEqualInt64Step4 in logTest
 doAssertEqualInt64Step4 invokes convert.int32ToInt64
-doAssertEqualInt64Step4 argument value Int32 v10 copy
+doAssertEqualInt64Step4 argument value Int32 v12 copy
 doAssertEqualInt64Step4 result doAssertEqualInt64Part4 Int64
 doAssertEqualInt64Step4 ownedBy none
 doAssertEqualInt64Step4 cleanedBy none
@@ -5100,7 +5125,7 @@ doAssertEqualInt64Step4 suppresses none
 doAssertEqualInt644 is call
 doAssertEqualInt644 in logTest
 doAssertEqualInt644 invokes test.assertEqualInt64
-doAssertEqualInt644 argument expected Int64 n2147483647 copy
+doAssertEqualInt644 argument expected Int64 minus1074 copy
 doAssertEqualInt644 argument actual Int64 doAssertEqualInt64Part4 copy
 doAssertEqualInt644 result none
 doAssertEqualInt644 ownedBy none
@@ -5108,51 +5133,6 @@ doAssertEqualInt644 cleanedBy none
 doAssertEqualInt644 borrows none
 doAssertEqualInt644 catch none
 doAssertEqualInt644 suppresses none
-
-v11Step1 is call
-v11Step1 in logTest
-v11Step1 invokes convert.uint64BitsToFloat64
-v11Step1 argument value UInt64 uInt6418442240474082181120 copy
-v11Step1 result v11Part1 Float64
-v11Step1 ownedBy none
-v11Step1 cleanedBy none
-v11Step1 borrows none
-v11Step1 catch none
-v11Step1 suppresses none
-
-readV11 is call
-readV11 in logTest
-readV11 invokes logbDouble
-readV11 argument x Float64 v11Part1 copy
-readV11 result v11 Float64
-readV11 ownedBy none
-readV11 cleanedBy none
-readV11 borrows none
-readV11 catch none
-readV11 suppresses none
-
-readV12 is call
-readV12 in logTest
-readV12 invokes sameBits
-readV12 argument expected UInt64 uInt649218868437227405312 copy
-readV12 argument actual Float64 v11 copy
-readV12 result v12 Bool
-readV12 ownedBy none
-readV12 cleanedBy none
-readV12 borrows none
-readV12 catch none
-readV12 suppresses none
-
-doAssertTrue4 is call
-doAssertTrue4 in logTest
-doAssertTrue4 invokes test.assertTrue
-doAssertTrue4 argument value Bool v12 copy
-doAssertTrue4 result none
-doAssertTrue4 ownedBy none
-doAssertTrue4 cleanedBy none
-doAssertTrue4 borrows none
-doAssertTrue4 catch none
-doAssertTrue4 suppresses none
 
 v13Step1 is call
 v13Step1 in logTest
@@ -5167,19 +5147,109 @@ v13Step1 suppresses none
 
 readV13 is call
 readV13 in logTest
-readV13 invokes ilogbDouble
+readV13 invokes logbDouble
 readV13 argument x Float64 v13Part1 copy
-readV13 result v13 Int32
+readV13 result v13 Float64
 readV13 ownedBy none
 readV13 cleanedBy none
 readV13 borrows none
 readV13 catch none
 readV13 suppresses none
 
+readV14 is call
+readV14 in logTest
+readV14 invokes sameBits
+readV14 argument expected UInt64 uInt6413875810354254053376 copy
+readV14 argument actual Float64 v13 copy
+readV14 result v14 Bool
+readV14 ownedBy none
+readV14 cleanedBy none
+readV14 borrows none
+readV14 catch none
+readV14 suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in logTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool v14 copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+v15Step1 is call
+v15Step1 in logTest
+v15Step1 invokes convert.uint64BitsToFloat64
+v15Step1 argument value UInt64 uInt649221120237041090560 copy
+v15Step1 result v15Part1 Float64
+v15Step1 ownedBy none
+v15Step1 cleanedBy none
+v15Step1 borrows none
+v15Step1 catch none
+v15Step1 suppresses none
+
+readV15 is call
+readV15 in logTest
+readV15 invokes logbDouble
+readV15 argument x Float64 v15Part1 copy
+readV15 result v15 Float64
+readV15 ownedBy none
+readV15 cleanedBy none
+readV15 borrows none
+readV15 catch none
+readV15 suppresses none
+
+readV16 is call
+readV16 in logTest
+readV16 invokes sameBits
+readV16 argument expected UInt64 uInt649221120237041090560 copy
+readV16 argument actual Float64 v15 copy
+readV16 result v16 Bool
+readV16 ownedBy none
+readV16 cleanedBy none
+readV16 borrows none
+readV16 catch none
+readV16 suppresses none
+
+doAssertTrue6 is call
+doAssertTrue6 in logTest
+doAssertTrue6 invokes test.assertTrue
+doAssertTrue6 argument value Bool v16 copy
+doAssertTrue6 result none
+doAssertTrue6 ownedBy none
+doAssertTrue6 cleanedBy none
+doAssertTrue6 borrows none
+doAssertTrue6 catch none
+doAssertTrue6 suppresses none
+
+v17Step1 is call
+v17Step1 in logTest
+v17Step1 invokes convert.uint64BitsToFloat64
+v17Step1 argument value UInt64 uInt649214871658872686752 copy
+v17Step1 result v17Part1 Float64
+v17Step1 ownedBy none
+v17Step1 cleanedBy none
+v17Step1 borrows none
+v17Step1 catch none
+v17Step1 suppresses none
+
+readV17 is call
+readV17 in logTest
+readV17 invokes ilogbDouble
+readV17 argument x Float64 v17Part1 copy
+readV17 result v17 Int32
+readV17 ownedBy none
+readV17 cleanedBy none
+readV17 borrows none
+readV17 catch none
+readV17 suppresses none
+
 doAssertEqualInt64Step5 is call
 doAssertEqualInt64Step5 in logTest
 doAssertEqualInt64Step5 invokes convert.int32ToInt64
-doAssertEqualInt64Step5 argument value Int32 v13 copy
+doAssertEqualInt64Step5 argument value Int32 v17 copy
 doAssertEqualInt64Step5 result doAssertEqualInt64Part5 Int64
 doAssertEqualInt64Step5 ownedBy none
 doAssertEqualInt64Step5 cleanedBy none
@@ -5190,7 +5260,7 @@ doAssertEqualInt64Step5 suppresses none
 doAssertEqualInt645 is call
 doAssertEqualInt645 in logTest
 doAssertEqualInt645 invokes test.assertEqualInt64
-doAssertEqualInt645 argument expected Int64 minus1074 copy
+doAssertEqualInt645 argument expected Int64 n1023 copy
 doAssertEqualInt645 argument actual Int64 doAssertEqualInt64Part5 copy
 doAssertEqualInt645 result none
 doAssertEqualInt645 ownedBy none
@@ -5199,77 +5269,77 @@ doAssertEqualInt645 borrows none
 doAssertEqualInt645 catch none
 doAssertEqualInt645 suppresses none
 
-v14Step1 is call
-v14Step1 in logTest
-v14Step1 invokes convert.uint64BitsToFloat64
-v14Step1 argument value UInt64 uInt641 copy
-v14Step1 result v14Part1 Float64
-v14Step1 ownedBy none
-v14Step1 cleanedBy none
-v14Step1 borrows none
-v14Step1 catch none
-v14Step1 suppresses none
+v18Step1 is call
+v18Step1 in logTest
+v18Step1 invokes convert.uint64BitsToFloat64
+v18Step1 argument value UInt64 uInt649214871658872686752 copy
+v18Step1 result v18Part1 Float64
+v18Step1 ownedBy none
+v18Step1 cleanedBy none
+v18Step1 borrows none
+v18Step1 catch none
+v18Step1 suppresses none
 
-readV14 is call
-readV14 in logTest
-readV14 invokes logbDouble
-readV14 argument x Float64 v14Part1 copy
-readV14 result v14 Float64
-readV14 ownedBy none
-readV14 cleanedBy none
-readV14 borrows none
-readV14 catch none
-readV14 suppresses none
+readV18 is call
+readV18 in logTest
+readV18 invokes logbDouble
+readV18 argument x Float64 v18Part1 copy
+readV18 result v18 Float64
+readV18 ownedBy none
+readV18 cleanedBy none
+readV18 borrows none
+readV18 catch none
+readV18 suppresses none
 
-readV15 is call
-readV15 in logTest
-readV15 invokes sameBits
-readV15 argument expected UInt64 uInt6413875810354254053376 copy
-readV15 argument actual Float64 v14 copy
-readV15 result v15 Bool
-readV15 ownedBy none
-readV15 cleanedBy none
-readV15 borrows none
-readV15 catch none
-readV15 suppresses none
+readV19 is call
+readV19 in logTest
+readV19 invokes sameBits
+readV19 argument expected UInt64 uInt644652209618980700160 copy
+readV19 argument actual Float64 v18 copy
+readV19 result v19 Bool
+readV19 ownedBy none
+readV19 cleanedBy none
+readV19 borrows none
+readV19 catch none
+readV19 suppresses none
 
-doAssertTrue5 is call
-doAssertTrue5 in logTest
-doAssertTrue5 invokes test.assertTrue
-doAssertTrue5 argument value Bool v15 copy
-doAssertTrue5 result none
-doAssertTrue5 ownedBy none
-doAssertTrue5 cleanedBy none
-doAssertTrue5 borrows none
-doAssertTrue5 catch none
-doAssertTrue5 suppresses none
+doAssertTrue7 is call
+doAssertTrue7 in logTest
+doAssertTrue7 invokes test.assertTrue
+doAssertTrue7 argument value Bool v19 copy
+doAssertTrue7 result none
+doAssertTrue7 ownedBy none
+doAssertTrue7 cleanedBy none
+doAssertTrue7 borrows none
+doAssertTrue7 catch none
+doAssertTrue7 suppresses none
 
-v16Step1 is call
-v16Step1 in logTest
-v16Step1 invokes convert.uint64BitsToFloat64
-v16Step1 argument value UInt64 uInt649221120237041090560 copy
-v16Step1 result v16Part1 Float64
-v16Step1 ownedBy none
-v16Step1 cleanedBy none
-v16Step1 borrows none
-v16Step1 catch none
-v16Step1 suppresses none
+v20Step1 is call
+v20Step1 in logTest
+v20Step1 invokes convert.uint64BitsToFloat64
+v20Step1 argument value UInt64 uInt644604930618986332160 copy
+v20Step1 result v20Part1 Float64
+v20Step1 ownedBy none
+v20Step1 cleanedBy none
+v20Step1 borrows none
+v20Step1 catch none
+v20Step1 suppresses none
 
-readV16 is call
-readV16 in logTest
-readV16 invokes ilogbDouble
-readV16 argument x Float64 v16Part1 copy
-readV16 result v16 Int32
-readV16 ownedBy none
-readV16 cleanedBy none
-readV16 borrows none
-readV16 catch none
-readV16 suppresses none
+readV20 is call
+readV20 in logTest
+readV20 invokes ilogbDouble
+readV20 argument x Float64 v20Part1 copy
+readV20 result v20 Int32
+readV20 ownedBy none
+readV20 cleanedBy none
+readV20 borrows none
+readV20 catch none
+readV20 suppresses none
 
 doAssertEqualInt64Step6 is call
 doAssertEqualInt64Step6 in logTest
 doAssertEqualInt64Step6 invokes convert.int32ToInt64
-doAssertEqualInt64Step6 argument value Int32 v16 copy
+doAssertEqualInt64Step6 argument value Int32 v20 copy
 doAssertEqualInt64Step6 result doAssertEqualInt64Part6 Int64
 doAssertEqualInt64Step6 ownedBy none
 doAssertEqualInt64Step6 cleanedBy none
@@ -5280,7 +5350,7 @@ doAssertEqualInt64Step6 suppresses none
 doAssertEqualInt646 is call
 doAssertEqualInt646 in logTest
 doAssertEqualInt646 invokes test.assertEqualInt64
-doAssertEqualInt646 argument expected Int64 minus2147483648 copy
+doAssertEqualInt646 argument expected Int64 minus1 copy
 doAssertEqualInt646 argument actual Int64 doAssertEqualInt64Part6 copy
 doAssertEqualInt646 result none
 doAssertEqualInt646 ownedBy none
@@ -5289,77 +5359,88 @@ doAssertEqualInt646 borrows none
 doAssertEqualInt646 catch none
 doAssertEqualInt646 suppresses none
 
-v17Step1 is call
-v17Step1 in logTest
-v17Step1 invokes convert.uint64BitsToFloat64
-v17Step1 argument value UInt64 uInt649221120237041090560 copy
-v17Step1 result v17Part1 Float64
-v17Step1 ownedBy none
-v17Step1 cleanedBy none
-v17Step1 borrows none
-v17Step1 catch none
-v17Step1 suppresses none
+v21Step1 is call
+v21Step1 in logTest
+v21Step1 invokes convert.uint64BitsToFloat64
+v21Step1 argument value UInt64 uInt644604930618986332160 copy
+v21Step1 result v21Part1 Float64
+v21Step1 ownedBy none
+v21Step1 cleanedBy none
+v21Step1 borrows none
+v21Step1 catch none
+v21Step1 suppresses none
 
-readV17 is call
-readV17 in logTest
-readV17 invokes logbDouble
-readV17 argument x Float64 v17Part1 copy
-readV17 result v17 Float64
-readV17 ownedBy none
-readV17 cleanedBy none
-readV17 borrows none
-readV17 catch none
-readV17 suppresses none
+readV21 is call
+readV21 in logTest
+readV21 invokes logbDouble
+readV21 argument x Float64 v21Part1 copy
+readV21 result v21 Float64
+readV21 ownedBy none
+readV21 cleanedBy none
+readV21 borrows none
+readV21 catch none
+readV21 suppresses none
 
-readV18 is call
-readV18 in logTest
-readV18 invokes sameBits
-readV18 argument expected UInt64 uInt649221120237041090560 copy
-readV18 argument actual Float64 v17 copy
-readV18 result v18 Bool
-readV18 ownedBy none
-readV18 cleanedBy none
-readV18 borrows none
-readV18 catch none
-readV18 suppresses none
+readV22 is call
+readV22 in logTest
+readV22 invokes sameBits
+readV22 argument expected UInt64 uInt6413830554455654793216 copy
+readV22 argument actual Float64 v21 copy
+readV22 result v22 Bool
+readV22 ownedBy none
+readV22 cleanedBy none
+readV22 borrows none
+readV22 catch none
+readV22 suppresses none
 
-doAssertTrue6 is call
-doAssertTrue6 in logTest
-doAssertTrue6 invokes test.assertTrue
-doAssertTrue6 argument value Bool v18 copy
-doAssertTrue6 result none
-doAssertTrue6 ownedBy none
-doAssertTrue6 cleanedBy none
-doAssertTrue6 borrows none
-doAssertTrue6 catch none
-doAssertTrue6 suppresses none
+doAssertTrue8 is call
+doAssertTrue8 in logTest
+doAssertTrue8 invokes test.assertTrue
+doAssertTrue8 argument value Bool v22 copy
+doAssertTrue8 result none
+doAssertTrue8 ownedBy none
+doAssertTrue8 cleanedBy none
+doAssertTrue8 borrows none
+doAssertTrue8 catch none
+doAssertTrue8 suppresses none
 
-v19Step1 is call
-v19Step1 in logTest
-v19Step1 invokes convert.uint64BitsToFloat64
-v19Step1 argument value UInt64 uInt649214871658872686752 copy
-v19Step1 result v19Part1 Float64
-v19Step1 ownedBy none
-v19Step1 cleanedBy none
-v19Step1 borrows none
-v19Step1 catch none
-v19Step1 suppresses none
+v23Step1 is call
+v23Step1 in logTest
+v23Step1 invokes convert.uint64BitsToFloat64
+v23Step1 argument value UInt64 uInt644620693217682128896 copy
+v23Step1 result v23Part1 Float64
+v23Step1 ownedBy none
+v23Step1 cleanedBy none
+v23Step1 borrows none
+v23Step1 catch none
+v23Step1 suppresses none
 
-readV19 is call
-readV19 in logTest
-readV19 invokes ilogbDouble
-readV19 argument x Float64 v19Part1 copy
-readV19 result v19 Int32
-readV19 ownedBy none
-readV19 cleanedBy none
-readV19 borrows none
-readV19 catch none
-readV19 suppresses none
+v23Step2 is call
+v23Step2 in logTest
+v23Step2 invokes convert.float64ToFloat32
+v23Step2 argument value Float64 v23Part1 copy
+v23Step2 result v23Part2 Float32
+v23Step2 ownedBy none
+v23Step2 cleanedBy none
+v23Step2 borrows none
+v23Step2 catch none
+v23Step2 suppresses none
+
+readV23 is call
+readV23 in logTest
+readV23 invokes ilogbSingle
+readV23 argument x Float32 v23Part2 copy
+readV23 result v23 Int32
+readV23 ownedBy none
+readV23 cleanedBy none
+readV23 borrows none
+readV23 catch none
+readV23 suppresses none
 
 doAssertEqualInt64Step7 is call
 doAssertEqualInt64Step7 in logTest
 doAssertEqualInt64Step7 invokes convert.int32ToInt64
-doAssertEqualInt64Step7 argument value Int32 v19 copy
+doAssertEqualInt64Step7 argument value Int32 v23 copy
 doAssertEqualInt64Step7 result doAssertEqualInt64Part7 Int64
 doAssertEqualInt64Step7 ownedBy none
 doAssertEqualInt64Step7 cleanedBy none
@@ -5370,7 +5451,7 @@ doAssertEqualInt64Step7 suppresses none
 doAssertEqualInt647 is call
 doAssertEqualInt647 in logTest
 doAssertEqualInt647 invokes test.assertEqualInt64
-doAssertEqualInt647 argument expected Int64 n1023 copy
+doAssertEqualInt647 argument expected Int64 three copy
 doAssertEqualInt647 argument actual Int64 doAssertEqualInt64Part7 copy
 doAssertEqualInt647 result none
 doAssertEqualInt647 ownedBy none
@@ -5379,77 +5460,110 @@ doAssertEqualInt647 borrows none
 doAssertEqualInt647 catch none
 doAssertEqualInt647 suppresses none
 
-v20Step1 is call
-v20Step1 in logTest
-v20Step1 invokes convert.uint64BitsToFloat64
-v20Step1 argument value UInt64 uInt649214871658872686752 copy
-v20Step1 result v20Part1 Float64
-v20Step1 ownedBy none
-v20Step1 cleanedBy none
-v20Step1 borrows none
-v20Step1 catch none
-v20Step1 suppresses none
+v24Step1 is call
+v24Step1 in logTest
+v24Step1 invokes convert.uint64BitsToFloat64
+v24Step1 argument value UInt64 uInt644620693217682128896 copy
+v24Step1 result v24Part1 Float64
+v24Step1 ownedBy none
+v24Step1 cleanedBy none
+v24Step1 borrows none
+v24Step1 catch none
+v24Step1 suppresses none
 
-readV20 is call
-readV20 in logTest
-readV20 invokes logbDouble
-readV20 argument x Float64 v20Part1 copy
-readV20 result v20 Float64
-readV20 ownedBy none
-readV20 cleanedBy none
-readV20 borrows none
-readV20 catch none
-readV20 suppresses none
+v24Step2 is call
+v24Step2 in logTest
+v24Step2 invokes convert.float64ToFloat32
+v24Step2 argument value Float64 v24Part1 copy
+v24Step2 result v24Part2 Float32
+v24Step2 ownedBy none
+v24Step2 cleanedBy none
+v24Step2 borrows none
+v24Step2 catch none
+v24Step2 suppresses none
 
-readV21 is call
-readV21 in logTest
-readV21 invokes sameBits
-readV21 argument expected UInt64 uInt644652209618980700160 copy
-readV21 argument actual Float64 v20 copy
-readV21 result v21 Bool
-readV21 ownedBy none
-readV21 cleanedBy none
-readV21 borrows none
-readV21 catch none
-readV21 suppresses none
+readV24 is call
+readV24 in logTest
+readV24 invokes logbSingle
+readV24 argument x Float32 v24Part2 copy
+readV24 result v24 Float32
+readV24 ownedBy none
+readV24 cleanedBy none
+readV24 borrows none
+readV24 catch none
+readV24 suppresses none
 
-doAssertTrue7 is call
-doAssertTrue7 in logTest
-doAssertTrue7 invokes test.assertTrue
-doAssertTrue7 argument value Bool v21 copy
-doAssertTrue7 result none
-doAssertTrue7 ownedBy none
-doAssertTrue7 cleanedBy none
-doAssertTrue7 borrows none
-doAssertTrue7 catch none
-doAssertTrue7 suppresses none
+readV25 is call
+readV25 in logTest
+readV25 invokes convert.float32ToFloat64
+readV25 argument value Float32 v24 copy
+readV25 result v25 Float64
+readV25 ownedBy none
+readV25 cleanedBy none
+readV25 borrows none
+readV25 catch none
+readV25 suppresses none
 
-v22Step1 is call
-v22Step1 in logTest
-v22Step1 invokes convert.uint64BitsToFloat64
-v22Step1 argument value UInt64 uInt644604930618986332160 copy
-v22Step1 result v22Part1 Float64
-v22Step1 ownedBy none
-v22Step1 cleanedBy none
-v22Step1 borrows none
-v22Step1 catch none
-v22Step1 suppresses none
+readV26 is call
+readV26 in logTest
+readV26 invokes sameBits
+readV26 argument expected UInt64 uInt644613937818241073152 copy
+readV26 argument actual Float64 v25 copy
+readV26 result v26 Bool
+readV26 ownedBy none
+readV26 cleanedBy none
+readV26 borrows none
+readV26 catch none
+readV26 suppresses none
 
-readV22 is call
-readV22 in logTest
-readV22 invokes ilogbDouble
-readV22 argument x Float64 v22Part1 copy
-readV22 result v22 Int32
-readV22 ownedBy none
-readV22 cleanedBy none
-readV22 borrows none
-readV22 catch none
-readV22 suppresses none
+doAssertTrue9 is call
+doAssertTrue9 in logTest
+doAssertTrue9 invokes test.assertTrue
+doAssertTrue9 argument value Bool v26 copy
+doAssertTrue9 result none
+doAssertTrue9 ownedBy none
+doAssertTrue9 cleanedBy none
+doAssertTrue9 borrows none
+doAssertTrue9 catch none
+doAssertTrue9 suppresses none
+
+v27Step1 is call
+v27Step1 in logTest
+v27Step1 invokes convert.uint64BitsToFloat64
+v27Step1 argument value UInt64 uInt643936146074321813504 copy
+v27Step1 result v27Part1 Float64
+v27Step1 ownedBy none
+v27Step1 cleanedBy none
+v27Step1 borrows none
+v27Step1 catch none
+v27Step1 suppresses none
+
+v27Step2 is call
+v27Step2 in logTest
+v27Step2 invokes convert.float64ToFloat32
+v27Step2 argument value Float64 v27Part1 copy
+v27Step2 result v27Part2 Float32
+v27Step2 ownedBy none
+v27Step2 cleanedBy none
+v27Step2 borrows none
+v27Step2 catch none
+v27Step2 suppresses none
+
+readV27 is call
+readV27 in logTest
+readV27 invokes ilogbSingle
+readV27 argument x Float32 v27Part2 copy
+readV27 result v27 Int32
+readV27 ownedBy none
+readV27 cleanedBy none
+readV27 borrows none
+readV27 catch none
+readV27 suppresses none
 
 doAssertEqualInt64Step8 is call
 doAssertEqualInt64Step8 in logTest
 doAssertEqualInt64Step8 invokes convert.int32ToInt64
-doAssertEqualInt64Step8 argument value Int32 v22 copy
+doAssertEqualInt64Step8 argument value Int32 v27 copy
 doAssertEqualInt64Step8 result doAssertEqualInt64Part8 Int64
 doAssertEqualInt64Step8 ownedBy none
 doAssertEqualInt64Step8 cleanedBy none
@@ -5460,7 +5574,7 @@ doAssertEqualInt64Step8 suppresses none
 doAssertEqualInt648 is call
 doAssertEqualInt648 in logTest
 doAssertEqualInt648 invokes test.assertEqualInt64
-doAssertEqualInt648 argument expected Int64 minus1 copy
+doAssertEqualInt648 argument expected Int64 minus149 copy
 doAssertEqualInt648 argument actual Int64 doAssertEqualInt64Part8 copy
 doAssertEqualInt648 result none
 doAssertEqualInt648 ownedBy none
@@ -5469,88 +5583,110 @@ doAssertEqualInt648 borrows none
 doAssertEqualInt648 catch none
 doAssertEqualInt648 suppresses none
 
-v23Step1 is call
-v23Step1 in logTest
-v23Step1 invokes convert.uint64BitsToFloat64
-v23Step1 argument value UInt64 uInt644604930618986332160 copy
-v23Step1 result v23Part1 Float64
-v23Step1 ownedBy none
-v23Step1 cleanedBy none
-v23Step1 borrows none
-v23Step1 catch none
-v23Step1 suppresses none
+v28Step1 is call
+v28Step1 in logTest
+v28Step1 invokes convert.uint64BitsToFloat64
+v28Step1 argument value UInt64 uInt643936146074321813504 copy
+v28Step1 result v28Part1 Float64
+v28Step1 ownedBy none
+v28Step1 cleanedBy none
+v28Step1 borrows none
+v28Step1 catch none
+v28Step1 suppresses none
 
-readV23 is call
-readV23 in logTest
-readV23 invokes logbDouble
-readV23 argument x Float64 v23Part1 copy
-readV23 result v23 Float64
-readV23 ownedBy none
-readV23 cleanedBy none
-readV23 borrows none
-readV23 catch none
-readV23 suppresses none
+v28Step2 is call
+v28Step2 in logTest
+v28Step2 invokes convert.float64ToFloat32
+v28Step2 argument value Float64 v28Part1 copy
+v28Step2 result v28Part2 Float32
+v28Step2 ownedBy none
+v28Step2 cleanedBy none
+v28Step2 borrows none
+v28Step2 catch none
+v28Step2 suppresses none
 
-readV24 is call
-readV24 in logTest
-readV24 invokes sameBits
-readV24 argument expected UInt64 uInt6413830554455654793216 copy
-readV24 argument actual Float64 v23 copy
-readV24 result v24 Bool
-readV24 ownedBy none
-readV24 cleanedBy none
-readV24 borrows none
-readV24 catch none
-readV24 suppresses none
+readV28 is call
+readV28 in logTest
+readV28 invokes logbSingle
+readV28 argument x Float32 v28Part2 copy
+readV28 result v28 Float32
+readV28 ownedBy none
+readV28 cleanedBy none
+readV28 borrows none
+readV28 catch none
+readV28 suppresses none
 
-doAssertTrue8 is call
-doAssertTrue8 in logTest
-doAssertTrue8 invokes test.assertTrue
-doAssertTrue8 argument value Bool v24 copy
-doAssertTrue8 result none
-doAssertTrue8 ownedBy none
-doAssertTrue8 cleanedBy none
-doAssertTrue8 borrows none
-doAssertTrue8 catch none
-doAssertTrue8 suppresses none
+readV29 is call
+readV29 in logTest
+readV29 invokes convert.float32ToFloat64
+readV29 argument value Float32 v28 copy
+readV29 result v29 Float64
+readV29 ownedBy none
+readV29 cleanedBy none
+readV29 borrows none
+readV29 catch none
+readV29 suppresses none
 
-v25Step1 is call
-v25Step1 in logTest
-v25Step1 invokes convert.uint64BitsToFloat64
-v25Step1 argument value UInt64 uInt644620693217682128896 copy
-v25Step1 result v25Part1 Float64
-v25Step1 ownedBy none
-v25Step1 cleanedBy none
-v25Step1 borrows none
-v25Step1 catch none
-v25Step1 suppresses none
+readV30 is call
+readV30 in logTest
+readV30 invokes sameBits
+readV30 argument expected UInt64 uInt6413862818524860252160 copy
+readV30 argument actual Float64 v29 copy
+readV30 result v30 Bool
+readV30 ownedBy none
+readV30 cleanedBy none
+readV30 borrows none
+readV30 catch none
+readV30 suppresses none
 
-v25Step2 is call
-v25Step2 in logTest
-v25Step2 invokes convert.float64ToFloat32
-v25Step2 argument value Float64 v25Part1 copy
-v25Step2 result v25Part2 Float32
-v25Step2 ownedBy none
-v25Step2 cleanedBy none
-v25Step2 borrows none
-v25Step2 catch none
-v25Step2 suppresses none
+doAssertTrue10 is call
+doAssertTrue10 in logTest
+doAssertTrue10 invokes test.assertTrue
+doAssertTrue10 argument value Bool v30 copy
+doAssertTrue10 result none
+doAssertTrue10 ownedBy none
+doAssertTrue10 cleanedBy none
+doAssertTrue10 borrows none
+doAssertTrue10 catch none
+doAssertTrue10 suppresses none
 
-readV25 is call
-readV25 in logTest
-readV25 invokes ilogbSingle
-readV25 argument x Float32 v25Part2 copy
-readV25 result v25 Int32
-readV25 ownedBy none
-readV25 cleanedBy none
-readV25 borrows none
-readV25 catch none
-readV25 suppresses none
+v31Step1 is call
+v31Step1 in logTest
+v31Step1 invokes convert.uint64BitsToFloat64
+v31Step1 argument value UInt64 uInt649218868437227405312 copy
+v31Step1 result v31Part1 Float64
+v31Step1 ownedBy none
+v31Step1 cleanedBy none
+v31Step1 borrows none
+v31Step1 catch none
+v31Step1 suppresses none
+
+v31Step2 is call
+v31Step2 in logTest
+v31Step2 invokes convert.float64ToFloat32
+v31Step2 argument value Float64 v31Part1 copy
+v31Step2 result v31Part2 Float32
+v31Step2 ownedBy none
+v31Step2 cleanedBy none
+v31Step2 borrows none
+v31Step2 catch none
+v31Step2 suppresses none
+
+readV31 is call
+readV31 in logTest
+readV31 invokes ilogbSingle
+readV31 argument x Float32 v31Part2 copy
+readV31 result v31 Int32
+readV31 ownedBy none
+readV31 cleanedBy none
+readV31 borrows none
+readV31 catch none
+readV31 suppresses none
 
 doAssertEqualInt64Step9 is call
 doAssertEqualInt64Step9 in logTest
 doAssertEqualInt64Step9 invokes convert.int32ToInt64
-doAssertEqualInt64Step9 argument value Int32 v25 copy
+doAssertEqualInt64Step9 argument value Int32 v31 copy
 doAssertEqualInt64Step9 result doAssertEqualInt64Part9 Int64
 doAssertEqualInt64Step9 ownedBy none
 doAssertEqualInt64Step9 cleanedBy none
@@ -5561,7 +5697,7 @@ doAssertEqualInt64Step9 suppresses none
 doAssertEqualInt649 is call
 doAssertEqualInt649 in logTest
 doAssertEqualInt649 invokes test.assertEqualInt64
-doAssertEqualInt649 argument expected Int64 three copy
+doAssertEqualInt649 argument expected Int64 n2147483647 copy
 doAssertEqualInt649 argument actual Int64 doAssertEqualInt64Part9 copy
 doAssertEqualInt649 result none
 doAssertEqualInt649 ownedBy none
@@ -5570,441 +5706,72 @@ doAssertEqualInt649 borrows none
 doAssertEqualInt649 catch none
 doAssertEqualInt649 suppresses none
 
-v26Step1 is call
-v26Step1 in logTest
-v26Step1 invokes convert.uint64BitsToFloat64
-v26Step1 argument value UInt64 uInt644620693217682128896 copy
-v26Step1 result v26Part1 Float64
-v26Step1 ownedBy none
-v26Step1 cleanedBy none
-v26Step1 borrows none
-v26Step1 catch none
-v26Step1 suppresses none
+v32Step1 is call
+v32Step1 in logTest
+v32Step1 invokes convert.uint64BitsToFloat64
+v32Step1 argument value UInt64 uInt649218868437227405312 copy
+v32Step1 result v32Part1 Float64
+v32Step1 ownedBy none
+v32Step1 cleanedBy none
+v32Step1 borrows none
+v32Step1 catch none
+v32Step1 suppresses none
 
-v26Step2 is call
-v26Step2 in logTest
-v26Step2 invokes convert.float64ToFloat32
-v26Step2 argument value Float64 v26Part1 copy
-v26Step2 result v26Part2 Float32
-v26Step2 ownedBy none
-v26Step2 cleanedBy none
-v26Step2 borrows none
-v26Step2 catch none
-v26Step2 suppresses none
-
-readV26 is call
-readV26 in logTest
-readV26 invokes logbSingle
-readV26 argument x Float32 v26Part2 copy
-readV26 result v26 Float32
-readV26 ownedBy none
-readV26 cleanedBy none
-readV26 borrows none
-readV26 catch none
-readV26 suppresses none
-
-readV27 is call
-readV27 in logTest
-readV27 invokes convert.float32ToFloat64
-readV27 argument value Float32 v26 copy
-readV27 result v27 Float64
-readV27 ownedBy none
-readV27 cleanedBy none
-readV27 borrows none
-readV27 catch none
-readV27 suppresses none
-
-readV28 is call
-readV28 in logTest
-readV28 invokes sameBits
-readV28 argument expected UInt64 uInt644613937818241073152 copy
-readV28 argument actual Float64 v27 copy
-readV28 result v28 Bool
-readV28 ownedBy none
-readV28 cleanedBy none
-readV28 borrows none
-readV28 catch none
-readV28 suppresses none
-
-doAssertTrue9 is call
-doAssertTrue9 in logTest
-doAssertTrue9 invokes test.assertTrue
-doAssertTrue9 argument value Bool v28 copy
-doAssertTrue9 result none
-doAssertTrue9 ownedBy none
-doAssertTrue9 cleanedBy none
-doAssertTrue9 borrows none
-doAssertTrue9 catch none
-doAssertTrue9 suppresses none
-
-v29Step1 is call
-v29Step1 in logTest
-v29Step1 invokes convert.uint64BitsToFloat64
-v29Step1 argument value UInt64 uInt640 copy
-v29Step1 result v29Part1 Float64
-v29Step1 ownedBy none
-v29Step1 cleanedBy none
-v29Step1 borrows none
-v29Step1 catch none
-v29Step1 suppresses none
-
-v29Step2 is call
-v29Step2 in logTest
-v29Step2 invokes convert.float64ToFloat32
-v29Step2 argument value Float64 v29Part1 copy
-v29Step2 result v29Part2 Float32
-v29Step2 ownedBy none
-v29Step2 cleanedBy none
-v29Step2 borrows none
-v29Step2 catch none
-v29Step2 suppresses none
-
-readV29 is call
-readV29 in logTest
-readV29 invokes ilogbSingle
-readV29 argument x Float32 v29Part2 copy
-readV29 result v29 Int32
-readV29 ownedBy none
-readV29 cleanedBy none
-readV29 borrows none
-readV29 catch none
-readV29 suppresses none
-
-doAssertEqualInt64Step10 is call
-doAssertEqualInt64Step10 in logTest
-doAssertEqualInt64Step10 invokes convert.int32ToInt64
-doAssertEqualInt64Step10 argument value Int32 v29 copy
-doAssertEqualInt64Step10 result doAssertEqualInt64Part10 Int64
-doAssertEqualInt64Step10 ownedBy none
-doAssertEqualInt64Step10 cleanedBy none
-doAssertEqualInt64Step10 borrows none
-doAssertEqualInt64Step10 catch none
-doAssertEqualInt64Step10 suppresses none
-
-doAssertEqualInt6410 is call
-doAssertEqualInt6410 in logTest
-doAssertEqualInt6410 invokes test.assertEqualInt64
-doAssertEqualInt6410 argument expected Int64 minus2147483648 copy
-doAssertEqualInt6410 argument actual Int64 doAssertEqualInt64Part10 copy
-doAssertEqualInt6410 result none
-doAssertEqualInt6410 ownedBy none
-doAssertEqualInt6410 cleanedBy none
-doAssertEqualInt6410 borrows none
-doAssertEqualInt6410 catch none
-doAssertEqualInt6410 suppresses none
-
-v30Step1 is call
-v30Step1 in logTest
-v30Step1 invokes convert.uint64BitsToFloat64
-v30Step1 argument value UInt64 uInt640 copy
-v30Step1 result v30Part1 Float64
-v30Step1 ownedBy none
-v30Step1 cleanedBy none
-v30Step1 borrows none
-v30Step1 catch none
-v30Step1 suppresses none
-
-v30Step2 is call
-v30Step2 in logTest
-v30Step2 invokes convert.float64ToFloat32
-v30Step2 argument value Float64 v30Part1 copy
-v30Step2 result v30Part2 Float32
-v30Step2 ownedBy none
-v30Step2 cleanedBy none
-v30Step2 borrows none
-v30Step2 catch none
-v30Step2 suppresses none
-
-readV30 is call
-readV30 in logTest
-readV30 invokes logbSingle
-readV30 argument x Float32 v30Part2 copy
-readV30 result v30 Float32
-readV30 ownedBy none
-readV30 cleanedBy none
-readV30 borrows none
-readV30 catch none
-readV30 suppresses none
-
-readV31 is call
-readV31 in logTest
-readV31 invokes convert.float32ToFloat64
-readV31 argument value Float32 v30 copy
-readV31 result v31 Float64
-readV31 ownedBy none
-readV31 cleanedBy none
-readV31 borrows none
-readV31 catch none
-readV31 suppresses none
+v32Step2 is call
+v32Step2 in logTest
+v32Step2 invokes convert.float64ToFloat32
+v32Step2 argument value Float64 v32Part1 copy
+v32Step2 result v32Part2 Float32
+v32Step2 ownedBy none
+v32Step2 cleanedBy none
+v32Step2 borrows none
+v32Step2 catch none
+v32Step2 suppresses none
 
 readV32 is call
 readV32 in logTest
-readV32 invokes sameBits
-readV32 argument expected UInt64 uInt6418442240474082181120 copy
-readV32 argument actual Float64 v31 copy
-readV32 result v32 Bool
+readV32 invokes logbSingle
+readV32 argument x Float32 v32Part2 copy
+readV32 result v32 Float32
 readV32 ownedBy none
 readV32 cleanedBy none
 readV32 borrows none
 readV32 catch none
 readV32 suppresses none
 
-doAssertTrue10 is call
-doAssertTrue10 in logTest
-doAssertTrue10 invokes test.assertTrue
-doAssertTrue10 argument value Bool v32 copy
-doAssertTrue10 result none
-doAssertTrue10 ownedBy none
-doAssertTrue10 cleanedBy none
-doAssertTrue10 borrows none
-doAssertTrue10 catch none
-doAssertTrue10 suppresses none
-
-v33Step1 is call
-v33Step1 in logTest
-v33Step1 invokes convert.uint64BitsToFloat64
-v33Step1 argument value UInt64 uInt643936146074321813504 copy
-v33Step1 result v33Part1 Float64
-v33Step1 ownedBy none
-v33Step1 cleanedBy none
-v33Step1 borrows none
-v33Step1 catch none
-v33Step1 suppresses none
-
-v33Step2 is call
-v33Step2 in logTest
-v33Step2 invokes convert.float64ToFloat32
-v33Step2 argument value Float64 v33Part1 copy
-v33Step2 result v33Part2 Float32
-v33Step2 ownedBy none
-v33Step2 cleanedBy none
-v33Step2 borrows none
-v33Step2 catch none
-v33Step2 suppresses none
-
 readV33 is call
 readV33 in logTest
-readV33 invokes ilogbSingle
-readV33 argument x Float32 v33Part2 copy
-readV33 result v33 Int32
+readV33 invokes convert.float32ToFloat64
+readV33 argument value Float32 v32 copy
+readV33 result v33 Float64
 readV33 ownedBy none
 readV33 cleanedBy none
 readV33 borrows none
 readV33 catch none
 readV33 suppresses none
 
-doAssertEqualInt64Step11 is call
-doAssertEqualInt64Step11 in logTest
-doAssertEqualInt64Step11 invokes convert.int32ToInt64
-doAssertEqualInt64Step11 argument value Int32 v33 copy
-doAssertEqualInt64Step11 result doAssertEqualInt64Part11 Int64
-doAssertEqualInt64Step11 ownedBy none
-doAssertEqualInt64Step11 cleanedBy none
-doAssertEqualInt64Step11 borrows none
-doAssertEqualInt64Step11 catch none
-doAssertEqualInt64Step11 suppresses none
-
-doAssertEqualInt6411 is call
-doAssertEqualInt6411 in logTest
-doAssertEqualInt6411 invokes test.assertEqualInt64
-doAssertEqualInt6411 argument expected Int64 minus149 copy
-doAssertEqualInt6411 argument actual Int64 doAssertEqualInt64Part11 copy
-doAssertEqualInt6411 result none
-doAssertEqualInt6411 ownedBy none
-doAssertEqualInt6411 cleanedBy none
-doAssertEqualInt6411 borrows none
-doAssertEqualInt6411 catch none
-doAssertEqualInt6411 suppresses none
-
-v34Step1 is call
-v34Step1 in logTest
-v34Step1 invokes convert.uint64BitsToFloat64
-v34Step1 argument value UInt64 uInt643936146074321813504 copy
-v34Step1 result v34Part1 Float64
-v34Step1 ownedBy none
-v34Step1 cleanedBy none
-v34Step1 borrows none
-v34Step1 catch none
-v34Step1 suppresses none
-
-v34Step2 is call
-v34Step2 in logTest
-v34Step2 invokes convert.float64ToFloat32
-v34Step2 argument value Float64 v34Part1 copy
-v34Step2 result v34Part2 Float32
-v34Step2 ownedBy none
-v34Step2 cleanedBy none
-v34Step2 borrows none
-v34Step2 catch none
-v34Step2 suppresses none
-
 readV34 is call
 readV34 in logTest
-readV34 invokes logbSingle
-readV34 argument x Float32 v34Part2 copy
-readV34 result v34 Float32
+readV34 invokes sameBits
+readV34 argument expected UInt64 uInt649218868437227405312 copy
+readV34 argument actual Float64 v33 copy
+readV34 result v34 Bool
 readV34 ownedBy none
 readV34 cleanedBy none
 readV34 borrows none
 readV34 catch none
 readV34 suppresses none
 
-readV35 is call
-readV35 in logTest
-readV35 invokes convert.float32ToFloat64
-readV35 argument value Float32 v34 copy
-readV35 result v35 Float64
-readV35 ownedBy none
-readV35 cleanedBy none
-readV35 borrows none
-readV35 catch none
-readV35 suppresses none
-
-readV36 is call
-readV36 in logTest
-readV36 invokes sameBits
-readV36 argument expected UInt64 uInt6413862818524860252160 copy
-readV36 argument actual Float64 v35 copy
-readV36 result v36 Bool
-readV36 ownedBy none
-readV36 cleanedBy none
-readV36 borrows none
-readV36 catch none
-readV36 suppresses none
-
 doAssertTrue11 is call
 doAssertTrue11 in logTest
 doAssertTrue11 invokes test.assertTrue
-doAssertTrue11 argument value Bool v36 copy
+doAssertTrue11 argument value Bool v34 copy
 doAssertTrue11 result none
 doAssertTrue11 ownedBy none
 doAssertTrue11 cleanedBy none
 doAssertTrue11 borrows none
 doAssertTrue11 catch none
 doAssertTrue11 suppresses none
-
-v37Step1 is call
-v37Step1 in logTest
-v37Step1 invokes convert.uint64BitsToFloat64
-v37Step1 argument value UInt64 uInt649218868437227405312 copy
-v37Step1 result v37Part1 Float64
-v37Step1 ownedBy none
-v37Step1 cleanedBy none
-v37Step1 borrows none
-v37Step1 catch none
-v37Step1 suppresses none
-
-v37Step2 is call
-v37Step2 in logTest
-v37Step2 invokes convert.float64ToFloat32
-v37Step2 argument value Float64 v37Part1 copy
-v37Step2 result v37Part2 Float32
-v37Step2 ownedBy none
-v37Step2 cleanedBy none
-v37Step2 borrows none
-v37Step2 catch none
-v37Step2 suppresses none
-
-readV37 is call
-readV37 in logTest
-readV37 invokes ilogbSingle
-readV37 argument x Float32 v37Part2 copy
-readV37 result v37 Int32
-readV37 ownedBy none
-readV37 cleanedBy none
-readV37 borrows none
-readV37 catch none
-readV37 suppresses none
-
-doAssertEqualInt64Step12 is call
-doAssertEqualInt64Step12 in logTest
-doAssertEqualInt64Step12 invokes convert.int32ToInt64
-doAssertEqualInt64Step12 argument value Int32 v37 copy
-doAssertEqualInt64Step12 result doAssertEqualInt64Part12 Int64
-doAssertEqualInt64Step12 ownedBy none
-doAssertEqualInt64Step12 cleanedBy none
-doAssertEqualInt64Step12 borrows none
-doAssertEqualInt64Step12 catch none
-doAssertEqualInt64Step12 suppresses none
-
-doAssertEqualInt6412 is call
-doAssertEqualInt6412 in logTest
-doAssertEqualInt6412 invokes test.assertEqualInt64
-doAssertEqualInt6412 argument expected Int64 n2147483647 copy
-doAssertEqualInt6412 argument actual Int64 doAssertEqualInt64Part12 copy
-doAssertEqualInt6412 result none
-doAssertEqualInt6412 ownedBy none
-doAssertEqualInt6412 cleanedBy none
-doAssertEqualInt6412 borrows none
-doAssertEqualInt6412 catch none
-doAssertEqualInt6412 suppresses none
-
-v38Step1 is call
-v38Step1 in logTest
-v38Step1 invokes convert.uint64BitsToFloat64
-v38Step1 argument value UInt64 uInt649218868437227405312 copy
-v38Step1 result v38Part1 Float64
-v38Step1 ownedBy none
-v38Step1 cleanedBy none
-v38Step1 borrows none
-v38Step1 catch none
-v38Step1 suppresses none
-
-v38Step2 is call
-v38Step2 in logTest
-v38Step2 invokes convert.float64ToFloat32
-v38Step2 argument value Float64 v38Part1 copy
-v38Step2 result v38Part2 Float32
-v38Step2 ownedBy none
-v38Step2 cleanedBy none
-v38Step2 borrows none
-v38Step2 catch none
-v38Step2 suppresses none
-
-readV38 is call
-readV38 in logTest
-readV38 invokes logbSingle
-readV38 argument x Float32 v38Part2 copy
-readV38 result v38 Float32
-readV38 ownedBy none
-readV38 cleanedBy none
-readV38 borrows none
-readV38 catch none
-readV38 suppresses none
-
-readV39 is call
-readV39 in logTest
-readV39 invokes convert.float32ToFloat64
-readV39 argument value Float32 v38 copy
-readV39 result v39 Float64
-readV39 ownedBy none
-readV39 cleanedBy none
-readV39 borrows none
-readV39 catch none
-readV39 suppresses none
-
-readV40 is call
-readV40 in logTest
-readV40 invokes sameBits
-readV40 argument expected UInt64 uInt649218868437227405312 copy
-readV40 argument actual Float64 v39 copy
-readV40 result v40 Bool
-readV40 ownedBy none
-readV40 cleanedBy none
-readV40 borrows none
-readV40 catch none
-readV40 suppresses none
-
-doAssertTrue12 is call
-doAssertTrue12 in logTest
-doAssertTrue12 invokes test.assertTrue
-doAssertTrue12 argument value Bool v40 copy
-doAssertTrue12 result none
-doAssertTrue12 ownedBy none
-doAssertTrue12 cleanedBy none
-doAssertTrue12 borrows none
-doAssertTrue12 catch none
-doAssertTrue12 suppresses none
 
 modfTest is test
 modfTest purpose "modf and modff give the fraction with the sign of x and store the whole part toward zero"
@@ -21549,8 +21316,6 @@ nanTest let uInt649221120270863958016 UInt64 9221120270863958016 immutable
 nanTest let text6 String "ff" immutable
 nanTest let text7 String "-1" immutable
 nanTest let text8 String "5)7" immutable
-nanTest let uInt649221120237041090565 UInt64 9221120237041090565 immutable
-nanTest let uInt649221120239725445120 UInt64 9221120239725445120 immutable
 nanTest let text9 String "18446744073709551616" immutable
 nanTest let uInt649223372036854775807 UInt64 9223372036854775807 immutable
 nanTest let uInt649223372036317904896 UInt64 9223372036317904896 immutable
@@ -22283,7 +22048,7 @@ readV36 suppresses none
 readV37 is call
 readV37 in nanTest
 readV37 invokes sameBits
-readV37 argument expected UInt64 uInt649221120237041090565 copy
+readV37 argument expected UInt64 uInt649221120237041090560 copy
 readV37 argument actual Float64 v36 copy
 readV37 result v37 Bool
 readV37 ownedBy none
@@ -22328,7 +22093,7 @@ readV39 suppresses none
 readV40 is call
 readV40 in nanTest
 readV40 invokes sameBits
-readV40 argument expected UInt64 uInt649221120239725445120 copy
+readV40 argument expected UInt64 uInt649221120237041090560 copy
 readV40 argument actual Float64 v39 copy
 readV40 result v40 Bool
 readV40 ownedBy none

@@ -110,8 +110,10 @@ class Models:
     scalbln = ldexp
 
     def ilogb(self, t, x):
-        if x == 0 or x != x:
-            return INT_MIN
+        if x == 0:
+            return -INT_MAX if self.arm else INT_MIN
+        if x != x:
+            return INT_MAX if self.arm else INT_MIN
         if math.isinf(x):
             return INT_MAX
         return math.frexp(x)[1] - 1
@@ -237,7 +239,7 @@ class Models:
             n += 1
         payload = 0
         stop = tag[n] if n < len(tag) else ""
-        if stop in ("", ")") and n > 0:
+        if stop == "" and n > 0:
             s = tag[:n]
             if len(s) >= 3 and s[0] == "0" and s[1] in "xX":
                 base, digits = 16, s[2:]

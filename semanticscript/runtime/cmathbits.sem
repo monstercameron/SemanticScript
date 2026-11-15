@@ -4686,11 +4686,14 @@ ilogbSignals label raise within none
 ilogbSignals label done loopKind none
 ilogbSignals label done within none
 ilogbSignals let minus2147483648 Int64 -2147483648 immutable
+ilogbSignals let minus2147483647 Int64 -2147483647 immutable
 ilogbSignals let n2147483647 Int64 2147483647 immutable
 ilogbSignals let zero Int64 0 immutable
 ilogbSignals at begin do findWide1
 ilogbSignals at begin do specialStep1
 ilogbSignals at begin do specialStep2
+ilogbSignals at begin do specialStep3
+ilogbSignals at begin do specialStep4
 ilogbSignals at begin do findSpecial1
 ilogbSignals at begin branch if special goto raise else goto done
 ilogbSignals at raise do doRaiseFlagsStep1
@@ -4726,7 +4729,7 @@ specialStep2 is call
 specialStep2 in ilogbSignals
 specialStep2 invokes compare.equalInt64
 specialStep2 argument left Int64 wide copy
-specialStep2 argument right Int64 n2147483647 copy
+specialStep2 argument right Int64 minus2147483647 copy
 specialStep2 result specialPart2 Bool
 specialStep2 ownedBy none
 specialStep2 cleanedBy none
@@ -4734,11 +4737,35 @@ specialStep2 borrows none
 specialStep2 catch none
 specialStep2 suppresses none
 
+specialStep3 is call
+specialStep3 in ilogbSignals
+specialStep3 invokes logic.or
+specialStep3 argument left Bool specialPart1 copy
+specialStep3 argument right Bool specialPart2 copy
+specialStep3 result specialPart3 Bool
+specialStep3 ownedBy none
+specialStep3 cleanedBy none
+specialStep3 borrows none
+specialStep3 catch none
+specialStep3 suppresses none
+
+specialStep4 is call
+specialStep4 in ilogbSignals
+specialStep4 invokes compare.equalInt64
+specialStep4 argument left Int64 wide copy
+specialStep4 argument right Int64 n2147483647 copy
+specialStep4 result specialPart4 Bool
+specialStep4 ownedBy none
+specialStep4 cleanedBy none
+specialStep4 borrows none
+specialStep4 catch none
+specialStep4 suppresses none
+
 findSpecial1 is call
 findSpecial1 in ilogbSignals
 findSpecial1 invokes logic.or
-findSpecial1 argument left Bool specialPart1 copy
-findSpecial1 argument right Bool specialPart2 copy
+findSpecial1 argument left Bool specialPart3 copy
+findSpecial1 argument right Bool specialPart4 copy
 findSpecial1 result special Bool
 findSpecial1 ownedBy none
 findSpecial1 cleanedBy none
@@ -7564,15 +7591,15 @@ doScaleSignals catch none
 doScaleSignals suppresses none
 
 ilogbCore is operation
-ilogbCore purpose "The unbiased exponent of a double as an int: the least int for 0 and for NaN, the greatest for infinity (x86_64's FP_ILOGB0, FP_ILOGBNAN, and INT_MAX)"
+ilogbCore purpose "The unbiased exponent of a double as an int: FP_ILOGB0 for 0 and FP_ILOGBNAN for NaN (x86_64: the least int for both; AArch64: minus the greatest int, and the greatest int), the greatest int for infinity"
 ilogbCore invariant none
 ilogbCore typeParameter none
 ilogbCore input x Float64 copied
 ilogbCore output Int32
 ilogbCore outputOwnedBy none
 ilogbCore raises none
-ilogbCore effect none
-ilogbCore uses none
+ilogbCore effect use system.calls
+ilogbCore uses systemCalls
 ilogbCore memoryHeap false
 ilogbCore async false
 ilogbCore maxRecursion none
@@ -7582,6 +7609,12 @@ ilogbCore label checkSpecial loopKind none
 ilogbCore label checkSpecial within none
 ilogbCore label checkInfinite loopKind none
 ilogbCore label checkInfinite within none
+ilogbCore label zeroCase loopKind none
+ilogbCore label zeroCase within none
+ilogbCore label armZero loopKind none
+ilogbCore label armZero within none
+ilogbCore label nanCase loopKind none
+ilogbCore label nanCase within none
 ilogbCore label least loopKind none
 ilogbCore label least within none
 ilogbCore label greatest loopKind none
@@ -7589,6 +7622,7 @@ ilogbCore label greatest within none
 ilogbCore label finite loopKind none
 ilogbCore label finite within none
 ilogbCore let leastInt Int32 -2147483648 immutable
+ilogbCore let minusGreatest Int32 -2147483647 immutable
 ilogbCore let greatestInt Int32 2147483647 immutable
 ilogbCore let uInt649223372036854775807 UInt64 9223372036854775807 immutable
 ilogbCore let uInt640 UInt64 0 immutable
@@ -7597,11 +7631,16 @@ ilogbCore let n1023 Int64 1023 immutable
 ilogbCore at begin do readBits
 ilogbCore at begin do findMagnitude1
 ilogbCore at begin do findCheck11
-ilogbCore at begin branch if check1 goto least else goto checkSpecial
+ilogbCore at begin branch if check1 goto zeroCase else goto checkSpecial
 ilogbCore at checkSpecial do findCheck21
-ilogbCore at checkSpecial branch if check2 goto least else goto checkInfinite
+ilogbCore at checkSpecial branch if check2 goto nanCase else goto checkInfinite
 ilogbCore at checkInfinite do findCheck31
 ilogbCore at checkInfinite branch if check3 goto greatest else goto finite
+ilogbCore at zeroCase do readOnArm
+ilogbCore at zeroCase branch if onArm goto armZero else goto least
+ilogbCore at armZero return ok minusGreatest
+ilogbCore at nanCase do readOnArmNan
+ilogbCore at nanCase branch if onArmNan goto greatest else goto least
 ilogbCore at least return ok leastInt
 ilogbCore at greatest return ok greatestInt
 ilogbCore at finite do exponentStep1
@@ -7667,6 +7706,28 @@ findCheck31 cleanedBy none
 findCheck31 borrows none
 findCheck31 catch none
 findCheck31 suppresses none
+
+readOnArm is call
+readOnArm in ilogbCore
+readOnArm invokes system.aarch64
+readOnArm argument none
+readOnArm result onArm Bool
+readOnArm ownedBy none
+readOnArm cleanedBy none
+readOnArm borrows none
+readOnArm catch none
+readOnArm suppresses none
+
+readOnArmNan is call
+readOnArmNan in ilogbCore
+readOnArmNan invokes system.aarch64
+readOnArmNan argument none
+readOnArmNan result onArmNan Bool
+readOnArmNan ownedBy none
+readOnArmNan cleanedBy none
+readOnArmNan borrows none
+readOnArmNan catch none
+readOnArmNan suppresses none
 
 exponentStep1 is call
 exponentStep1 in ilogbCore
@@ -11279,7 +11340,6 @@ nanPayload let nothingWord UInt64 0 immutable
 nanPayload let everything UInt64 18446744073709551615 immutable
 nanPayload let one Int64 1 immutable
 nanPayload let zero Int64 0 immutable
-nanPayload let n41 Int64 41 immutable
 nanPayload let three Int64 3 immutable
 nanPayload let n48 Int64 48 immutable
 nanPayload let n120 Int64 120 immutable
@@ -11301,8 +11361,6 @@ nanPayload at scanNext goto scan
 nanPayload at scanEnd do stopStep1
 nanPayload at scanEnd do stopStep2
 nanPayload at scanEnd do findStop1
-nanPayload at scanEnd do closedStep1
-nanPayload at scanEnd do closedStep2
 nanPayload at scanEnd do findClosed1
 nanPayload at scanEnd do usableStep1
 nanPayload at scanEnd do findUsable1
@@ -11454,35 +11512,11 @@ findStop1 borrows none
 findStop1 catch none
 findStop1 suppresses none
 
-closedStep1 is call
-closedStep1 in nanPayload
-closedStep1 invokes compare.equalInt64
-closedStep1 argument left Int64 stop copy
-closedStep1 argument right Int64 zero copy
-closedStep1 result closedPart1 Bool
-closedStep1 ownedBy none
-closedStep1 cleanedBy none
-closedStep1 borrows none
-closedStep1 catch none
-closedStep1 suppresses none
-
-closedStep2 is call
-closedStep2 in nanPayload
-closedStep2 invokes compare.equalInt64
-closedStep2 argument left Int64 stop copy
-closedStep2 argument right Int64 n41 copy
-closedStep2 result closedPart2 Bool
-closedStep2 ownedBy none
-closedStep2 cleanedBy none
-closedStep2 borrows none
-closedStep2 catch none
-closedStep2 suppresses none
-
 findClosed1 is call
 findClosed1 in nanPayload
-findClosed1 invokes logic.or
-findClosed1 argument left Bool closedPart1 copy
-findClosed1 argument right Bool closedPart2 copy
+findClosed1 invokes compare.equalInt64
+findClosed1 argument left Int64 stop copy
+findClosed1 argument right Int64 zero copy
 findClosed1 result closed Bool
 findClosed1 ownedBy none
 findClosed1 cleanedBy none
