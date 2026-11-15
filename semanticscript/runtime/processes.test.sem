@@ -4373,7 +4373,7 @@ free catch none
 free suppresses none
 
 ffiTest is test
-ffiTest purpose "The C library loads by the name `c`, its functions bind by name, a missing function is symbolMissing, a missing library notFound, and a Library closes"
+ffiTest purpose "The C library opens by the name `c` (the runtime's own, on every system), its functions bind by name, a missing function is symbolMissing, a missing library notFound, and a Library closes"
 ffiTest verifies ffiOpen loadsLibrary
 ffiTest verifies ffiBind bindsSymbol
 ffiTest verifies ffiClose closesLibrary
@@ -4391,10 +4391,6 @@ ffiTest async false
 ffiTest maxRecursion none
 ffiTest label begin loopKind none
 ffiTest label begin within none
-ffiTest label skipped loopKind none
-ffiTest label skipped within none
-ffiTest label windowsOnly loopKind none
-ffiTest label windowsOnly within none
 ffiTest let zero Int64 0 immutable
 ffiTest let resultsOffset Int64 62016 immutable
 ffiTest let payloadOffset Int64 62080 immutable
@@ -4404,45 +4400,31 @@ ffiTest let one Int64 1 immutable
 ffiTest let absName String "abs" immutable
 ffiTest let missingName String "semanticscriptNoSuchSymbol" immutable
 ffiTest let noLibrary String "refined-surely-missing-library-42" immutable
-ffiTest at begin do osCheck
-ffiTest at begin branch if onLinux goto skipped else goto windowsOnly
-ffiTest at skipped return ok none
-ffiTest at windowsOnly do findArgs
-ffiTest at windowsOnly do findResults
-ffiTest at windowsOnly do findPayload
-ffiTest at windowsOnly do shapeOpen
-ffiTest at windowsOnly do setName
-ffiTest at windowsOnly do openIt
-ffiTest at windowsOnly do expectOpened
-ffiTest at windowsOnly do readHandle
-ffiTest at windowsOnly do shapeBind
-ffiTest at windowsOnly do setHandle
-ffiTest at windowsOnly do setSymbol
-ffiTest at windowsOnly do bindIt
-ffiTest at windowsOnly do expectBound
-ffiTest at windowsOnly do readAddress
-ffiTest at windowsOnly do someCheck
-ffiTest at windowsOnly do expectFound
-ffiTest at windowsOnly do setMissing
-ffiTest at windowsOnly do bindMissing
-ffiTest at windowsOnly do expectMissing
-ffiTest at windowsOnly do shapeClose
-ffiTest at windowsOnly do closeIt
-ffiTest at windowsOnly do setNoLibrary
-ffiTest at windowsOnly do openMissing
-ffiTest at windowsOnly do expectNotFound
-ffiTest at windowsOnly return ok none
-
-osCheck is call
-osCheck in ffiTest
-osCheck invokes system.linux
-osCheck argument none
-osCheck result onLinux Bool
-osCheck ownedBy none
-osCheck cleanedBy none
-osCheck borrows none
-osCheck catch none
-osCheck suppresses none
+ffiTest at begin do findArgs
+ffiTest at begin do findResults
+ffiTest at begin do findPayload
+ffiTest at begin do shapeOpen
+ffiTest at begin do setName
+ffiTest at begin do openIt
+ffiTest at begin do expectOpened
+ffiTest at begin do readHandle
+ffiTest at begin do shapeBind
+ffiTest at begin do setHandle
+ffiTest at begin do setSymbol
+ffiTest at begin do bindIt
+ffiTest at begin do expectBound
+ffiTest at begin do readAddress
+ffiTest at begin do someCheck
+ffiTest at begin do expectFound
+ffiTest at begin do setMissing
+ffiTest at begin do bindMissing
+ffiTest at begin do expectMissing
+ffiTest at begin do shapeClose
+ffiTest at begin do closeIt
+ffiTest at begin do setNoLibrary
+ffiTest at begin do openMissing
+ffiTest at begin do expectNotFound
+ffiTest at begin return ok none
 
 findArgs is call
 findArgs in ffiTest

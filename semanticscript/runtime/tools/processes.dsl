@@ -1,6 +1,6 @@
 module processes "The program's arguments, the environment and secrets, standard input, child processes with their pipes, and foreign libraries"
   path processes
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel memory heap handles regions slots wide tasks files frames
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel memory heap handles regions slots wide clibrary loader tasks files frames
   exports argumentCount argument environmentGet readLine newArguments addArgument processRun processRunCaptured splitCommandLine commandLine secretFromText secretFromEnvironment secretReveal secretMatches secretLength ffiOpen ffiClose ffiBind
 
 capability memoryAccess "Authority to read the command line, the environment, standard input, and a child's output into memory" use machine.memory none
@@ -38,7 +38,13 @@ constant kindArguments "The kind of a child process's list of arguments" Int64 6
 
 constant kindSecret "The kind of a secret: a heap block of its bytes, then how many" Int64 8
 
-constant kindLibrary "The kind of a foreign library: a heap block holding its module handle" Int64 10
+constant kindLibrary "The kind of a foreign library: a heap block holding what it is (1 the runtime's C library, 2 a Windows module, 3 a library the loader mapped) and its module handle or record" Int64 10
+
+constant builtInLibrary "A Library that is the runtime's C library (D-153)" Int64 1
+
+constant windowsLibrary "A Library that is a Windows module LoadLibraryW loaded" Int64 2
+
+constant loadedLibrary "A Library the runtime's loader mapped on Linux (D-154)" Int64 3
 
 constant notFoundLibrary "ffi.LoadError.notFound, numbered from 1" Int32 1
 
@@ -2385,7 +2391,7 @@ op loadNamed "LoadLibraryW of a UTF-8 name; the address 0 when it cannot be load
   giveName: heap.give(wideText)
   return library
 
-op ffiOpen "ffi.open: load a library by name, `c` naming the C library (ucrtbase, else msvcrt), as host.py loads it with ctypes; notFound when none loads"
+op ffiOpen "ffi.open: the C library's name (`c`, and on Linux libc.so.6 and its parts) is the runtime's own C library (D-153), on Windows and Linux alike; any other name loads with LoadLibraryW on Windows and with the runtime's loader on Linux (D-154); notFound when it does not load"
   invariant loadsLibrary "The result slot holds a Library handle, or the status is notFound"
   input shape machine.Address copied
   input args machine.Address copied
@@ -2397,36 +2403,27 @@ op ffiOpen "ffi.open: load a library by name, `c` naming the C library (ucrtbase
   uses memoryAccess
   uses systemCalls
   let library Int64 0 mut
+  let kind Int64 1 mut
   let ok Int32 0
-  let cName String "c"
-  let ucrt String "ucrtbase"
-  let msvcrt String "msvcrt"
 :begin
   readName: name = files.textAt(shape, args, zero=0)
   readBytes: bytes = files.textBytes(shape, args, zero)
-  findC: cAt = machine.addressOfString(cName)
-  compareC: same = memory.bytesEqual(name, bytes, cAt, one=1)
-  cCheck: isC = compare.notEqualInt32(same, zero32=0)
-  if isC loadUcrt loadIt
-:loadUcrt
-  findUcrt: ucrtAt = machine.addressOfString(ucrt)
-  ucrtLength: ucrtBytes = string.byteLength(ucrt)
-  loadUcrtIt: ucrtLibrary = loadNamed(ucrtAt, ucrtBytes)
-  ucrtValue: ucrtNumber = machine.toInt64(ucrtLibrary)
-  set library ucrtNumber
-  ucrtCheck: noUcrt = compare.equalInt64(ucrtNumber, zero)
-  if noUcrt loadMsvcrt loaded
-:loadMsvcrt
-  findMsvcrt: msvcrtAt = machine.addressOfString(msvcrt)
-  msvcrtLength: msvcrtBytes = string.byteLength(msvcrt)
-  loadMsvcrtIt: msvcrtLibrary = loadNamed(msvcrtAt, msvcrtBytes)
-  msvcrtValue: msvcrtNumber = machine.toInt64(msvcrtLibrary)
-  set library msvcrtNumber
+  checkC: isC = clibrary.cLibraryName(name, bytes)
+  if isC give other
+:other
+  osCheck: onLinux = system.linux()
+  if onLinux loadLinux loadWindows
+:loadLinux
+  loadLinuxIt: object = loader.openLibrary(name, bytes)
+  objectValue: objectNumber = machine.toInt64(object)
+  set library objectNumber
+  set kind loadedLibrary
   goto loaded
-:loadIt
+:loadWindows
   loadNamedIt: namedLibrary = loadNamed(name, bytes)
   namedValue: namedNumber = machine.toInt64(namedLibrary)
   set library namedNumber
+  set kind windowsLibrary
   goto loaded
 :loaded
   missingCheck: missing = compare.equalInt64(library, zero)
@@ -2435,10 +2432,12 @@ op ffiOpen "ffi.open: load a library by name, `c` naming the C library (ucrtbase
   status: status1 = slots.failWith(payload, notFoundLibrary, zero)
   return status1
 :give
-  takeLibrary: object = heap.take(eight=8)
-  storeLibrary: machine.storeInt64(object, library)
+  takeLibrary: object2 = heap.take(sixteen=16)
+  storeKind: machine.storeInt64(object2, kind)
+  findModule: moduleAt = machine.offset(object2, eight=8)
+  storeLibrary: machine.storeInt64(moduleAt, library)
   nowhere: anywhere = machine.zero()
-  makeHandle: handle = handles.newHandle(kindLibrary, object, anywhere)
+  makeHandle: handle = handles.newHandle(kindLibrary, object2, anywhere)
   storeHandle: machine.storeInt64(results, handle)
   return ok
 
@@ -2457,7 +2456,7 @@ op ffiClose "ffi.close: give back a Library handle; the library stays loaded, as
   giveIt: heap.give(object)
   return
 
-op ffiBind "ffi.Function.bind: the address of a library's function by its name, which compiled code calls as the operation type says; symbolMissing when the library has none"
+op ffiBind "ffi.Function.bind: the address of a library's function by its name, which compiled code calls as the operation type says: from the runtime's C library's table (D-153), GetProcAddress, or the loader's scope (D-154); symbolMissing when the library has none"
   invariant bindsSymbol "The result slot holds the function's address, or the status is symbolMissing"
   input shape machine.Address copied
   input args machine.Address copied
@@ -2468,17 +2467,39 @@ op ffiBind "ffi.Function.bind: the address of a library's function by its name, 
   effect use system.calls
   uses memoryAccess
   uses systemCalls
+  let address Int64 0 mut
   let ok Int32 0
 :begin
   readHandle: handle = slots.argOf(shape, args, zero=0)
   findLibrary: object = handles.objectOf(handle, kindLibrary)
-  readLibrary: library = machine.loadAddress(object)
+  readKind: kind = machine.loadInt64(object)
+  findModule: moduleAt = machine.offset(object, eight=8)
+  readLibrary: library = machine.loadAddress(moduleAt)
   readName: name = files.textAt(shape, args, one=1)
   readBytes: bytes = files.textBytes(shape, args, one)
+  builtInCheck: isBuiltIn = compare.equalInt64(kind, builtInLibrary)
+  if isBuiltIn bindBuiltIn loadedCheck
+:bindBuiltIn
+  lookUpIt: builtInFunction = clibrary.lookup(name, bytes)
+  builtInValue: builtInAddress = machine.toInt64(builtInFunction)
+  set address builtInAddress
+  goto found
+:loadedCheck
+  loadedSame: isLoaded = compare.equalInt64(kind, loadedLibrary)
+  if isLoaded bindLoaded bindWindows
+:bindLoaded
+  symbolIt: loadedFunction = loader.symbolOf(library, name, bytes)
+  loadedValue: loadedAddress = machine.toInt64(loadedFunction)
+  set address loadedAddress
+  goto found
+:bindWindows
   copyName: cName = files.copyBytes(name, bytes)
   findIt: function = system.getProcAddress(library, cName)
   giveName: heap.give(cName)
-  functionValue: address = machine.toInt64(function)
+  functionValue: windowsAddress = machine.toInt64(function)
+  set address windowsAddress
+  goto found
+:found
   missingCheck: missing = compare.equalInt64(address, zero)
   if missing refuse give
 :refuse
@@ -2982,7 +3003,7 @@ test secretTest "A Secret keeps its text, reveals it, matches only the same text
   free: regions.release(region)
   return
 
-test ffiTest "The C library loads by the name `c`, its functions bind by name, a missing function is symbolMissing, a missing library notFound, and a Library closes"
+test ffiTest "The C library opens by the name `c` (the runtime's own, on every system), its functions bind by name, a missing function is symbolMissing, a missing library notFound, and a Library closes"
   verifies ffiOpen loadsLibrary
   verifies ffiBind bindsSymbol
   verifies ffiClose closesLibrary
@@ -2991,11 +3012,6 @@ test ffiTest "The C library loads by the name `c`, its functions bind by name, a
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
-  if onLinux skipped windowsOnly
-:skipped
-  return
-:windowsOnly
   findArgs: args = argSlot(zero=0)
   findResults: results = stateAt(resultsOffset=62016)
   findPayload: payload = stateAt(payloadOffset=62080)

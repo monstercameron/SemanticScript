@@ -49,7 +49,7 @@ from .check import TEST_OFFSET
 from .runtime import default_triple
 from .host import HANDLERS as HOST_TARGETS
 from .library import INTEGER_RANGES, INTEGER_TYPES as INTEGER_TARGET_TYPES, LINUX_CALLS, STATE_BYTES, SYSTEM_CALLS
-from .semantics import (CallInfo, Module, OpInfo, World, abi_symbol, grant_scope, instance_scope, resolve_type,
+from .semantics import (CallInfo, Module, OpInfo, World, abi_symbol, library_symbol, grant_scope, instance_scope, resolve_type,
                         resolve_variant, type_params_of)
 
 I1, I8, I16, I32, I64 = ir.IntType(1), ir.IntType(8), ir.IntType(16), ir.IntType(32), ir.IntType(64)
@@ -310,6 +310,9 @@ class Backend:
         # D-123: the operations exported to C, by symbol
         self.abi = {abi_symbol(ent): (m.short, name) for m in world.modules.values() for name, ent in m.ops.items()
                     if abi_symbol(ent) is not None}
+        # D-153: the functions of the runtime's C library, by their C names
+        self.library = {library_symbol(ent): (m.short, name) for m in world.modules.values()
+                        for name, ent in m.ops.items() if library_symbol(ent) is not None}
         # D-124: a program that defines runtime functions is the runtime. Its operations keep no shadow call stack
         # and count recursion in place, since those calls would reach the runtime itself
         self.bare = bool(set(self.abi) & set(CALLBACKS))
@@ -341,6 +344,28 @@ class Backend:
         if fn is None:
             fn = ir.Function(self.module, self.fn_type(sig, "", 0), name=symbol)
         return fn
+
+    def c_library(self) -> ir.GlobalVariable:
+        """D-153: the table of the runtime's C library, every `abi library` operation sorted by name: the count, then
+        each name's address, its length, and the function's address (three words each)."""
+        g = self.module.globals.get("refined.c.library")
+        if g is not None:
+            return g
+        rows = []
+        for symbol in sorted(self.library, key=lambda t: t.encode("utf-8")):
+            mod, op = self.library[symbol]
+            fn = self.function_for(mod, op, None, 0)
+            self.string(symbol)
+            data = symbol.encode("utf-8")
+            rows.append([self.strings[data].gep([I32(0), I32(0)]), I64(len(data)), fn.bitcast(PTR)])
+        row = ir.LiteralStructType([PTR, I64, PTR])
+        table = ir.LiteralStructType([I64, ir.ArrayType(row, len(rows))])
+        g = ir.GlobalVariable(self.module, table, "refined.c.library")
+        g.initializer = ir.Constant(table, [I64(len(rows)), ir.Constant(ir.ArrayType(row, len(rows)),
+                                                                        [ir.Constant(row, r) for r in rows])])
+        g.global_constant = True
+        g.linkage = "internal"
+        return g
 
     def machine_state(self) -> ir.GlobalVariable:
         """D-121: one zeroed block of STATE_BYTES for the runtime's process-wide state, shared by every object that
@@ -412,6 +437,8 @@ class Backend:
         if arch != "aarch64":
             return self.off_target(b, I64)
         from .library import AARCH64_NUMBERS
+        if name not in AARCH64_NUMBERS:  # a call AArch64 has no number for (`archPrctl`): never reached there
+            return self.off_target(b, I64)
         number = AARCH64_NUMBERS[name]
         if name == "poll":  # ppoll(fds, count, timeout or NULL, NULL, 8): milliseconds as a timespec
             spec = b.alloca(ir.ArrayType(I64, 2), name="pollspec")
@@ -543,6 +570,8 @@ class Backend:
         if symbol in TEST_CALLBACKS and not self.options.get("runtime_object"):
             symbol = None  # D-134: under `refined test` the test runner's own callbacks keep the name
         name = symbol or name  # D-123: exported to C under its symbol
+        if library_symbol(ent) is not None:  # D-153: reached through the C library's table, never by its C name
+            name = f"refined.c.{library_symbol(ent)}"
         ftype = self.fn_type(sig, m.file, ent.line)
         if self.bare and name in CALLBACKS:
             # D-124: the runtime's own definition of a function compiled code calls has the type those calls have;
@@ -1774,6 +1803,14 @@ class OpGen:
             self.be.module.asm_parts["restorer"] = _AARCH64_RESTORER if arch == "aarch64" else _X86_64_RESTORER
             fn = self.be.module.globals.get("refined_signal_restorer") or                 ir.Function(self.be.module, ir.FunctionType(ir.VoidType(), []), name="refined_signal_restorer")
             return b.bitcast(fn, PTR), None, None
+        if name == "cLibrary":
+            return b.bitcast(self.be.c_library(), PTR), None, None
+        if name == "callComparison":
+            compare = b.bitcast(args["function"], ir.FunctionType(I32, [PTR, PTR]).as_pointer())
+            return b.call(compare, [args["left"], args["right"]]), None, None
+        if name == "squareRoot":
+            root = self.be.module.declare_intrinsic("llvm.sqrt", [F64])
+            return b.call(root, [args["value"]]), None, None
         if name == "taskEntry":
             # D-131: only the runtime has it, and only for the operation a task's fiber starts in
             if "refined_task_entry" not in self.be.abi:

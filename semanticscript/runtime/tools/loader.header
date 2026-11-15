@@ -1,0 +1,7 @@
+# A loader of ELF shared libraries for Linux, written in SemanticScript (D-154): what `ffi.open`
+# of a library other than the C library does in an executable with no C library. Segments are
+# mapped from the file, relocations applied and bound at once, symbols found through DT_GNU_HASH
+# or DT_HASH, C imports resolved against the runtime's C library (D-153), and initializers run;
+# what it cannot load right (thread-local storage, ifuncs, text relocations) traps saying why.
+#
+# This module is generated from tools/loader.dsl by tools/build.py.

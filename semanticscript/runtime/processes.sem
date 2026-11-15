@@ -22,6 +22,8 @@ processes imports handles
 processes imports regions
 processes imports slots
 processes imports wide
+processes imports clibrary
+processes imports loader
 processes imports tasks
 processes imports files
 processes imports frames
@@ -105,9 +107,24 @@ kindSecret type Int64
 kindSecret value 8
 
 kindLibrary is constant
-kindLibrary purpose "The kind of a foreign library: a heap block holding its module handle"
+kindLibrary purpose "The kind of a foreign library: a heap block holding what it is (1 the runtime's C library, 2 a Windows module, 3 a library the loader mapped) and its module handle or record"
 kindLibrary type Int64
 kindLibrary value 10
+
+builtInLibrary is constant
+builtInLibrary purpose "A Library that is the runtime's C library (D-153)"
+builtInLibrary type Int64
+builtInLibrary value 1
+
+windowsLibrary is constant
+windowsLibrary purpose "A Library that is a Windows module LoadLibraryW loaded"
+windowsLibrary type Int64
+windowsLibrary value 2
+
+loadedLibrary is constant
+loadedLibrary purpose "A Library the runtime's loader mapped on Linux (D-154)"
+loadedLibrary type Int64
+loadedLibrary value 3
 
 notFoundLibrary is constant
 notFoundLibrary purpose "ffi.LoadError.notFound, numbered from 1"
@@ -14349,7 +14366,7 @@ giveName catch none
 giveName suppresses none
 
 ffiOpen is operation
-ffiOpen purpose "ffi.open: load a library by name, `c` naming the C library (ucrtbase, else msvcrt), as host.py loads it with ctypes; notFound when none loads"
+ffiOpen purpose "ffi.open: the C library's name (`c`, and on Linux libc.so.6 and its parts) is the runtime's own C library (D-153), on Windows and Linux alike; any other name loads with LoadLibraryW on Windows and with the runtime's loader on Linux (D-154); notFound when it does not load"
 ffiOpen invariant loadsLibrary "\"The result slot holds a Library handle, or the status is notFound\""
 ffiOpen typeParameter none
 ffiOpen input shape machine.Address copied
@@ -14368,12 +14385,12 @@ ffiOpen async false
 ffiOpen maxRecursion none
 ffiOpen label begin loopKind none
 ffiOpen label begin within none
-ffiOpen label loadUcrt loopKind none
-ffiOpen label loadUcrt within none
-ffiOpen label loadMsvcrt loopKind none
-ffiOpen label loadMsvcrt within none
-ffiOpen label loadIt loopKind none
-ffiOpen label loadIt within none
+ffiOpen label other loopKind none
+ffiOpen label other within none
+ffiOpen label loadLinux loopKind none
+ffiOpen label loadLinux within none
+ffiOpen label loadWindows loopKind none
+ffiOpen label loadWindows within none
 ffiOpen label loaded loopKind none
 ffiOpen label loaded within none
 ffiOpen label refuse loopKind none
@@ -14381,42 +14398,34 @@ ffiOpen label refuse within none
 ffiOpen label give loopKind none
 ffiOpen label give within none
 ffiOpen let library Int64 0 mutable
+ffiOpen let kind Int64 1 mutable
 ffiOpen let ok Int32 0 immutable
-ffiOpen let cName String "c" immutable
-ffiOpen let ucrt String "ucrtbase" immutable
-ffiOpen let msvcrt String "msvcrt" immutable
 ffiOpen let zero Int64 0 immutable
-ffiOpen let one Int64 1 immutable
-ffiOpen let zero32 Int32 0 immutable
+ffiOpen let sixteen Int64 16 immutable
 ffiOpen let eight Int64 8 immutable
 ffiOpen at begin do readName
 ffiOpen at begin do readBytes
-ffiOpen at begin do findC
-ffiOpen at begin do compareC
-ffiOpen at begin do cCheck
-ffiOpen at begin branch if isC goto loadUcrt else goto loadIt
-ffiOpen at loadUcrt do findUcrt
-ffiOpen at loadUcrt do ucrtLength
-ffiOpen at loadUcrt do loadUcrtIt
-ffiOpen at loadUcrt do ucrtValue
-ffiOpen at loadUcrt set library ucrtNumber
-ffiOpen at loadUcrt do ucrtCheck
-ffiOpen at loadUcrt branch if noUcrt goto loadMsvcrt else goto loaded
-ffiOpen at loadMsvcrt do findMsvcrt
-ffiOpen at loadMsvcrt do msvcrtLength
-ffiOpen at loadMsvcrt do loadMsvcrtIt
-ffiOpen at loadMsvcrt do msvcrtValue
-ffiOpen at loadMsvcrt set library msvcrtNumber
-ffiOpen at loadMsvcrt goto loaded
-ffiOpen at loadIt do loadNamedIt
-ffiOpen at loadIt do namedValue
-ffiOpen at loadIt set library namedNumber
-ffiOpen at loadIt goto loaded
+ffiOpen at begin do checkC
+ffiOpen at begin branch if isC goto give else goto other
+ffiOpen at other do osCheck
+ffiOpen at other branch if onLinux goto loadLinux else goto loadWindows
+ffiOpen at loadLinux do loadLinuxIt
+ffiOpen at loadLinux do objectValue
+ffiOpen at loadLinux set library objectNumber
+ffiOpen at loadLinux set kind loadedLibrary
+ffiOpen at loadLinux goto loaded
+ffiOpen at loadWindows do loadNamedIt
+ffiOpen at loadWindows do namedValue
+ffiOpen at loadWindows set library namedNumber
+ffiOpen at loadWindows set kind windowsLibrary
+ffiOpen at loadWindows goto loaded
 ffiOpen at loaded do missingCheck
 ffiOpen at loaded branch if missing goto refuse else goto give
 ffiOpen at refuse do status
 ffiOpen at refuse return ok status1
 ffiOpen at give do takeLibrary
+ffiOpen at give do storeKind
+ffiOpen at give do findModule
 ffiOpen at give do storeLibrary
 ffiOpen at give do nowhere
 ffiOpen at give do makeHandle
@@ -14449,144 +14458,51 @@ readBytes borrows none
 readBytes catch none
 readBytes suppresses none
 
-findC is call
-findC in ffiOpen
-findC invokes machine.addressOfString
-findC argument text String cName lend
-findC result cAt machine.Address
-findC ownedBy none
-findC cleanedBy none
-findC borrows none
-findC catch none
-findC suppresses none
+checkC is call
+checkC in ffiOpen
+checkC invokes clibrary.cLibraryName
+checkC argument name machine.Address name copy
+checkC argument bytes Int64 bytes copy
+checkC result isC Bool
+checkC ownedBy none
+checkC cleanedBy none
+checkC borrows none
+checkC catch none
+checkC suppresses none
 
-compareC is call
-compareC in ffiOpen
-compareC invokes memory.bytesEqual
-compareC argument left machine.Address name copy
-compareC argument leftBytes Int64 bytes copy
-compareC argument right machine.Address cAt copy
-compareC argument rightBytes Int64 one copy
-compareC result same Int32
-compareC ownedBy none
-compareC cleanedBy none
-compareC borrows none
-compareC catch none
-compareC suppresses none
+osCheck is call
+osCheck in ffiOpen
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
 
-cCheck is call
-cCheck in ffiOpen
-cCheck invokes compare.notEqualInt32
-cCheck argument left Int32 same copy
-cCheck argument right Int32 zero32 copy
-cCheck result isC Bool
-cCheck ownedBy none
-cCheck cleanedBy none
-cCheck borrows none
-cCheck catch none
-cCheck suppresses none
+loadLinuxIt is call
+loadLinuxIt in ffiOpen
+loadLinuxIt invokes loader.openLibrary
+loadLinuxIt argument name machine.Address name copy
+loadLinuxIt argument bytes Int64 bytes copy
+loadLinuxIt result object machine.Address
+loadLinuxIt ownedBy none
+loadLinuxIt cleanedBy none
+loadLinuxIt borrows none
+loadLinuxIt catch none
+loadLinuxIt suppresses none
 
-findUcrt is call
-findUcrt in ffiOpen
-findUcrt invokes machine.addressOfString
-findUcrt argument text String ucrt lend
-findUcrt result ucrtAt machine.Address
-findUcrt ownedBy none
-findUcrt cleanedBy none
-findUcrt borrows none
-findUcrt catch none
-findUcrt suppresses none
-
-ucrtLength is call
-ucrtLength in ffiOpen
-ucrtLength invokes string.byteLength
-ucrtLength argument text String ucrt lend
-ucrtLength result ucrtBytes Int64
-ucrtLength ownedBy none
-ucrtLength cleanedBy none
-ucrtLength borrows none
-ucrtLength catch none
-ucrtLength suppresses none
-
-loadUcrtIt is call
-loadUcrtIt in ffiOpen
-loadUcrtIt invokes loadNamed
-loadUcrtIt argument name machine.Address ucrtAt copy
-loadUcrtIt argument bytes Int64 ucrtBytes copy
-loadUcrtIt result ucrtLibrary machine.Address
-loadUcrtIt ownedBy none
-loadUcrtIt cleanedBy none
-loadUcrtIt borrows none
-loadUcrtIt catch none
-loadUcrtIt suppresses none
-
-ucrtValue is call
-ucrtValue in ffiOpen
-ucrtValue invokes machine.toInt64
-ucrtValue argument address machine.Address ucrtLibrary copy
-ucrtValue result ucrtNumber Int64
-ucrtValue ownedBy none
-ucrtValue cleanedBy none
-ucrtValue borrows none
-ucrtValue catch none
-ucrtValue suppresses none
-
-ucrtCheck is call
-ucrtCheck in ffiOpen
-ucrtCheck invokes compare.equalInt64
-ucrtCheck argument left Int64 ucrtNumber copy
-ucrtCheck argument right Int64 zero copy
-ucrtCheck result noUcrt Bool
-ucrtCheck ownedBy none
-ucrtCheck cleanedBy none
-ucrtCheck borrows none
-ucrtCheck catch none
-ucrtCheck suppresses none
-
-findMsvcrt is call
-findMsvcrt in ffiOpen
-findMsvcrt invokes machine.addressOfString
-findMsvcrt argument text String msvcrt lend
-findMsvcrt result msvcrtAt machine.Address
-findMsvcrt ownedBy none
-findMsvcrt cleanedBy none
-findMsvcrt borrows none
-findMsvcrt catch none
-findMsvcrt suppresses none
-
-msvcrtLength is call
-msvcrtLength in ffiOpen
-msvcrtLength invokes string.byteLength
-msvcrtLength argument text String msvcrt lend
-msvcrtLength result msvcrtBytes Int64
-msvcrtLength ownedBy none
-msvcrtLength cleanedBy none
-msvcrtLength borrows none
-msvcrtLength catch none
-msvcrtLength suppresses none
-
-loadMsvcrtIt is call
-loadMsvcrtIt in ffiOpen
-loadMsvcrtIt invokes loadNamed
-loadMsvcrtIt argument name machine.Address msvcrtAt copy
-loadMsvcrtIt argument bytes Int64 msvcrtBytes copy
-loadMsvcrtIt result msvcrtLibrary machine.Address
-loadMsvcrtIt ownedBy none
-loadMsvcrtIt cleanedBy none
-loadMsvcrtIt borrows none
-loadMsvcrtIt catch none
-loadMsvcrtIt suppresses none
-
-msvcrtValue is call
-msvcrtValue in ffiOpen
-msvcrtValue invokes machine.toInt64
-msvcrtValue argument address machine.Address msvcrtLibrary copy
-msvcrtValue result msvcrtNumber Int64
-msvcrtValue ownedBy none
-msvcrtValue cleanedBy none
-msvcrtValue borrows none
-msvcrtValue catch none
-msvcrtValue suppresses none
+objectValue is call
+objectValue in ffiOpen
+objectValue invokes machine.toInt64
+objectValue argument address machine.Address object copy
+objectValue result objectNumber Int64
+objectValue ownedBy none
+objectValue cleanedBy none
+objectValue borrows none
+objectValue catch none
+objectValue suppresses none
 
 loadNamedIt is call
 loadNamedIt in ffiOpen
@@ -14639,18 +14555,42 @@ status suppresses none
 takeLibrary is call
 takeLibrary in ffiOpen
 takeLibrary invokes heap.take
-takeLibrary argument bytes Int64 eight copy
-takeLibrary result object machine.Address
+takeLibrary argument bytes Int64 sixteen copy
+takeLibrary result object2 machine.Address
 takeLibrary ownedBy none
 takeLibrary cleanedBy none
 takeLibrary borrows none
 takeLibrary catch none
 takeLibrary suppresses none
 
+storeKind is call
+storeKind in ffiOpen
+storeKind invokes machine.storeInt64
+storeKind argument address machine.Address object2 copy
+storeKind argument value Int64 kind copy
+storeKind result none
+storeKind ownedBy none
+storeKind cleanedBy none
+storeKind borrows none
+storeKind catch none
+storeKind suppresses none
+
+findModule is call
+findModule in ffiOpen
+findModule invokes machine.offset
+findModule argument address machine.Address object2 copy
+findModule argument bytes Int64 eight copy
+findModule result moduleAt machine.Address
+findModule ownedBy none
+findModule cleanedBy none
+findModule borrows none
+findModule catch none
+findModule suppresses none
+
 storeLibrary is call
 storeLibrary in ffiOpen
 storeLibrary invokes machine.storeInt64
-storeLibrary argument address machine.Address object copy
+storeLibrary argument address machine.Address moduleAt copy
 storeLibrary argument value Int64 library copy
 storeLibrary result none
 storeLibrary ownedBy none
@@ -14674,7 +14614,7 @@ makeHandle is call
 makeHandle in ffiOpen
 makeHandle invokes handles.newHandle
 makeHandle argument kind Int64 kindLibrary copy
-makeHandle argument object machine.Address object copy
+makeHandle argument object machine.Address object2 copy
 makeHandle argument region machine.Address anywhere copy
 makeHandle result handle Int64
 makeHandle ownedBy none
@@ -14768,7 +14708,7 @@ giveIt catch none
 giveIt suppresses none
 
 ffiBind is operation
-ffiBind purpose "ffi.Function.bind: the address of a library's function by its name, which compiled code calls as the operation type says; symbolMissing when the library has none"
+ffiBind purpose "ffi.Function.bind: the address of a library's function by its name, which compiled code calls as the operation type says: from the runtime's C library's table (D-153), GetProcAddress, or the loader's scope (D-154); symbolMissing when the library has none"
 ffiBind invariant bindsSymbol "\"The result slot holds the function's address, or the status is symbolMissing\""
 ffiBind typeParameter none
 ffiBind input shape machine.Address copied
@@ -14787,24 +14727,52 @@ ffiBind async false
 ffiBind maxRecursion none
 ffiBind label begin loopKind none
 ffiBind label begin within none
+ffiBind label bindBuiltIn loopKind none
+ffiBind label bindBuiltIn within none
+ffiBind label loadedCheck loopKind none
+ffiBind label loadedCheck within none
+ffiBind label bindLoaded loopKind none
+ffiBind label bindLoaded within none
+ffiBind label bindWindows loopKind none
+ffiBind label bindWindows within none
+ffiBind label found loopKind none
+ffiBind label found within none
 ffiBind label refuse loopKind none
 ffiBind label refuse within none
 ffiBind label give loopKind none
 ffiBind label give within none
+ffiBind let address Int64 0 mutable
 ffiBind let ok Int32 0 immutable
 ffiBind let zero Int64 0 immutable
+ffiBind let eight Int64 8 immutable
 ffiBind let one Int64 1 immutable
 ffiBind at begin do readHandle
 ffiBind at begin do findLibrary
+ffiBind at begin do readKind
+ffiBind at begin do findModule
 ffiBind at begin do readLibrary
 ffiBind at begin do readName
 ffiBind at begin do readBytes
-ffiBind at begin do copyName
-ffiBind at begin do findIt
-ffiBind at begin do giveName
-ffiBind at begin do functionValue
-ffiBind at begin do missingCheck
-ffiBind at begin branch if missing goto refuse else goto give
+ffiBind at begin do builtInCheck
+ffiBind at begin branch if isBuiltIn goto bindBuiltIn else goto loadedCheck
+ffiBind at bindBuiltIn do lookUpIt
+ffiBind at bindBuiltIn do builtInValue
+ffiBind at bindBuiltIn set address builtInAddress
+ffiBind at bindBuiltIn goto found
+ffiBind at loadedCheck do loadedSame
+ffiBind at loadedCheck branch if isLoaded goto bindLoaded else goto bindWindows
+ffiBind at bindLoaded do symbolIt
+ffiBind at bindLoaded do loadedValue
+ffiBind at bindLoaded set address loadedAddress
+ffiBind at bindLoaded goto found
+ffiBind at bindWindows do copyName
+ffiBind at bindWindows do findIt
+ffiBind at bindWindows do giveName
+ffiBind at bindWindows do functionValue
+ffiBind at bindWindows set address windowsAddress
+ffiBind at bindWindows goto found
+ffiBind at found do missingCheck
+ffiBind at found branch if missing goto refuse else goto give
 ffiBind at refuse do status
 ffiBind at refuse return ok status1
 ffiBind at give do storeAddress
@@ -14835,10 +14803,33 @@ findLibrary borrows none
 findLibrary catch none
 findLibrary suppresses none
 
+readKind is call
+readKind in ffiBind
+readKind invokes machine.loadInt64
+readKind argument address machine.Address object copy
+readKind result kind Int64
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+findModule is call
+findModule in ffiBind
+findModule invokes machine.offset
+findModule argument address machine.Address object copy
+findModule argument bytes Int64 eight copy
+findModule result moduleAt machine.Address
+findModule ownedBy none
+findModule cleanedBy none
+findModule borrows none
+findModule catch none
+findModule suppresses none
+
 readLibrary is call
 readLibrary in ffiBind
 readLibrary invokes machine.loadAddress
-readLibrary argument address machine.Address object copy
+readLibrary argument address machine.Address moduleAt copy
 readLibrary result library machine.Address
 readLibrary ownedBy none
 readLibrary cleanedBy none
@@ -14871,6 +14862,77 @@ readBytes cleanedBy none
 readBytes borrows none
 readBytes catch none
 readBytes suppresses none
+
+builtInCheck is call
+builtInCheck in ffiBind
+builtInCheck invokes compare.equalInt64
+builtInCheck argument left Int64 kind copy
+builtInCheck argument right Int64 builtInLibrary copy
+builtInCheck result isBuiltIn Bool
+builtInCheck ownedBy none
+builtInCheck cleanedBy none
+builtInCheck borrows none
+builtInCheck catch none
+builtInCheck suppresses none
+
+lookUpIt is call
+lookUpIt in ffiBind
+lookUpIt invokes clibrary.lookup
+lookUpIt argument name machine.Address name copy
+lookUpIt argument bytes Int64 bytes copy
+lookUpIt result builtInFunction machine.Address
+lookUpIt ownedBy none
+lookUpIt cleanedBy none
+lookUpIt borrows none
+lookUpIt catch none
+lookUpIt suppresses none
+
+builtInValue is call
+builtInValue in ffiBind
+builtInValue invokes machine.toInt64
+builtInValue argument address machine.Address builtInFunction copy
+builtInValue result builtInAddress Int64
+builtInValue ownedBy none
+builtInValue cleanedBy none
+builtInValue borrows none
+builtInValue catch none
+builtInValue suppresses none
+
+loadedSame is call
+loadedSame in ffiBind
+loadedSame invokes compare.equalInt64
+loadedSame argument left Int64 kind copy
+loadedSame argument right Int64 loadedLibrary copy
+loadedSame result isLoaded Bool
+loadedSame ownedBy none
+loadedSame cleanedBy none
+loadedSame borrows none
+loadedSame catch none
+loadedSame suppresses none
+
+symbolIt is call
+symbolIt in ffiBind
+symbolIt invokes loader.symbolOf
+symbolIt argument object machine.Address library copy
+symbolIt argument name machine.Address name copy
+symbolIt argument bytes Int64 bytes copy
+symbolIt result loadedFunction machine.Address
+symbolIt ownedBy none
+symbolIt cleanedBy none
+symbolIt borrows none
+symbolIt catch none
+symbolIt suppresses none
+
+loadedValue is call
+loadedValue in ffiBind
+loadedValue invokes machine.toInt64
+loadedValue argument address machine.Address loadedFunction copy
+loadedValue result loadedAddress Int64
+loadedValue ownedBy none
+loadedValue cleanedBy none
+loadedValue borrows none
+loadedValue catch none
+loadedValue suppresses none
 
 copyName is call
 copyName in ffiBind
@@ -14911,7 +14973,7 @@ functionValue is call
 functionValue in ffiBind
 functionValue invokes machine.toInt64
 functionValue argument address machine.Address function copy
-functionValue result address Int64
+functionValue result windowsAddress Int64
 functionValue ownedBy none
 functionValue cleanedBy none
 functionValue borrows none

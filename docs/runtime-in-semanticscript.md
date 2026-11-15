@@ -11,7 +11,9 @@ interface (kernel32, ws2_32, and bcrypt on Windows, system calls on x86_64 and
 AArch64 Linux) and a few instructions of assembly that switch stacks, start the
 process, and return from a signal on Linux. All six stages are done;
 `native_runtime.c` is deleted, and every module of the standard library works
-in an executable but `ffi` on Linux, which needs the C library (D-145).
+in an executable on Windows and on Linux: `ffi` too, since the runtime has a C
+library of its own, written in SemanticScript, and on Linux a loader of shared
+libraries (D-153 to D-155).
 
 ## The bar
 
@@ -83,6 +85,7 @@ layout, which was wrong for values like `100.0`; D-129 corrects both.)
 | 4 | Tasks, groups, channels, test assertions | Done |
 | 5 | Linux through system calls; switch every executable to the new runtime; delete `native_runtime.c`; stage0 links it | Done |
 | 6 | The rest of the library: random, http, json, signal, net; AArch64 Linux | Done |
+| 7 | `ffi` everywhere: the runtime's own C library, and an ELF loader for Linux | Done |
 
 ## Stage 1 (done)
 
@@ -313,9 +316,39 @@ DLL; Linux executables are static, with no PT_DYNAMIC or PT_INTERP and no trace 
 
 ### Platform limits (D-145)
 
-- **`ffi` on Linux** stays refused (R901). `ffi.open("c")` asks for the C library itself, and every library
-  `ffi.open` could load is linked against it. A static process with no C library cannot host glibc: glibc's own
-  start-up (thread-local storage, the dynamic loader's link map, `__libc_start_main`) is performed only by its
-  dynamic loader, `ld.so`, so loading it would mean shipping the loader and the C library, which the bar rules out.
-- **macOS** stays refused (R901). Apple's kernel interface is private and changes between releases, and every macOS
-  executable must link libSystem, which is the C library: there is no macOS executable without a C library to build.
+- **`ffi` on Linux** was refused (R901): `ffi.open("c")` asks for the C library itself, and a static process with no
+  C library cannot host glibc, whose start-up only its dynamic loader performs. This is no longer a limit: stage 7
+  gives the runtime a C library of its own and a loader (D-153, D-154).
+- **macOS** stays refused (R901), and is the next to try. Apple's kernel interface is private and changes between
+  releases, and every macOS executable must link libSystem, which is the C library: there is no macOS executable
+  without a C library to build today.
+
+## Stage 7: `ffi` everywhere (done)
+
+| Module | Provides | State |
+| --- | --- | --- |
+| `clibrary` | The C standard library in SemanticScript, as glibc behaves in the C locale: ctype.h with glibc's class bits and tables, string.h, stdlib.h (the `strto*` and `ato*` readers, `malloc` and its kin, `qsort`, `bsearch`, `getenv`, `exit`, `abort`, `div`), math.h's basics (`fabs`, `floor`, `ceil`, `trunc`, `round`, `fmod`, `sqrt`, `copysign`), stdio.h's writes to streams 1 and 2, `__errno_location`, the stack protector's names (D-153) | Done |
+| `loader` | ELF shared libraries on Linux as `dlopen(RTLD_NOW)` maps them: the search path, PT_LOAD segments, RELR, RELA, and JMPREL relocations bound at once, DT_GNU_HASH and DT_HASH, DT_NEEDED breadth first, the runtime's C library for C imports, DT_INIT and DT_INIT_ARRAY; thread-local storage, ifuncs, and text relocations trap saying why (D-154) | Done |
+
+- **The C library** (D-153). `ffi.open("c")` binds the runtime's own C library in an executable on Windows and on
+  Linux alike (on Linux `libc.so.6`, `libm.so.6`, and the other parts of glibc too), so a program's foreign calls give
+  the same results on both; `ffi.Function.bind` finds a name in its table, and a name it does not have is
+  `symbolMissing` as under `refined run`. Its functions are `abi library` operations (D-155), named
+  `refined.c.<name>` in LLVM and reached only through the table the compiler builds (`machine.cLibrary`), so an
+  executable that does not reach `ffi` holds none of it. On Windows `c` no longer means ucrtbase: a function the
+  runtime's library lacks is `symbolMissing` there, where `refined run` finds it in ucrtbase.
+- **The loader** (D-154). Any other name on Linux is found as dlopen finds it (a path, LD_LIBRARY_PATH, RUNPATH with
+  `$ORIGIN`, the system's library directories), mapped, relocated, and initialized; a library linked against glibc
+  binds its C imports to the runtime's C library. What it cannot load right traps, never loading a library wrongly:
+  ``trap: `ffi.open` cannot load `./libtls.so` in an executable with no C library: it has thread-local variables
+  (PT_TLS), which only the C library's dynamic loader sets up (D-154); run the program with `refined run` ``. On
+  x86_64 the thread pointer is set to a block of the runtime's own, so a library's stack protector reads a canary at
+  `%fs:0x28`; on AArch64 the canary is `__stack_chk_guard`.
+- **Evidence.** All 76 of the suite's running programs link on Windows and on Linux (`18-interop/foreign` matches
+  `refined run`), and the no-C-library assertions hold for every executable. tests/ctour.py calls the scalar
+  functions and builds strings in memory the library gave, and prints what glibc gives (on Linux exactly what
+  `refined run` prints, which calls glibc). tests/loadtour.py compiles a probe library on the Linux runner and every
+  one of thousands of probes (strtol and its kin in every base, strtod, ctype and its tables, the string functions,
+  malloc and its kin, math, qsort, bsearch, getenv, div) gives exactly what the same library gives calling glibc
+  through ctypes; a library linked with no C library calls strlen through the loader; thread-local storage, an
+  ifunc, and a missing function trap with their reasons. The runtime's own tests number 76.

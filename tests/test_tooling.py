@@ -374,9 +374,9 @@ def _has_cc() -> bool:
 def test_standalone_executables_match_the_jit(tmp_path):
     """18 Static linking, 16 Program startup: programs link with the runtime in SemanticScript into executables that
     run with no Python and no C library and behave exactly as under `refined run` (output, errors, exit code, traps),
-    with their command-line arguments and standard input. A program that calls a target the runtime does not have
-    (ffi on Linux, D-140, D-145) is refused when it is built (R901), naming the
-    targets, instead of trapping when it runs."""
+    with their command-line arguments and standard input. A program that called a target the runtime did not have
+    would be refused when it is built (R901), naming the targets, instead of trapping when it runs; since the
+    runtime's own C library and loader (D-153, D-154) none is, on any system."""
     from concurrent.futures import ThreadPoolExecutor
     from refined.native import runtime_host_targets
     cases = [c for c in CASES if c.mode in ("run", "trap") and not c.missing_tools()]
@@ -387,8 +387,7 @@ def test_standalone_executables_match_the_jit(tmp_path):
         exe = os.path.join(project, "program.exe")
         built = caselib.refined("build", project, "--kind", "executable", "--output", exe)
         if "R901" in built.stdout + built.stderr:
-            assert built.returncode != 0 and ("does not provide yet" in built.stdout + built.stderr
-                                              or "cannot have (D-145)" in built.stdout), case.name
+            assert built.returncode != 0 and "does not provide yet" in built.stdout + built.stderr, case.name
             assert not os.path.exists(exe), case.name
             return "host_only"
         assert built.returncode == 0, (case.name, built.stdout)
@@ -411,7 +410,7 @@ def test_standalone_executables_match_the_jit(tmp_path):
     with ThreadPoolExecutor(6) as pool:
         outcomes = list(pool.map(one, range(len(cases))))
     linked, host_only = outcomes.count("linked"), outcomes.count("host_only")
-    assert linked >= 4 * host_only and linked >= 50, (linked, host_only)
+    assert host_only == 0 and linked >= 76, (linked, host_only)
     assert {"fs.readAll", "process.argument", "map.Map.put", "buffer.toString"} <= runtime_host_targets()
 
 

@@ -1,0 +1,7 @@
+# The C standard library, written in SemanticScript (D-153): ctype.h, string.h, stdlib.h, the
+# basics of math.h, and a little of stdio.h, as glibc behaves in the C locale. `ffi.open("c")`
+# binds to it in an executable on Windows and on Linux alike, and the loader resolves a mapped
+# library's C imports against it. Its functions are `abi library` operations, reached only
+# through the table the compiler builds (`machine.cLibrary`).
+#
+# This module is generated from tools/clibrary.dsl by tools/build.py.

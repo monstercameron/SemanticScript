@@ -1,0 +1,625 @@
+# Tests of the `loader` module; generated from tools/loader.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+hashTest is test
+hashTest purpose "The GNU and System V hashes of names are the ones linkers write"
+hashTest verifies gnuHash hashesLikeGnu
+hashTest verifies elfHash hashesLikeElf
+hashTest typeParameter none
+hashTest input none
+hashTest output none
+hashTest outputOwnedBy none
+hashTest raises none
+hashTest effect use machine.memory
+hashTest uses memoryAccess
+hashTest memoryHeap false
+hashTest async false
+hashTest maxRecursion none
+hashTest label begin loopKind none
+hashTest label begin within none
+hashTest let printfName String "printf" immutable
+hashTest let strlenName String "strlen" immutable
+hashTest let six Int64 6 immutable
+hashTest let printfGnuValue Int64 359345080 immutable
+hashTest let zero Int64 0 immutable
+hashTest let emptyGnuValue Int64 5381 immutable
+hashTest let printfElfValue Int64 125371814 immutable
+hashTest let strlenGnuValue Int64 479443869 immutable
+hashTest let strlenElfValue Int64 128684734 immutable
+hashTest at begin do findPrintf
+hashTest at begin do gnuPrintf
+hashTest at begin do expectGnuPrintf
+hashTest at begin do gnuEmpty
+hashTest at begin do expectGnuEmpty
+hashTest at begin do elfPrintf
+hashTest at begin do expectElfPrintf
+hashTest at begin do findStrlen
+hashTest at begin do gnuStrlen
+hashTest at begin do expectGnuStrlen
+hashTest at begin do elfStrlen
+hashTest at begin do expectElfStrlen
+hashTest at begin return ok none
+
+findPrintf is call
+findPrintf in hashTest
+findPrintf invokes machine.addressOfString
+findPrintf argument text String printfName lend
+findPrintf result printfAt machine.Address
+findPrintf ownedBy none
+findPrintf cleanedBy none
+findPrintf borrows none
+findPrintf catch none
+findPrintf suppresses none
+
+gnuPrintf is call
+gnuPrintf in hashTest
+gnuPrintf invokes gnuHash
+gnuPrintf argument name machine.Address printfAt copy
+gnuPrintf argument bytes Int64 six copy
+gnuPrintf result printfGnu Int64
+gnuPrintf ownedBy none
+gnuPrintf cleanedBy none
+gnuPrintf borrows none
+gnuPrintf catch none
+gnuPrintf suppresses none
+
+expectGnuPrintf is call
+expectGnuPrintf in hashTest
+expectGnuPrintf invokes test.assertEqualInt64
+expectGnuPrintf argument expected Int64 printfGnuValue copy
+expectGnuPrintf argument actual Int64 printfGnu copy
+expectGnuPrintf result none
+expectGnuPrintf ownedBy none
+expectGnuPrintf cleanedBy none
+expectGnuPrintf borrows none
+expectGnuPrintf catch none
+expectGnuPrintf suppresses none
+
+gnuEmpty is call
+gnuEmpty in hashTest
+gnuEmpty invokes gnuHash
+gnuEmpty argument name machine.Address printfAt copy
+gnuEmpty argument bytes Int64 zero copy
+gnuEmpty result emptyGnu Int64
+gnuEmpty ownedBy none
+gnuEmpty cleanedBy none
+gnuEmpty borrows none
+gnuEmpty catch none
+gnuEmpty suppresses none
+
+expectGnuEmpty is call
+expectGnuEmpty in hashTest
+expectGnuEmpty invokes test.assertEqualInt64
+expectGnuEmpty argument expected Int64 emptyGnuValue copy
+expectGnuEmpty argument actual Int64 emptyGnu copy
+expectGnuEmpty result none
+expectGnuEmpty ownedBy none
+expectGnuEmpty cleanedBy none
+expectGnuEmpty borrows none
+expectGnuEmpty catch none
+expectGnuEmpty suppresses none
+
+elfPrintf is call
+elfPrintf in hashTest
+elfPrintf invokes elfHash
+elfPrintf argument name machine.Address printfAt copy
+elfPrintf argument bytes Int64 six copy
+elfPrintf result printfElf Int64
+elfPrintf ownedBy none
+elfPrintf cleanedBy none
+elfPrintf borrows none
+elfPrintf catch none
+elfPrintf suppresses none
+
+expectElfPrintf is call
+expectElfPrintf in hashTest
+expectElfPrintf invokes test.assertEqualInt64
+expectElfPrintf argument expected Int64 printfElfValue copy
+expectElfPrintf argument actual Int64 printfElf copy
+expectElfPrintf result none
+expectElfPrintf ownedBy none
+expectElfPrintf cleanedBy none
+expectElfPrintf borrows none
+expectElfPrintf catch none
+expectElfPrintf suppresses none
+
+findStrlen is call
+findStrlen in hashTest
+findStrlen invokes machine.addressOfString
+findStrlen argument text String strlenName lend
+findStrlen result strlenAt machine.Address
+findStrlen ownedBy none
+findStrlen cleanedBy none
+findStrlen borrows none
+findStrlen catch none
+findStrlen suppresses none
+
+gnuStrlen is call
+gnuStrlen in hashTest
+gnuStrlen invokes gnuHash
+gnuStrlen argument name machine.Address strlenAt copy
+gnuStrlen argument bytes Int64 six copy
+gnuStrlen result strlenGnu Int64
+gnuStrlen ownedBy none
+gnuStrlen cleanedBy none
+gnuStrlen borrows none
+gnuStrlen catch none
+gnuStrlen suppresses none
+
+expectGnuStrlen is call
+expectGnuStrlen in hashTest
+expectGnuStrlen invokes test.assertEqualInt64
+expectGnuStrlen argument expected Int64 strlenGnuValue copy
+expectGnuStrlen argument actual Int64 strlenGnu copy
+expectGnuStrlen result none
+expectGnuStrlen ownedBy none
+expectGnuStrlen cleanedBy none
+expectGnuStrlen borrows none
+expectGnuStrlen catch none
+expectGnuStrlen suppresses none
+
+elfStrlen is call
+elfStrlen in hashTest
+elfStrlen invokes elfHash
+elfStrlen argument name machine.Address strlenAt copy
+elfStrlen argument bytes Int64 six copy
+elfStrlen result strlenElf Int64
+elfStrlen ownedBy none
+elfStrlen cleanedBy none
+elfStrlen borrows none
+elfStrlen catch none
+elfStrlen suppresses none
+
+expectElfStrlen is call
+expectElfStrlen in hashTest
+expectElfStrlen invokes test.assertEqualInt64
+expectElfStrlen argument expected Int64 strlenElfValue copy
+expectElfStrlen argument actual Int64 strlenElf copy
+expectElfStrlen result none
+expectElfStrlen ownedBy none
+expectElfStrlen cleanedBy none
+expectElfStrlen borrows none
+expectElfStrlen catch none
+expectElfStrlen suppresses none
+
+kindTest is test
+kindTest purpose "Relocation types are read as the x86_64 and AArch64 ABIs number them"
+kindTest verifies relocationKind kindsLikeTheAbi
+kindTest typeParameter none
+kindTest input none
+kindTest output none
+kindTest outputOwnedBy none
+kindTest raises none
+kindTest effect none
+kindTest uses none
+kindTest memoryHeap false
+kindTest async false
+kindTest maxRecursion none
+kindTest label begin loopKind none
+kindTest label begin within none
+kindTest let eight Int64 8 immutable
+kindTest let no Bool false immutable
+kindTest let one Int64 1 immutable
+kindTest let armRelativeType Int64 1027 immutable
+kindTest let yes Bool true immutable
+kindTest let seven Int64 7 immutable
+kindTest let two Int64 2 immutable
+kindTest let tpoff Int64 18 immutable
+kindTest let three Int64 3 immutable
+kindTest let armIrelative Int64 1032 immutable
+kindTest let four Int64 4 immutable
+kindTest let pc32 Int64 2 immutable
+kindTest let five Int64 5 immutable
+kindTest at begin do intelRelative
+kindTest at begin do expectRelative
+kindTest at begin do armRelative
+kindTest at begin do expectArmRelative
+kindTest at begin do intelSlot
+kindTest at begin do expectSlot
+kindTest at begin do intelThread
+kindTest at begin do expectThread
+kindTest at begin do armIndirect
+kindTest at begin do expectIndirect
+kindTest at begin do intelOther
+kindTest at begin do expectOther
+kindTest at begin return ok none
+
+intelRelative is call
+intelRelative in kindTest
+intelRelative invokes relocationKind
+intelRelative argument kind Int64 eight copy
+intelRelative argument aarch64 Bool no copy
+intelRelative result relative Int64
+intelRelative ownedBy none
+intelRelative cleanedBy none
+intelRelative borrows none
+intelRelative catch none
+intelRelative suppresses none
+
+expectRelative is call
+expectRelative in kindTest
+expectRelative invokes test.assertEqualInt64
+expectRelative argument expected Int64 one copy
+expectRelative argument actual Int64 relative copy
+expectRelative result none
+expectRelative ownedBy none
+expectRelative cleanedBy none
+expectRelative borrows none
+expectRelative catch none
+expectRelative suppresses none
+
+armRelative is call
+armRelative in kindTest
+armRelative invokes relocationKind
+armRelative argument kind Int64 armRelativeType copy
+armRelative argument aarch64 Bool yes copy
+armRelative result armRelativeKind Int64
+armRelative ownedBy none
+armRelative cleanedBy none
+armRelative borrows none
+armRelative catch none
+armRelative suppresses none
+
+expectArmRelative is call
+expectArmRelative in kindTest
+expectArmRelative invokes test.assertEqualInt64
+expectArmRelative argument expected Int64 one copy
+expectArmRelative argument actual Int64 armRelativeKind copy
+expectArmRelative result none
+expectArmRelative ownedBy none
+expectArmRelative cleanedBy none
+expectArmRelative borrows none
+expectArmRelative catch none
+expectArmRelative suppresses none
+
+intelSlot is call
+intelSlot in kindTest
+intelSlot invokes relocationKind
+intelSlot argument kind Int64 seven copy
+intelSlot argument aarch64 Bool no copy
+intelSlot result slot Int64
+intelSlot ownedBy none
+intelSlot cleanedBy none
+intelSlot borrows none
+intelSlot catch none
+intelSlot suppresses none
+
+expectSlot is call
+expectSlot in kindTest
+expectSlot invokes test.assertEqualInt64
+expectSlot argument expected Int64 two copy
+expectSlot argument actual Int64 slot copy
+expectSlot result none
+expectSlot ownedBy none
+expectSlot cleanedBy none
+expectSlot borrows none
+expectSlot catch none
+expectSlot suppresses none
+
+intelThread is call
+intelThread in kindTest
+intelThread invokes relocationKind
+intelThread argument kind Int64 tpoff copy
+intelThread argument aarch64 Bool no copy
+intelThread result thread Int64
+intelThread ownedBy none
+intelThread cleanedBy none
+intelThread borrows none
+intelThread catch none
+intelThread suppresses none
+
+expectThread is call
+expectThread in kindTest
+expectThread invokes test.assertEqualInt64
+expectThread argument expected Int64 three copy
+expectThread argument actual Int64 thread copy
+expectThread result none
+expectThread ownedBy none
+expectThread cleanedBy none
+expectThread borrows none
+expectThread catch none
+expectThread suppresses none
+
+armIndirect is call
+armIndirect in kindTest
+armIndirect invokes relocationKind
+armIndirect argument kind Int64 armIrelative copy
+armIndirect argument aarch64 Bool yes copy
+armIndirect result indirect Int64
+armIndirect ownedBy none
+armIndirect cleanedBy none
+armIndirect borrows none
+armIndirect catch none
+armIndirect suppresses none
+
+expectIndirect is call
+expectIndirect in kindTest
+expectIndirect invokes test.assertEqualInt64
+expectIndirect argument expected Int64 four copy
+expectIndirect argument actual Int64 indirect copy
+expectIndirect result none
+expectIndirect ownedBy none
+expectIndirect cleanedBy none
+expectIndirect borrows none
+expectIndirect catch none
+expectIndirect suppresses none
+
+intelOther is call
+intelOther in kindTest
+intelOther invokes relocationKind
+intelOther argument kind Int64 pc32 copy
+intelOther argument aarch64 Bool no copy
+intelOther result other Int64
+intelOther ownedBy none
+intelOther cleanedBy none
+intelOther borrows none
+intelOther catch none
+intelOther suppresses none
+
+expectOther is call
+expectOther in kindTest
+expectOther invokes test.assertEqualInt64
+expectOther argument expected Int64 five copy
+expectOther argument actual Int64 other copy
+expectOther result none
+expectOther ownedBy none
+expectOther cleanedBy none
+expectOther borrows none
+expectOther catch none
+expectOther suppresses none
+
+scopeTest is test
+scopeTest purpose "A library's scope falls back to the runtime's C library only when it needs it, for bind; a name no file has opens nothing"
+scopeTest verifies symbolOf findsInScope
+scopeTest verifies openLibrary opensOrRefuses
+scopeTest typeParameter none
+scopeTest input none
+scopeTest output none
+scopeTest outputOwnedBy none
+scopeTest raises none
+scopeTest effect use machine.memory
+scopeTest effect use system.calls
+scopeTest uses memoryAccess
+scopeTest uses systemCalls
+scopeTest memoryHeap false
+scopeTest async false
+scopeTest maxRecursion none
+scopeTest label begin loopKind none
+scopeTest label begin within none
+scopeTest label openMissing loopKind none
+scopeTest label openMissing within none
+scopeTest label done loopKind none
+scopeTest label done within none
+scopeTest let strlenName String "strlen" immutable
+scopeTest let missingPath String "/semanticscript/surely/missing/libnothing.so" immutable
+scopeTest let six Int64 6 immutable
+scopeTest let one Int64 1 immutable
+scopeTest at begin do takeRecord
+scopeTest at begin do findStrlen
+scopeTest at begin do bindAlone
+scopeTest at begin do nowhere
+scopeTest at begin do aloneCheck
+scopeTest at begin do expectAlone
+scopeTest at begin do markC
+scopeTest at begin do bindWithC
+scopeTest at begin do withCCheck
+scopeTest at begin do someWithC
+scopeTest at begin do expectWithC
+scopeTest at begin do giveRecord
+scopeTest at begin do osCheck
+scopeTest at begin branch if onLinux goto openMissing else goto done
+scopeTest at openMissing do findPath
+scopeTest at openMissing do pathLength
+scopeTest at openMissing do openIt
+scopeTest at openMissing do openCheck
+scopeTest at openMissing do expectOpened
+scopeTest at openMissing goto done
+scopeTest at done return ok none
+
+takeRecord is call
+takeRecord in scopeTest
+takeRecord invokes heap.take
+takeRecord argument bytes Int64 objectBytes copy
+takeRecord result object machine.Address
+takeRecord ownedBy none
+takeRecord cleanedBy none
+takeRecord borrows none
+takeRecord catch none
+takeRecord suppresses none
+
+findStrlen is call
+findStrlen in scopeTest
+findStrlen invokes machine.addressOfString
+findStrlen argument text String strlenName lend
+findStrlen result strlenAt machine.Address
+findStrlen ownedBy none
+findStrlen cleanedBy none
+findStrlen borrows none
+findStrlen catch none
+findStrlen suppresses none
+
+bindAlone is call
+bindAlone in scopeTest
+bindAlone invokes symbolOf
+bindAlone argument object machine.Address object copy
+bindAlone argument name machine.Address strlenAt copy
+bindAlone argument bytes Int64 six copy
+bindAlone result alone machine.Address
+bindAlone ownedBy none
+bindAlone cleanedBy none
+bindAlone borrows none
+bindAlone catch none
+bindAlone suppresses none
+
+nowhere is call
+nowhere in scopeTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+aloneCheck is call
+aloneCheck in scopeTest
+aloneCheck invokes machine.equal
+aloneCheck argument left machine.Address alone copy
+aloneCheck argument right machine.Address anywhere copy
+aloneCheck result noneAlone Bool
+aloneCheck ownedBy none
+aloneCheck cleanedBy none
+aloneCheck borrows none
+aloneCheck catch none
+aloneCheck suppresses none
+
+expectAlone is call
+expectAlone in scopeTest
+expectAlone invokes test.assertTrue
+expectAlone argument value Bool noneAlone copy
+expectAlone result none
+expectAlone ownedBy none
+expectAlone cleanedBy none
+expectAlone borrows none
+expectAlone catch none
+expectAlone suppresses none
+
+markC is call
+markC in scopeTest
+markC invokes putField
+markC argument record machine.Address object copy
+markC argument offset Int64 needsCAt copy
+markC argument value Int64 one copy
+markC result none
+markC ownedBy none
+markC cleanedBy none
+markC borrows none
+markC catch none
+markC suppresses none
+
+bindWithC is call
+bindWithC in scopeTest
+bindWithC invokes symbolOf
+bindWithC argument object machine.Address object copy
+bindWithC argument name machine.Address strlenAt copy
+bindWithC argument bytes Int64 six copy
+bindWithC result withC machine.Address
+bindWithC ownedBy none
+bindWithC cleanedBy none
+bindWithC borrows none
+bindWithC catch none
+bindWithC suppresses none
+
+withCCheck is call
+withCCheck in scopeTest
+withCCheck invokes machine.equal
+withCCheck argument left machine.Address withC copy
+withCCheck argument right machine.Address anywhere copy
+withCCheck result noneWithC Bool
+withCCheck ownedBy none
+withCCheck cleanedBy none
+withCCheck borrows none
+withCCheck catch none
+withCCheck suppresses none
+
+someWithC is call
+someWithC in scopeTest
+someWithC invokes logic.not
+someWithC argument value Bool noneWithC copy
+someWithC result foundWithC Bool
+someWithC ownedBy none
+someWithC cleanedBy none
+someWithC borrows none
+someWithC catch none
+someWithC suppresses none
+
+expectWithC is call
+expectWithC in scopeTest
+expectWithC invokes test.assertTrue
+expectWithC argument value Bool foundWithC copy
+expectWithC result none
+expectWithC ownedBy none
+expectWithC cleanedBy none
+expectWithC borrows none
+expectWithC catch none
+expectWithC suppresses none
+
+giveRecord is call
+giveRecord in scopeTest
+giveRecord invokes heap.give
+giveRecord argument block machine.Address object copy
+giveRecord result none
+giveRecord ownedBy none
+giveRecord cleanedBy none
+giveRecord borrows none
+giveRecord catch none
+giveRecord suppresses none
+
+osCheck is call
+osCheck in scopeTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+findPath is call
+findPath in scopeTest
+findPath invokes machine.addressOfString
+findPath argument text String missingPath lend
+findPath result missingAt machine.Address
+findPath ownedBy none
+findPath cleanedBy none
+findPath borrows none
+findPath catch none
+findPath suppresses none
+
+pathLength is call
+pathLength in scopeTest
+pathLength invokes string.byteLength
+pathLength argument text String missingPath lend
+pathLength result pathBytes Int64
+pathLength ownedBy none
+pathLength cleanedBy none
+pathLength borrows none
+pathLength catch none
+pathLength suppresses none
+
+openIt is call
+openIt in scopeTest
+openIt invokes openLibrary
+openIt argument name machine.Address missingAt copy
+openIt argument bytes Int64 pathBytes copy
+openIt result opened machine.Address
+openIt ownedBy none
+openIt cleanedBy none
+openIt borrows none
+openIt catch none
+openIt suppresses none
+
+openCheck is call
+openCheck in scopeTest
+openCheck invokes machine.equal
+openCheck argument left machine.Address opened copy
+openCheck argument right machine.Address anywhere copy
+openCheck result noneOpened Bool
+openCheck ownedBy none
+openCheck cleanedBy none
+openCheck borrows none
+openCheck catch none
+openCheck suppresses none
+
+expectOpened is call
+expectOpened in scopeTest
+expectOpened invokes test.assertTrue
+expectOpened argument value Bool noneOpened copy
+expectOpened result none
+expectOpened ownedBy none
+expectOpened cleanedBy none
+expectOpened borrows none
+expectOpened catch none
+expectOpened suppresses none

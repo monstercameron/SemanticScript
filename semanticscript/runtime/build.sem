@@ -29,6 +29,8 @@ runtime includesModule slots
 runtime includesModule bignum
 runtime includesModule floats
 runtime includesModule wide
+runtime includesModule clibrary
+runtime includesModule loader
 runtime includesModule tasks
 runtime includesModule interrupts
 runtime includesModule files

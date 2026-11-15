@@ -260,6 +260,14 @@ def _machine() -> dict:
         "switchStack": Sig((_at("saveAt"), _at("resume")), effects=_MEM),
         "startStack": Sig((_at("saveAt"), _at("top"), _at("function"), _at("argument")), effects=_MEM),
         "runEntryOnStack": Sig((_at("top"),), "Int32", effects=_MEM),
+        # D-153: the runtime's C library. `cLibrary` is the address of the table the compiler builds of every
+        # `abi library "<name>"` operation: the count, then for each, sorted by name, the name's address, its length,
+        # and the function's address. `callComparison` is `int function(left, right)`, the comparison a C caller
+        # hands qsort and bsearch. `squareRoot` is the correctly rounded square root, one instruction on x86_64 and
+        # AArch64 (llvm.sqrt, which needs no libm there)
+        "cLibrary": Sig((), _A, effects=_MEM),
+        "callComparison": Sig((_at("function"), _at("left"), _at("right")), "Int32", effects=_MEM),
+        "squareRoot": Sig((P("value", "Float64", "copied"),), "Float64", effects=_MEM),
     }
     for t in ("Byte", "Int32", "Int64", "UInt64", "Float64", "Address"):
         canon = _A if t == "Address" else t
@@ -464,6 +472,8 @@ LINUX_CALLS: dict[str, tuple[int, Sig]] = {
     "getsockopt": _linux(55, ("fd", "level", "option", "value:A", "bytes:A")),
     "accept4": _linux(288, ("fd", "address:A", "bytes:A", "flags")),
     "getrandom": _linux(318, ("buffer:A", "bytes", "flags")),
+    # D-155: the thread pointer a loaded library's code reads (its stack protector's canary at %fs:0x28); x86_64 only
+    "archPrctl": _linux(158, ("code", "address:A")),
 }
 
 # D-150: the same system calls on AArch64, by the kernel's generic numbers. AArch64 has no `poll`, `fork`, or `dup2`:
@@ -476,7 +486,7 @@ AARCH64_NUMBERS: dict[str, int] = {
     "unlinkat": 35, "readlinkat": 78, "pipe2": 59, "pidfdOpen": 434, "socket": 198, "connect": 203, "sendto": 206,
     "recvfrom": 207, "shutdown": 210, "bind": 200, "listen": 201, "setsockopt": 208, "getsockopt": 209,
     "accept4": 242, "getrandom": 278,
-}
+}  # D-155: `archPrctl` has no AArch64 number (the thread pointer is a register there); the backend lowers it to a trap
 
 LIBRARY: dict[str, dict] = {
     "machine": {

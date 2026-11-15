@@ -89,13 +89,9 @@ def find_cc() -> list[str] | None:
 RUNTIME_PROJECT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "runtime"))
 _DECLARE = re.compile(r'^declare [^@\n]*@"?([A-Za-z_][A-Za-z0-9_.]*)"?\(', re.M)
 
-# D-140, D-145: what an executable on Linux cannot have. `ffi.open("c")` asks for the C library itself, and every
-# library it could load is linked against it; a static process with no C library cannot host glibc, whose own
-# start-up only its dynamic loader (ld.so) performs.
-LINUX_REFUSED = ("ffi.",)
-LINUX_FFI = ("R901 this program needs {names}, which an executable on Linux cannot have (D-145): `ffi` loads the C "
-             "library (`ffi.open(\"c\")`) or libraries linked against it, and a static process with no C library "
-             "cannot host glibc, whose own start-up needs its dynamic loader (ld.so); run it with `refined run`")
+# D-145 refused `ffi` on Linux; D-153 and D-154 lifted it: `ffi.open("c")` binds the runtime's own C library and any
+# other library is mapped by the runtime's loader, so an executable on Linux refuses no host target.
+LINUX_REFUSED: tuple[str, ...] = ()
 # D-147: a program that reads `signal` has its interrupt handler installed before its entry runs, as the JIT does
 SIGNAL_TARGETS = ("signal.interrupted|", "signal.waitForInterrupt|")
 
@@ -248,7 +244,7 @@ def runtime_host_targets(triple: str | None = None) -> set[str]:
         return set()
     with open(path, encoding="utf-8") as fh:
         found = set(_HOST_TARGET_CELL.findall(fh.read()))
-    if triple is not None and target_os(triple) == "linux":
+    if triple is not None and target_os(triple) == "linux" and LINUX_REFUSED:
         found = {t for t in found if not t.startswith(LINUX_REFUSED)}
     return found
 
@@ -286,8 +282,6 @@ def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
     from .codegen import target_os
     missing = sorted(needed_runtime(ir_text) - provided)
     missing += sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z0-9.]+)\|', ir_text)) - runtime_host_targets(triple))
-    if missing and all(n.startswith(LINUX_REFUSED) for n in missing) and target_os(triple) == "linux":
-        return False, LINUX_FFI.format(names=", ".join(f"`{n}`" for n in missing))
     if missing:
         return False, ("R901 this program needs " + ", ".join(f"`{n}`" for n in missing) + ", which the runtime "
                        f"in SemanticScript does not provide yet on `{machine}` (docs/runtime-in-semanticscript.md); run "

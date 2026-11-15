@@ -1,0 +1,4487 @@
+# Tests of the `clibrary` module; generated from tools/clibrary.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests write C strings in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state never
+# reaches. Expected values are glibc's (tests/test_runtime_nolibc.py compares the library with glibc on Linux).
+firstScratch is operation
+firstScratch purpose "The address of the tests' scratch bytes, with a text and a 0 byte written there"
+firstScratch invariant none
+firstScratch typeParameter none
+firstScratch input text String borrowed
+firstScratch output machine.Address
+firstScratch outputOwnedBy none
+firstScratch raises none
+firstScratch effect use machine.memory
+firstScratch uses memoryAccess
+firstScratch memoryHeap false
+firstScratch async false
+firstScratch maxRecursion none
+firstScratch label begin loopKind none
+firstScratch label begin within none
+firstScratch let scratchAt Int64 61440 immutable
+firstScratch let nul Byte 0 immutable
+firstScratch at begin do findState
+firstScratch at begin do findScratch
+firstScratch at begin do findText
+firstScratch at begin do textLength
+firstScratch at begin do copyIt
+firstScratch at begin do findEnd
+firstScratch at begin do storeEnd
+firstScratch at begin return ok place
+
+findState is call
+findState in firstScratch
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in firstScratch
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result place machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in firstScratch
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in firstScratch
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+copyIt is call
+copyIt in firstScratch
+copyIt invokes machine.copy
+copyIt argument target machine.Address place copy
+copyIt argument source machine.Address textAt copy
+copyIt argument bytes Int64 bytes copy
+copyIt result none
+copyIt ownedBy none
+copyIt cleanedBy none
+copyIt borrows none
+copyIt catch none
+copyIt suppresses none
+
+findEnd is call
+findEnd in firstScratch
+findEnd invokes machine.offset
+findEnd argument address machine.Address place copy
+findEnd argument bytes Int64 bytes copy
+findEnd result end machine.Address
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+storeEnd is call
+storeEnd in firstScratch
+storeEnd invokes machine.storeByte
+storeEnd argument address machine.Address end copy
+storeEnd argument value Byte nul copy
+storeEnd result none
+storeEnd ownedBy none
+storeEnd cleanedBy none
+storeEnd borrows none
+storeEnd catch none
+storeEnd suppresses none
+
+secondScratch is operation
+secondScratch purpose "The address of a second scratch area, 2 KiB after the first, with a text and a 0 byte written there"
+secondScratch invariant none
+secondScratch typeParameter none
+secondScratch input text String borrowed
+secondScratch output machine.Address
+secondScratch outputOwnedBy none
+secondScratch raises none
+secondScratch effect use machine.memory
+secondScratch uses memoryAccess
+secondScratch memoryHeap false
+secondScratch async false
+secondScratch maxRecursion none
+secondScratch label begin loopKind none
+secondScratch label begin within none
+secondScratch let secondAt Int64 63488 immutable
+secondScratch let nul Byte 0 immutable
+secondScratch at begin do findState
+secondScratch at begin do findScratch
+secondScratch at begin do findText
+secondScratch at begin do textLength
+secondScratch at begin do copyIt
+secondScratch at begin do findEnd
+secondScratch at begin do storeEnd
+secondScratch at begin return ok place
+
+findState is call
+findState in secondScratch
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in secondScratch
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 secondAt copy
+findScratch result place machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in secondScratch
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in secondScratch
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+copyIt is call
+copyIt in secondScratch
+copyIt invokes machine.copy
+copyIt argument target machine.Address place copy
+copyIt argument source machine.Address textAt copy
+copyIt argument bytes Int64 bytes copy
+copyIt result none
+copyIt ownedBy none
+copyIt cleanedBy none
+copyIt borrows none
+copyIt catch none
+copyIt suppresses none
+
+findEnd is call
+findEnd in secondScratch
+findEnd invokes machine.offset
+findEnd argument address machine.Address place copy
+findEnd argument bytes Int64 bytes copy
+findEnd result end machine.Address
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+storeEnd is call
+storeEnd in secondScratch
+storeEnd invokes machine.storeByte
+storeEnd argument address machine.Address end copy
+storeEnd argument value Byte nul copy
+storeEnd result none
+storeEnd ownedBy none
+storeEnd cleanedBy none
+storeEnd borrows none
+storeEnd catch none
+storeEnd suppresses none
+
+longMatches is operation
+longMatches purpose "Whether strtol (or strtoul) of a text in a base gives a value, reads a number of bytes, and leaves errno as expected"
+longMatches invariant none
+longMatches typeParameter none
+longMatches input text String borrowed
+longMatches input base Int32 copied
+longMatches input unsigned Bool copied
+longMatches input expected Int64 copied
+longMatches input expectedEnd Int64 copied
+longMatches input expectedErrno Int32 copied
+longMatches output Bool
+longMatches outputOwnedBy none
+longMatches raises none
+longMatches effect use machine.memory
+longMatches uses memoryAccess
+longMatches memoryHeap false
+longMatches async false
+longMatches maxRecursion none
+longMatches label begin loopKind none
+longMatches label begin within none
+longMatches let zero32 Int32 0 immutable
+longMatches at begin do writeIt
+longMatches at begin do clearErrno
+longMatches at begin do findEnd
+longMatches at begin do presetEnd
+longMatches at begin do parseIt
+longMatches at begin do valueCheck
+longMatches at begin do readEnd
+longMatches at begin do offsetOf
+longMatches at begin do endCheck
+longMatches at begin do findErrno
+longMatches at begin do readErrno
+longMatches at begin do errnoCheck
+longMatches at begin do firstTwo
+longMatches at begin do allThree
+longMatches at begin return ok matches
+
+writeIt is call
+writeIt in longMatches
+writeIt invokes firstScratch
+writeIt argument text String text lend
+writeIt result place machine.Address
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch none
+writeIt suppresses none
+
+clearErrno is call
+clearErrno in longMatches
+clearErrno invokes setErrno
+clearErrno argument value Int32 zero32 copy
+clearErrno result none
+clearErrno ownedBy none
+clearErrno cleanedBy none
+clearErrno borrows none
+clearErrno catch none
+clearErrno suppresses none
+
+findEnd is call
+findEnd in longMatches
+findEnd invokes kernel.stateAt
+findEnd argument offset Int64 realAt copy
+findEnd result endCell machine.Address
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+presetEnd is call
+presetEnd in longMatches
+presetEnd invokes machine.storeAddress
+presetEnd argument address machine.Address endCell copy
+presetEnd argument value machine.Address place copy
+presetEnd result none
+presetEnd ownedBy none
+presetEnd cleanedBy none
+presetEnd borrows none
+presetEnd catch none
+presetEnd suppresses none
+
+parseIt is call
+parseIt in longMatches
+parseIt invokes parseWhole
+parseIt argument text machine.Address place copy
+parseIt argument endAt machine.Address endCell copy
+parseIt argument base Int32 base copy
+parseIt argument unsigned Bool unsigned copy
+parseIt result value Int64
+parseIt ownedBy none
+parseIt cleanedBy none
+parseIt borrows none
+parseIt catch none
+parseIt suppresses none
+
+valueCheck is call
+valueCheck in longMatches
+valueCheck invokes compare.equalInt64
+valueCheck argument left Int64 expected copy
+valueCheck argument right Int64 value copy
+valueCheck result sameValue Bool
+valueCheck ownedBy none
+valueCheck cleanedBy none
+valueCheck borrows none
+valueCheck catch none
+valueCheck suppresses none
+
+readEnd is call
+readEnd in longMatches
+readEnd invokes machine.loadAddress
+readEnd argument address machine.Address endCell copy
+readEnd result end machine.Address
+readEnd ownedBy none
+readEnd cleanedBy none
+readEnd borrows none
+readEnd catch none
+readEnd suppresses none
+
+offsetOf is call
+offsetOf in longMatches
+offsetOf invokes machine.difference
+offsetOf argument left machine.Address end copy
+offsetOf argument right machine.Address place copy
+offsetOf result read Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+endCheck is call
+endCheck in longMatches
+endCheck invokes compare.equalInt64
+endCheck argument left Int64 expectedEnd copy
+endCheck argument right Int64 read copy
+endCheck result sameEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+findErrno is call
+findErrno in longMatches
+findErrno invokes kernel.stateAt
+findErrno argument offset Int64 errnoAt copy
+findErrno result errnoCell machine.Address
+findErrno ownedBy none
+findErrno cleanedBy none
+findErrno borrows none
+findErrno catch none
+findErrno suppresses none
+
+readErrno is call
+readErrno in longMatches
+readErrno invokes machine.loadInt32
+readErrno argument address machine.Address errnoCell copy
+readErrno result errno Int32
+readErrno ownedBy none
+readErrno cleanedBy none
+readErrno borrows none
+readErrno catch none
+readErrno suppresses none
+
+errnoCheck is call
+errnoCheck in longMatches
+errnoCheck invokes compare.equalInt32
+errnoCheck argument left Int32 expectedErrno copy
+errnoCheck argument right Int32 errno copy
+errnoCheck result sameErrno Bool
+errnoCheck ownedBy none
+errnoCheck cleanedBy none
+errnoCheck borrows none
+errnoCheck catch none
+errnoCheck suppresses none
+
+firstTwo is call
+firstTwo in longMatches
+firstTwo invokes logic.and
+firstTwo argument left Bool sameValue copy
+firstTwo argument right Bool sameEnd copy
+firstTwo result valueAndEnd Bool
+firstTwo ownedBy none
+firstTwo cleanedBy none
+firstTwo borrows none
+firstTwo catch none
+firstTwo suppresses none
+
+allThree is call
+allThree in longMatches
+allThree invokes logic.and
+allThree argument left Bool valueAndEnd copy
+allThree argument right Bool sameErrno copy
+allThree result matches Bool
+allThree ownedBy none
+allThree cleanedBy none
+allThree borrows none
+allThree catch none
+allThree suppresses none
+
+realMatches is operation
+realMatches purpose "Whether strtod of a text gives a double of the expected bits and reads a number of bytes"
+realMatches invariant none
+realMatches typeParameter none
+realMatches input text String borrowed
+realMatches input expectedBits UInt64 copied
+realMatches input expectedEnd Int64 copied
+realMatches output Bool
+realMatches outputOwnedBy none
+realMatches raises none
+realMatches effect use machine.memory
+realMatches effect use system.calls
+realMatches uses memoryAccess
+realMatches uses systemCalls
+realMatches memoryHeap false
+realMatches async false
+realMatches maxRecursion none
+realMatches label begin loopKind none
+realMatches label begin within none
+realMatches let none
+realMatches at begin do writeIt
+realMatches at begin do findEnd
+realMatches at begin do parseIt
+realMatches at begin do toBits
+realMatches at begin do valueCheck
+realMatches at begin do readEnd
+realMatches at begin do offsetOf
+realMatches at begin do endCheck
+realMatches at begin do bothCheck
+realMatches at begin return ok matches
+
+writeIt is call
+writeIt in realMatches
+writeIt invokes firstScratch
+writeIt argument text String text lend
+writeIt result place machine.Address
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch none
+writeIt suppresses none
+
+findEnd is call
+findEnd in realMatches
+findEnd invokes kernel.stateAt
+findEnd argument offset Int64 hexBitsAt copy
+findEnd result endCell machine.Address
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+parseIt is call
+parseIt in realMatches
+parseIt invokes parseReal
+parseIt argument text machine.Address place copy
+parseIt argument endAt machine.Address endCell copy
+parseIt result value Float64
+parseIt ownedBy none
+parseIt cleanedBy none
+parseIt borrows none
+parseIt catch none
+parseIt suppresses none
+
+toBits is call
+toBits in realMatches
+toBits invokes convert.float64BitsToUInt64
+toBits argument value Float64 value copy
+toBits result valueBits UInt64
+toBits ownedBy none
+toBits cleanedBy none
+toBits borrows none
+toBits catch none
+toBits suppresses none
+
+valueCheck is call
+valueCheck in realMatches
+valueCheck invokes compare.equalUInt64
+valueCheck argument left UInt64 expectedBits copy
+valueCheck argument right UInt64 valueBits copy
+valueCheck result sameValue Bool
+valueCheck ownedBy none
+valueCheck cleanedBy none
+valueCheck borrows none
+valueCheck catch none
+valueCheck suppresses none
+
+readEnd is call
+readEnd in realMatches
+readEnd invokes machine.loadAddress
+readEnd argument address machine.Address endCell copy
+readEnd result end machine.Address
+readEnd ownedBy none
+readEnd cleanedBy none
+readEnd borrows none
+readEnd catch none
+readEnd suppresses none
+
+offsetOf is call
+offsetOf in realMatches
+offsetOf invokes machine.difference
+offsetOf argument left machine.Address end copy
+offsetOf argument right machine.Address place copy
+offsetOf result read Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+endCheck is call
+endCheck in realMatches
+endCheck invokes compare.equalInt64
+endCheck argument left Int64 expectedEnd copy
+endCheck argument right Int64 read copy
+endCheck result sameEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+bothCheck is call
+bothCheck in realMatches
+bothCheck invokes logic.and
+bothCheck argument left Bool sameValue copy
+bothCheck argument right Bool sameEnd copy
+bothCheck result matches Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+sameFloat is operation
+sameFloat purpose "Whether a double has the expected bits"
+sameFloat invariant none
+sameFloat typeParameter none
+sameFloat input expectedBits UInt64 copied
+sameFloat input actual Float64 copied
+sameFloat output Bool
+sameFloat outputOwnedBy none
+sameFloat raises none
+sameFloat effect none
+sameFloat uses none
+sameFloat memoryHeap false
+sameFloat async false
+sameFloat maxRecursion none
+sameFloat label begin loopKind none
+sameFloat label begin within none
+sameFloat let none
+sameFloat at begin do toBits
+sameFloat at begin do sameCheck
+sameFloat at begin return ok same
+
+toBits is call
+toBits in sameFloat
+toBits invokes convert.float64BitsToUInt64
+toBits argument value Float64 actual copy
+toBits result actualBits UInt64
+toBits ownedBy none
+toBits cleanedBy none
+toBits borrows none
+toBits catch none
+toBits suppresses none
+
+sameCheck is call
+sameCheck in sameFloat
+sameCheck invokes compare.equalUInt64
+sameCheck argument left UInt64 expectedBits copy
+sameCheck argument right UInt64 actualBits copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+functionNamed is operation
+functionNamed purpose "The address of a function of the C library by a name"
+functionNamed invariant none
+functionNamed typeParameter none
+functionNamed input name String borrowed
+functionNamed output machine.Address
+functionNamed outputOwnedBy none
+functionNamed raises none
+functionNamed effect use machine.memory
+functionNamed uses memoryAccess
+functionNamed memoryHeap false
+functionNamed async false
+functionNamed maxRecursion none
+functionNamed label begin loopKind none
+functionNamed label begin within none
+functionNamed let none
+functionNamed at begin do findName
+functionNamed at begin do nameLength
+functionNamed at begin do findIt
+functionNamed at begin return ok function
+
+findName is call
+findName in functionNamed
+findName invokes machine.addressOfString
+findName argument text String name lend
+findName result nameAt machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+nameLength is call
+nameLength in functionNamed
+nameLength invokes string.byteLength
+nameLength argument text String name lend
+nameLength result bytes Int64
+nameLength ownedBy none
+nameLength cleanedBy none
+nameLength borrows none
+nameLength catch none
+nameLength suppresses none
+
+findIt is call
+findIt in functionNamed
+findIt invokes lookup
+findIt argument name machine.Address nameAt copy
+findIt argument bytes Int64 bytes copy
+findIt result function machine.Address
+findIt ownedBy none
+findIt cleanedBy none
+findIt borrows none
+findIt catch none
+findIt suppresses none
+
+sameInt is operation
+sameInt purpose "Whether an int is the expected one"
+sameInt invariant none
+sameInt typeParameter none
+sameInt input expected Int32 copied
+sameInt input actual Int32 copied
+sameInt output Bool
+sameInt outputOwnedBy none
+sameInt raises none
+sameInt effect none
+sameInt uses none
+sameInt memoryHeap false
+sameInt async false
+sameInt maxRecursion none
+sameInt label begin loopKind none
+sameInt label begin within none
+sameInt let none
+sameInt at begin do sameCheck
+sameInt at begin return ok same
+
+sameCheck is call
+sameCheck in sameInt
+sameCheck invokes compare.equalInt32
+sameCheck argument left Int32 expected copy
+sameCheck argument right Int32 actual copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+markItems is operation
+markItems purpose "Put a byte after each of four three-letter items, at 3, 7, 11, and 15"
+markItems invariant none
+markItems typeParameter none
+markItems input base machine.Address copied
+markItems input value Byte copied
+markItems output none
+markItems outputOwnedBy none
+markItems raises none
+markItems effect use machine.memory
+markItems uses memoryAccess
+markItems memoryHeap false
+markItems async false
+markItems maxRecursion none
+markItems label begin loopKind none
+markItems label begin within none
+markItems let three Int64 3 immutable
+markItems let seven Int64 7 immutable
+markItems let eleven Int64 11 immutable
+markItems let fifteen Int64 15 immutable
+markItems at begin do findFirst
+markItems at begin do storeFirst
+markItems at begin do findSecond
+markItems at begin do storeSecond
+markItems at begin do findThird
+markItems at begin do storeThird
+markItems at begin do findFourth
+markItems at begin do storeFourth
+markItems at begin return ok none
+
+findFirst is call
+findFirst in markItems
+findFirst invokes machine.offset
+findFirst argument address machine.Address base copy
+findFirst argument bytes Int64 three copy
+findFirst result first machine.Address
+findFirst ownedBy none
+findFirst cleanedBy none
+findFirst borrows none
+findFirst catch none
+findFirst suppresses none
+
+storeFirst is call
+storeFirst in markItems
+storeFirst invokes machine.storeByte
+storeFirst argument address machine.Address first copy
+storeFirst argument value Byte value copy
+storeFirst result none
+storeFirst ownedBy none
+storeFirst cleanedBy none
+storeFirst borrows none
+storeFirst catch none
+storeFirst suppresses none
+
+findSecond is call
+findSecond in markItems
+findSecond invokes machine.offset
+findSecond argument address machine.Address base copy
+findSecond argument bytes Int64 seven copy
+findSecond result secondItem machine.Address
+findSecond ownedBy none
+findSecond cleanedBy none
+findSecond borrows none
+findSecond catch none
+findSecond suppresses none
+
+storeSecond is call
+storeSecond in markItems
+storeSecond invokes machine.storeByte
+storeSecond argument address machine.Address secondItem copy
+storeSecond argument value Byte value copy
+storeSecond result none
+storeSecond ownedBy none
+storeSecond cleanedBy none
+storeSecond borrows none
+storeSecond catch none
+storeSecond suppresses none
+
+findThird is call
+findThird in markItems
+findThird invokes machine.offset
+findThird argument address machine.Address base copy
+findThird argument bytes Int64 eleven copy
+findThird result third machine.Address
+findThird ownedBy none
+findThird cleanedBy none
+findThird borrows none
+findThird catch none
+findThird suppresses none
+
+storeThird is call
+storeThird in markItems
+storeThird invokes machine.storeByte
+storeThird argument address machine.Address third copy
+storeThird argument value Byte value copy
+storeThird result none
+storeThird ownedBy none
+storeThird cleanedBy none
+storeThird borrows none
+storeThird catch none
+storeThird suppresses none
+
+findFourth is call
+findFourth in markItems
+findFourth invokes machine.offset
+findFourth argument address machine.Address base copy
+findFourth argument bytes Int64 fifteen copy
+findFourth result fourth machine.Address
+findFourth ownedBy none
+findFourth cleanedBy none
+findFourth borrows none
+findFourth catch none
+findFourth suppresses none
+
+storeFourth is call
+storeFourth in markItems
+storeFourth invokes machine.storeByte
+storeFourth argument address machine.Address fourth copy
+storeFourth argument value Byte value copy
+storeFourth result none
+storeFourth ownedBy none
+storeFourth cleanedBy none
+storeFourth borrows none
+storeFourth catch none
+storeFourth suppresses none
+
+classTest is test
+classTest purpose "Each character's class bits are glibc's, the ctype functions mask them, toupper and tolower change only letters, and the tables hold the same"
+classTest verifies classBits classifiesLikeGlibc
+classTest verifies toUpper upperCases
+classTest verifies toLower lowerCases
+classTest verifies classTable pointsAtClasses
+classTest typeParameter none
+classTest input none
+classTest output none
+classTest outputOwnedBy none
+classTest raises none
+classTest effect use machine.memory
+classTest effect use system.calls
+classTest uses memoryAccess
+classTest uses systemCalls
+classTest memoryHeap false
+classTest async false
+classTest maxRecursion none
+classTest label begin loopKind none
+classTest label begin within none
+classTest let capitalA Int32 65 immutable
+classTest let upperHexBits Int32 54536 immutable
+classTest let tab Int32 9 immutable
+classTest let tabClass Int32 8195 immutable
+classTest let high Int32 200 immutable
+classTest let none32 Int32 0 immutable
+classTest let eof Int32 -1 immutable
+classTest let smallQ Int32 113 immutable
+classTest let alphaBit Int32 1024 immutable
+classTest let space Int32 32 immutable
+classTest let blankBit Int32 1 immutable
+classTest let atSign Int32 64 immutable
+classTest let punctBit Int32 4 immutable
+classTest let capitalQ Int32 81 immutable
+classTest let minusTwo Int32 -2 immutable
+classTest let unsignedTwo Int32 254 immutable
+classTest let wordOffset Int64 130 immutable
+classTest let lowAByte Int64 8 immutable
+classTest let upperOffset Int64 452 immutable
+classTest let eofOffset Int64 -4 immutable
+classTest at begin do classA
+classTest at begin do checkA
+classTest at begin do expectA
+classTest at begin do classTab
+classTest at begin do checkTab
+classTest at begin do expectTab
+classTest at begin do classHigh
+classTest at begin do checkHigh
+classTest at begin do expectHigh
+classTest at begin do classEof
+classTest at begin do checkEof
+classTest at begin do expectEof
+classTest at begin do alphaOf
+classTest at begin do checkAlpha
+classTest at begin do expectAlpha
+classTest at begin do blankOf
+classTest at begin do checkBlank
+classTest at begin do expectBlank
+classTest at begin do punctOf
+classTest at begin do checkPunct
+classTest at begin do expectPunct
+classTest at begin do digitCheck
+classTest at begin do checkDigit
+classTest at begin do expectDigit
+classTest at begin do upperOf
+classTest at begin do checkUpper
+classTest at begin do expectUpper
+classTest at begin do upperKeep
+classTest at begin do checkKept
+classTest at begin do expectKept
+classTest at begin do lowerOf
+classTest at begin do checkLower
+classTest at begin do expectLower
+classTest at begin do upperSigned
+classTest at begin do checkSigned
+classTest at begin do expectSigned
+classTest at begin do findCell
+classTest at begin do readZero
+classTest at begin do findWordA
+classTest at begin do readLowA
+classTest at begin do widenLowA
+classTest at begin do expectLowA
+classTest at begin do findUpperCell
+classTest at begin do readUpperZero
+classTest at begin do findUpperQ
+classTest at begin do readUpperQ
+classTest at begin do checkUpperQ
+classTest at begin do expectUpperQ
+classTest at begin do findLowerCell
+classTest at begin do readLowerZero
+classTest at begin do findLowerEof
+classTest at begin do readLowerEof
+classTest at begin do checkLowerEof
+classTest at begin do expectLowerEof
+classTest at begin return ok none
+
+classA is call
+classA in classTest
+classA invokes classBits
+classA argument code Int32 capitalA copy
+classA result aBits Int32
+classA ownedBy none
+classA cleanedBy none
+classA borrows none
+classA catch none
+classA suppresses none
+
+checkA is call
+checkA in classTest
+checkA invokes sameInt
+checkA argument expected Int32 upperHexBits copy
+checkA argument actual Int32 aBits copy
+checkA result aSame Bool
+checkA ownedBy none
+checkA cleanedBy none
+checkA borrows none
+checkA catch none
+checkA suppresses none
+
+expectA is call
+expectA in classTest
+expectA invokes test.assertTrue
+expectA argument value Bool aSame copy
+expectA result none
+expectA ownedBy none
+expectA cleanedBy none
+expectA borrows none
+expectA catch none
+expectA suppresses none
+
+classTab is call
+classTab in classTest
+classTab invokes classBits
+classTab argument code Int32 tab copy
+classTab result tabBits Int32
+classTab ownedBy none
+classTab cleanedBy none
+classTab borrows none
+classTab catch none
+classTab suppresses none
+
+checkTab is call
+checkTab in classTest
+checkTab invokes sameInt
+checkTab argument expected Int32 tabClass copy
+checkTab argument actual Int32 tabBits copy
+checkTab result tabSame Bool
+checkTab ownedBy none
+checkTab cleanedBy none
+checkTab borrows none
+checkTab catch none
+checkTab suppresses none
+
+expectTab is call
+expectTab in classTest
+expectTab invokes test.assertTrue
+expectTab argument value Bool tabSame copy
+expectTab result none
+expectTab ownedBy none
+expectTab cleanedBy none
+expectTab borrows none
+expectTab catch none
+expectTab suppresses none
+
+classHigh is call
+classHigh in classTest
+classHigh invokes classBits
+classHigh argument code Int32 high copy
+classHigh result highBits Int32
+classHigh ownedBy none
+classHigh cleanedBy none
+classHigh borrows none
+classHigh catch none
+classHigh suppresses none
+
+checkHigh is call
+checkHigh in classTest
+checkHigh invokes sameInt
+checkHigh argument expected Int32 none32 copy
+checkHigh argument actual Int32 highBits copy
+checkHigh result highSame Bool
+checkHigh ownedBy none
+checkHigh cleanedBy none
+checkHigh borrows none
+checkHigh catch none
+checkHigh suppresses none
+
+expectHigh is call
+expectHigh in classTest
+expectHigh invokes test.assertTrue
+expectHigh argument value Bool highSame copy
+expectHigh result none
+expectHigh ownedBy none
+expectHigh cleanedBy none
+expectHigh borrows none
+expectHigh catch none
+expectHigh suppresses none
+
+classEof is call
+classEof in classTest
+classEof invokes classBits
+classEof argument code Int32 eof copy
+classEof result eofBits Int32
+classEof ownedBy none
+classEof cleanedBy none
+classEof borrows none
+classEof catch none
+classEof suppresses none
+
+checkEof is call
+checkEof in classTest
+checkEof invokes sameInt
+checkEof argument expected Int32 none32 copy
+checkEof argument actual Int32 eofBits copy
+checkEof result eofSame Bool
+checkEof ownedBy none
+checkEof cleanedBy none
+checkEof borrows none
+checkEof catch none
+checkEof suppresses none
+
+expectEof is call
+expectEof in classTest
+expectEof invokes test.assertTrue
+expectEof argument value Bool eofSame copy
+expectEof result none
+expectEof ownedBy none
+expectEof cleanedBy none
+expectEof borrows none
+expectEof catch none
+expectEof suppresses none
+
+alphaOf is call
+alphaOf in classTest
+alphaOf invokes alphaClass
+alphaOf argument code Int32 smallQ copy
+alphaOf result alpha Int32
+alphaOf ownedBy none
+alphaOf cleanedBy none
+alphaOf borrows none
+alphaOf catch none
+alphaOf suppresses none
+
+checkAlpha is call
+checkAlpha in classTest
+checkAlpha invokes sameInt
+checkAlpha argument expected Int32 alphaBit copy
+checkAlpha argument actual Int32 alpha copy
+checkAlpha result alphaSame Bool
+checkAlpha ownedBy none
+checkAlpha cleanedBy none
+checkAlpha borrows none
+checkAlpha catch none
+checkAlpha suppresses none
+
+expectAlpha is call
+expectAlpha in classTest
+expectAlpha invokes test.assertTrue
+expectAlpha argument value Bool alphaSame copy
+expectAlpha result none
+expectAlpha ownedBy none
+expectAlpha cleanedBy none
+expectAlpha borrows none
+expectAlpha catch none
+expectAlpha suppresses none
+
+blankOf is call
+blankOf in classTest
+blankOf invokes blankClass
+blankOf argument code Int32 space copy
+blankOf result blank Int32
+blankOf ownedBy none
+blankOf cleanedBy none
+blankOf borrows none
+blankOf catch none
+blankOf suppresses none
+
+checkBlank is call
+checkBlank in classTest
+checkBlank invokes sameInt
+checkBlank argument expected Int32 blankBit copy
+checkBlank argument actual Int32 blank copy
+checkBlank result blankSame Bool
+checkBlank ownedBy none
+checkBlank cleanedBy none
+checkBlank borrows none
+checkBlank catch none
+checkBlank suppresses none
+
+expectBlank is call
+expectBlank in classTest
+expectBlank invokes test.assertTrue
+expectBlank argument value Bool blankSame copy
+expectBlank result none
+expectBlank ownedBy none
+expectBlank cleanedBy none
+expectBlank borrows none
+expectBlank catch none
+expectBlank suppresses none
+
+punctOf is call
+punctOf in classTest
+punctOf invokes punctuationClass
+punctOf argument code Int32 atSign copy
+punctOf result punct Int32
+punctOf ownedBy none
+punctOf cleanedBy none
+punctOf borrows none
+punctOf catch none
+punctOf suppresses none
+
+checkPunct is call
+checkPunct in classTest
+checkPunct invokes sameInt
+checkPunct argument expected Int32 punctBit copy
+checkPunct argument actual Int32 punct copy
+checkPunct result punctSame Bool
+checkPunct ownedBy none
+checkPunct cleanedBy none
+checkPunct borrows none
+checkPunct catch none
+checkPunct suppresses none
+
+expectPunct is call
+expectPunct in classTest
+expectPunct invokes test.assertTrue
+expectPunct argument value Bool punctSame copy
+expectPunct result none
+expectPunct ownedBy none
+expectPunct cleanedBy none
+expectPunct borrows none
+expectPunct catch none
+expectPunct suppresses none
+
+digitCheck is call
+digitCheck in classTest
+digitCheck invokes digitClass
+digitCheck argument code Int32 capitalA copy
+digitCheck result digit Int32
+digitCheck ownedBy none
+digitCheck cleanedBy none
+digitCheck borrows none
+digitCheck catch none
+digitCheck suppresses none
+
+checkDigit is call
+checkDigit in classTest
+checkDigit invokes sameInt
+checkDigit argument expected Int32 none32 copy
+checkDigit argument actual Int32 digit copy
+checkDigit result digitSame Bool
+checkDigit ownedBy none
+checkDigit cleanedBy none
+checkDigit borrows none
+checkDigit catch none
+checkDigit suppresses none
+
+expectDigit is call
+expectDigit in classTest
+expectDigit invokes test.assertTrue
+expectDigit argument value Bool digitSame copy
+expectDigit result none
+expectDigit ownedBy none
+expectDigit cleanedBy none
+expectDigit borrows none
+expectDigit catch none
+expectDigit suppresses none
+
+upperOf is call
+upperOf in classTest
+upperOf invokes toUpper
+upperOf argument code Int32 smallQ copy
+upperOf result upper Int32
+upperOf ownedBy none
+upperOf cleanedBy none
+upperOf borrows none
+upperOf catch none
+upperOf suppresses none
+
+checkUpper is call
+checkUpper in classTest
+checkUpper invokes sameInt
+checkUpper argument expected Int32 capitalQ copy
+checkUpper argument actual Int32 upper copy
+checkUpper result upperSame Bool
+checkUpper ownedBy none
+checkUpper cleanedBy none
+checkUpper borrows none
+checkUpper catch none
+checkUpper suppresses none
+
+expectUpper is call
+expectUpper in classTest
+expectUpper invokes test.assertTrue
+expectUpper argument value Bool upperSame copy
+expectUpper result none
+expectUpper ownedBy none
+expectUpper cleanedBy none
+expectUpper borrows none
+expectUpper catch none
+expectUpper suppresses none
+
+upperKeep is call
+upperKeep in classTest
+upperKeep invokes toUpper
+upperKeep argument code Int32 eof copy
+upperKeep result kept Int32
+upperKeep ownedBy none
+upperKeep cleanedBy none
+upperKeep borrows none
+upperKeep catch none
+upperKeep suppresses none
+
+checkKept is call
+checkKept in classTest
+checkKept invokes sameInt
+checkKept argument expected Int32 eof copy
+checkKept argument actual Int32 kept copy
+checkKept result keptSame Bool
+checkKept ownedBy none
+checkKept cleanedBy none
+checkKept borrows none
+checkKept catch none
+checkKept suppresses none
+
+expectKept is call
+expectKept in classTest
+expectKept invokes test.assertTrue
+expectKept argument value Bool keptSame copy
+expectKept result none
+expectKept ownedBy none
+expectKept cleanedBy none
+expectKept borrows none
+expectKept catch none
+expectKept suppresses none
+
+lowerOf is call
+lowerOf in classTest
+lowerOf invokes toLower
+lowerOf argument code Int32 capitalQ copy
+lowerOf result lower Int32
+lowerOf ownedBy none
+lowerOf cleanedBy none
+lowerOf borrows none
+lowerOf catch none
+lowerOf suppresses none
+
+checkLower is call
+checkLower in classTest
+checkLower invokes sameInt
+checkLower argument expected Int32 smallQ copy
+checkLower argument actual Int32 lower copy
+checkLower result lowerSame Bool
+checkLower ownedBy none
+checkLower cleanedBy none
+checkLower borrows none
+checkLower catch none
+checkLower suppresses none
+
+expectLower is call
+expectLower in classTest
+expectLower invokes test.assertTrue
+expectLower argument value Bool lowerSame copy
+expectLower result none
+expectLower ownedBy none
+expectLower cleanedBy none
+expectLower borrows none
+expectLower catch none
+expectLower suppresses none
+
+upperSigned is call
+upperSigned in classTest
+upperSigned invokes toUpper
+upperSigned argument code Int32 minusTwo copy
+upperSigned result signedUpper Int32
+upperSigned ownedBy none
+upperSigned cleanedBy none
+upperSigned borrows none
+upperSigned catch none
+upperSigned suppresses none
+
+checkSigned is call
+checkSigned in classTest
+checkSigned invokes sameInt
+checkSigned argument expected Int32 unsignedTwo copy
+checkSigned argument actual Int32 signedUpper copy
+checkSigned result signedSame Bool
+checkSigned ownedBy none
+checkSigned cleanedBy none
+checkSigned borrows none
+checkSigned catch none
+checkSigned suppresses none
+
+expectSigned is call
+expectSigned in classTest
+expectSigned invokes test.assertTrue
+expectSigned argument value Bool signedSame copy
+expectSigned result none
+expectSigned ownedBy none
+expectSigned cleanedBy none
+expectSigned borrows none
+expectSigned catch none
+expectSigned suppresses none
+
+findCell is call
+findCell in classTest
+findCell invokes classTable
+findCell argument none
+findCell result cell machine.Address
+findCell ownedBy none
+findCell cleanedBy none
+findCell borrows none
+findCell catch none
+findCell suppresses none
+
+readZero is call
+readZero in classTest
+readZero invokes machine.loadAddress
+readZero argument address machine.Address cell copy
+readZero result zeroAt machine.Address
+readZero ownedBy none
+readZero cleanedBy none
+readZero borrows none
+readZero catch none
+readZero suppresses none
+
+findWordA is call
+findWordA in classTest
+findWordA invokes machine.offset
+findWordA argument address machine.Address zeroAt copy
+findWordA argument bytes Int64 wordOffset copy
+findWordA result wordA machine.Address
+findWordA ownedBy none
+findWordA cleanedBy none
+findWordA borrows none
+findWordA catch none
+findWordA suppresses none
+
+readLowA is call
+readLowA in classTest
+readLowA invokes machine.loadByte
+readLowA argument address machine.Address wordA copy
+readLowA result lowA Byte
+readLowA ownedBy none
+readLowA cleanedBy none
+readLowA borrows none
+readLowA catch none
+readLowA suppresses none
+
+widenLowA is call
+widenLowA in classTest
+widenLowA invokes convert.byteToInt64
+widenLowA argument value Byte lowA copy
+widenLowA result lowAWide Int64
+widenLowA ownedBy none
+widenLowA cleanedBy none
+widenLowA borrows none
+widenLowA catch none
+widenLowA suppresses none
+
+expectLowA is call
+expectLowA in classTest
+expectLowA invokes test.assertEqualInt64
+expectLowA argument expected Int64 lowAByte copy
+expectLowA argument actual Int64 lowAWide copy
+expectLowA result none
+expectLowA ownedBy none
+expectLowA cleanedBy none
+expectLowA borrows none
+expectLowA catch none
+expectLowA suppresses none
+
+findUpperCell is call
+findUpperCell in classTest
+findUpperCell invokes upperTable
+findUpperCell argument none
+findUpperCell result upperCell machine.Address
+findUpperCell ownedBy none
+findUpperCell cleanedBy none
+findUpperCell borrows none
+findUpperCell catch none
+findUpperCell suppresses none
+
+readUpperZero is call
+readUpperZero in classTest
+readUpperZero invokes machine.loadAddress
+readUpperZero argument address machine.Address upperCell copy
+readUpperZero result upperZero machine.Address
+readUpperZero ownedBy none
+readUpperZero cleanedBy none
+readUpperZero borrows none
+readUpperZero catch none
+readUpperZero suppresses none
+
+findUpperQ is call
+findUpperQ in classTest
+findUpperQ invokes machine.offset
+findUpperQ argument address machine.Address upperZero copy
+findUpperQ argument bytes Int64 upperOffset copy
+findUpperQ result upperQ machine.Address
+findUpperQ ownedBy none
+findUpperQ cleanedBy none
+findUpperQ borrows none
+findUpperQ catch none
+findUpperQ suppresses none
+
+readUpperQ is call
+readUpperQ in classTest
+readUpperQ invokes machine.loadInt32
+readUpperQ argument address machine.Address upperQ copy
+readUpperQ result upperValue Int32
+readUpperQ ownedBy none
+readUpperQ cleanedBy none
+readUpperQ borrows none
+readUpperQ catch none
+readUpperQ suppresses none
+
+checkUpperQ is call
+checkUpperQ in classTest
+checkUpperQ invokes sameInt
+checkUpperQ argument expected Int32 capitalQ copy
+checkUpperQ argument actual Int32 upperValue copy
+checkUpperQ result upperQSame Bool
+checkUpperQ ownedBy none
+checkUpperQ cleanedBy none
+checkUpperQ borrows none
+checkUpperQ catch none
+checkUpperQ suppresses none
+
+expectUpperQ is call
+expectUpperQ in classTest
+expectUpperQ invokes test.assertTrue
+expectUpperQ argument value Bool upperQSame copy
+expectUpperQ result none
+expectUpperQ ownedBy none
+expectUpperQ cleanedBy none
+expectUpperQ borrows none
+expectUpperQ catch none
+expectUpperQ suppresses none
+
+findLowerCell is call
+findLowerCell in classTest
+findLowerCell invokes lowerTable
+findLowerCell argument none
+findLowerCell result lowerCell machine.Address
+findLowerCell ownedBy none
+findLowerCell cleanedBy none
+findLowerCell borrows none
+findLowerCell catch none
+findLowerCell suppresses none
+
+readLowerZero is call
+readLowerZero in classTest
+readLowerZero invokes machine.loadAddress
+readLowerZero argument address machine.Address lowerCell copy
+readLowerZero result lowerZero machine.Address
+readLowerZero ownedBy none
+readLowerZero cleanedBy none
+readLowerZero borrows none
+readLowerZero catch none
+readLowerZero suppresses none
+
+findLowerEof is call
+findLowerEof in classTest
+findLowerEof invokes machine.offset
+findLowerEof argument address machine.Address lowerZero copy
+findLowerEof argument bytes Int64 eofOffset copy
+findLowerEof result lowerEof machine.Address
+findLowerEof ownedBy none
+findLowerEof cleanedBy none
+findLowerEof borrows none
+findLowerEof catch none
+findLowerEof suppresses none
+
+readLowerEof is call
+readLowerEof in classTest
+readLowerEof invokes machine.loadInt32
+readLowerEof argument address machine.Address lowerEof copy
+readLowerEof result lowerEofValue Int32
+readLowerEof ownedBy none
+readLowerEof cleanedBy none
+readLowerEof borrows none
+readLowerEof catch none
+readLowerEof suppresses none
+
+checkLowerEof is call
+checkLowerEof in classTest
+checkLowerEof invokes sameInt
+checkLowerEof argument expected Int32 eof copy
+checkLowerEof argument actual Int32 lowerEofValue copy
+checkLowerEof result lowerEofSame Bool
+checkLowerEof ownedBy none
+checkLowerEof cleanedBy none
+checkLowerEof borrows none
+checkLowerEof catch none
+checkLowerEof suppresses none
+
+expectLowerEof is call
+expectLowerEof in classTest
+expectLowerEof invokes test.assertTrue
+expectLowerEof argument value Bool lowerEofSame copy
+expectLowerEof result none
+expectLowerEof ownedBy none
+expectLowerEof cleanedBy none
+expectLowerEof borrows none
+expectLowerEof catch none
+expectLowerEof suppresses none
+
+stringTest is test
+stringTest purpose "strlen counts to the 0 byte, strcmp and memcmp give byte differences, strchr, strrchr, strstr, and memchr find, strspn and strcspn count, and the copies copy"
+stringTest verifies cStringLength countsToZero
+stringTest verifies compareStrings ordersLikeGlibc
+stringTest verifies memoryCompare comparesRanges
+stringTest verifies stringFind findsCharacter
+stringTest verifies stringSearch findsText
+stringTest verifies spanOf spansSet
+stringTest verifies duplicate duplicatesBytes
+stringTest typeParameter none
+stringTest input none
+stringTest output none
+stringTest outputOwnedBy none
+stringTest raises none
+stringTest effect use machine.memory
+stringTest effect use system.calls
+stringTest uses memoryAccess
+stringTest uses systemCalls
+stringTest memoryHeap false
+stringTest async false
+stringTest maxRecursion none
+stringTest label begin loopKind none
+stringTest label begin within none
+stringTest let helloText String "hello, world" immutable
+stringTest let twelve Int64 12 immutable
+stringTest let helpText String "help" immutable
+stringTest let no Bool false immutable
+stringTest let lMinusP Int32 -4 immutable
+stringTest let three Int64 3 immutable
+stringTest let none32 Int32 0 immutable
+stringTest let upperText String "HELLO, WORLD" immutable
+stringTest let yes Bool true immutable
+stringTest let five Int64 5 immutable
+stringTest let caseDifference Int32 32 immutable
+stringTest let commaCode Int32 44 immutable
+stringTest let smallO Int32 111 immutable
+stringTest let eight Int64 8 immutable
+stringTest let smallZ Int32 122 immutable
+stringTest let worldText String "wor" immutable
+stringTest let seven Int64 7 immutable
+stringTest let lettersText String "ehlo" immutable
+stringTest let punctText String " ," immutable
+stringTest let smallW Int32 119 immutable
+stringTest at begin do writeHello
+stringTest at begin do lengthOf
+stringTest at begin do expectLength
+stringTest at begin do writeHelp
+stringTest at begin do compareIt
+stringTest at begin do checkOrder
+stringTest at begin do expectOrder
+stringTest at begin do compareFew
+stringTest at begin do checkFew
+stringTest at begin do expectFew
+stringTest at begin do writeUpper
+stringTest at begin do compareFolded
+stringTest at begin do checkFolded
+stringTest at begin do expectFolded
+stringTest at begin do compareRaw
+stringTest at begin do checkRaw
+stringTest at begin do expectRaw
+stringTest at begin do findComma
+stringTest at begin do commaOffset
+stringTest at begin do expectComma
+stringTest at begin do findLastO
+stringTest at begin do lastOffset
+stringTest at begin do expectLastO
+stringTest at begin do findEnd
+stringTest at begin do endOffset
+stringTest at begin do expectEndAt
+stringTest at begin do findMissing
+stringTest at begin do nowhere
+stringTest at begin do missingCheck
+stringTest at begin do expectMissing
+stringTest at begin do writeWorld
+stringTest at begin do searchIt
+stringTest at begin do foundOffset
+stringTest at begin do expectFound
+stringTest at begin do writeLetters
+stringTest at begin do spanIt
+stringTest at begin do expectSpan
+stringTest at begin do writePunct
+stringTest at begin do complementIt
+stringTest at begin do expectComplement
+stringTest at begin do findW
+stringTest at begin do wOffset
+stringTest at begin do expectW
+stringTest at begin do copyIt
+stringTest at begin do copyOrder
+stringTest at begin do checkCopy
+stringTest at begin do expectCopy
+stringTest at begin do freeCopy
+stringTest at begin return ok none
+
+writeHello is call
+writeHello in stringTest
+writeHello invokes firstScratch
+writeHello argument text String helloText lend
+writeHello result hello machine.Address
+writeHello ownedBy none
+writeHello cleanedBy none
+writeHello borrows none
+writeHello catch none
+writeHello suppresses none
+
+lengthOf is call
+lengthOf in stringTest
+lengthOf invokes cStringLength
+lengthOf argument text machine.Address hello copy
+lengthOf result length Int64
+lengthOf ownedBy none
+lengthOf cleanedBy none
+lengthOf borrows none
+lengthOf catch none
+lengthOf suppresses none
+
+expectLength is call
+expectLength in stringTest
+expectLength invokes test.assertEqualInt64
+expectLength argument expected Int64 twelve copy
+expectLength argument actual Int64 length copy
+expectLength result none
+expectLength ownedBy none
+expectLength cleanedBy none
+expectLength borrows none
+expectLength catch none
+expectLength suppresses none
+
+writeHelp is call
+writeHelp in stringTest
+writeHelp invokes secondScratch
+writeHelp argument text String helpText lend
+writeHelp result help machine.Address
+writeHelp ownedBy none
+writeHelp cleanedBy none
+writeHelp borrows none
+writeHelp catch none
+writeHelp suppresses none
+
+compareIt is call
+compareIt in stringTest
+compareIt invokes compareStrings
+compareIt argument left machine.Address hello copy
+compareIt argument right machine.Address help copy
+compareIt argument most Int64 length copy
+compareIt argument folded Bool no copy
+compareIt result order Int32
+compareIt ownedBy none
+compareIt cleanedBy none
+compareIt borrows none
+compareIt catch none
+compareIt suppresses none
+
+checkOrder is call
+checkOrder in stringTest
+checkOrder invokes sameInt
+checkOrder argument expected Int32 lMinusP copy
+checkOrder argument actual Int32 order copy
+checkOrder result orderSame Bool
+checkOrder ownedBy none
+checkOrder cleanedBy none
+checkOrder borrows none
+checkOrder catch none
+checkOrder suppresses none
+
+expectOrder is call
+expectOrder in stringTest
+expectOrder invokes test.assertTrue
+expectOrder argument value Bool orderSame copy
+expectOrder result none
+expectOrder ownedBy none
+expectOrder cleanedBy none
+expectOrder borrows none
+expectOrder catch none
+expectOrder suppresses none
+
+compareFew is call
+compareFew in stringTest
+compareFew invokes compareStrings
+compareFew argument left machine.Address hello copy
+compareFew argument right machine.Address help copy
+compareFew argument most Int64 three copy
+compareFew argument folded Bool no copy
+compareFew result fewOrder Int32
+compareFew ownedBy none
+compareFew cleanedBy none
+compareFew borrows none
+compareFew catch none
+compareFew suppresses none
+
+checkFew is call
+checkFew in stringTest
+checkFew invokes sameInt
+checkFew argument expected Int32 none32 copy
+checkFew argument actual Int32 fewOrder copy
+checkFew result fewSame Bool
+checkFew ownedBy none
+checkFew cleanedBy none
+checkFew borrows none
+checkFew catch none
+checkFew suppresses none
+
+expectFew is call
+expectFew in stringTest
+expectFew invokes test.assertTrue
+expectFew argument value Bool fewSame copy
+expectFew result none
+expectFew ownedBy none
+expectFew cleanedBy none
+expectFew borrows none
+expectFew catch none
+expectFew suppresses none
+
+writeUpper is call
+writeUpper in stringTest
+writeUpper invokes secondScratch
+writeUpper argument text String upperText lend
+writeUpper result upper machine.Address
+writeUpper ownedBy none
+writeUpper cleanedBy none
+writeUpper borrows none
+writeUpper catch none
+writeUpper suppresses none
+
+compareFolded is call
+compareFolded in stringTest
+compareFolded invokes compareStrings
+compareFolded argument left machine.Address hello copy
+compareFolded argument right machine.Address upper copy
+compareFolded argument most Int64 length copy
+compareFolded argument folded Bool yes copy
+compareFolded result foldedOrder Int32
+compareFolded ownedBy none
+compareFolded cleanedBy none
+compareFolded borrows none
+compareFolded catch none
+compareFolded suppresses none
+
+checkFolded is call
+checkFolded in stringTest
+checkFolded invokes sameInt
+checkFolded argument expected Int32 none32 copy
+checkFolded argument actual Int32 foldedOrder copy
+checkFolded result foldedSame Bool
+checkFolded ownedBy none
+checkFolded cleanedBy none
+checkFolded borrows none
+checkFolded catch none
+checkFolded suppresses none
+
+expectFolded is call
+expectFolded in stringTest
+expectFolded invokes test.assertTrue
+expectFolded argument value Bool foldedSame copy
+expectFolded result none
+expectFolded ownedBy none
+expectFolded cleanedBy none
+expectFolded borrows none
+expectFolded catch none
+expectFolded suppresses none
+
+compareRaw is call
+compareRaw in stringTest
+compareRaw invokes memoryCompare
+compareRaw argument left machine.Address hello copy
+compareRaw argument right machine.Address upper copy
+compareRaw argument bytes Int64 five copy
+compareRaw result rawOrder Int32
+compareRaw ownedBy none
+compareRaw cleanedBy none
+compareRaw borrows none
+compareRaw catch none
+compareRaw suppresses none
+
+checkRaw is call
+checkRaw in stringTest
+checkRaw invokes sameInt
+checkRaw argument expected Int32 caseDifference copy
+checkRaw argument actual Int32 rawOrder copy
+checkRaw result rawSame Bool
+checkRaw ownedBy none
+checkRaw cleanedBy none
+checkRaw borrows none
+checkRaw catch none
+checkRaw suppresses none
+
+expectRaw is call
+expectRaw in stringTest
+expectRaw invokes test.assertTrue
+expectRaw argument value Bool rawSame copy
+expectRaw result none
+expectRaw ownedBy none
+expectRaw cleanedBy none
+expectRaw borrows none
+expectRaw catch none
+expectRaw suppresses none
+
+findComma is call
+findComma in stringTest
+findComma invokes stringFind
+findComma argument text machine.Address hello copy
+findComma argument value Int32 commaCode copy
+findComma argument last Bool no copy
+findComma result comma machine.Address
+findComma ownedBy none
+findComma cleanedBy none
+findComma borrows none
+findComma catch none
+findComma suppresses none
+
+commaOffset is call
+commaOffset in stringTest
+commaOffset invokes machine.difference
+commaOffset argument left machine.Address comma copy
+commaOffset argument right machine.Address hello copy
+commaOffset result commaAt Int64
+commaOffset ownedBy none
+commaOffset cleanedBy none
+commaOffset borrows none
+commaOffset catch none
+commaOffset suppresses none
+
+expectComma is call
+expectComma in stringTest
+expectComma invokes test.assertEqualInt64
+expectComma argument expected Int64 five copy
+expectComma argument actual Int64 commaAt copy
+expectComma result none
+expectComma ownedBy none
+expectComma cleanedBy none
+expectComma borrows none
+expectComma catch none
+expectComma suppresses none
+
+findLastO is call
+findLastO in stringTest
+findLastO invokes stringFind
+findLastO argument text machine.Address hello copy
+findLastO argument value Int32 smallO copy
+findLastO argument last Bool yes copy
+findLastO result lastO machine.Address
+findLastO ownedBy none
+findLastO cleanedBy none
+findLastO borrows none
+findLastO catch none
+findLastO suppresses none
+
+lastOffset is call
+lastOffset in stringTest
+lastOffset invokes machine.difference
+lastOffset argument left machine.Address lastO copy
+lastOffset argument right machine.Address hello copy
+lastOffset result lastAt Int64
+lastOffset ownedBy none
+lastOffset cleanedBy none
+lastOffset borrows none
+lastOffset catch none
+lastOffset suppresses none
+
+expectLastO is call
+expectLastO in stringTest
+expectLastO invokes test.assertEqualInt64
+expectLastO argument expected Int64 eight copy
+expectLastO argument actual Int64 lastAt copy
+expectLastO result none
+expectLastO ownedBy none
+expectLastO cleanedBy none
+expectLastO borrows none
+expectLastO catch none
+expectLastO suppresses none
+
+findEnd is call
+findEnd in stringTest
+findEnd invokes stringFind
+findEnd argument text machine.Address hello copy
+findEnd argument value Int32 none32 copy
+findEnd argument last Bool no copy
+findEnd result end machine.Address
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+endOffset is call
+endOffset in stringTest
+endOffset invokes machine.difference
+endOffset argument left machine.Address end copy
+endOffset argument right machine.Address hello copy
+endOffset result endAt Int64
+endOffset ownedBy none
+endOffset cleanedBy none
+endOffset borrows none
+endOffset catch none
+endOffset suppresses none
+
+expectEndAt is call
+expectEndAt in stringTest
+expectEndAt invokes test.assertEqualInt64
+expectEndAt argument expected Int64 twelve copy
+expectEndAt argument actual Int64 endAt copy
+expectEndAt result none
+expectEndAt ownedBy none
+expectEndAt cleanedBy none
+expectEndAt borrows none
+expectEndAt catch none
+expectEndAt suppresses none
+
+findMissing is call
+findMissing in stringTest
+findMissing invokes stringFind
+findMissing argument text machine.Address hello copy
+findMissing argument value Int32 smallZ copy
+findMissing argument last Bool no copy
+findMissing result missing machine.Address
+findMissing ownedBy none
+findMissing cleanedBy none
+findMissing borrows none
+findMissing catch none
+findMissing suppresses none
+
+nowhere is call
+nowhere in stringTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+missingCheck is call
+missingCheck in stringTest
+missingCheck invokes machine.equal
+missingCheck argument left machine.Address missing copy
+missingCheck argument right machine.Address anywhere copy
+missingCheck result isMissing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+expectMissing is call
+expectMissing in stringTest
+expectMissing invokes test.assertTrue
+expectMissing argument value Bool isMissing copy
+expectMissing result none
+expectMissing ownedBy none
+expectMissing cleanedBy none
+expectMissing borrows none
+expectMissing catch none
+expectMissing suppresses none
+
+writeWorld is call
+writeWorld in stringTest
+writeWorld invokes secondScratch
+writeWorld argument text String worldText lend
+writeWorld result world machine.Address
+writeWorld ownedBy none
+writeWorld cleanedBy none
+writeWorld borrows none
+writeWorld catch none
+writeWorld suppresses none
+
+searchIt is call
+searchIt in stringTest
+searchIt invokes stringSearch
+searchIt argument haystack machine.Address hello copy
+searchIt argument needle machine.Address world copy
+searchIt result found machine.Address
+searchIt ownedBy none
+searchIt cleanedBy none
+searchIt borrows none
+searchIt catch none
+searchIt suppresses none
+
+foundOffset is call
+foundOffset in stringTest
+foundOffset invokes machine.difference
+foundOffset argument left machine.Address found copy
+foundOffset argument right machine.Address hello copy
+foundOffset result foundAt Int64
+foundOffset ownedBy none
+foundOffset cleanedBy none
+foundOffset borrows none
+foundOffset catch none
+foundOffset suppresses none
+
+expectFound is call
+expectFound in stringTest
+expectFound invokes test.assertEqualInt64
+expectFound argument expected Int64 seven copy
+expectFound argument actual Int64 foundAt copy
+expectFound result none
+expectFound ownedBy none
+expectFound cleanedBy none
+expectFound borrows none
+expectFound catch none
+expectFound suppresses none
+
+writeLetters is call
+writeLetters in stringTest
+writeLetters invokes secondScratch
+writeLetters argument text String lettersText lend
+writeLetters result letters machine.Address
+writeLetters ownedBy none
+writeLetters cleanedBy none
+writeLetters borrows none
+writeLetters catch none
+writeLetters suppresses none
+
+spanIt is call
+spanIt in stringTest
+spanIt invokes spanOf
+spanIt argument text machine.Address hello copy
+spanIt argument set machine.Address letters copy
+spanIt argument outside Bool no copy
+spanIt result spanned Int64
+spanIt ownedBy none
+spanIt cleanedBy none
+spanIt borrows none
+spanIt catch none
+spanIt suppresses none
+
+expectSpan is call
+expectSpan in stringTest
+expectSpan invokes test.assertEqualInt64
+expectSpan argument expected Int64 five copy
+expectSpan argument actual Int64 spanned copy
+expectSpan result none
+expectSpan ownedBy none
+expectSpan cleanedBy none
+expectSpan borrows none
+expectSpan catch none
+expectSpan suppresses none
+
+writePunct is call
+writePunct in stringTest
+writePunct invokes secondScratch
+writePunct argument text String punctText lend
+writePunct result punct machine.Address
+writePunct ownedBy none
+writePunct cleanedBy none
+writePunct borrows none
+writePunct catch none
+writePunct suppresses none
+
+complementIt is call
+complementIt in stringTest
+complementIt invokes spanOf
+complementIt argument text machine.Address hello copy
+complementIt argument set machine.Address punct copy
+complementIt argument outside Bool yes copy
+complementIt result before Int64
+complementIt ownedBy none
+complementIt cleanedBy none
+complementIt borrows none
+complementIt catch none
+complementIt suppresses none
+
+expectComplement is call
+expectComplement in stringTest
+expectComplement invokes test.assertEqualInt64
+expectComplement argument expected Int64 five copy
+expectComplement argument actual Int64 before copy
+expectComplement result none
+expectComplement ownedBy none
+expectComplement cleanedBy none
+expectComplement borrows none
+expectComplement catch none
+expectComplement suppresses none
+
+findW is call
+findW in stringTest
+findW invokes memoryFind
+findW argument text machine.Address hello copy
+findW argument value Int32 smallW copy
+findW argument bytes Int64 twelve copy
+findW result w machine.Address
+findW ownedBy none
+findW cleanedBy none
+findW borrows none
+findW catch none
+findW suppresses none
+
+wOffset is call
+wOffset in stringTest
+wOffset invokes machine.difference
+wOffset argument left machine.Address w copy
+wOffset argument right machine.Address hello copy
+wOffset result wAt Int64
+wOffset ownedBy none
+wOffset cleanedBy none
+wOffset borrows none
+wOffset catch none
+wOffset suppresses none
+
+expectW is call
+expectW in stringTest
+expectW invokes test.assertEqualInt64
+expectW argument expected Int64 seven copy
+expectW argument actual Int64 wAt copy
+expectW result none
+expectW ownedBy none
+expectW cleanedBy none
+expectW borrows none
+expectW catch none
+expectW suppresses none
+
+copyIt is call
+copyIt in stringTest
+copyIt invokes duplicate
+copyIt argument source machine.Address hello copy
+copyIt argument bytes Int64 length copy
+copyIt result copy machine.Address
+copyIt ownedBy none
+copyIt cleanedBy none
+copyIt borrows none
+copyIt catch none
+copyIt suppresses none
+
+copyOrder is call
+copyOrder in stringTest
+copyOrder invokes stringCompare
+copyOrder argument left machine.Address copy copy
+copyOrder argument right machine.Address hello copy
+copyOrder result copyCompare Int32
+copyOrder ownedBy none
+copyOrder cleanedBy none
+copyOrder borrows none
+copyOrder catch none
+copyOrder suppresses none
+
+checkCopy is call
+checkCopy in stringTest
+checkCopy invokes sameInt
+checkCopy argument expected Int32 none32 copy
+checkCopy argument actual Int32 copyCompare copy
+checkCopy result copySame Bool
+checkCopy ownedBy none
+checkCopy cleanedBy none
+checkCopy borrows none
+checkCopy catch none
+checkCopy suppresses none
+
+expectCopy is call
+expectCopy in stringTest
+expectCopy invokes test.assertTrue
+expectCopy argument value Bool copySame copy
+expectCopy result none
+expectCopy ownedBy none
+expectCopy cleanedBy none
+expectCopy borrows none
+expectCopy catch none
+expectCopy suppresses none
+
+freeCopy is call
+freeCopy in stringTest
+freeCopy invokes release
+freeCopy argument block machine.Address copy copy
+freeCopy result none
+freeCopy ownedBy none
+freeCopy cleanedBy none
+freeCopy borrows none
+freeCopy catch none
+freeCopy suppresses none
+
+numberTest is test
+numberTest purpose "strtol reads glibc's prefixes, bases, ends, and limits; abs wraps; div packs"
+numberTest verifies parseWhole readsLikeStrtol
+numberTest verifies absolute wrapsLikeGlibc
+numberTest verifies absoluteLong wrapsLong
+numberTest verifies divide packsQuotient
+numberTest typeParameter none
+numberTest input none
+numberTest output none
+numberTest outputOwnedBy none
+numberTest raises none
+numberTest effect use machine.memory
+numberTest uses memoryAccess
+numberTest memoryHeap false
+numberTest async false
+numberTest maxRecursion none
+numberTest label begin loopKind none
+numberTest label begin within none
+numberTest let directText String "12" immutable
+numberTest let ten32 Int32 10 immutable
+numberTest let no Bool false immutable
+numberTest let twelve Int64 12 immutable
+numberTest let plainText String "  -42xyz" immutable
+numberTest let minusFortyTwo Int64 -42 immutable
+numberTest let five Int64 5 immutable
+numberTest let none32 Int32 0 immutable
+numberTest let hexText String "0x1fZ" immutable
+numberTest let zero32 Int32 0 immutable
+numberTest let thirtyOne Int64 31 immutable
+numberTest let four Int64 4 immutable
+numberTest let octalText String "0777" immutable
+numberTest let octalValue Int64 511 immutable
+numberTest let bareXText String "0xg" immutable
+numberTest let zero Int64 0 immutable
+numberTest let one Int64 1 immutable
+numberTest let noneText String "  +" immutable
+numberTest let bigText String "99999999999999999999" immutable
+numberTest let most Int64 9223372036854775807 immutable
+numberTest let twenty Int64 20 immutable
+numberTest let range32 Int32 34 immutable
+numberTest let smallText String "-9223372036854775808" immutable
+numberTest let least Int64 -9223372036854775808 immutable
+numberTest let minusOneText String "-1" immutable
+numberTest let yes Bool true immutable
+numberTest let minusOne Int64 -1 immutable
+numberTest let two Int64 2 immutable
+numberTest let zText String "zz" immutable
+numberTest let base36 Int32 36 immutable
+numberTest let zzValue Int64 1295 immutable
+numberTest let invalidText String "12" immutable
+numberTest let one32 Int32 1 immutable
+numberTest let invalid32 Int32 22 immutable
+numberTest let minusSeven Int32 -7 immutable
+numberTest let seven Int32 7 immutable
+numberTest let intMin Int32 -2147483648 immutable
+numberTest let two32 Int32 2 immutable
+numberTest let minusThree Int64 -3 immutable
+numberTest at begin do writeDirect
+numberTest at begin do nowhere
+numberTest at begin do parseDirect
+numberTest at begin do expectDirect
+numberTest at begin do readPlain
+numberTest at begin do expectPlain
+numberTest at begin do readHex
+numberTest at begin do expectHex
+numberTest at begin do readOctal
+numberTest at begin do expectOctal
+numberTest at begin do readBareX
+numberTest at begin do expectBareX
+numberTest at begin do readNone
+numberTest at begin do expectNone
+numberTest at begin do readBig
+numberTest at begin do expectBig
+numberTest at begin do readSmall
+numberTest at begin do expectSmall
+numberTest at begin do readUnsigned
+numberTest at begin do expectUnsigned
+numberTest at begin do readBase36
+numberTest at begin do expectBase36
+numberTest at begin do readInvalid
+numberTest at begin do expectInvalid
+numberTest at begin do absoluteIt
+numberTest at begin do checkMagnitude
+numberTest at begin do expectMagnitude
+numberTest at begin do absoluteMin
+numberTest at begin do checkMin
+numberTest at begin do expectMin
+numberTest at begin do absoluteLongIt
+numberTest at begin do expectLongMin
+numberTest at begin do divideIt
+numberTest at begin do expectPacked
+numberTest at begin return ok none
+
+writeDirect is call
+writeDirect in numberTest
+writeDirect invokes firstScratch
+writeDirect argument text String directText lend
+writeDirect result direct machine.Address
+writeDirect ownedBy none
+writeDirect cleanedBy none
+writeDirect borrows none
+writeDirect catch none
+writeDirect suppresses none
+
+nowhere is call
+nowhere in numberTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+parseDirect is call
+parseDirect in numberTest
+parseDirect invokes parseWhole
+parseDirect argument text machine.Address direct copy
+parseDirect argument endAt machine.Address anywhere copy
+parseDirect argument base Int32 ten32 copy
+parseDirect argument unsigned Bool no copy
+parseDirect result directValue Int64
+parseDirect ownedBy none
+parseDirect cleanedBy none
+parseDirect borrows none
+parseDirect catch none
+parseDirect suppresses none
+
+expectDirect is call
+expectDirect in numberTest
+expectDirect invokes test.assertEqualInt64
+expectDirect argument expected Int64 twelve copy
+expectDirect argument actual Int64 directValue copy
+expectDirect result none
+expectDirect ownedBy none
+expectDirect cleanedBy none
+expectDirect borrows none
+expectDirect catch none
+expectDirect suppresses none
+
+readPlain is call
+readPlain in numberTest
+readPlain invokes longMatches
+readPlain argument text String plainText lend
+readPlain argument base Int32 ten32 copy
+readPlain argument unsigned Bool no copy
+readPlain argument expected Int64 minusFortyTwo copy
+readPlain argument expectedEnd Int64 five copy
+readPlain argument expectedErrno Int32 none32 copy
+readPlain result plain Bool
+readPlain ownedBy none
+readPlain cleanedBy none
+readPlain borrows none
+readPlain catch none
+readPlain suppresses none
+
+expectPlain is call
+expectPlain in numberTest
+expectPlain invokes test.assertTrue
+expectPlain argument value Bool plain copy
+expectPlain result none
+expectPlain ownedBy none
+expectPlain cleanedBy none
+expectPlain borrows none
+expectPlain catch none
+expectPlain suppresses none
+
+readHex is call
+readHex in numberTest
+readHex invokes longMatches
+readHex argument text String hexText lend
+readHex argument base Int32 zero32 copy
+readHex argument unsigned Bool no copy
+readHex argument expected Int64 thirtyOne copy
+readHex argument expectedEnd Int64 four copy
+readHex argument expectedErrno Int32 none32 copy
+readHex result hex Bool
+readHex ownedBy none
+readHex cleanedBy none
+readHex borrows none
+readHex catch none
+readHex suppresses none
+
+expectHex is call
+expectHex in numberTest
+expectHex invokes test.assertTrue
+expectHex argument value Bool hex copy
+expectHex result none
+expectHex ownedBy none
+expectHex cleanedBy none
+expectHex borrows none
+expectHex catch none
+expectHex suppresses none
+
+readOctal is call
+readOctal in numberTest
+readOctal invokes longMatches
+readOctal argument text String octalText lend
+readOctal argument base Int32 zero32 copy
+readOctal argument unsigned Bool no copy
+readOctal argument expected Int64 octalValue copy
+readOctal argument expectedEnd Int64 four copy
+readOctal argument expectedErrno Int32 none32 copy
+readOctal result octal Bool
+readOctal ownedBy none
+readOctal cleanedBy none
+readOctal borrows none
+readOctal catch none
+readOctal suppresses none
+
+expectOctal is call
+expectOctal in numberTest
+expectOctal invokes test.assertTrue
+expectOctal argument value Bool octal copy
+expectOctal result none
+expectOctal ownedBy none
+expectOctal cleanedBy none
+expectOctal borrows none
+expectOctal catch none
+expectOctal suppresses none
+
+readBareX is call
+readBareX in numberTest
+readBareX invokes longMatches
+readBareX argument text String bareXText lend
+readBareX argument base Int32 zero32 copy
+readBareX argument unsigned Bool no copy
+readBareX argument expected Int64 zero copy
+readBareX argument expectedEnd Int64 one copy
+readBareX argument expectedErrno Int32 none32 copy
+readBareX result bareX Bool
+readBareX ownedBy none
+readBareX cleanedBy none
+readBareX borrows none
+readBareX catch none
+readBareX suppresses none
+
+expectBareX is call
+expectBareX in numberTest
+expectBareX invokes test.assertTrue
+expectBareX argument value Bool bareX copy
+expectBareX result none
+expectBareX ownedBy none
+expectBareX cleanedBy none
+expectBareX borrows none
+expectBareX catch none
+expectBareX suppresses none
+
+readNone is call
+readNone in numberTest
+readNone invokes longMatches
+readNone argument text String noneText lend
+readNone argument base Int32 ten32 copy
+readNone argument unsigned Bool no copy
+readNone argument expected Int64 zero copy
+readNone argument expectedEnd Int64 zero copy
+readNone argument expectedErrno Int32 none32 copy
+readNone result noDigits Bool
+readNone ownedBy none
+readNone cleanedBy none
+readNone borrows none
+readNone catch none
+readNone suppresses none
+
+expectNone is call
+expectNone in numberTest
+expectNone invokes test.assertTrue
+expectNone argument value Bool noDigits copy
+expectNone result none
+expectNone ownedBy none
+expectNone cleanedBy none
+expectNone borrows none
+expectNone catch none
+expectNone suppresses none
+
+readBig is call
+readBig in numberTest
+readBig invokes longMatches
+readBig argument text String bigText lend
+readBig argument base Int32 ten32 copy
+readBig argument unsigned Bool no copy
+readBig argument expected Int64 most copy
+readBig argument expectedEnd Int64 twenty copy
+readBig argument expectedErrno Int32 range32 copy
+readBig result big Bool
+readBig ownedBy none
+readBig cleanedBy none
+readBig borrows none
+readBig catch none
+readBig suppresses none
+
+expectBig is call
+expectBig in numberTest
+expectBig invokes test.assertTrue
+expectBig argument value Bool big copy
+expectBig result none
+expectBig ownedBy none
+expectBig cleanedBy none
+expectBig borrows none
+expectBig catch none
+expectBig suppresses none
+
+readSmall is call
+readSmall in numberTest
+readSmall invokes longMatches
+readSmall argument text String smallText lend
+readSmall argument base Int32 ten32 copy
+readSmall argument unsigned Bool no copy
+readSmall argument expected Int64 least copy
+readSmall argument expectedEnd Int64 twenty copy
+readSmall argument expectedErrno Int32 none32 copy
+readSmall result small Bool
+readSmall ownedBy none
+readSmall cleanedBy none
+readSmall borrows none
+readSmall catch none
+readSmall suppresses none
+
+expectSmall is call
+expectSmall in numberTest
+expectSmall invokes test.assertTrue
+expectSmall argument value Bool small copy
+expectSmall result none
+expectSmall ownedBy none
+expectSmall cleanedBy none
+expectSmall borrows none
+expectSmall catch none
+expectSmall suppresses none
+
+readUnsigned is call
+readUnsigned in numberTest
+readUnsigned invokes longMatches
+readUnsigned argument text String minusOneText lend
+readUnsigned argument base Int32 ten32 copy
+readUnsigned argument unsigned Bool yes copy
+readUnsigned argument expected Int64 minusOne copy
+readUnsigned argument expectedEnd Int64 two copy
+readUnsigned argument expectedErrno Int32 none32 copy
+readUnsigned result unsignedOne Bool
+readUnsigned ownedBy none
+readUnsigned cleanedBy none
+readUnsigned borrows none
+readUnsigned catch none
+readUnsigned suppresses none
+
+expectUnsigned is call
+expectUnsigned in numberTest
+expectUnsigned invokes test.assertTrue
+expectUnsigned argument value Bool unsignedOne copy
+expectUnsigned result none
+expectUnsigned ownedBy none
+expectUnsigned cleanedBy none
+expectUnsigned borrows none
+expectUnsigned catch none
+expectUnsigned suppresses none
+
+readBase36 is call
+readBase36 in numberTest
+readBase36 invokes longMatches
+readBase36 argument text String zText lend
+readBase36 argument base Int32 base36 copy
+readBase36 argument unsigned Bool no copy
+readBase36 argument expected Int64 zzValue copy
+readBase36 argument expectedEnd Int64 two copy
+readBase36 argument expectedErrno Int32 none32 copy
+readBase36 result base36Value Bool
+readBase36 ownedBy none
+readBase36 cleanedBy none
+readBase36 borrows none
+readBase36 catch none
+readBase36 suppresses none
+
+expectBase36 is call
+expectBase36 in numberTest
+expectBase36 invokes test.assertTrue
+expectBase36 argument value Bool base36Value copy
+expectBase36 result none
+expectBase36 ownedBy none
+expectBase36 cleanedBy none
+expectBase36 borrows none
+expectBase36 catch none
+expectBase36 suppresses none
+
+readInvalid is call
+readInvalid in numberTest
+readInvalid invokes longMatches
+readInvalid argument text String invalidText lend
+readInvalid argument base Int32 one32 copy
+readInvalid argument unsigned Bool no copy
+readInvalid argument expected Int64 zero copy
+readInvalid argument expectedEnd Int64 zero copy
+readInvalid argument expectedErrno Int32 invalid32 copy
+readInvalid result invalid Bool
+readInvalid ownedBy none
+readInvalid cleanedBy none
+readInvalid borrows none
+readInvalid catch none
+readInvalid suppresses none
+
+expectInvalid is call
+expectInvalid in numberTest
+expectInvalid invokes test.assertTrue
+expectInvalid argument value Bool invalid copy
+expectInvalid result none
+expectInvalid ownedBy none
+expectInvalid cleanedBy none
+expectInvalid borrows none
+expectInvalid catch none
+expectInvalid suppresses none
+
+absoluteIt is call
+absoluteIt in numberTest
+absoluteIt invokes absolute
+absoluteIt argument value Int32 minusSeven copy
+absoluteIt result magnitude Int32
+absoluteIt ownedBy none
+absoluteIt cleanedBy none
+absoluteIt borrows none
+absoluteIt catch none
+absoluteIt suppresses none
+
+checkMagnitude is call
+checkMagnitude in numberTest
+checkMagnitude invokes sameInt
+checkMagnitude argument expected Int32 seven copy
+checkMagnitude argument actual Int32 magnitude copy
+checkMagnitude result magnitudeSame Bool
+checkMagnitude ownedBy none
+checkMagnitude cleanedBy none
+checkMagnitude borrows none
+checkMagnitude catch none
+checkMagnitude suppresses none
+
+expectMagnitude is call
+expectMagnitude in numberTest
+expectMagnitude invokes test.assertTrue
+expectMagnitude argument value Bool magnitudeSame copy
+expectMagnitude result none
+expectMagnitude ownedBy none
+expectMagnitude cleanedBy none
+expectMagnitude borrows none
+expectMagnitude catch none
+expectMagnitude suppresses none
+
+absoluteMin is call
+absoluteMin in numberTest
+absoluteMin invokes absolute
+absoluteMin argument value Int32 intMin copy
+absoluteMin result minMagnitude Int32
+absoluteMin ownedBy none
+absoluteMin cleanedBy none
+absoluteMin borrows none
+absoluteMin catch none
+absoluteMin suppresses none
+
+checkMin is call
+checkMin in numberTest
+checkMin invokes sameInt
+checkMin argument expected Int32 intMin copy
+checkMin argument actual Int32 minMagnitude copy
+checkMin result minSame Bool
+checkMin ownedBy none
+checkMin cleanedBy none
+checkMin borrows none
+checkMin catch none
+checkMin suppresses none
+
+expectMin is call
+expectMin in numberTest
+expectMin invokes test.assertTrue
+expectMin argument value Bool minSame copy
+expectMin result none
+expectMin ownedBy none
+expectMin cleanedBy none
+expectMin borrows none
+expectMin catch none
+expectMin suppresses none
+
+absoluteLongIt is call
+absoluteLongIt in numberTest
+absoluteLongIt invokes absoluteLong
+absoluteLongIt argument value Int64 least copy
+absoluteLongIt result longMagnitude Int64
+absoluteLongIt ownedBy none
+absoluteLongIt cleanedBy none
+absoluteLongIt borrows none
+absoluteLongIt catch none
+absoluteLongIt suppresses none
+
+expectLongMin is call
+expectLongMin in numberTest
+expectLongMin invokes test.assertEqualInt64
+expectLongMin argument expected Int64 least copy
+expectLongMin argument actual Int64 longMagnitude copy
+expectLongMin result none
+expectLongMin ownedBy none
+expectLongMin cleanedBy none
+expectLongMin borrows none
+expectLongMin catch none
+expectLongMin suppresses none
+
+divideIt is call
+divideIt in numberTest
+divideIt invokes divide
+divideIt argument numerator Int32 minusSeven copy
+divideIt argument denominator Int32 two32 copy
+divideIt result packed Int64
+divideIt ownedBy none
+divideIt cleanedBy none
+divideIt borrows none
+divideIt catch none
+divideIt suppresses none
+
+expectPacked is call
+expectPacked in numberTest
+expectPacked invokes test.assertEqualInt64
+expectPacked argument expected Int64 minusThree copy
+expectPacked argument actual Int64 packed copy
+expectPacked result none
+expectPacked ownedBy none
+expectPacked cleanedBy none
+expectPacked borrows none
+expectPacked catch none
+expectPacked suppresses none
+
+realTest is test
+realTest purpose "strtod reads decimal, hexadecimal, infinity, and NaN text as glibc does, with its ends"
+realTest verifies parseReal readsLikeStrtod
+realTest verifies parseHexReal readsHexadecimal
+realTest verifies roundMantissa roundsToEven
+realTest typeParameter none
+realTest input none
+realTest output none
+realTest outputOwnedBy none
+realTest raises none
+realTest effect use machine.memory
+realTest effect use system.calls
+realTest uses memoryAccess
+realTest uses systemCalls
+realTest memoryHeap false
+realTest async false
+realTest maxRecursion none
+realTest label begin loopKind none
+realTest label begin within none
+realTest let directText String "2.5" immutable
+realTest let twoAndHalf UInt64 4612811918334230528 immutable
+realTest let hexDigits String "1.8p1" immutable
+realTest let zero Int64 0 immutable
+realTest let five Int64 5 immutable
+realTest let tieValue UInt64 20 immutable
+realTest let three Int64 3 immutable
+realTest let no Bool false immutable
+realTest let two Int64 2 immutable
+realTest let halfText String " 0.5x" immutable
+realTest let halfBits UInt64 4602678819172646912 immutable
+realTest let four Int64 4 immutable
+realTest let pointText String "1." immutable
+realTest let oneBits UInt64 4607182418800017408 immutable
+realTest let leadText String "-.25e1" immutable
+realTest let minusTwoAndHalfBits UInt64 13836183955189006336 immutable
+realTest let six Int64 6 immutable
+realTest let bareEText String "3e+" immutable
+realTest let threeBits UInt64 4613937818241073152 immutable
+realTest let one Int64 1 immutable
+realTest let hexValueText String "0x1.8p1" immutable
+realTest let seven Int64 7 immutable
+realTest let bareHexText String "0xz" immutable
+realTest let zeroBits UInt64 0 immutable
+realTest let tinyText String "0x1p-1074" immutable
+realTest let tinyBits UInt64 1 immutable
+realTest let nine Int64 9 immutable
+realTest let hexTieText String "0x1.00000000000008p0" immutable
+realTest let twenty Int64 20 immutable
+realTest let infText String "-Infinity" immutable
+realTest let minusInfinity UInt64 18442240474082181120 immutable
+realTest let infShortText String "infinit" immutable
+realTest let infinityValue UInt64 9218868437227405312 immutable
+realTest let nanText String "nan(abc)" immutable
+realTest let nanValue UInt64 9221120237041090560 immutable
+realTest let eight Int64 8 immutable
+realTest let noneText String "-x" immutable
+realTest let hugeText String "1e999" immutable
+realTest at begin do writeDirect
+realTest at begin do nowhere
+realTest at begin do parseDirect
+realTest at begin do checkDirect
+realTest at begin do expectDirect
+realTest at begin do writeHex
+realTest at begin do parseHex
+realTest at begin do expectHexEnd
+realTest at begin do roundTie
+realTest at begin do tieSigned
+realTest at begin do expectTie
+realTest at begin do readHalf
+realTest at begin do expectHalf
+realTest at begin do readPoint
+realTest at begin do expectPoint
+realTest at begin do readLead
+realTest at begin do expectLead
+realTest at begin do readBareE
+realTest at begin do expectBareE
+realTest at begin do readHexValue
+realTest at begin do expectHexValue
+realTest at begin do readBareHex
+realTest at begin do expectBareHex
+realTest at begin do readTiny
+realTest at begin do expectTiny
+realTest at begin do readHexTie
+realTest at begin do expectHexTie
+realTest at begin do readInf
+realTest at begin do expectInf
+realTest at begin do readInfShort
+realTest at begin do expectInfShort
+realTest at begin do readNan
+realTest at begin do expectNan
+realTest at begin do readNone
+realTest at begin do expectNone
+realTest at begin do readHuge
+realTest at begin do expectHuge
+realTest at begin return ok none
+
+writeDirect is call
+writeDirect in realTest
+writeDirect invokes firstScratch
+writeDirect argument text String directText lend
+writeDirect result direct machine.Address
+writeDirect ownedBy none
+writeDirect cleanedBy none
+writeDirect borrows none
+writeDirect catch none
+writeDirect suppresses none
+
+nowhere is call
+nowhere in realTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+parseDirect is call
+parseDirect in realTest
+parseDirect invokes parseReal
+parseDirect argument text machine.Address direct copy
+parseDirect argument endAt machine.Address anywhere copy
+parseDirect result directValue Float64
+parseDirect ownedBy none
+parseDirect cleanedBy none
+parseDirect borrows none
+parseDirect catch none
+parseDirect suppresses none
+
+checkDirect is call
+checkDirect in realTest
+checkDirect invokes sameFloat
+checkDirect argument expectedBits UInt64 twoAndHalf copy
+checkDirect argument actual Float64 directValue copy
+checkDirect result directSame Bool
+checkDirect ownedBy none
+checkDirect cleanedBy none
+checkDirect borrows none
+checkDirect catch none
+checkDirect suppresses none
+
+expectDirect is call
+expectDirect in realTest
+expectDirect invokes test.assertTrue
+expectDirect argument value Bool directSame copy
+expectDirect result none
+expectDirect ownedBy none
+expectDirect cleanedBy none
+expectDirect borrows none
+expectDirect catch none
+expectDirect suppresses none
+
+writeHex is call
+writeHex in realTest
+writeHex invokes firstScratch
+writeHex argument text String hexDigits lend
+writeHex result hexText machine.Address
+writeHex ownedBy none
+writeHex cleanedBy none
+writeHex borrows none
+writeHex catch none
+writeHex suppresses none
+
+parseHex is call
+parseHex in realTest
+parseHex invokes parseHexReal
+parseHex argument text machine.Address hexText copy
+parseHex argument start Int64 zero copy
+parseHex result hexEnd Int64
+parseHex ownedBy none
+parseHex cleanedBy none
+parseHex borrows none
+parseHex catch none
+parseHex suppresses none
+
+expectHexEnd is call
+expectHexEnd in realTest
+expectHexEnd invokes test.assertEqualInt64
+expectHexEnd argument expected Int64 five copy
+expectHexEnd argument actual Int64 hexEnd copy
+expectHexEnd result none
+expectHexEnd ownedBy none
+expectHexEnd cleanedBy none
+expectHexEnd borrows none
+expectHexEnd catch none
+expectHexEnd suppresses none
+
+roundTie is call
+roundTie in realTest
+roundTie invokes roundMantissa
+roundTie argument value UInt64 tieValue copy
+roundTie argument drop Int64 three copy
+roundTie argument sticky Bool no copy
+roundTie result tie UInt64
+roundTie ownedBy none
+roundTie cleanedBy none
+roundTie borrows none
+roundTie catch none
+roundTie suppresses none
+
+tieSigned is call
+tieSigned in realTest
+tieSigned invokes convert.uint64BitsToInt64
+tieSigned argument value UInt64 tie copy
+tieSigned result tieWide Int64
+tieSigned ownedBy none
+tieSigned cleanedBy none
+tieSigned borrows none
+tieSigned catch none
+tieSigned suppresses none
+
+expectTie is call
+expectTie in realTest
+expectTie invokes test.assertEqualInt64
+expectTie argument expected Int64 two copy
+expectTie argument actual Int64 tieWide copy
+expectTie result none
+expectTie ownedBy none
+expectTie cleanedBy none
+expectTie borrows none
+expectTie catch none
+expectTie suppresses none
+
+readHalf is call
+readHalf in realTest
+readHalf invokes realMatches
+readHalf argument text String halfText lend
+readHalf argument expectedBits UInt64 halfBits copy
+readHalf argument expectedEnd Int64 four copy
+readHalf result half Bool
+readHalf ownedBy none
+readHalf cleanedBy none
+readHalf borrows none
+readHalf catch none
+readHalf suppresses none
+
+expectHalf is call
+expectHalf in realTest
+expectHalf invokes test.assertTrue
+expectHalf argument value Bool half copy
+expectHalf result none
+expectHalf ownedBy none
+expectHalf cleanedBy none
+expectHalf borrows none
+expectHalf catch none
+expectHalf suppresses none
+
+readPoint is call
+readPoint in realTest
+readPoint invokes realMatches
+readPoint argument text String pointText lend
+readPoint argument expectedBits UInt64 oneBits copy
+readPoint argument expectedEnd Int64 two copy
+readPoint result point Bool
+readPoint ownedBy none
+readPoint cleanedBy none
+readPoint borrows none
+readPoint catch none
+readPoint suppresses none
+
+expectPoint is call
+expectPoint in realTest
+expectPoint invokes test.assertTrue
+expectPoint argument value Bool point copy
+expectPoint result none
+expectPoint ownedBy none
+expectPoint cleanedBy none
+expectPoint borrows none
+expectPoint catch none
+expectPoint suppresses none
+
+readLead is call
+readLead in realTest
+readLead invokes realMatches
+readLead argument text String leadText lend
+readLead argument expectedBits UInt64 minusTwoAndHalfBits copy
+readLead argument expectedEnd Int64 six copy
+readLead result lead Bool
+readLead ownedBy none
+readLead cleanedBy none
+readLead borrows none
+readLead catch none
+readLead suppresses none
+
+expectLead is call
+expectLead in realTest
+expectLead invokes test.assertTrue
+expectLead argument value Bool lead copy
+expectLead result none
+expectLead ownedBy none
+expectLead cleanedBy none
+expectLead borrows none
+expectLead catch none
+expectLead suppresses none
+
+readBareE is call
+readBareE in realTest
+readBareE invokes realMatches
+readBareE argument text String bareEText lend
+readBareE argument expectedBits UInt64 threeBits copy
+readBareE argument expectedEnd Int64 one copy
+readBareE result bareE Bool
+readBareE ownedBy none
+readBareE cleanedBy none
+readBareE borrows none
+readBareE catch none
+readBareE suppresses none
+
+expectBareE is call
+expectBareE in realTest
+expectBareE invokes test.assertTrue
+expectBareE argument value Bool bareE copy
+expectBareE result none
+expectBareE ownedBy none
+expectBareE cleanedBy none
+expectBareE borrows none
+expectBareE catch none
+expectBareE suppresses none
+
+readHexValue is call
+readHexValue in realTest
+readHexValue invokes realMatches
+readHexValue argument text String hexValueText lend
+readHexValue argument expectedBits UInt64 threeBits copy
+readHexValue argument expectedEnd Int64 seven copy
+readHexValue result hexValue Bool
+readHexValue ownedBy none
+readHexValue cleanedBy none
+readHexValue borrows none
+readHexValue catch none
+readHexValue suppresses none
+
+expectHexValue is call
+expectHexValue in realTest
+expectHexValue invokes test.assertTrue
+expectHexValue argument value Bool hexValue copy
+expectHexValue result none
+expectHexValue ownedBy none
+expectHexValue cleanedBy none
+expectHexValue borrows none
+expectHexValue catch none
+expectHexValue suppresses none
+
+readBareHex is call
+readBareHex in realTest
+readBareHex invokes realMatches
+readBareHex argument text String bareHexText lend
+readBareHex argument expectedBits UInt64 zeroBits copy
+readBareHex argument expectedEnd Int64 one copy
+readBareHex result bareHex Bool
+readBareHex ownedBy none
+readBareHex cleanedBy none
+readBareHex borrows none
+readBareHex catch none
+readBareHex suppresses none
+
+expectBareHex is call
+expectBareHex in realTest
+expectBareHex invokes test.assertTrue
+expectBareHex argument value Bool bareHex copy
+expectBareHex result none
+expectBareHex ownedBy none
+expectBareHex cleanedBy none
+expectBareHex borrows none
+expectBareHex catch none
+expectBareHex suppresses none
+
+readTiny is call
+readTiny in realTest
+readTiny invokes realMatches
+readTiny argument text String tinyText lend
+readTiny argument expectedBits UInt64 tinyBits copy
+readTiny argument expectedEnd Int64 nine copy
+readTiny result tiny Bool
+readTiny ownedBy none
+readTiny cleanedBy none
+readTiny borrows none
+readTiny catch none
+readTiny suppresses none
+
+expectTiny is call
+expectTiny in realTest
+expectTiny invokes test.assertTrue
+expectTiny argument value Bool tiny copy
+expectTiny result none
+expectTiny ownedBy none
+expectTiny cleanedBy none
+expectTiny borrows none
+expectTiny catch none
+expectTiny suppresses none
+
+readHexTie is call
+readHexTie in realTest
+readHexTie invokes realMatches
+readHexTie argument text String hexTieText lend
+readHexTie argument expectedBits UInt64 oneBits copy
+readHexTie argument expectedEnd Int64 twenty copy
+readHexTie result hexTie Bool
+readHexTie ownedBy none
+readHexTie cleanedBy none
+readHexTie borrows none
+readHexTie catch none
+readHexTie suppresses none
+
+expectHexTie is call
+expectHexTie in realTest
+expectHexTie invokes test.assertTrue
+expectHexTie argument value Bool hexTie copy
+expectHexTie result none
+expectHexTie ownedBy none
+expectHexTie cleanedBy none
+expectHexTie borrows none
+expectHexTie catch none
+expectHexTie suppresses none
+
+readInf is call
+readInf in realTest
+readInf invokes realMatches
+readInf argument text String infText lend
+readInf argument expectedBits UInt64 minusInfinity copy
+readInf argument expectedEnd Int64 nine copy
+readInf result inf Bool
+readInf ownedBy none
+readInf cleanedBy none
+readInf borrows none
+readInf catch none
+readInf suppresses none
+
+expectInf is call
+expectInf in realTest
+expectInf invokes test.assertTrue
+expectInf argument value Bool inf copy
+expectInf result none
+expectInf ownedBy none
+expectInf cleanedBy none
+expectInf borrows none
+expectInf catch none
+expectInf suppresses none
+
+readInfShort is call
+readInfShort in realTest
+readInfShort invokes realMatches
+readInfShort argument text String infShortText lend
+readInfShort argument expectedBits UInt64 infinityValue copy
+readInfShort argument expectedEnd Int64 three copy
+readInfShort result infShort Bool
+readInfShort ownedBy none
+readInfShort cleanedBy none
+readInfShort borrows none
+readInfShort catch none
+readInfShort suppresses none
+
+expectInfShort is call
+expectInfShort in realTest
+expectInfShort invokes test.assertTrue
+expectInfShort argument value Bool infShort copy
+expectInfShort result none
+expectInfShort ownedBy none
+expectInfShort cleanedBy none
+expectInfShort borrows none
+expectInfShort catch none
+expectInfShort suppresses none
+
+readNan is call
+readNan in realTest
+readNan invokes realMatches
+readNan argument text String nanText lend
+readNan argument expectedBits UInt64 nanValue copy
+readNan argument expectedEnd Int64 eight copy
+readNan result nan Bool
+readNan ownedBy none
+readNan cleanedBy none
+readNan borrows none
+readNan catch none
+readNan suppresses none
+
+expectNan is call
+expectNan in realTest
+expectNan invokes test.assertTrue
+expectNan argument value Bool nan copy
+expectNan result none
+expectNan ownedBy none
+expectNan cleanedBy none
+expectNan borrows none
+expectNan catch none
+expectNan suppresses none
+
+readNone is call
+readNone in realTest
+readNone invokes realMatches
+readNone argument text String noneText lend
+readNone argument expectedBits UInt64 zeroBits copy
+readNone argument expectedEnd Int64 zero copy
+readNone result noDigits Bool
+readNone ownedBy none
+readNone cleanedBy none
+readNone borrows none
+readNone catch none
+readNone suppresses none
+
+expectNone is call
+expectNone in realTest
+expectNone invokes test.assertTrue
+expectNone argument value Bool noDigits copy
+expectNone result none
+expectNone ownedBy none
+expectNone cleanedBy none
+expectNone borrows none
+expectNone catch none
+expectNone suppresses none
+
+readHuge is call
+readHuge in realTest
+readHuge invokes realMatches
+readHuge argument text String hugeText lend
+readHuge argument expectedBits UInt64 infinityValue copy
+readHuge argument expectedEnd Int64 five copy
+readHuge result huge Bool
+readHuge ownedBy none
+readHuge cleanedBy none
+readHuge borrows none
+readHuge catch none
+readHuge suppresses none
+
+expectHuge is call
+expectHuge in realTest
+expectHuge invokes test.assertTrue
+expectHuge argument value Bool huge copy
+expectHuge result none
+expectHuge ownedBy none
+expectHuge cleanedBy none
+expectHuge borrows none
+expectHuge catch none
+expectHuge suppresses none
+
+mathTest is test
+mathTest purpose "fabs, trunc, floor, ceil, round, fmod, and sqrt give glibc's values, signs of zero included"
+mathTest verifies floatAbsolute clearsSign
+mathTest verifies truncate dropsFraction
+mathTest verifies floorOf roundsDown
+mathTest verifies ceilingOf roundsUp
+mathTest verifies roundOf roundsHalfAway
+mathTest verifies floatRemainder remaindersExactly
+mathTest verifies squareRoot rootsExactly
+mathTest typeParameter none
+mathTest input none
+mathTest output none
+mathTest outputOwnedBy none
+mathTest raises none
+mathTest effect use machine.memory
+mathTest uses memoryAccess
+mathTest memoryHeap false
+mathTest async false
+mathTest maxRecursion none
+mathTest label begin loopKind none
+mathTest label begin within none
+mathTest let minusHalf Float64 -0.5 immutable
+mathTest let minusTwoAndHalf Float64 -2.5 immutable
+mathTest let belowHalf Float64 0.49999999999999994 immutable
+mathTest let minusSevenAndHalf Float64 -7.5 immutable
+mathTest let two Float64 2.0 immutable
+mathTest let halfBits UInt64 4602678819172646912 immutable
+mathTest let minusZero UInt64 9223372036854775808 immutable
+mathTest let minusOneBits UInt64 13830554455654793216 immutable
+mathTest let minusThree UInt64 13837309855095848960 immutable
+mathTest let zeroBits UInt64 0 immutable
+mathTest let minusOneAndHalf UInt64 13832806255468478464 immutable
+mathTest let bigBits UInt64 9094988921128908188 immutable
+mathTest let tinyBits UInt64 126121232842798723 immutable
+mathTest let tinyRemainderBits UInt64 118396640582041260 immutable
+mathTest let rootTwo UInt64 4609047870845172685 immutable
+mathTest at begin do absoluteIt
+mathTest at begin do checkMagnitude
+mathTest at begin do expectMagnitude
+mathTest at begin do truncateIt
+mathTest at begin do checkTruncated
+mathTest at begin do expectTruncated
+mathTest at begin do floorIt
+mathTest at begin do checkFloored
+mathTest at begin do expectFloored
+mathTest at begin do ceilIt
+mathTest at begin do checkCeiled
+mathTest at begin do expectCeiled
+mathTest at begin do roundIt
+mathTest at begin do checkRounded
+mathTest at begin do expectRounded
+mathTest at begin do roundBelow
+mathTest at begin do checkBelow
+mathTest at begin do expectBelow
+mathTest at begin do remainderIt
+mathTest at begin do checkRemainder
+mathTest at begin do expectRemainder
+mathTest at begin do bigOf
+mathTest at begin do tinyOf
+mathTest at begin do remainderTiny
+mathTest at begin do checkTiny
+mathTest at begin do expectTiny
+mathTest at begin do rootIt
+mathTest at begin do checkRoot
+mathTest at begin do expectRoot
+mathTest at begin return ok none
+
+absoluteIt is call
+absoluteIt in mathTest
+absoluteIt invokes floatAbsolute
+absoluteIt argument value Float64 minusHalf copy
+absoluteIt result magnitude Float64
+absoluteIt ownedBy none
+absoluteIt cleanedBy none
+absoluteIt borrows none
+absoluteIt catch none
+absoluteIt suppresses none
+
+checkMagnitude is call
+checkMagnitude in mathTest
+checkMagnitude invokes sameFloat
+checkMagnitude argument expectedBits UInt64 halfBits copy
+checkMagnitude argument actual Float64 magnitude copy
+checkMagnitude result magnitudeSame Bool
+checkMagnitude ownedBy none
+checkMagnitude cleanedBy none
+checkMagnitude borrows none
+checkMagnitude catch none
+checkMagnitude suppresses none
+
+expectMagnitude is call
+expectMagnitude in mathTest
+expectMagnitude invokes test.assertTrue
+expectMagnitude argument value Bool magnitudeSame copy
+expectMagnitude result none
+expectMagnitude ownedBy none
+expectMagnitude cleanedBy none
+expectMagnitude borrows none
+expectMagnitude catch none
+expectMagnitude suppresses none
+
+truncateIt is call
+truncateIt in mathTest
+truncateIt invokes truncate
+truncateIt argument value Float64 minusHalf copy
+truncateIt result truncated Float64
+truncateIt ownedBy none
+truncateIt cleanedBy none
+truncateIt borrows none
+truncateIt catch none
+truncateIt suppresses none
+
+checkTruncated is call
+checkTruncated in mathTest
+checkTruncated invokes sameFloat
+checkTruncated argument expectedBits UInt64 minusZero copy
+checkTruncated argument actual Float64 truncated copy
+checkTruncated result truncatedSame Bool
+checkTruncated ownedBy none
+checkTruncated cleanedBy none
+checkTruncated borrows none
+checkTruncated catch none
+checkTruncated suppresses none
+
+expectTruncated is call
+expectTruncated in mathTest
+expectTruncated invokes test.assertTrue
+expectTruncated argument value Bool truncatedSame copy
+expectTruncated result none
+expectTruncated ownedBy none
+expectTruncated cleanedBy none
+expectTruncated borrows none
+expectTruncated catch none
+expectTruncated suppresses none
+
+floorIt is call
+floorIt in mathTest
+floorIt invokes floorOf
+floorIt argument value Float64 minusHalf copy
+floorIt result floored Float64
+floorIt ownedBy none
+floorIt cleanedBy none
+floorIt borrows none
+floorIt catch none
+floorIt suppresses none
+
+checkFloored is call
+checkFloored in mathTest
+checkFloored invokes sameFloat
+checkFloored argument expectedBits UInt64 minusOneBits copy
+checkFloored argument actual Float64 floored copy
+checkFloored result flooredSame Bool
+checkFloored ownedBy none
+checkFloored cleanedBy none
+checkFloored borrows none
+checkFloored catch none
+checkFloored suppresses none
+
+expectFloored is call
+expectFloored in mathTest
+expectFloored invokes test.assertTrue
+expectFloored argument value Bool flooredSame copy
+expectFloored result none
+expectFloored ownedBy none
+expectFloored cleanedBy none
+expectFloored borrows none
+expectFloored catch none
+expectFloored suppresses none
+
+ceilIt is call
+ceilIt in mathTest
+ceilIt invokes ceilingOf
+ceilIt argument value Float64 minusHalf copy
+ceilIt result ceiled Float64
+ceilIt ownedBy none
+ceilIt cleanedBy none
+ceilIt borrows none
+ceilIt catch none
+ceilIt suppresses none
+
+checkCeiled is call
+checkCeiled in mathTest
+checkCeiled invokes sameFloat
+checkCeiled argument expectedBits UInt64 minusZero copy
+checkCeiled argument actual Float64 ceiled copy
+checkCeiled result ceiledSame Bool
+checkCeiled ownedBy none
+checkCeiled cleanedBy none
+checkCeiled borrows none
+checkCeiled catch none
+checkCeiled suppresses none
+
+expectCeiled is call
+expectCeiled in mathTest
+expectCeiled invokes test.assertTrue
+expectCeiled argument value Bool ceiledSame copy
+expectCeiled result none
+expectCeiled ownedBy none
+expectCeiled cleanedBy none
+expectCeiled borrows none
+expectCeiled catch none
+expectCeiled suppresses none
+
+roundIt is call
+roundIt in mathTest
+roundIt invokes roundOf
+roundIt argument value Float64 minusTwoAndHalf copy
+roundIt result rounded Float64
+roundIt ownedBy none
+roundIt cleanedBy none
+roundIt borrows none
+roundIt catch none
+roundIt suppresses none
+
+checkRounded is call
+checkRounded in mathTest
+checkRounded invokes sameFloat
+checkRounded argument expectedBits UInt64 minusThree copy
+checkRounded argument actual Float64 rounded copy
+checkRounded result roundedSame Bool
+checkRounded ownedBy none
+checkRounded cleanedBy none
+checkRounded borrows none
+checkRounded catch none
+checkRounded suppresses none
+
+expectRounded is call
+expectRounded in mathTest
+expectRounded invokes test.assertTrue
+expectRounded argument value Bool roundedSame copy
+expectRounded result none
+expectRounded ownedBy none
+expectRounded cleanedBy none
+expectRounded borrows none
+expectRounded catch none
+expectRounded suppresses none
+
+roundBelow is call
+roundBelow in mathTest
+roundBelow invokes roundOf
+roundBelow argument value Float64 belowHalf copy
+roundBelow result roundedBelow Float64
+roundBelow ownedBy none
+roundBelow cleanedBy none
+roundBelow borrows none
+roundBelow catch none
+roundBelow suppresses none
+
+checkBelow is call
+checkBelow in mathTest
+checkBelow invokes sameFloat
+checkBelow argument expectedBits UInt64 zeroBits copy
+checkBelow argument actual Float64 roundedBelow copy
+checkBelow result belowSame Bool
+checkBelow ownedBy none
+checkBelow cleanedBy none
+checkBelow borrows none
+checkBelow catch none
+checkBelow suppresses none
+
+expectBelow is call
+expectBelow in mathTest
+expectBelow invokes test.assertTrue
+expectBelow argument value Bool belowSame copy
+expectBelow result none
+expectBelow ownedBy none
+expectBelow cleanedBy none
+expectBelow borrows none
+expectBelow catch none
+expectBelow suppresses none
+
+remainderIt is call
+remainderIt in mathTest
+remainderIt invokes floatRemainder
+remainderIt argument x Float64 minusSevenAndHalf copy
+remainderIt argument y Float64 two copy
+remainderIt result remainder Float64
+remainderIt ownedBy none
+remainderIt cleanedBy none
+remainderIt borrows none
+remainderIt catch none
+remainderIt suppresses none
+
+checkRemainder is call
+checkRemainder in mathTest
+checkRemainder invokes sameFloat
+checkRemainder argument expectedBits UInt64 minusOneAndHalf copy
+checkRemainder argument actual Float64 remainder copy
+checkRemainder result remainderSame Bool
+checkRemainder ownedBy none
+checkRemainder cleanedBy none
+checkRemainder borrows none
+checkRemainder catch none
+checkRemainder suppresses none
+
+expectRemainder is call
+expectRemainder in mathTest
+expectRemainder invokes test.assertTrue
+expectRemainder argument value Bool remainderSame copy
+expectRemainder result none
+expectRemainder ownedBy none
+expectRemainder cleanedBy none
+expectRemainder borrows none
+expectRemainder catch none
+expectRemainder suppresses none
+
+bigOf is call
+bigOf in mathTest
+bigOf invokes convert.uint64BitsToFloat64
+bigOf argument value UInt64 bigBits copy
+bigOf result big Float64
+bigOf ownedBy none
+bigOf cleanedBy none
+bigOf borrows none
+bigOf catch none
+bigOf suppresses none
+
+tinyOf is call
+tinyOf in mathTest
+tinyOf invokes convert.uint64BitsToFloat64
+tinyOf argument value UInt64 tinyBits copy
+tinyOf result tiny Float64
+tinyOf ownedBy none
+tinyOf cleanedBy none
+tinyOf borrows none
+tinyOf catch none
+tinyOf suppresses none
+
+remainderTiny is call
+remainderTiny in mathTest
+remainderTiny invokes floatRemainder
+remainderTiny argument x Float64 big copy
+remainderTiny argument y Float64 tiny copy
+remainderTiny result tinyRemainder Float64
+remainderTiny ownedBy none
+remainderTiny cleanedBy none
+remainderTiny borrows none
+remainderTiny catch none
+remainderTiny suppresses none
+
+checkTiny is call
+checkTiny in mathTest
+checkTiny invokes sameFloat
+checkTiny argument expectedBits UInt64 tinyRemainderBits copy
+checkTiny argument actual Float64 tinyRemainder copy
+checkTiny result tinySame Bool
+checkTiny ownedBy none
+checkTiny cleanedBy none
+checkTiny borrows none
+checkTiny catch none
+checkTiny suppresses none
+
+expectTiny is call
+expectTiny in mathTest
+expectTiny invokes test.assertTrue
+expectTiny argument value Bool tinySame copy
+expectTiny result none
+expectTiny ownedBy none
+expectTiny cleanedBy none
+expectTiny borrows none
+expectTiny catch none
+expectTiny suppresses none
+
+rootIt is call
+rootIt in mathTest
+rootIt invokes squareRoot
+rootIt argument value Float64 two copy
+rootIt result root Float64
+rootIt ownedBy none
+rootIt cleanedBy none
+rootIt borrows none
+rootIt catch none
+rootIt suppresses none
+
+checkRoot is call
+checkRoot in mathTest
+checkRoot invokes sameFloat
+checkRoot argument expectedBits UInt64 rootTwo copy
+checkRoot argument actual Float64 root copy
+checkRoot result rootSame Bool
+checkRoot ownedBy none
+checkRoot cleanedBy none
+checkRoot borrows none
+checkRoot catch none
+checkRoot suppresses none
+
+expectRoot is call
+expectRoot in mathTest
+expectRoot invokes test.assertTrue
+expectRoot argument value Bool rootSame copy
+expectRoot result none
+expectRoot ownedBy none
+expectRoot cleanedBy none
+expectRoot borrows none
+expectRoot catch none
+expectRoot suppresses none
+
+sortTest is test
+sortTest purpose "qsort sorts with a C comparison, keeping equal items in order, and bsearch finds what it sorted"
+sortTest verifies sortItems sortsStably
+sortTest verifies searchItems searchesLikeGlibc
+sortTest typeParameter none
+sortTest input none
+sortTest output none
+sortTest outputOwnedBy none
+sortTest raises none
+sortTest effect use machine.memory
+sortTest effect use system.calls
+sortTest uses memoryAccess
+sortTest uses systemCalls
+sortTest memoryHeap false
+sortTest async false
+sortTest maxRecursion none
+sortTest label begin loopKind none
+sortTest label begin within none
+sortTest let items String "dog_Cat_ant_cat_" immutable
+sortTest let sorted String "ant_Cat_cat_dog_" immutable
+sortTest let foldedName String "strcasecmp" immutable
+sortTest let nul Byte 0 immutable
+sortTest let four Int64 4 immutable
+sortTest let underscore Byte 95 immutable
+sortTest let sixteen Int64 16 immutable
+sortTest let keyText String "DOG" immutable
+sortTest let twelve Int64 12 immutable
+sortTest let missingText String "bee" immutable
+sortTest at begin do placeItems
+sortTest at begin do endItems
+sortTest at begin do findCompare
+sortTest at begin do sortIt
+sortTest at begin do showItems
+sortTest at begin do viewSorted
+sortTest at begin do expectSorted
+sortTest at begin do endAgain
+sortTest at begin do writeKey
+sortTest at begin do searchIt
+sortTest at begin do foundOffset
+sortTest at begin do expectFound
+sortTest at begin do writeMissing
+sortTest at begin do searchMissing
+sortTest at begin do nowhere
+sortTest at begin do missingCheck
+sortTest at begin do expectMissing
+sortTest at begin return ok none
+
+placeItems is call
+placeItems in sortTest
+placeItems invokes firstScratch
+placeItems argument text String items lend
+placeItems result base machine.Address
+placeItems ownedBy none
+placeItems cleanedBy none
+placeItems borrows none
+placeItems catch none
+placeItems suppresses none
+
+endItems is call
+endItems in sortTest
+endItems invokes markItems
+endItems argument base machine.Address base copy
+endItems argument value Byte nul copy
+endItems result none
+endItems ownedBy none
+endItems cleanedBy none
+endItems borrows none
+endItems catch none
+endItems suppresses none
+
+findCompare is call
+findCompare in sortTest
+findCompare invokes functionNamed
+findCompare argument name String foldedName lend
+findCompare result comparison machine.Address
+findCompare ownedBy none
+findCompare cleanedBy none
+findCompare borrows none
+findCompare catch none
+findCompare suppresses none
+
+sortIt is call
+sortIt in sortTest
+sortIt invokes sortItems
+sortIt argument base machine.Address base copy
+sortIt argument count Int64 four copy
+sortIt argument size Int64 four copy
+sortIt argument comparison machine.Address comparison copy
+sortIt result none
+sortIt ownedBy none
+sortIt cleanedBy none
+sortIt borrows none
+sortIt catch none
+sortIt suppresses none
+
+showItems is call
+showItems in sortTest
+showItems invokes markItems
+showItems argument base machine.Address base copy
+showItems argument value Byte underscore copy
+showItems result none
+showItems ownedBy none
+showItems cleanedBy none
+showItems borrows none
+showItems catch none
+showItems suppresses none
+
+viewSorted is call
+viewSorted in sortTest
+viewSorted invokes machine.stringAt
+viewSorted argument address machine.Address base copy
+viewSorted argument bytes Int64 sixteen copy
+viewSorted result view String
+viewSorted ownedBy none
+viewSorted cleanedBy none
+viewSorted borrows none
+viewSorted catch none
+viewSorted suppresses none
+
+expectSorted is call
+expectSorted in sortTest
+expectSorted invokes test.assertEqualString
+expectSorted argument expected String sorted lend
+expectSorted argument actual String view lend
+expectSorted result none
+expectSorted ownedBy none
+expectSorted cleanedBy none
+expectSorted borrows none
+expectSorted catch none
+expectSorted suppresses none
+
+endAgain is call
+endAgain in sortTest
+endAgain invokes markItems
+endAgain argument base machine.Address base copy
+endAgain argument value Byte nul copy
+endAgain result none
+endAgain ownedBy none
+endAgain cleanedBy none
+endAgain borrows none
+endAgain catch none
+endAgain suppresses none
+
+writeKey is call
+writeKey in sortTest
+writeKey invokes secondScratch
+writeKey argument text String keyText lend
+writeKey result key machine.Address
+writeKey ownedBy none
+writeKey cleanedBy none
+writeKey borrows none
+writeKey catch none
+writeKey suppresses none
+
+searchIt is call
+searchIt in sortTest
+searchIt invokes searchItems
+searchIt argument key machine.Address key copy
+searchIt argument base machine.Address base copy
+searchIt argument count Int64 four copy
+searchIt argument size Int64 four copy
+searchIt argument comparison machine.Address comparison copy
+searchIt result found machine.Address
+searchIt ownedBy none
+searchIt cleanedBy none
+searchIt borrows none
+searchIt catch none
+searchIt suppresses none
+
+foundOffset is call
+foundOffset in sortTest
+foundOffset invokes machine.difference
+foundOffset argument left machine.Address found copy
+foundOffset argument right machine.Address base copy
+foundOffset result foundAt Int64
+foundOffset ownedBy none
+foundOffset cleanedBy none
+foundOffset borrows none
+foundOffset catch none
+foundOffset suppresses none
+
+expectFound is call
+expectFound in sortTest
+expectFound invokes test.assertEqualInt64
+expectFound argument expected Int64 twelve copy
+expectFound argument actual Int64 foundAt copy
+expectFound result none
+expectFound ownedBy none
+expectFound cleanedBy none
+expectFound borrows none
+expectFound catch none
+expectFound suppresses none
+
+writeMissing is call
+writeMissing in sortTest
+writeMissing invokes secondScratch
+writeMissing argument text String missingText lend
+writeMissing result missingKey machine.Address
+writeMissing ownedBy none
+writeMissing cleanedBy none
+writeMissing borrows none
+writeMissing catch none
+writeMissing suppresses none
+
+searchMissing is call
+searchMissing in sortTest
+searchMissing invokes searchItems
+searchMissing argument key machine.Address missingKey copy
+searchMissing argument base machine.Address base copy
+searchMissing argument count Int64 four copy
+searchMissing argument size Int64 four copy
+searchMissing argument comparison machine.Address comparison copy
+searchMissing result missing machine.Address
+searchMissing ownedBy none
+searchMissing cleanedBy none
+searchMissing borrows none
+searchMissing catch none
+searchMissing suppresses none
+
+nowhere is call
+nowhere in sortTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+missingCheck is call
+missingCheck in sortTest
+missingCheck invokes machine.equal
+missingCheck argument left machine.Address missing copy
+missingCheck argument right machine.Address anywhere copy
+missingCheck result isMissing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+expectMissing is call
+expectMissing in sortTest
+expectMissing invokes test.assertTrue
+expectMissing argument value Bool isMissing copy
+expectMissing result none
+expectMissing ownedBy none
+expectMissing cleanedBy none
+expectMissing borrows none
+expectMissing catch none
+expectMissing suppresses none
+
+lookupTest is test
+lookupTest purpose "The table finds abs and stdout, which holds 1; a name the library lacks is nothing; c names the C library; malloc gives blocks; getenv finds PATH"
+lookupTest verifies lookup findsByName
+lookupTest verifies cLibraryName namesC
+lookupTest verifies allocate allocatesBlocks
+lookupTest verifies environmentValue readsEnvironment
+lookupTest typeParameter none
+lookupTest input none
+lookupTest output none
+lookupTest outputOwnedBy none
+lookupTest raises none
+lookupTest effect use machine.memory
+lookupTest effect use system.calls
+lookupTest uses memoryAccess
+lookupTest uses systemCalls
+lookupTest memoryHeap false
+lookupTest async false
+lookupTest maxRecursion none
+lookupTest label begin loopKind none
+lookupTest label begin within none
+lookupTest let absName String "abs" immutable
+lookupTest let stdoutName String "stdout" immutable
+lookupTest let missingName String "semanticscriptNoSuchSymbol" immutable
+lookupTest let cName String "c" immutable
+lookupTest let libcName String "libc.so.6" immutable
+lookupTest let pathName String "PATH" immutable
+lookupTest let unsetName String "SEMANTICSCRIPT_SURELY_UNSET_42" immutable
+lookupTest let one Int64 1 immutable
+lookupTest let hundred Int64 100 immutable
+lookupTest let minusOne Int64 -1 immutable
+lookupTest at begin do findAbsName
+lookupTest at begin do absLength
+lookupTest at begin do findAbs
+lookupTest at begin do nowhere
+lookupTest at begin do absFound
+lookupTest at begin do absPresent
+lookupTest at begin do expectAbs
+lookupTest at begin do findStdoutName
+lookupTest at begin do stdoutLength
+lookupTest at begin do findStdout
+lookupTest at begin do readStdout
+lookupTest at begin do expectStdout
+lookupTest at begin do findMissingName
+lookupTest at begin do missingLength
+lookupTest at begin do findMissing
+lookupTest at begin do missingCheck
+lookupTest at begin do expectMissing
+lookupTest at begin do findC
+lookupTest at begin do checkC
+lookupTest at begin do expectC
+lookupTest at begin do findLibc
+lookupTest at begin do libcLength
+lookupTest at begin do checkLibc
+lookupTest at begin do osCheck
+lookupTest at begin do sameAnswer
+lookupTest at begin do disagree
+lookupTest at begin do expectLibc
+lookupTest at begin do takeBlock
+lookupTest at begin do blockCheck
+lookupTest at begin do blockPresent
+lookupTest at begin do expectBlock
+lookupTest at begin do freeBlock
+lookupTest at begin do takeHuge
+lookupTest at begin do hugeCheck
+lookupTest at begin do expectHuge
+lookupTest at begin do writePath
+lookupTest at begin do findPath
+lookupTest at begin do pathCheck
+lookupTest at begin do pathPresent
+lookupTest at begin do pathOrJit
+lookupTest at begin do expectPath
+lookupTest at begin do writeUnset
+lookupTest at begin do findUnset
+lookupTest at begin do unsetCheck
+lookupTest at begin do expectUnset
+lookupTest at begin return ok none
+
+findAbsName is call
+findAbsName in lookupTest
+findAbsName invokes machine.addressOfString
+findAbsName argument text String absName lend
+findAbsName result absAt machine.Address
+findAbsName ownedBy none
+findAbsName cleanedBy none
+findAbsName borrows none
+findAbsName catch none
+findAbsName suppresses none
+
+absLength is call
+absLength in lookupTest
+absLength invokes string.byteLength
+absLength argument text String absName lend
+absLength result absBytes Int64
+absLength ownedBy none
+absLength cleanedBy none
+absLength borrows none
+absLength catch none
+absLength suppresses none
+
+findAbs is call
+findAbs in lookupTest
+findAbs invokes lookup
+findAbs argument name machine.Address absAt copy
+findAbs argument bytes Int64 absBytes copy
+findAbs result absFunction machine.Address
+findAbs ownedBy none
+findAbs cleanedBy none
+findAbs borrows none
+findAbs catch none
+findAbs suppresses none
+
+nowhere is call
+nowhere in lookupTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+absFound is call
+absFound in lookupTest
+absFound invokes machine.equal
+absFound argument left machine.Address absFunction copy
+absFound argument right machine.Address anywhere copy
+absFound result absMissing Bool
+absFound ownedBy none
+absFound cleanedBy none
+absFound borrows none
+absFound catch none
+absFound suppresses none
+
+absPresent is call
+absPresent in lookupTest
+absPresent invokes logic.not
+absPresent argument value Bool absMissing copy
+absPresent result hasAbs Bool
+absPresent ownedBy none
+absPresent cleanedBy none
+absPresent borrows none
+absPresent catch none
+absPresent suppresses none
+
+expectAbs is call
+expectAbs in lookupTest
+expectAbs invokes test.assertTrue
+expectAbs argument value Bool hasAbs copy
+expectAbs result none
+expectAbs ownedBy none
+expectAbs cleanedBy none
+expectAbs borrows none
+expectAbs catch none
+expectAbs suppresses none
+
+findStdoutName is call
+findStdoutName in lookupTest
+findStdoutName invokes machine.addressOfString
+findStdoutName argument text String stdoutName lend
+findStdoutName result stdoutNameAt machine.Address
+findStdoutName ownedBy none
+findStdoutName cleanedBy none
+findStdoutName borrows none
+findStdoutName catch none
+findStdoutName suppresses none
+
+stdoutLength is call
+stdoutLength in lookupTest
+stdoutLength invokes string.byteLength
+stdoutLength argument text String stdoutName lend
+stdoutLength result stdoutBytes Int64
+stdoutLength ownedBy none
+stdoutLength cleanedBy none
+stdoutLength borrows none
+stdoutLength catch none
+stdoutLength suppresses none
+
+findStdout is call
+findStdout in lookupTest
+findStdout invokes lookup
+findStdout argument name machine.Address stdoutNameAt copy
+findStdout argument bytes Int64 stdoutBytes copy
+findStdout result stdoutCell machine.Address
+findStdout ownedBy none
+findStdout cleanedBy none
+findStdout borrows none
+findStdout catch none
+findStdout suppresses none
+
+readStdout is call
+readStdout in lookupTest
+readStdout invokes machine.loadInt64
+readStdout argument address machine.Address stdoutCell copy
+readStdout result stdoutValue Int64
+readStdout ownedBy none
+readStdout cleanedBy none
+readStdout borrows none
+readStdout catch none
+readStdout suppresses none
+
+expectStdout is call
+expectStdout in lookupTest
+expectStdout invokes test.assertEqualInt64
+expectStdout argument expected Int64 one copy
+expectStdout argument actual Int64 stdoutValue copy
+expectStdout result none
+expectStdout ownedBy none
+expectStdout cleanedBy none
+expectStdout borrows none
+expectStdout catch none
+expectStdout suppresses none
+
+findMissingName is call
+findMissingName in lookupTest
+findMissingName invokes machine.addressOfString
+findMissingName argument text String missingName lend
+findMissingName result missingAt machine.Address
+findMissingName ownedBy none
+findMissingName cleanedBy none
+findMissingName borrows none
+findMissingName catch none
+findMissingName suppresses none
+
+missingLength is call
+missingLength in lookupTest
+missingLength invokes string.byteLength
+missingLength argument text String missingName lend
+missingLength result missingBytes Int64
+missingLength ownedBy none
+missingLength cleanedBy none
+missingLength borrows none
+missingLength catch none
+missingLength suppresses none
+
+findMissing is call
+findMissing in lookupTest
+findMissing invokes lookup
+findMissing argument name machine.Address missingAt copy
+findMissing argument bytes Int64 missingBytes copy
+findMissing result missingFunction machine.Address
+findMissing ownedBy none
+findMissing cleanedBy none
+findMissing borrows none
+findMissing catch none
+findMissing suppresses none
+
+missingCheck is call
+missingCheck in lookupTest
+missingCheck invokes machine.equal
+missingCheck argument left machine.Address missingFunction copy
+missingCheck argument right machine.Address anywhere copy
+missingCheck result isMissing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+expectMissing is call
+expectMissing in lookupTest
+expectMissing invokes test.assertTrue
+expectMissing argument value Bool isMissing copy
+expectMissing result none
+expectMissing ownedBy none
+expectMissing cleanedBy none
+expectMissing borrows none
+expectMissing catch none
+expectMissing suppresses none
+
+findC is call
+findC in lookupTest
+findC invokes machine.addressOfString
+findC argument text String cName lend
+findC result cAt machine.Address
+findC ownedBy none
+findC cleanedBy none
+findC borrows none
+findC catch none
+findC suppresses none
+
+checkC is call
+checkC in lookupTest
+checkC invokes cLibraryName
+checkC argument name machine.Address cAt copy
+checkC argument bytes Int64 one copy
+checkC result isC Bool
+checkC ownedBy none
+checkC cleanedBy none
+checkC borrows none
+checkC catch none
+checkC suppresses none
+
+expectC is call
+expectC in lookupTest
+expectC invokes test.assertTrue
+expectC argument value Bool isC copy
+expectC result none
+expectC ownedBy none
+expectC cleanedBy none
+expectC borrows none
+expectC catch none
+expectC suppresses none
+
+findLibc is call
+findLibc in lookupTest
+findLibc invokes machine.addressOfString
+findLibc argument text String libcName lend
+findLibc result libcAt machine.Address
+findLibc ownedBy none
+findLibc cleanedBy none
+findLibc borrows none
+findLibc catch none
+findLibc suppresses none
+
+libcLength is call
+libcLength in lookupTest
+libcLength invokes string.byteLength
+libcLength argument text String libcName lend
+libcLength result libcBytes Int64
+libcLength ownedBy none
+libcLength cleanedBy none
+libcLength borrows none
+libcLength catch none
+libcLength suppresses none
+
+checkLibc is call
+checkLibc in lookupTest
+checkLibc invokes cLibraryName
+checkLibc argument name machine.Address libcAt copy
+checkLibc argument bytes Int64 libcBytes copy
+checkLibc result isLibc Bool
+checkLibc ownedBy none
+checkLibc cleanedBy none
+checkLibc borrows none
+checkLibc catch none
+checkLibc suppresses none
+
+osCheck is call
+osCheck in lookupTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+sameAnswer is call
+sameAnswer in lookupTest
+sameAnswer invokes logic.xor
+sameAnswer argument left Bool isLibc copy
+sameAnswer argument right Bool onLinux copy
+sameAnswer result agrees Bool
+sameAnswer ownedBy none
+sameAnswer cleanedBy none
+sameAnswer borrows none
+sameAnswer catch none
+sameAnswer suppresses none
+
+disagree is call
+disagree in lookupTest
+disagree invokes logic.not
+disagree argument value Bool agrees copy
+disagree result expected Bool
+disagree ownedBy none
+disagree cleanedBy none
+disagree borrows none
+disagree catch none
+disagree suppresses none
+
+expectLibc is call
+expectLibc in lookupTest
+expectLibc invokes test.assertTrue
+expectLibc argument value Bool expected copy
+expectLibc result none
+expectLibc ownedBy none
+expectLibc cleanedBy none
+expectLibc borrows none
+expectLibc catch none
+expectLibc suppresses none
+
+takeBlock is call
+takeBlock in lookupTest
+takeBlock invokes allocate
+takeBlock argument bytes Int64 hundred copy
+takeBlock result block machine.Address
+takeBlock ownedBy none
+takeBlock cleanedBy none
+takeBlock borrows none
+takeBlock catch none
+takeBlock suppresses none
+
+blockCheck is call
+blockCheck in lookupTest
+blockCheck invokes machine.equal
+blockCheck argument left machine.Address block copy
+blockCheck argument right machine.Address anywhere copy
+blockCheck result noBlock Bool
+blockCheck ownedBy none
+blockCheck cleanedBy none
+blockCheck borrows none
+blockCheck catch none
+blockCheck suppresses none
+
+blockPresent is call
+blockPresent in lookupTest
+blockPresent invokes logic.not
+blockPresent argument value Bool noBlock copy
+blockPresent result hasBlock Bool
+blockPresent ownedBy none
+blockPresent cleanedBy none
+blockPresent borrows none
+blockPresent catch none
+blockPresent suppresses none
+
+expectBlock is call
+expectBlock in lookupTest
+expectBlock invokes test.assertTrue
+expectBlock argument value Bool hasBlock copy
+expectBlock result none
+expectBlock ownedBy none
+expectBlock cleanedBy none
+expectBlock borrows none
+expectBlock catch none
+expectBlock suppresses none
+
+freeBlock is call
+freeBlock in lookupTest
+freeBlock invokes release
+freeBlock argument block machine.Address block copy
+freeBlock result none
+freeBlock ownedBy none
+freeBlock cleanedBy none
+freeBlock borrows none
+freeBlock catch none
+freeBlock suppresses none
+
+takeHuge is call
+takeHuge in lookupTest
+takeHuge invokes allocate
+takeHuge argument bytes Int64 minusOne copy
+takeHuge result huge machine.Address
+takeHuge ownedBy none
+takeHuge cleanedBy none
+takeHuge borrows none
+takeHuge catch none
+takeHuge suppresses none
+
+hugeCheck is call
+hugeCheck in lookupTest
+hugeCheck invokes machine.equal
+hugeCheck argument left machine.Address huge copy
+hugeCheck argument right machine.Address anywhere copy
+hugeCheck result noHuge Bool
+hugeCheck ownedBy none
+hugeCheck cleanedBy none
+hugeCheck borrows none
+hugeCheck catch none
+hugeCheck suppresses none
+
+expectHuge is call
+expectHuge in lookupTest
+expectHuge invokes test.assertTrue
+expectHuge argument value Bool noHuge copy
+expectHuge result none
+expectHuge ownedBy none
+expectHuge cleanedBy none
+expectHuge borrows none
+expectHuge catch none
+expectHuge suppresses none
+
+writePath is call
+writePath in lookupTest
+writePath invokes firstScratch
+writePath argument text String pathName lend
+writePath result path machine.Address
+writePath ownedBy none
+writePath cleanedBy none
+writePath borrows none
+writePath catch none
+writePath suppresses none
+
+findPath is call
+findPath in lookupTest
+findPath invokes environmentValue
+findPath argument name machine.Address path copy
+findPath result pathValue machine.Address
+findPath ownedBy none
+findPath cleanedBy none
+findPath borrows none
+findPath catch none
+findPath suppresses none
+
+pathCheck is call
+pathCheck in lookupTest
+pathCheck invokes machine.equal
+pathCheck argument left machine.Address pathValue copy
+pathCheck argument right machine.Address anywhere copy
+pathCheck result noPath Bool
+pathCheck ownedBy none
+pathCheck cleanedBy none
+pathCheck borrows none
+pathCheck catch none
+pathCheck suppresses none
+
+pathPresent is call
+pathPresent in lookupTest
+pathPresent invokes logic.not
+pathPresent argument value Bool noPath copy
+pathPresent result hasPath Bool
+pathPresent ownedBy none
+pathPresent cleanedBy none
+pathPresent borrows none
+pathPresent catch none
+pathPresent suppresses none
+
+pathOrJit is call
+pathOrJit in lookupTest
+pathOrJit invokes logic.or
+pathOrJit argument left Bool hasPath copy
+pathOrJit argument right Bool onLinux copy
+pathOrJit result pathFine Bool
+pathOrJit ownedBy none
+pathOrJit cleanedBy none
+pathOrJit borrows none
+pathOrJit catch none
+pathOrJit suppresses none
+
+expectPath is call
+expectPath in lookupTest
+expectPath invokes test.assertTrue
+expectPath argument value Bool pathFine copy
+expectPath result none
+expectPath ownedBy none
+expectPath cleanedBy none
+expectPath borrows none
+expectPath catch none
+expectPath suppresses none
+
+writeUnset is call
+writeUnset in lookupTest
+writeUnset invokes firstScratch
+writeUnset argument text String unsetName lend
+writeUnset result unsetText machine.Address
+writeUnset ownedBy none
+writeUnset cleanedBy none
+writeUnset borrows none
+writeUnset catch none
+writeUnset suppresses none
+
+findUnset is call
+findUnset in lookupTest
+findUnset invokes environmentValue
+findUnset argument name machine.Address unsetText copy
+findUnset result unsetValue machine.Address
+findUnset ownedBy none
+findUnset cleanedBy none
+findUnset borrows none
+findUnset catch none
+findUnset suppresses none
+
+unsetCheck is call
+unsetCheck in lookupTest
+unsetCheck invokes machine.equal
+unsetCheck argument left machine.Address unsetValue copy
+unsetCheck argument right machine.Address anywhere copy
+unsetCheck result noUnset Bool
+unsetCheck ownedBy none
+unsetCheck cleanedBy none
+unsetCheck borrows none
+unsetCheck catch none
+unsetCheck suppresses none
+
+expectUnset is call
+expectUnset in lookupTest
+expectUnset invokes test.assertTrue
+expectUnset argument value Bool noUnset copy
+expectUnset result none
+expectUnset ownedBy none
+expectUnset cleanedBy none
+expectUnset borrows none
+expectUnset catch none
+expectUnset suppresses none

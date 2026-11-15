@@ -36,6 +36,8 @@ import jsontour  # noqa: E402
 import interrupttour  # noqa: E402
 import nettour  # noqa: E402
 import httptour  # noqa: E402
+import ctour  # noqa: E402
+import loadtour  # noqa: E402
 
 RUNTIME = os.path.join(caselib.ROOT, "semanticscript", "runtime")
 EXAMPLES = os.path.join(caselib.ROOT, "docs", "refined-examples")
@@ -106,7 +108,9 @@ def assert_no_libc(path: str) -> None:
     assert elf_dynamic(path) == [], elf_dynamic(path)
     with open(path, "rb") as fh:
         data = fh.read()
-    for mark in (b"libc.so", b"GLIBC_", b"ld-linux", b"__libc_start_main"):
+    # D-153: `libc.so.6` and `ld-linux-x86-64.so.2` are in an executable that reaches `ffi`, as names the runtime
+    # recognizes (they stand for its own C library); what linking the C library would leave is never there
+    for mark in (b"GLIBC_", b"__libc_start_main", b"/lib64/ld-linux", b"/lib/ld-linux"):
         assert mark not in data, mark
 
 
@@ -194,11 +198,9 @@ def test_linked_without_libc_matches_the_jit(name, tmp_path):
         assert "\n  in " in ran.stderr
 
 
-# What an executable cannot have (D-140, D-145): on Linux a foreign library, which needs the C library and its
-# dynamic loader. Everything else the library has, the runtime in SemanticScript has.
-REFUSED = {}
-if not WINDOWS:
-    REFUSED["18-interop/foreign"] = "ffi"
+# What an executable cannot have: nothing. D-145 refused `ffi` on Linux, which needed the C library and its dynamic
+# loader; the runtime's own C library (D-153) and loader (D-154) lifted that, so every program links on every system.
+REFUSED: dict[str, str] = {}
 
 
 @needs_windows_cc
@@ -236,33 +238,28 @@ def test_suite_programs_link_or_are_refused(tmp_path):
 
     with ThreadPoolExecutor(6) as pool:
         outcomes = list(pool.map(one, range(len(cases))))
-    # stage 1 linked 42 of the 76, stage 2 49; stages 3 and 4 every program but the five REFUSED names
+    # stage 1 linked 42 of the 76, stage 2 49, stages 3 and 4 71, stage 6 all 76 on Windows and 75 on Linux; with the
+    # runtime's own C library and loader (D-153, D-154) all 76 on both
     refused = {o.split(":", 1)[1] for o in outcomes if o.startswith("refused:")}
-    assert refused == set(REFUSED) & {c.name for c in cases}, refused
-    # all 76 on Windows; 75 on Linux, where `18-interop/foreign` is refused (ffi needs the C library, D-145)
-    assert outcomes.count("linked") == len(cases) - len(refused) >= (76 if WINDOWS else 75), outcomes.count("linked")
+    assert refused == set(REFUSED) & {c.name for c in cases} == set(), refused
+    assert outcomes.count("linked") == len(cases) >= 76, outcomes.count("linked")
 
 
 @needs_windows_cc
 def test_program_needing_more_runtime_is_refused(tmp_path):
-    """18 Static linking (D-130, D-145): a program that calls a host target the runtime in SemanticScript does not
-    have is refused before linking, naming it; on Linux a foreign library is refused with the platform's limit
-    stated (ffi needs the C library), and `--runtime semanticscript`, still accepted (D-141), changes nothing."""
+    """18 Static linking (D-130, D-153): a program that calls a host target the runtime in SemanticScript does not
+    have is refused before linking, naming it; a foreign library is not such a target on any system (D-145 refused it
+    on Linux), and `--runtime semanticscript`, still accepted (D-141), changes nothing."""
     from refined.native import executable
     exe = str(tmp_path / "program.exe")
     ok, message = executable('@key = constant [14 x i8] c"nosuch.target|"\n', "probe.main", exe)
     assert not ok and "R901" in message and "`nosuch.target`" in message and "does not provide yet" in message
     assert not os.path.exists(exe)
-    if WINDOWS:
-        return
     project = caselib.materialize(CASES["18-interop/foreign"], str(tmp_path / "foreign"))
     exe = os.path.join(project, "program.exe")
-    built = _build(project, exe)
-    assert built.returncode != 0 and "R901" in built.stdout and "cannot have (D-145)" in built.stdout, built.stdout
-    assert "glibc" in built.stdout and not os.path.exists(exe)
-    compatible = caselib.refined("build", project, "--kind", "executable", "--runtime", "semanticscript", "--output",
-                                 exe)
-    assert compatible.returncode != 0 and compatible.stdout == built.stdout, compatible.stdout
+    built = caselib.refined("build", project, "--kind", "executable", "--runtime", "semanticscript", "--output", exe)
+    assert built.returncode == 0 and "no C library" in built.stdout, built.stdout
+    assert_no_libc(exe)
 
 
 @needs_windows_cc
@@ -278,6 +275,120 @@ def test_http_targets_match_the_jit(tmp_path):
     ran, jit = _same_as_jit(project)
     assert ran == jit and ran[0] == 0
     assert "malformed" in ran[1] and "HTTP/1.1 418 Status" in ran[1], ran[1]
+
+
+@needs_windows_cc
+def test_c_library_matches_glibc(tmp_path):
+    """18 Foreign function interface, 18 C interoperability (D-153): `ffi.open("c")` in an executable binds the
+    runtime's own C library on Windows and on Linux alike, and what its functions give is what glibc gives in the C
+    locale: ctype's classifiers and case changes over every code from -128 to 255, abs, labs, llabs, and div at their
+    limits, fabs, trunc, floor, ceil, round, sqrt, fmod, and copysign over signed zeros, halves, subnormals,
+    infinities, and NaN, and calloc, memset, strlen, strtol, atoi, strtod, and free on memory the library gave; a name
+    it does not have is symbolMissing. On Linux, where `refined run` calls glibc through ctypes, the executable prints
+    exactly what `refined run` prints."""
+    project = str(tmp_path / "ctour")
+    ctour.write_project(project)
+    caselib.approve(project)
+    exe = os.path.join(project, "program.exe")
+    built = _build(project, exe)
+    assert built.returncode == 0, built.stdout + built.stderr
+    assert_no_libc(exe)
+    ran = _exe(exe, project)
+    assert ran.returncode == 0 and ran.stderr == "", ran.stderr
+    want = ctour.expected()
+    got = ran.stdout.splitlines()
+    assert len(got) == len(want) and [i for i, (g, w) in enumerate(zip(got, want)) if g != w] == [], \
+        [(i, g, w) for i, (g, w) in enumerate(zip(got, want)) if g != w][:20]
+    if not WINDOWS:
+        jit = _jit(project)
+        assert (jit.returncode, jit.stdout, jit.stderr) == (ran.returncode, ran.stdout, ran.stderr)
+
+
+def test_c_library_table_names_glibc_functions():
+    """D-153: the runtime's C library is the `abi library` operations of its `clibrary` module, each under its C
+    name, and nothing else: ctype.h, string.h, stdlib.h, math.h's basics, a little of stdio.h, and the few names
+    glibc's headers and start files make compiled code call (`__ctype_b_loc`, `__errno_location`,
+    `__stack_chk_fail`, `__cxa_finalize`, `__cxa_atexit`); every one is a name glibc exports."""
+    import re
+    with open(os.path.join(RUNTIME, "clibrary.sem"), encoding="utf-8") as fh:
+        names = set(re.findall(r'^\w+ abi library "(\w+)"$', fh.read(), re.M))
+    assert names == C_LIBRARY, (names - C_LIBRARY, C_LIBRARY - names)
+    for other in os.listdir(RUNTIME):
+        if other.endswith(".sem") and other != "clibrary.sem":
+            with open(os.path.join(RUNTIME, other), encoding="utf-8") as fh:
+                assert " abi library " not in fh.read(), other
+    if not WINDOWS and PLATFORM:
+        import ctypes
+        import ctypes.util
+        glibc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
+        assert [n for n in sorted(names) if not hasattr(glibc, n)] == []
+
+
+C_LIBRARY = {
+    "isalnum", "isalpha", "isblank", "iscntrl", "isdigit", "isgraph", "islower", "isprint", "ispunct", "isspace",
+    "isupper", "isxdigit", "isascii", "toascii", "toupper", "tolower", "__ctype_b_loc", "__ctype_toupper_loc",
+    "__ctype_tolower_loc",
+    "strlen", "strnlen", "strcmp", "strncmp", "strcasecmp", "strncasecmp", "strcpy", "strncpy", "strcat", "strncat",
+    "strchr", "strrchr", "strstr", "strspn", "strcspn", "strpbrk", "strdup", "strndup", "memchr", "memcmp", "memcpy",
+    "memmove", "memset",
+    "abs", "labs", "llabs", "div", "atoi", "atol", "atoll", "atof", "strtol", "strtoll", "strtoul", "strtoull",
+    "strtod", "malloc", "calloc", "realloc", "free", "qsort", "bsearch", "getenv", "exit", "_exit", "abort",
+    "__errno_location", "__stack_chk_fail", "__cxa_finalize", "__cxa_atexit",
+    "fabs", "floor", "ceil", "trunc", "round", "fmod", "sqrt", "copysign",
+    "puts", "putchar", "fputs", "fputc", "putc", "fwrite", "fflush",
+}
+
+
+@pytest.mark.skipif(WINDOWS or not PLATFORM, reason="the runtime's loader maps ELF shared libraries on Linux")
+def test_loader_matches_glibc(tmp_path):
+    """18 Native library loading, 18 Dynamic linking, 18 Shared libraries (D-154): an executable on Linux loads a
+    shared library compiled here with the runtime's own loader: its segments mapped, its relocations (RELATIVE,
+    GLOB_DAT, JUMP_SLOT, 64) applied, its constructor run, its DT_NEEDED library found through RUNPATH `$ORIGIN`, its
+    C imports (the C library's functions, `stdout`, `stderr`, the stack protector's canary) bound to the runtime's C
+    library; every one of thousands of probes of strtol and its kin, strtod, atoi, ctype, the string functions, malloc
+    and its kin, math, qsort and bsearch, getenv, and div gives what the same library gives calling glibc through
+    ctypes. puts, putchar, fputs, and fwrite write in order with the program's own lines; strlen binds through a
+    library that needs the C library and not through one that does not (which still calls it); a file that is not a
+    library and a name no file has are notFound."""
+    from refined.native import find_cc
+    project = str(tmp_path / "probetour")
+    loadtour.write_project(project, "probetour")
+    caselib.approve(project)
+    loadtour.build_libraries(find_cc(), project)
+    os.environ["SEMANTICSCRIPT_LOADTOUR"] = "a value"
+    os.environ["SEMANTICSCRIPT_LOADTOUR_EMPTY"] = ""
+    try:
+        want = loadtour.expected_probes(project) + loadtour.EXPECTED_TAIL
+        exe = os.path.join(project, "program.exe")
+        built = _build(project, exe)
+        assert built.returncode == 0, built.stdout + built.stderr
+        assert_no_libc(exe)
+        ran = _exe(exe, project)
+    finally:
+        del os.environ["SEMANTICSCRIPT_LOADTOUR"], os.environ["SEMANTICSCRIPT_LOADTOUR_EMPTY"]
+    assert ran.returncode == 0 and ran.stderr == "to stderr\n", (ran.returncode, ran.stderr)
+    got = ran.stdout.splitlines()
+    assert [(i, g, w) for i, (g, w) in enumerate(zip(got, want)) if g != w][:20] == [] and len(got) == len(want), \
+        (len(got), len(want), got[-12:])
+
+
+@pytest.mark.skipif(WINDOWS or not PLATFORM, reason="the runtime's loader maps ELF shared libraries on Linux")
+@pytest.mark.parametrize("library", sorted(loadtour.REFUSED))
+def test_loader_refuses_what_it_cannot_load_right(library, tmp_path):
+    """D-154: a library the loader cannot load right is refused with a trap that says why, never loaded wrongly:
+    thread-local storage, an ifunc, a function no library and not the runtime's C library defines."""
+    from refined.native import find_cc
+    project = str(tmp_path / "refusetour")
+    loadtour.write_project(project, "refusetour")
+    caselib.approve(project)
+    loadtour.build_libraries(find_cc(), project)
+    exe = os.path.join(project, "program.exe")
+    built = _build(project, exe)
+    assert built.returncode == 0, built.stdout + built.stderr
+    ran = _exe(exe, project, (library,))
+    assert ran.returncode == 70 and ran.stdout == "", (ran.returncode, ran.stdout, ran.stderr)
+    assert ran.stderr.startswith(f"trap: `ffi.open` cannot load `{library}` in an executable with no C library: ")
+    assert loadtour.REFUSED[library] in ran.stderr and "(D-154)" in ran.stderr, ran.stderr
 
 
 @needs_windows_cc
@@ -563,8 +674,8 @@ def test_executables_hold_only_what_they_use(tmp_path):
 
 def test_runtime_host_targets_cover_the_library():
     """D-130, D-136, D-137, D-143: the runtime in SemanticScript dispatches over every host target host.py implements
-    but those of `net`, `http`, `json`, `random`, and `signal` (and on Linux `ffi`, D-140), with the scoped parameter
-    host.py checks (D-38); native.py reads the runtime's table to refuse any other (R901)."""
+    on Windows and on Linux alike (D-153 and D-154 lifted D-140's `ffi` on Linux), with the scoped parameter host.py
+    checks (D-38); native.py reads the runtime's table to refuse any other (R901)."""
     import re
     from refined import host
     from refined.native import runtime_host_targets
@@ -573,7 +684,7 @@ def test_runtime_host_targets_cover_the_library():
     missing = {name.split(".")[0] for name in set(host.HANDLERS) - ours}
     assert missing == set(), missing
     linux = runtime_host_targets("x86_64-unknown-linux-gnu")
-    assert ours - linux == {"ffi.open", "ffi.close", "ffi.Function.bind"}, ours - linux
+    assert ours == linux, ours ^ linux
     with open(os.path.join(RUNTIME, "host.sem"), encoding="utf-8") as fh:
         text = fh.read()
     for name in ours:
@@ -596,9 +707,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 66 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 76 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "66 of 66 tests passed" in tested.stdout
+    assert "76 of 76 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

@@ -1,0 +1,2 @@
+# Tests of the `clibrary` module; generated from tools/clibrary.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.

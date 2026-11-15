@@ -2671,7 +2671,8 @@ The five modules stage 4 left to `refined run` (D-137) moved into `semanticscrip
   and the C library, which is what the bar rules out. macOS is refused (R901): Apple's kernel interface is private
   and changes between releases, and every macOS executable must link libSystem, which is the C library; there is
   no macOS executable without a C library to build. Both are stated in the R901 messages and in
-  docs/runtime-in-semanticscript.md.
+  docs/runtime-in-semanticscript.md. The limit on `ffi` is lifted by D-153 and D-154: the runtime's own C library
+  and loader.
 - **D-146** `random` is the module `generators`. `random.int64Between` reads the operating system's secure source as
   `secrets.randbelow` does, a fresh draw of the range's bit length until one falls inside it: `BCryptGenRandom` with
   `BCRYPT_USE_SYSTEM_PREFERRED_RNG` on Windows (bcrypt.dll, D-144), the `getrandom` system call on Linux; a source
@@ -2768,6 +2769,101 @@ The five modules stage 4 left to `refined run` (D-137) moved into `semanticscrip
   region; `serializeResponse` writes `HTTP/1.1 <status> <reason>` (OK, Created, No Content, Bad Request, Not Found,
   Method Not Allowed, Internal Server Error, else `Status`), then `Content-Type: text/plain; charset=utf-8`,
   `Content-Length`, `Connection: close`, a blank line, and the body.
+
+## The runtime in SemanticScript, the C library and a loader (2026-11-15)
+
+`ffi` was the one module an executable on Linux refused (D-145): `ffi.open("c")` asked for glibc, which a static
+process with no C library cannot host. The runtime now has a C library of its own, written in SemanticScript, which
+`ffi.open("c")` binds on Windows and on Linux alike, and a loader of ELF shared libraries for every other name on
+Linux. Decided by delegation:
+
+- **D-153** The runtime's C library is the module `clibrary`: each function an `abi library "<name>"` operation (D-155)
+  under its C name, behaving as glibc does in the C locale, on Windows too, so a program's foreign calls give the
+  same results on both. It has ctype.h (`isalnum` to `isxdigit`, `isascii`, `toascii`, `toupper`, `tolower`, each
+  classifier giving glibc's class bit, 1024 for `isalpha('A')`, and `__ctype_b_loc`, `__ctype_toupper_loc`,
+  `__ctype_tolower_loc`, the tables glibc's macros read, for -128 to 255); string.h (`strlen`, `strnlen`, `strcmp`,
+  `strncmp`, `strcasecmp`, `strncasecmp`, `strcpy`, `strncpy`, `strcat`, `strncat`, `strchr`, `strrchr`, `strstr`,
+  `strspn`, `strcspn`, `strpbrk`, `strdup`, `strndup`, `memchr`, `memcmp`, `memcpy`, `memmove`, `memset`; a
+  comparison gives the difference of the first differing bytes as unsigned chars); stdlib.h (`abs`, `labs`, `llabs`
+  wrapping at the most negative value; `div`, whose `div_t` every 64-bit C ABI returns in one register, so it is an
+  `Int64` with the quotient in its low half; `ldiv` and `lldiv` return two registers or memory and are not there;
+  `atoi`, `atol`, `atoll`, `strtol`, `strtoll`, `strtoul`, `strtoull` as glibc reads them: white space, a sign, `0x`
+  in base 16 and base 0, `0` for octal in base 0, `0x` with no hexadecimal digit after it read as `0` ending at the
+  `x`, the limits with ERANGE, EINVAL for a base that is neither 0 nor 2 to 36 with the end not stored; `strtod` and
+  `atof`: `inf`, `infinity`, `nan`, `nan(chars)` in any case, hexadecimal numbers rounded to nearest even with
+  subnormals, decimal ones normalized and read correctly rounded by the `floats` module, HUGE_VAL with ERANGE past
+  the largest double, ERANGE for a decimal result that is subnormal or 0 from nonzero digits and a hexadecimal one
+  that is so inexactly; `malloc`, `calloc`, `realloc`, `free` on the runtime's heap (blocks aligned to 16 and
+  zeroed, NULL with ENOMEM past PTRDIFF_MAX or for a `calloc` that overflows, `realloc` to 0 bytes freeing, as
+  glibc's; a heap the system cannot grow traps as the runtime's heap does); `qsort`, a stable merge sort as glibc's
+  is, and `bsearch`, glibc's halving, both calling the caller's comparison (`machine.callComparison`); `getenv`, the
+  environment the Linux process started with, and on Windows a UTF-8 copy the next `getenv` replaces, as C allows;
+  `exit` and `_exit`, which end the process at once (the runtime writes as it goes, so nothing is buffered; nothing
+  registered with `__cxa_atexit` runs); `abort`, SIGABRT with its default action on Linux, exit code 3 on Windows
+  as the C runtime's abort; `__errno_location`, one errno cell); math.h's basics (`fabs`, `copysign`, `trunc`,
+  `floor`, `ceil`, `round`, `fmod` exactly by musl's integer algorithm, `sqrt` by `machine.squareRoot`, one
+  instruction; `floor` and the like are not LLVM intrinsics here because on x86_64 without SSE4.1 they lower to calls
+  of libm); stdio.h's writes (`puts`, `putchar`, `fputs`, `fputc`, `putc`, `fwrite`, `fflush`): a stream is the number
+  1 (stdout) or 2 (stderr), which the data symbols `stdout` and `stderr` hold, and nothing is buffered, so C's lines
+  and the program's come out in the order they were written; and what glibc's start files and stack protector make
+  compiled code call: `__stack_chk_fail` (glibc's message, then abort), `__stack_chk_guard` (a data symbol, random),
+  `__cxa_finalize` and `__cxa_atexit` (nothing is run at exit, as at `_exit`). `long` and `size_t` are 64 bits
+  everywhere (LP64), Windows included, where the C runtime's `long` is 32. `ffi.open` binds this library for `c` on
+  every system and on Linux also for the files the C library and its parts are, `libc.so.6`, `libm.so.6`,
+  `libpthread.so.0`, `libdl.so.2`, `librt.so.1`, and `m` (`find_library("m")`'s); `ffi.Function.bind` finds a name in
+  the table and then among the data symbols, and a name it does not have is `symbolMissing` exactly as under `refined
+  run`. On Windows `c` no longer loads ucrtbase: a program that binds a function the runtime's library lacks gets
+  `symbolMissing` where `refined run` finds it, and ctype's classifiers give glibc's bits where ucrtbase's differ;
+  other names still load with LoadLibraryW. The executable stays free of the C library (D-144): `libc.so.6` and
+  `ld-linux-*` appear in an executable that reaches `ffi` only as names the runtime recognizes, so `assert_no_libc`
+  now looks for what linking glibc would leave (`GLIBC_` versions, `__libc_start_main`, an interpreter path) besides
+  a dynamic section. tests/ctour.py binds the scalar functions and builds strings in memory the library gave; the
+  executable prints what glibc gives (`expected()`), and on Linux exactly what `refined run` prints.
+- **D-154** `ffi.open` of any other name on Linux maps an ELF shared library with the runtime's loader, the module
+  `loader`, as `dlopen(name, RTLD_NOW)` would: a name with `/` is a path, any other is looked for in
+  LD_LIBRARY_PATH, then the asking library's RUNPATH (or RPATH) with `$ORIGIN`, then the system's library
+  directories (`/lib/<arch>-linux-gnu`, `/usr/lib/<arch>-linux-gnu`, `/lib64`, `/usr/lib64`, `/lib`, `/usr/lib`; the
+  ld.so cache is not read). A file that is not a 64-bit little-endian ET_DYN object for this machine, like a name no
+  file has, is notFound, as dlopen's failure is; a library is loaded once, known by its file's device and inode, and
+  stays loaded (`ffi.close` gives the handle back, as before). Its PT_LOAD segments are mapped from the file
+  (MAP_FIXED, private) inside a span reserved at a base the kernel picks, each with its protection, the rest of a
+  last file page zeroed and pages past the file anonymous; its DT_NEEDED libraries load first (the C library and its
+  parts, and the dynamic loader's own name, stand for the runtime's C library), and a library it needs that is not
+  found makes it notFound; then its relocations are applied and bound at once: DT_RELR, DT_RELA, and DT_JMPREL, the
+  types RELATIVE (base plus addend), 64 and ABS64, GLOB_DAT, and JUMP_SLOT (symbol plus addend) on x86_64 and
+  AArch64. A symbol is the library's own definition when it defines it, else the first definition found through
+  DT_GNU_HASH (or DT_HASH) in its libraries breadth first, then the runtime's C library; a weak symbol nothing
+  defines is 0. Then DT_INIT and DT_INIT_ARRAY run, in order, after its libraries'. `ffi.Function.bind` looks a name
+  up as `dlsym` does in the library's scope: the library, its libraries breadth first, and the runtime's C library
+  only when one of them needs the C library. What the loader cannot do right it never does wrongly: a library with
+  thread-local storage (PT_TLS, a TLS relocation, an STT_TLS symbol, DF_STATIC_TLS), an ifunc (IRELATIVE,
+  STT_GNU_IFUNC), text relocations (DT_TEXTREL, DF_TEXTREL), DT_REL, a relocation of any other type, or a symbol
+  neither its libraries nor the runtime's C library define traps, with ``trap: `ffi.open` cannot load `<path>` in an
+  executable with no C library: <why> (D-154); run the program with `refined run` ``. A trap and not an error value,
+  because `ffi.LoadError` has two variants and a third would make every exhaustive `match` of it incomplete, and
+  `notFound` would be false: the library is there, and `refined run` loads it. Code a loaded library runs reads the
+  stack protector's canary through the thread pointer on x86_64 (`%fs:0x28`), so before the first initializer runs
+  an executable sets the thread pointer (`arch_prctl(ARCH_SET_FS)`, D-155) to a block of its own that points at
+  itself with a random canary at 0x28 (under `refined run` and `refined test` the thread pointer is the C library's and
+  is left alone); on AArch64 the canary is the data symbol `__stack_chk_guard`, filled from getrandom. An
+  initializer is called with one argument, 0 (glibc passes argc, argv, and envp; the start files' do not read them).
+  tests/loadtour.py compiles a probe library on the Linux runner (linked with libc.so.6, a constructor, a pointer to
+  strlen in its data, a library it needs through `$ORIGIN`, functions with stack protectors) whose thousands of
+  probes give exactly what the same library gives calling glibc through ctypes, one linked with no C library that
+  calls strlen, and libraries with thread-local storage, an ifunc, and a missing function, which trap.
+- **D-155** The compiler gains what the C library and the loader need, for the runtime only, as D-121's primitives
+  are. An operation's `abi` row may be `abi library "<name>"`: the C calling convention and D-123's rules (inputs and
+  output the C ABI passes as they are, nothing raised, not generic, not async), one operation per name, but no linker
+  symbol: its LLVM function is `refined.c.<name>`, so LLVM never takes it for the library function it is named after
+  (a `strlen` loop recognized as a call of `strlen` would call itself), and an executable that does not reach `ffi`
+  drops it. `machine.cLibrary()` is the address of a table the compiler builds of every such operation, sorted by
+  name: the count, then for each the name's address, its length, and the function's address (constant, internal).
+  `machine.callComparison(function, left, right)` calls `int function(const void *, const void *)`, the comparison a
+  C caller hands qsort and bsearch, the third place the language calls an address (after D-131's `callWithAddress`
+  and the program's own operation references). `machine.squareRoot` is `llvm.sqrt`, which is one instruction on
+  x86_64 (SSE2) and AArch64 and needs no libm. `system.archPrctl` is x86_64's arch_prctl; AArch64 has no such call,
+  so it has no number there and the backend lowers it to a trap, never reached since the runtime asks
+  `system.aarch64()` first.
 
 ## Data structures for self-hosting (2026-11-14)
 
@@ -3271,6 +3367,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-131 to D-137 | The runtime in SemanticScript, stages 3 and 4: `machine.taskEntry`, kernel32 rows for files, processes, time, and fibers, tasks on fibers with deadlock detection and cancellation, test callbacks, one-module executables, channels, secrets, crypto, foreign libraries (by delegation) |
 | 2026-11-14 | D-138 to D-143 | The runtime in SemanticScript, stage 5: Linux through raw system calls (`LINUX_CALLS`, `system.linux`), the runtime's own stacks and heap on Linux, `ffi` refused there, the only runtime (macOS refused), stage0's C linking the runtime object, `native_runtime.c` deleted (by delegation) |
 | 2026-11-15 | D-144 to D-152 | The runtime in SemanticScript, the rest of the library: "no C library" worded (OS interfaces ws2_32 and bcrypt allowed, never a CRT), the platform limits (ffi on Linux, macOS), `random` (CPython's Mersenne Twister, the system's secure source), `signal` (console control handler, rt_sigaction), `net` (non-blocking sockets through the scheduler, a resolver for Linux), `json` (CPython's scanner and encoder, shared counted values), `http`, AArch64 Linux (by delegation) |
+| 2026-11-15 | D-153 to D-155 | The runtime in SemanticScript, `ffi` everywhere: a C library written in SemanticScript (ctype, string, stdlib, math basics, stdio writes, as glibc in the C locale) that `ffi.open("c")` binds on Windows and Linux, an ELF shared-library loader for Linux (eager binding, refusals that trap), `abi library` rows and `machine.cLibrary` (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

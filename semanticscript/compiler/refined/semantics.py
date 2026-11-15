@@ -1323,7 +1323,13 @@ C_SYMBOL = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 def abi_symbol(ent) -> Optional[str]:
     """The C symbol an operation is exported under (`abi c "<symbol>"`, D-123), or None."""
     row = ent.fact("abi")
-    return row.args[1].value if row is not None and len(row.args) > 1 else None
+    return row.args[1].value if row is not None and len(row.args) > 1 and row.text(0) == "c" else None
+
+
+def library_symbol(ent) -> Optional[str]:
+    """The name an operation has in the runtime's C library (`abi library "<name>"`, D-153), or None."""
+    row = ent.fact("abi")
+    return row.args[1].value if row is not None and len(row.args) > 1 and row.text(0) == "library" else None
 
 
 def _check_abi(m: Module, op: OpInfo) -> None:
@@ -1334,7 +1340,7 @@ def _check_abi(m: Module, op: OpInfo) -> None:
     if row is None:
         return
     sink = m.sink
-    symbol = abi_symbol(ent)
+    symbol = abi_symbol(ent) or library_symbol(ent)
     if not C_SYMBOL.match(symbol or ""):
         sink.error("R402", row.line, f"`{symbol}` is not a C symbol: a letter or `_`, then letters, digits, and `_`")
     if op.tparams:
@@ -1357,15 +1363,19 @@ def _check_abi(m: Module, op: OpInfo) -> None:
 
 
 def check_abi_symbols(world: World) -> None:
-    """D-123: one operation per C symbol in a program."""
+    """D-123: one operation per C symbol in a program; D-153: one per name of the runtime's C library."""
     seen: dict[str, str] = {}
     for m in world.modules.values():
         for name, ent in m.ops.items():
-            symbol = abi_symbol(ent)
+            symbol, kind = abi_symbol(ent), "C symbol of"
             if symbol is None:
-                continue
+                symbol, kind = library_symbol(ent), "C library name of"
+                if symbol is None:
+                    continue
+                symbol = "library " + symbol
             if symbol in seen:
-                m.sink.error("R402", ent.fact("abi").line, f"`{symbol}` is already the C symbol of `{seen[symbol]}`")
+                m.sink.error("R402", ent.fact("abi").line, f"`{symbol.split()[-1]}` is already the {kind} "
+                             f"`{seen[symbol]}`")
             else:
                 seen[symbol] = f"{m.short}.{name}"
 

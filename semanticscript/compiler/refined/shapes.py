@@ -202,7 +202,9 @@ _OP_SKELETON = [("typeParameter", "some"), ("input", "some"), ("output", "one"),
 # D-123: an operation may be exported to C under an exact symbol, `abi c "<symbol>"`. It is the one optional
 # structural row: only the runtime's operations have it, and `abi none` on every other operation would state
 # nothing a reader needs. It sits after `maxRecursion`, with the other facts about how the operation is called.
-_ABI = {"abi": [(kw("c"), "string")]}
+# D-153: `abi library "<name>"` is a function of the runtime's C library, called with the C calling convention through
+# the address its table gives (`machine.cLibrary`), never exported to the linker under that name.
+_ABI = {"abi": [(kw("c", "library"), "string")]}
 _OPERATION_SKELETON = _OP_SKELETON[:10] + [("abi", "optional")] + _OP_SKELETON[10:]
 
 _CALL_SHAPES = {

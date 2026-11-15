@@ -95,6 +95,30 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   its error constants instead (D-143); every conformance program, the
   cancellation check included, runs as an executable.
 
+### The runtime in SemanticScript: `ffi` everywhere
+
+- A C standard library written in SemanticScript (D-153), the runtime module
+  `clibrary`: ctype.h (glibc's class bits and tables), string.h, stdlib.h
+  (`strtol` and its kin, `strtod`, `atoi`, `malloc` and its kin, `qsort`,
+  `bsearch`, `getenv`, `exit`, `abort`, `div`), math.h's basics, and stdio.h's
+  writes, each as glibc behaves in the C locale. `ffi.open("c")` binds it in
+  an executable on Windows and on Linux alike (on Linux also `libc.so.6` and
+  glibc's other parts); on Windows `c` no longer loads ucrtbase.
+- A loader of ELF shared libraries for Linux (D-154), the runtime module
+  `loader`: `ffi.open` of any other name finds, maps, relocates (RELATIVE,
+  GLOB_DAT, JUMP_SLOT, 64; RELA, JMPREL, RELR), and initializes the library
+  as `dlopen(RTLD_NOW)` would, resolving its C imports against the runtime's
+  C library. Thread-local storage, ifuncs, text relocations, and symbols
+  nothing defines are refused with a trap that says why.
+- `ffi` is no longer refused on Linux (D-145): all 76 of the suite's running
+  programs build as executables on Windows and Linux.
+- The compiler (D-155): `abi library "<name>"` rows, `machine.cLibrary`,
+  `machine.callComparison`, `machine.squareRoot`, and `system.archPrctl`.
+- Tests: tests/ctour.py (the C library against glibc's results, and on Linux
+  against `refined run`), tests/loadtour.py (a probe library compiled on the
+  Linux runner, thousands of probes against the same library under ctypes and
+  glibc, and the loader's refusals).
+
 ## 1.0.0 (2026-11-14)
 
 ### The language compiles its own compiler
