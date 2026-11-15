@@ -247,6 +247,8 @@ def _machine() -> dict:
         "callWithAddress": Sig((_at("function"), _at("argument")), effects=_MEM),
         # the program linked with the runtime: its entry operation's exit code (D-124)
         "runEntry": Sig((), "Int32", effects=_MEM),
+        # D-131: the address of the runtime's `refined_task_entry` operation, where a task's fiber starts
+        "taskEntry": Sig((), _A, effects=_MEM),
     }
     for t in ("Byte", "Int32", "Int64", "UInt64", "Float64", "Address"):
         canon = _A if t == "Address" else t
@@ -281,6 +283,77 @@ SYSTEM_CALLS: dict[str, tuple[str, Sig]] = {
                                         P("bytes", "Int64", "copied")), _A, effects=_SYS)),
     "heapFree": ("HeapFree", Sig((_at("heap"), P("flags", "Int32", "copied"), _at("memory")), "Int32", effects=_SYS)),
 }
+
+
+def _sys(symbol: str, params: tuple, output=None) -> tuple[str, Sig]:
+    """A `system` row: each parameter `name:Type`, the type `A` for an address (a HANDLE or a pointer)."""
+    inputs = []
+    for spec in params:
+        name, _sep, kind = spec.partition(":")
+        inputs.append(_at(name) if kind == "A" else P(name, kind, "copied"))
+    return symbol, Sig(tuple(inputs), _A if output == "A" else output, effects=_SYS)
+
+
+# D-132: stage 3 and 4 of the runtime in SemanticScript: files, paths, text in UTF-16, the environment, child
+# processes and pipes, time, and the fibers tasks run on. Every one is kernel32's own.
+SYSTEM_CALLS.update({
+    "createFileW": _sys("CreateFileW", ("name:A", "access:Int32", "share:Int32", "security:A", "disposition:Int32",
+                                        "flags:Int32", "template:A"), "A"),
+    "closeHandle": _sys("CloseHandle", ("handle:A",), "Int32"),
+    "setFilePointerEx": _sys("SetFilePointerEx", ("handle:A", "distance:Int64", "position:A", "method:Int32"),
+                             "Int32"),
+    "setEndOfFile": _sys("SetEndOfFile", ("handle:A",), "Int32"),
+    "getFileInformationByHandle": _sys("GetFileInformationByHandle", ("handle:A", "information:A"), "Int32"),
+    "getFileType": _sys("GetFileType", ("handle:A",), "Int32"),
+    "getFileAttributesW": _sys("GetFileAttributesW", ("name:A",), "Int32"),
+    "getFullPathNameW": _sys("GetFullPathNameW", ("name:A", "units:Int32", "buffer:A", "filePart:A"), "Int32"),
+    "getFinalPathNameByHandleW": _sys("GetFinalPathNameByHandleW", ("handle:A", "buffer:A", "units:Int32",
+                                                                    "flags:Int32"), "Int32"),
+    "findFirstFileW": _sys("FindFirstFileW", ("name:A", "found:A"), "A"),
+    "findNextFileW": _sys("FindNextFileW", ("handle:A", "found:A"), "Int32"),
+    "findClose": _sys("FindClose", ("handle:A",), "Int32"),
+    "createDirectoryW": _sys("CreateDirectoryW", ("name:A", "security:A"), "Int32"),
+    "removeDirectoryW": _sys("RemoveDirectoryW", ("name:A",), "Int32"),
+    "deleteFileW": _sys("DeleteFileW", ("name:A",), "Int32"),
+    "lockFile": _sys("LockFile", ("handle:A", "offsetLow:Int32", "offsetHigh:Int32", "bytesLow:Int32",
+                                  "bytesHigh:Int32"), "Int32"),
+    "unlockFile": _sys("UnlockFile", ("handle:A", "offsetLow:Int32", "offsetHigh:Int32", "bytesLow:Int32",
+                                      "bytesHigh:Int32"), "Int32"),
+    "multiByteToWideChar": _sys("MultiByteToWideChar", ("codePage:Int32", "flags:Int32", "text:A", "bytes:Int32",
+                                                        "wide:A", "units:Int32"), "Int32"),
+    "wideCharToMultiByte": _sys("WideCharToMultiByte", ("codePage:Int32", "flags:Int32", "wide:A", "units:Int32",
+                                                        "text:A", "bytes:Int32", "defaultCharacter:A",
+                                                        "usedDefault:A"), "Int32"),
+    "lcMapStringEx": _sys("LCMapStringEx", ("locale:A", "flags:Int32", "source:A", "sourceUnits:Int32", "target:A",
+                                            "targetUnits:Int32", "version:A", "reserved:A", "sortHandle:Int64"),
+                          "Int32"),
+    "getEnvironmentVariableW": _sys("GetEnvironmentVariableW", ("name:A", "buffer:A", "units:Int32"), "Int32"),
+    "createProcessW": _sys("CreateProcessW", ("application:A", "commandLine:A", "processSecurity:A",
+                                              "threadSecurity:A", "inherit:Int32", "flags:Int32", "environment:A",
+                                              "directory:A", "startup:A", "information:A"), "Int32"),
+    "createPipe": _sys("CreatePipe", ("readEnd:A", "writeEnd:A", "security:A", "bytes:Int32"), "Int32"),
+    "peekNamedPipe": _sys("PeekNamedPipe", ("handle:A", "buffer:A", "bytes:Int32", "read:A", "available:A",
+                                            "left:A"), "Int32"),
+    "setHandleInformation": _sys("SetHandleInformation", ("handle:A", "mask:Int32", "flags:Int32"), "Int32"),
+    "duplicateHandle": _sys("DuplicateHandle", ("sourceProcess:A", "source:A", "targetProcess:A", "target:A",
+                                                "access:Int32", "inherit:Int32", "options:Int32"), "Int32"),
+    "getCurrentProcess": _sys("GetCurrentProcess", (), "A"),
+    "waitForSingleObject": _sys("WaitForSingleObject", ("handle:A", "milliseconds:Int32"), "Int32"),
+    "waitForMultipleObjects": _sys("WaitForMultipleObjects", ("count:Int32", "handles:A", "all:Int32",
+                                                              "milliseconds:Int32"), "Int32"),
+    "getExitCodeProcess": _sys("GetExitCodeProcess", ("process:A", "code:A"), "Int32"),
+    "terminateProcess": _sys("TerminateProcess", ("process:A", "code:Int32"), "Int32"),
+    "getTickCount64": _sys("GetTickCount64", (), "Int64"),
+    "getSystemTimeAsFileTime": _sys("GetSystemTimeAsFileTime", ("time:A",)),
+    "sleep": _sys("Sleep", ("milliseconds:Int32",)),
+    "convertThreadToFiber": _sys("ConvertThreadToFiber", ("parameter:A",), "A"),
+    "createFiberEx": _sys("CreateFiberEx", ("commitBytes:Int64", "reserveBytes:Int64", "flags:Int32", "start:A",
+                                            "parameter:A"), "A"),
+    "switchToFiber": _sys("SwitchToFiber", ("fiber:A",)),
+    "deleteFiber": _sys("DeleteFiber", ("fiber:A",)),
+    "loadLibraryW": _sys("LoadLibraryW", ("name:A",), "A"),
+    "getProcAddress": _sys("GetProcAddress", ("module:A", "name:A"), "A"),
+})
 
 LIBRARY: dict[str, dict] = {
     "machine": {

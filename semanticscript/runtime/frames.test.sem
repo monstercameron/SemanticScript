@@ -840,3 +840,320 @@ popOuter cleanedBy none
 popOuter borrows none
 popOuter catch none
 popOuter suppresses none
+
+resourceTest is test
+resourceTest purpose "A held resource stays in the table until it is let go, and a trap's release closes the rest and counts them"
+resourceTest verifies holdResource notesResource
+resourceTest verifies letGoResource forgetsResource
+resourceTest verifies releaseHeld releasesAll
+resourceTest typeParameter none
+resourceTest input none
+resourceTest output none
+resourceTest outputOwnedBy none
+resourceTest raises none
+resourceTest effect use machine.memory
+resourceTest effect use system.calls
+resourceTest uses memoryAccess
+resourceTest uses systemCalls
+resourceTest memoryHeap false
+resourceTest async false
+resourceTest maxRecursion none
+resourceTest label begin loopKind none
+resourceTest label begin within none
+resourceTest let sixtyOneK Int64 61440 immutable
+resourceTest let eight Int64 8 immutable
+resourceTest let zero32 Int32 0 immutable
+resourceTest let one Int64 1 immutable
+resourceTest let two Int64 2 immutable
+resourceTest let zero Int64 0 immutable
+resourceTest at begin do findState
+resourceTest at begin do findEnds
+resourceTest at begin do findWriteEnd
+resourceTest at begin do nowhere
+resourceTest at begin do makePipe
+resourceTest at begin do readRead
+resourceTest at begin do readWrite
+resourceTest at begin do findCount
+resourceTest at begin do readBefore
+resourceTest at begin do holdRead
+resourceTest at begin do holdWrite
+resourceTest at begin do readHeld
+resourceTest at begin do wantHeld
+resourceTest at begin do expectHeld
+resourceTest at begin do forget
+resourceTest at begin do closeWrite
+resourceTest at begin do readLeft
+resourceTest at begin do wantLeft
+resourceTest at begin do expectLeft
+resourceTest at begin do release
+resourceTest at begin do expectReleased
+resourceTest at begin do readAfter
+resourceTest at begin do expectEmpty
+resourceTest at begin return ok none
+
+findState is call
+findState in resourceTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findEnds is call
+findEnds in resourceTest
+findEnds invokes machine.offset
+findEnds argument address machine.Address state copy
+findEnds argument bytes Int64 sixtyOneK copy
+findEnds result ends machine.Address
+findEnds ownedBy none
+findEnds cleanedBy none
+findEnds borrows none
+findEnds catch none
+findEnds suppresses none
+
+findWriteEnd is call
+findWriteEnd in resourceTest
+findWriteEnd invokes machine.offset
+findWriteEnd argument address machine.Address ends copy
+findWriteEnd argument bytes Int64 eight copy
+findWriteEnd result writeEnd machine.Address
+findWriteEnd ownedBy none
+findWriteEnd cleanedBy none
+findWriteEnd borrows none
+findWriteEnd catch none
+findWriteEnd suppresses none
+
+nowhere is call
+nowhere in resourceTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+makePipe is call
+makePipe in resourceTest
+makePipe invokes system.createPipe
+makePipe argument readEnd machine.Address ends copy
+makePipe argument writeEnd machine.Address writeEnd copy
+makePipe argument security machine.Address anywhere copy
+makePipe argument bytes Int32 zero32 copy
+makePipe result made Int32
+makePipe ownedBy none
+makePipe cleanedBy none
+makePipe borrows none
+makePipe catch none
+makePipe suppresses none
+
+readRead is call
+readRead in resourceTest
+readRead invokes machine.loadAddress
+readRead argument address machine.Address ends copy
+readRead result readHandle machine.Address
+readRead ownedBy none
+readRead cleanedBy none
+readRead borrows none
+readRead catch none
+readRead suppresses none
+
+readWrite is call
+readWrite in resourceTest
+readWrite invokes machine.loadAddress
+readWrite argument address machine.Address writeEnd copy
+readWrite result writeHandle machine.Address
+readWrite ownedBy none
+readWrite cleanedBy none
+readWrite borrows none
+readWrite catch none
+readWrite suppresses none
+
+findCount is call
+findCount in resourceTest
+findCount invokes machine.offset
+findCount argument address machine.Address state copy
+findCount argument bytes Int64 resourceCountAt copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readBefore is call
+readBefore in resourceTest
+readBefore invokes machine.loadInt64
+readBefore argument address machine.Address countSlot copy
+readBefore result before Int64
+readBefore ownedBy none
+readBefore cleanedBy none
+readBefore borrows none
+readBefore catch none
+readBefore suppresses none
+
+holdRead is call
+holdRead in resourceTest
+holdRead invokes holdResource
+holdRead argument kind Int64 one copy
+holdRead argument handle machine.Address readHandle copy
+holdRead result none
+holdRead ownedBy none
+holdRead cleanedBy none
+holdRead borrows none
+holdRead catch none
+holdRead suppresses none
+
+holdWrite is call
+holdWrite in resourceTest
+holdWrite invokes holdResource
+holdWrite argument kind Int64 one copy
+holdWrite argument handle machine.Address writeHandle copy
+holdWrite result none
+holdWrite ownedBy none
+holdWrite cleanedBy none
+holdWrite borrows none
+holdWrite catch none
+holdWrite suppresses none
+
+readHeld is call
+readHeld in resourceTest
+readHeld invokes machine.loadInt64
+readHeld argument address machine.Address countSlot copy
+readHeld result held Int64
+readHeld ownedBy none
+readHeld cleanedBy none
+readHeld borrows none
+readHeld catch none
+readHeld suppresses none
+
+wantHeld is call
+wantHeld in resourceTest
+wantHeld invokes math.addInt64
+wantHeld argument left Int64 before copy
+wantHeld argument right Int64 two copy
+wantHeld result wanted Int64
+wantHeld ownedBy none
+wantHeld cleanedBy none
+wantHeld borrows none
+wantHeld catch none
+wantHeld suppresses none
+
+expectHeld is call
+expectHeld in resourceTest
+expectHeld invokes test.assertEqualInt64
+expectHeld argument expected Int64 wanted copy
+expectHeld argument actual Int64 held copy
+expectHeld result none
+expectHeld ownedBy none
+expectHeld cleanedBy none
+expectHeld borrows none
+expectHeld catch none
+expectHeld suppresses none
+
+forget is call
+forget in resourceTest
+forget invokes letGoResource
+forget argument handle machine.Address writeHandle copy
+forget result none
+forget ownedBy none
+forget cleanedBy none
+forget borrows none
+forget catch none
+forget suppresses none
+
+closeWrite is call
+closeWrite in resourceTest
+closeWrite invokes system.closeHandle
+closeWrite argument handle machine.Address writeHandle copy
+closeWrite result closed Int32
+closeWrite ownedBy none
+closeWrite cleanedBy none
+closeWrite borrows none
+closeWrite catch none
+closeWrite suppresses none
+
+readLeft is call
+readLeft in resourceTest
+readLeft invokes machine.loadInt64
+readLeft argument address machine.Address countSlot copy
+readLeft result left Int64
+readLeft ownedBy none
+readLeft cleanedBy none
+readLeft borrows none
+readLeft catch none
+readLeft suppresses none
+
+wantLeft is call
+wantLeft in resourceTest
+wantLeft invokes math.addInt64
+wantLeft argument left Int64 before copy
+wantLeft argument right Int64 one copy
+wantLeft result wantedLeft Int64
+wantLeft ownedBy none
+wantLeft cleanedBy none
+wantLeft borrows none
+wantLeft catch none
+wantLeft suppresses none
+
+expectLeft is call
+expectLeft in resourceTest
+expectLeft invokes test.assertEqualInt64
+expectLeft argument expected Int64 wantedLeft copy
+expectLeft argument actual Int64 left copy
+expectLeft result none
+expectLeft ownedBy none
+expectLeft cleanedBy none
+expectLeft borrows none
+expectLeft catch none
+expectLeft suppresses none
+
+release is call
+release in resourceTest
+release invokes releaseHeld
+release argument none
+release result released Int64
+release ownedBy none
+release cleanedBy none
+release borrows none
+release catch none
+release suppresses none
+
+expectReleased is call
+expectReleased in resourceTest
+expectReleased invokes test.assertEqualInt64
+expectReleased argument expected Int64 wantedLeft copy
+expectReleased argument actual Int64 released copy
+expectReleased result none
+expectReleased ownedBy none
+expectReleased cleanedBy none
+expectReleased borrows none
+expectReleased catch none
+expectReleased suppresses none
+
+readAfter is call
+readAfter in resourceTest
+readAfter invokes machine.loadInt64
+readAfter argument address machine.Address countSlot copy
+readAfter result after Int64
+readAfter ownedBy none
+readAfter cleanedBy none
+readAfter borrows none
+readAfter catch none
+readAfter suppresses none
+
+expectEmpty is call
+expectEmpty in resourceTest
+expectEmpty invokes test.assertEqualInt64
+expectEmpty argument expected Int64 zero copy
+expectEmpty argument actual Int64 after copy
+expectEmpty result none
+expectEmpty ownedBy none
+expectEmpty cleanedBy none
+expectEmpty borrows none
+expectEmpty catch none
+expectEmpty suppresses none

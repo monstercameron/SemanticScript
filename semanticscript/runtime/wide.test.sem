@@ -1,0 +1,554 @@
+# Tests of the `wide` module; generated from tools/wide.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+wideTest is test
+wideTest purpose "Text goes to UTF-16 and back unchanged, lower case is the invariant locale's with `\\` for `/`, a builder puts text together, and texts are ordered by their bytes"
+wideTest verifies widen widensText
+wideTest verifies wideUnits countsUnits
+wideTest verifies narrow narrowsText
+wideTest verifies lowercase lowersText
+wideTest verifies builderNew startsEmpty
+wideTest verifies builderAdd addsBytes
+wideTest verifies builderAddByte addsByte
+wideTest verifies builderText givesBytes
+wideTest verifies builderLength givesLength
+wideTest verifies textOrder ordersText
+wideTest typeParameter none
+wideTest input none
+wideTest output none
+wideTest outputOwnedBy none
+wideTest raises none
+wideTest effect use machine.memory
+wideTest effect use system.calls
+wideTest uses memoryAccess
+wideTest uses systemCalls
+wideTest memoryHeap false
+wideTest async false
+wideTest maxRecursion none
+wideTest label begin loopKind none
+wideTest label begin within none
+wideTest let mixed String "C:/Données/ÉTÉ" immutable
+wideTest let lowered String "c:\\données\\été" immutable
+wideTest let shorter String "abc" immutable
+wideTest let longer String "abd" immutable
+wideTest let scratchAt Int64 61440 immutable
+wideTest let fourteen Int64 14 immutable
+wideTest let zero Int64 0 immutable
+wideTest let three Int64 3 immutable
+wideTest let byteD Byte 100 immutable
+wideTest let four Int64 4 immutable
+wideTest let minusOne Int64 -1 immutable
+wideTest let one Int64 1 immutable
+wideTest at begin do findState
+wideTest at begin do findLength
+wideTest at begin do findMixed
+wideTest at begin do mixedLength
+wideTest at begin do wideIt
+wideTest at begin do countIt
+wideTest at begin do expectUnits
+wideTest at begin do backIt
+wideTest at begin do readBack
+wideTest at begin do expectBackLength
+wideTest at begin do compareBack
+wideTest at begin do sameWide
+wideTest at begin do expectBack
+wideTest at begin do lowerIt
+wideTest at begin do readLower
+wideTest at begin do findLowered
+wideTest at begin do loweredLength
+wideTest at begin do expectLowerLength
+wideTest at begin do compareLower
+wideTest at begin do sameLowerWide
+wideTest at begin do expectLower
+wideTest at begin do makeBuilder
+wideTest at begin do readEmpty
+wideTest at begin do expectEmpty
+wideTest at begin do findShorter
+wideTest at begin do addShorter
+wideTest at begin do addByte
+wideTest at begin do readBuilt
+wideTest at begin do expectBuilt
+wideTest at begin do readBuiltText
+wideTest at begin do findLonger
+wideTest at begin do orderBuilt
+wideTest at begin do expectBuiltOrder
+wideTest at begin do orderLess
+wideTest at begin do expectLess
+wideTest at begin do orderPrefix
+wideTest at begin do expectPrefix
+wideTest at begin do giveWide
+wideTest at begin do giveBack
+wideTest at begin do giveLower
+wideTest at begin return ok none
+
+findState is call
+findState in wideTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findLength is call
+findLength in wideTest
+findLength invokes machine.offset
+findLength argument address machine.Address state copy
+findLength argument bytes Int64 scratchAt copy
+findLength result lengthAt machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+findMixed is call
+findMixed in wideTest
+findMixed invokes machine.addressOfString
+findMixed argument text String mixed lend
+findMixed result mixedAt machine.Address
+findMixed ownedBy none
+findMixed cleanedBy none
+findMixed borrows none
+findMixed catch none
+findMixed suppresses none
+
+mixedLength is call
+mixedLength in wideTest
+mixedLength invokes string.byteLength
+mixedLength argument text String mixed lend
+mixedLength result mixedBytes Int64
+mixedLength ownedBy none
+mixedLength cleanedBy none
+mixedLength borrows none
+mixedLength catch none
+mixedLength suppresses none
+
+wideIt is call
+wideIt in wideTest
+wideIt invokes widen
+wideIt argument text machine.Address mixedAt copy
+wideIt argument bytes Int64 mixedBytes copy
+wideIt result wideText machine.Address
+wideIt ownedBy none
+wideIt cleanedBy none
+wideIt borrows none
+wideIt catch none
+wideIt suppresses none
+
+countIt is call
+countIt in wideTest
+countIt invokes wideUnits
+countIt argument wide machine.Address wideText copy
+countIt result units Int64
+countIt ownedBy none
+countIt cleanedBy none
+countIt borrows none
+countIt catch none
+countIt suppresses none
+
+expectUnits is call
+expectUnits in wideTest
+expectUnits invokes test.assertEqualInt64
+expectUnits argument expected Int64 fourteen copy
+expectUnits argument actual Int64 units copy
+expectUnits result none
+expectUnits ownedBy none
+expectUnits cleanedBy none
+expectUnits borrows none
+expectUnits catch none
+expectUnits suppresses none
+
+backIt is call
+backIt in wideTest
+backIt invokes narrow
+backIt argument wide machine.Address wideText copy
+backIt argument units Int64 units copy
+backIt argument lengthAt machine.Address lengthAt copy
+backIt result back machine.Address
+backIt ownedBy none
+backIt cleanedBy none
+backIt borrows none
+backIt catch none
+backIt suppresses none
+
+readBack is call
+readBack in wideTest
+readBack invokes machine.loadInt64
+readBack argument address machine.Address lengthAt copy
+readBack result backBytes Int64
+readBack ownedBy none
+readBack cleanedBy none
+readBack borrows none
+readBack catch none
+readBack suppresses none
+
+expectBackLength is call
+expectBackLength in wideTest
+expectBackLength invokes test.assertEqualInt64
+expectBackLength argument expected Int64 mixedBytes copy
+expectBackLength argument actual Int64 backBytes copy
+expectBackLength result none
+expectBackLength ownedBy none
+expectBackLength cleanedBy none
+expectBackLength borrows none
+expectBackLength catch none
+expectBackLength suppresses none
+
+compareBack is call
+compareBack in wideTest
+compareBack invokes machine.compare
+compareBack argument left machine.Address back copy
+compareBack argument right machine.Address mixedAt copy
+compareBack argument bytes Int64 mixedBytes copy
+compareBack result same Int32
+compareBack ownedBy none
+compareBack cleanedBy none
+compareBack borrows none
+compareBack catch none
+compareBack suppresses none
+
+sameWide is call
+sameWide in wideTest
+sameWide invokes convert.int32ToInt64
+sameWide argument value Int32 same copy
+sameWide result sameValue Int64
+sameWide ownedBy none
+sameWide cleanedBy none
+sameWide borrows none
+sameWide catch none
+sameWide suppresses none
+
+expectBack is call
+expectBack in wideTest
+expectBack invokes test.assertEqualInt64
+expectBack argument expected Int64 zero copy
+expectBack argument actual Int64 sameValue copy
+expectBack result none
+expectBack ownedBy none
+expectBack cleanedBy none
+expectBack borrows none
+expectBack catch none
+expectBack suppresses none
+
+lowerIt is call
+lowerIt in wideTest
+lowerIt invokes lowercase
+lowerIt argument text machine.Address mixedAt copy
+lowerIt argument bytes Int64 mixedBytes copy
+lowerIt argument lengthAt machine.Address lengthAt copy
+lowerIt result lower machine.Address
+lowerIt ownedBy none
+lowerIt cleanedBy none
+lowerIt borrows none
+lowerIt catch none
+lowerIt suppresses none
+
+readLower is call
+readLower in wideTest
+readLower invokes machine.loadInt64
+readLower argument address machine.Address lengthAt copy
+readLower result lowerBytes Int64
+readLower ownedBy none
+readLower cleanedBy none
+readLower borrows none
+readLower catch none
+readLower suppresses none
+
+findLowered is call
+findLowered in wideTest
+findLowered invokes machine.addressOfString
+findLowered argument text String lowered lend
+findLowered result loweredAt machine.Address
+findLowered ownedBy none
+findLowered cleanedBy none
+findLowered borrows none
+findLowered catch none
+findLowered suppresses none
+
+loweredLength is call
+loweredLength in wideTest
+loweredLength invokes string.byteLength
+loweredLength argument text String lowered lend
+loweredLength result loweredBytes Int64
+loweredLength ownedBy none
+loweredLength cleanedBy none
+loweredLength borrows none
+loweredLength catch none
+loweredLength suppresses none
+
+expectLowerLength is call
+expectLowerLength in wideTest
+expectLowerLength invokes test.assertEqualInt64
+expectLowerLength argument expected Int64 loweredBytes copy
+expectLowerLength argument actual Int64 lowerBytes copy
+expectLowerLength result none
+expectLowerLength ownedBy none
+expectLowerLength cleanedBy none
+expectLowerLength borrows none
+expectLowerLength catch none
+expectLowerLength suppresses none
+
+compareLower is call
+compareLower in wideTest
+compareLower invokes machine.compare
+compareLower argument left machine.Address lower copy
+compareLower argument right machine.Address loweredAt copy
+compareLower argument bytes Int64 loweredBytes copy
+compareLower result sameLower Int32
+compareLower ownedBy none
+compareLower cleanedBy none
+compareLower borrows none
+compareLower catch none
+compareLower suppresses none
+
+sameLowerWide is call
+sameLowerWide in wideTest
+sameLowerWide invokes convert.int32ToInt64
+sameLowerWide argument value Int32 sameLower copy
+sameLowerWide result sameLowerValue Int64
+sameLowerWide ownedBy none
+sameLowerWide cleanedBy none
+sameLowerWide borrows none
+sameLowerWide catch none
+sameLowerWide suppresses none
+
+expectLower is call
+expectLower in wideTest
+expectLower invokes test.assertEqualInt64
+expectLower argument expected Int64 zero copy
+expectLower argument actual Int64 sameLowerValue copy
+expectLower result none
+expectLower ownedBy none
+expectLower cleanedBy none
+expectLower borrows none
+expectLower catch none
+expectLower suppresses none
+
+makeBuilder is call
+makeBuilder in wideTest
+makeBuilder invokes builderNew
+makeBuilder argument none
+makeBuilder result builder machine.Address
+makeBuilder ownedBy none
+makeBuilder cleanedBy none
+makeBuilder borrows none
+makeBuilder catch none
+makeBuilder suppresses none
+
+readEmpty is call
+readEmpty in wideTest
+readEmpty invokes builderLength
+readEmpty argument builder machine.Address builder copy
+readEmpty result emptyLength Int64
+readEmpty ownedBy none
+readEmpty cleanedBy none
+readEmpty borrows none
+readEmpty catch none
+readEmpty suppresses none
+
+expectEmpty is call
+expectEmpty in wideTest
+expectEmpty invokes test.assertEqualInt64
+expectEmpty argument expected Int64 zero copy
+expectEmpty argument actual Int64 emptyLength copy
+expectEmpty result none
+expectEmpty ownedBy none
+expectEmpty cleanedBy none
+expectEmpty borrows none
+expectEmpty catch none
+expectEmpty suppresses none
+
+findShorter is call
+findShorter in wideTest
+findShorter invokes machine.addressOfString
+findShorter argument text String shorter lend
+findShorter result shorterAt machine.Address
+findShorter ownedBy none
+findShorter cleanedBy none
+findShorter borrows none
+findShorter catch none
+findShorter suppresses none
+
+addShorter is call
+addShorter in wideTest
+addShorter invokes builderAdd
+addShorter argument builder machine.Address builder copy
+addShorter argument data machine.Address shorterAt copy
+addShorter argument bytes Int64 three copy
+addShorter result none
+addShorter ownedBy none
+addShorter cleanedBy none
+addShorter borrows none
+addShorter catch none
+addShorter suppresses none
+
+addByte is call
+addByte in wideTest
+addByte invokes builderAddByte
+addByte argument builder machine.Address builder copy
+addByte argument byte Byte byteD copy
+addByte result none
+addByte ownedBy none
+addByte cleanedBy none
+addByte borrows none
+addByte catch none
+addByte suppresses none
+
+readBuilt is call
+readBuilt in wideTest
+readBuilt invokes builderLength
+readBuilt argument builder machine.Address builder copy
+readBuilt result builtLength Int64
+readBuilt ownedBy none
+readBuilt cleanedBy none
+readBuilt borrows none
+readBuilt catch none
+readBuilt suppresses none
+
+expectBuilt is call
+expectBuilt in wideTest
+expectBuilt invokes test.assertEqualInt64
+expectBuilt argument expected Int64 four copy
+expectBuilt argument actual Int64 builtLength copy
+expectBuilt result none
+expectBuilt ownedBy none
+expectBuilt cleanedBy none
+expectBuilt borrows none
+expectBuilt catch none
+expectBuilt suppresses none
+
+readBuiltText is call
+readBuiltText in wideTest
+readBuiltText invokes builderText
+readBuiltText argument builder machine.Address builder copy
+readBuiltText result built machine.Address
+readBuiltText ownedBy none
+readBuiltText cleanedBy none
+readBuiltText borrows none
+readBuiltText catch none
+readBuiltText suppresses none
+
+findLonger is call
+findLonger in wideTest
+findLonger invokes machine.addressOfString
+findLonger argument text String longer lend
+findLonger result longerAt machine.Address
+findLonger ownedBy none
+findLonger cleanedBy none
+findLonger borrows none
+findLonger catch none
+findLonger suppresses none
+
+orderBuilt is call
+orderBuilt in wideTest
+orderBuilt invokes textOrder
+orderBuilt argument left machine.Address built copy
+orderBuilt argument leftBytes Int64 three copy
+orderBuilt argument right machine.Address shorterAt copy
+orderBuilt argument rightBytes Int64 three copy
+orderBuilt result builtOrder Int64
+orderBuilt ownedBy none
+orderBuilt cleanedBy none
+orderBuilt borrows none
+orderBuilt catch none
+orderBuilt suppresses none
+
+expectBuiltOrder is call
+expectBuiltOrder in wideTest
+expectBuiltOrder invokes test.assertEqualInt64
+expectBuiltOrder argument expected Int64 zero copy
+expectBuiltOrder argument actual Int64 builtOrder copy
+expectBuiltOrder result none
+expectBuiltOrder ownedBy none
+expectBuiltOrder cleanedBy none
+expectBuiltOrder borrows none
+expectBuiltOrder catch none
+expectBuiltOrder suppresses none
+
+orderLess is call
+orderLess in wideTest
+orderLess invokes textOrder
+orderLess argument left machine.Address shorterAt copy
+orderLess argument leftBytes Int64 three copy
+orderLess argument right machine.Address longerAt copy
+orderLess argument rightBytes Int64 three copy
+orderLess result lessOrder Int64
+orderLess ownedBy none
+orderLess cleanedBy none
+orderLess borrows none
+orderLess catch none
+orderLess suppresses none
+
+expectLess is call
+expectLess in wideTest
+expectLess invokes test.assertEqualInt64
+expectLess argument expected Int64 minusOne copy
+expectLess argument actual Int64 lessOrder copy
+expectLess result none
+expectLess ownedBy none
+expectLess cleanedBy none
+expectLess borrows none
+expectLess catch none
+expectLess suppresses none
+
+orderPrefix is call
+orderPrefix in wideTest
+orderPrefix invokes textOrder
+orderPrefix argument left machine.Address built copy
+orderPrefix argument leftBytes Int64 four copy
+orderPrefix argument right machine.Address shorterAt copy
+orderPrefix argument rightBytes Int64 three copy
+orderPrefix result prefixOrder Int64
+orderPrefix ownedBy none
+orderPrefix cleanedBy none
+orderPrefix borrows none
+orderPrefix catch none
+orderPrefix suppresses none
+
+expectPrefix is call
+expectPrefix in wideTest
+expectPrefix invokes test.assertEqualInt64
+expectPrefix argument expected Int64 one copy
+expectPrefix argument actual Int64 prefixOrder copy
+expectPrefix result none
+expectPrefix ownedBy none
+expectPrefix cleanedBy none
+expectPrefix borrows none
+expectPrefix catch none
+expectPrefix suppresses none
+
+giveWide is call
+giveWide in wideTest
+giveWide invokes heap.give
+giveWide argument block machine.Address wideText copy
+giveWide result none
+giveWide ownedBy none
+giveWide cleanedBy none
+giveWide borrows none
+giveWide catch none
+giveWide suppresses none
+
+giveBack is call
+giveBack in wideTest
+giveBack invokes heap.give
+giveBack argument block machine.Address back copy
+giveBack result none
+giveBack ownedBy none
+giveBack cleanedBy none
+giveBack borrows none
+giveBack catch none
+giveBack suppresses none
+
+giveLower is call
+giveLower in wideTest
+giveLower invokes heap.give
+giveLower argument block machine.Address lower copy
+giveLower result none
+giveLower ownedBy none
+giveLower cleanedBy none
+giveLower borrows none
+giveLower catch none
+giveLower suppresses none

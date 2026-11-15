@@ -1,0 +1,3587 @@
+# SHA-256, HMAC-SHA-256, hexadecimal text, and constant-time equality for a standalone executable:
+# the crypto targets, computed as Python's hashlib and hmac compute them.
+#
+# This module is generated from tools/hashes.dsl by tools/build.py.
+
+hashes is module
+hashes purpose "SHA-256, HMAC-SHA-256, hexadecimal text, and constant-time equality: the crypto targets"
+hashes path hashes
+hashes imports standard.machine
+hashes imports standard.string
+hashes imports standard.math
+hashes imports standard.compare
+hashes imports standard.convert
+hashes imports standard.bits
+hashes imports standard.test
+hashes imports heap
+hashes imports regions
+hashes imports slots
+hashes imports files
+hashes exports sha256
+hashes exports cryptoSha256
+hashes exports cryptoHmacSha256
+hashes exports cryptoToHex
+hashes exports cryptoConstantTimeEquals
+
+memoryAccess is capability
+memoryAccess purpose "Authority to read the bytes to hash and write the digests"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to take memory for the message being hashed"
+systemCalls grants use system.calls none
+
+# SHA-256 as FIPS 180-4 gives it, on whole numbers kept to 32 bits; HMAC as RFC 2104 gives it, with a block of 64
+# bytes; both give what Python's hashlib and hmac give, which `refined run` uses.
+roundConstants is constant
+roundConstants purpose "SHA-256's 64 round constants, big-endian"
+roundConstants type String
+roundConstants value "\x42\x8a\x2f\x98\x71\x37\x44\x91\xb5\xc0\xfb\xcf\xe9\xb5\xdb\xa5\x39\x56\xc2\x5b\x59\xf1\x11\xf1\x92\x3f\x82\xa4\xab\x1c\x5e\xd5\xd8\x07\xaa\x98\x12\x83\x5b\x01\x24\x31\x85\xbe\x55\x0c\x7d\xc3\x72\xbe\x5d\x74\x80\xde\xb1\xfe\x9b\xdc\x06\xa7\xc1\x9b\xf1\x74\xe4\x9b\x69\xc1\xef\xbe\x47\x86\x0f\xc1\x9d\xc6\x24\x0c\xa1\xcc\x2d\xe9\x2c\x6f\x4a\x74\x84\xaa\x5c\xb0\xa9\xdc\x76\xf9\x88\xda\x98\x3e\x51\x52\xa8\x31\xc6\x6d\xb0\x03\x27\xc8\xbf\x59\x7f\xc7\xc6\xe0\x0b\xf3\xd5\xa7\x91\x47\x06\xca\x63\x51\x14\x29\x29\x67\x27\xb7\x0a\x85\x2e\x1b\x21\x38\x4d\x2c\x6d\xfc\x53\x38\x0d\x13\x65\x0a\x73\x54\x76\x6a\x0a\xbb\x81\xc2\xc9\x2e\x92\x72\x2c\x85\xa2\xbf\xe8\xa1\xa8\x1a\x66\x4b\xc2\x4b\x8b\x70\xc7\x6c\x51\xa3\xd1\x92\xe8\x19\xd6\x99\x06\x24\xf4\x0e\x35\x85\x10\x6a\xa0\x70\x19\xa4\xc1\x16\x1e\x37\x6c\x08\x27\x48\x77\x4c\x34\xb0\xbc\xb5\x39\x1c\x0c\xb3\x4e\xd8\xaa\x4a\x5b\x9c\xca\x4f\x68\x2e\x6f\xf3\x74\x8f\x82\xee\x78\xa5\x63\x6f\x84\xc8\x78\x14\x8c\xc7\x02\x08\x90\xbe\xff\xfa\xa4\x50\x6c\xeb\xbe\xf9\xa3\xf7\xc6\x71\x78\xf2"
+
+initialHash is constant
+initialHash purpose "SHA-256's initial hash value, big-endian"
+initialHash type String
+initialHash value "\x6a\x09\xe6\x67\xbb\x67\xae\x85\x3c\x6e\xf3\x72\xa5\x4f\xf5\x3a\x51\x0e\x52\x7f\x9b\x05\x68\x8c\x1f\x83\xd9\xab\x5b\xe0\xcd\x19"
+
+hexDigits is constant
+hexDigits purpose "The digits of hexadecimal text"
+hexDigits type String
+hexDigits value "0123456789abcdef"
+
+lowWord is constant
+lowWord purpose "The 32 low bits of a whole number"
+lowWord type Int64
+lowWord value 4294967295
+
+# ---------------------------------------------------------------- 32-bit words
+word is operation
+word purpose "A 32-bit word read big-endian at an offset"
+word invariant none
+word typeParameter none
+word input data machine.Address copied
+word input offset Int64 copied
+word output Int64
+word outputOwnedBy none
+word raises none
+word effect use machine.memory
+word uses memoryAccess
+word memoryHeap false
+word async false
+word maxRecursion none
+word label begin loopKind none
+word label begin within none
+word label eachByte loopKind while
+word label eachByte within none
+word label eachByte maxIterations four
+word label addByte loopKind none
+word label addByte within eachByte
+word label finish loopKind none
+word label finish within none
+word let value Int64 0 mutable
+word let at Int64 0 mutable
+word let four Int64 4 immutable
+word let eight Int64 8 immutable
+word let one Int64 1 immutable
+word at begin goto eachByte
+word at eachByte do doneCheck
+word at eachByte branch if done goto finish else goto addByte
+word at addByte do placeOf
+word at addByte do findByte
+word at addByte do readByte
+word at addByte do widenByte
+word at addByte do shiftValue
+word at addByte do addIt
+word at addByte set value grown
+word at addByte do nextByte
+word at addByte set at after
+word at addByte goto eachByte
+word at finish return ok value
+
+doneCheck is call
+doneCheck in word
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 four copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+placeOf is call
+placeOf in word
+placeOf invokes math.addInt64
+placeOf argument left Int64 offset copy
+placeOf argument right Int64 at copy
+placeOf result place Int64
+placeOf ownedBy none
+placeOf cleanedBy none
+placeOf borrows none
+placeOf catch none
+placeOf suppresses none
+
+findByte is call
+findByte in word
+findByte invokes machine.offset
+findByte argument address machine.Address data copy
+findByte argument bytes Int64 place copy
+findByte result byteAt machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+readByte is call
+readByte in word
+readByte invokes machine.loadByte
+readByte argument address machine.Address byteAt copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+widenByte is call
+widenByte in word
+widenByte invokes convert.byteToInt64
+widenByte argument value Byte byte copy
+widenByte result byteValue Int64
+widenByte ownedBy none
+widenByte cleanedBy none
+widenByte borrows none
+widenByte catch none
+widenByte suppresses none
+
+shiftValue is call
+shiftValue in word
+shiftValue invokes bits.shiftLeftInt64
+shiftValue argument value Int64 value copy
+shiftValue argument amount Int64 eight copy
+shiftValue result shifted Int64
+shiftValue ownedBy none
+shiftValue cleanedBy none
+shiftValue borrows none
+shiftValue catch none
+shiftValue suppresses none
+
+addIt is call
+addIt in word
+addIt invokes bits.orInt64
+addIt argument left Int64 shifted copy
+addIt argument right Int64 byteValue copy
+addIt result grown Int64
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+nextByte is call
+nextByte in word
+nextByte invokes math.addInt64
+nextByte argument left Int64 at copy
+nextByte argument right Int64 one copy
+nextByte result after Int64
+nextByte ownedBy none
+nextByte cleanedBy none
+nextByte borrows none
+nextByte catch none
+nextByte suppresses none
+
+storeWord is operation
+storeWord purpose "Store a 32-bit word big-endian at an offset"
+storeWord invariant none
+storeWord typeParameter none
+storeWord input data machine.Address copied
+storeWord input offset Int64 copied
+storeWord input value Int64 copied
+storeWord output none
+storeWord outputOwnedBy none
+storeWord raises none
+storeWord effect use machine.memory
+storeWord uses memoryAccess
+storeWord memoryHeap false
+storeWord async false
+storeWord maxRecursion none
+storeWord label begin loopKind none
+storeWord label begin within none
+storeWord label eachByte loopKind while
+storeWord label eachByte within none
+storeWord label eachByte maxIterations four
+storeWord label storeByte loopKind none
+storeWord label storeByte within eachByte
+storeWord label finish loopKind none
+storeWord label finish within none
+storeWord let at Int64 0 mutable
+storeWord let four Int64 4 immutable
+storeWord let three Int64 3 immutable
+storeWord let eight Int64 8 immutable
+storeWord let mask Int64 255 immutable
+storeWord let one Int64 1 immutable
+storeWord at begin goto eachByte
+storeWord at eachByte do doneCheck
+storeWord at eachByte branch if done goto finish else goto storeByte
+storeWord at storeByte do backOf
+storeWord at storeByte do bitsOf
+storeWord at storeByte do shiftIt
+storeWord at storeByte do lowOf
+storeWord at storeByte do narrowIt
+storeWord at storeByte do placeOf
+storeWord at storeByte do findByte
+storeWord at storeByte do storeIt
+storeWord at storeByte do nextByte
+storeWord at storeByte set at after
+storeWord at storeByte goto eachByte
+storeWord at finish return ok none
+
+doneCheck is call
+doneCheck in storeWord
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 four copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+backOf is call
+backOf in storeWord
+backOf invokes math.subtractInt64
+backOf argument left Int64 three copy
+backOf argument right Int64 at copy
+backOf result back Int64
+backOf ownedBy none
+backOf cleanedBy none
+backOf borrows none
+backOf catch none
+backOf suppresses none
+
+bitsOf is call
+bitsOf in storeWord
+bitsOf invokes math.multiplyInt64
+bitsOf argument left Int64 back copy
+bitsOf argument right Int64 eight copy
+bitsOf result shift Int64
+bitsOf ownedBy none
+bitsOf cleanedBy none
+bitsOf borrows none
+bitsOf catch none
+bitsOf suppresses none
+
+shiftIt is call
+shiftIt in storeWord
+shiftIt invokes bits.shiftRightInt64
+shiftIt argument value Int64 value copy
+shiftIt argument amount Int64 shift copy
+shiftIt result shifted Int64
+shiftIt ownedBy none
+shiftIt cleanedBy none
+shiftIt borrows none
+shiftIt catch none
+shiftIt suppresses none
+
+lowOf is call
+lowOf in storeWord
+lowOf invokes bits.andInt64
+lowOf argument left Int64 shifted copy
+lowOf argument right Int64 mask copy
+lowOf result low Int64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+narrowIt is call
+narrowIt in storeWord
+narrowIt invokes convert.int64ToByte
+narrowIt argument value Int64 low copy
+narrowIt result byte Byte
+narrowIt ownedBy none
+narrowIt cleanedBy none
+narrowIt borrows none
+narrowIt catch none
+narrowIt suppresses none
+
+placeOf is call
+placeOf in storeWord
+placeOf invokes math.addInt64
+placeOf argument left Int64 offset copy
+placeOf argument right Int64 at copy
+placeOf result place Int64
+placeOf ownedBy none
+placeOf cleanedBy none
+placeOf borrows none
+placeOf catch none
+placeOf suppresses none
+
+findByte is call
+findByte in storeWord
+findByte invokes machine.offset
+findByte argument address machine.Address data copy
+findByte argument bytes Int64 place copy
+findByte result byteAt machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+storeIt is call
+storeIt in storeWord
+storeIt invokes machine.storeByte
+storeIt argument address machine.Address byteAt copy
+storeIt argument value Byte byte copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+nextByte is call
+nextByte in storeWord
+nextByte invokes math.addInt64
+nextByte argument left Int64 at copy
+nextByte argument right Int64 one copy
+nextByte result after Int64
+nextByte ownedBy none
+nextByte cleanedBy none
+nextByte borrows none
+nextByte catch none
+nextByte suppresses none
+
+rotate is operation
+rotate purpose "A 32-bit word rotated right by a number of bits"
+rotate invariant none
+rotate typeParameter none
+rotate input value Int64 copied
+rotate input count Int64 copied
+rotate output Int64
+rotate outputOwnedBy none
+rotate raises none
+rotate effect none
+rotate uses none
+rotate memoryHeap false
+rotate async false
+rotate maxRecursion none
+rotate label begin loopKind none
+rotate label begin within none
+rotate let thirtyTwo Int64 32 immutable
+rotate at begin do rightPart
+rotate at begin do leftCount
+rotate at begin do leftPart
+rotate at begin do joinIt
+rotate at begin do maskIt
+rotate at begin return ok rotated
+
+rightPart is call
+rightPart in rotate
+rightPart invokes bits.shiftRightInt64
+rightPart argument value Int64 value copy
+rightPart argument amount Int64 count copy
+rightPart result right Int64
+rightPart ownedBy none
+rightPart cleanedBy none
+rightPart borrows none
+rightPart catch none
+rightPart suppresses none
+
+leftCount is call
+leftCount in rotate
+leftCount invokes math.subtractInt64
+leftCount argument left Int64 thirtyTwo copy
+leftCount argument right Int64 count copy
+leftCount result back Int64
+leftCount ownedBy none
+leftCount cleanedBy none
+leftCount borrows none
+leftCount catch none
+leftCount suppresses none
+
+leftPart is call
+leftPart in rotate
+leftPart invokes bits.shiftLeftInt64
+leftPart argument value Int64 value copy
+leftPart argument amount Int64 back copy
+leftPart result left Int64
+leftPart ownedBy none
+leftPart cleanedBy none
+leftPart borrows none
+leftPart catch none
+leftPart suppresses none
+
+joinIt is call
+joinIt in rotate
+joinIt invokes bits.orInt64
+joinIt argument left Int64 right copy
+joinIt argument right Int64 left copy
+joinIt result joined Int64
+joinIt ownedBy none
+joinIt cleanedBy none
+joinIt borrows none
+joinIt catch none
+joinIt suppresses none
+
+maskIt is call
+maskIt in rotate
+maskIt invokes bits.andInt64
+maskIt argument left Int64 joined copy
+maskIt argument right Int64 lowWord copy
+maskIt result rotated Int64
+maskIt ownedBy none
+maskIt cleanedBy none
+maskIt borrows none
+maskIt catch none
+maskIt suppresses none
+
+add32 is operation
+add32 purpose "Two 32-bit words added, kept to 32 bits"
+add32 invariant none
+add32 typeParameter none
+add32 input left Int64 copied
+add32 input right Int64 copied
+add32 output Int64
+add32 outputOwnedBy none
+add32 raises none
+add32 effect none
+add32 uses none
+add32 memoryHeap false
+add32 async false
+add32 maxRecursion none
+add32 label begin loopKind none
+add32 label begin within none
+add32 let none
+add32 at begin do addIt
+add32 at begin do maskIt
+add32 at begin return ok kept
+
+addIt is call
+addIt in add32
+addIt invokes math.addInt64
+addIt argument left Int64 left copy
+addIt argument right Int64 right copy
+addIt result sum Int64
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+maskIt is call
+maskIt in add32
+maskIt invokes bits.andInt64
+maskIt argument left Int64 sum copy
+maskIt argument right Int64 lowWord copy
+maskIt result kept Int64
+maskIt ownedBy none
+maskIt cleanedBy none
+maskIt borrows none
+maskIt catch none
+maskIt suppresses none
+
+slotWord is operation
+slotWord purpose "A whole number of a block of 8-byte slots by its position"
+slotWord invariant none
+slotWord typeParameter none
+slotWord input block machine.Address copied
+slotWord input position Int64 copied
+slotWord output Int64
+slotWord outputOwnedBy none
+slotWord raises none
+slotWord effect use machine.memory
+slotWord uses memoryAccess
+slotWord memoryHeap false
+slotWord async false
+slotWord maxRecursion none
+slotWord label begin loopKind none
+slotWord label begin within none
+slotWord let eight Int64 8 immutable
+slotWord at begin do offsetOf
+slotWord at begin do findSlot
+slotWord at begin do readSlot
+slotWord at begin return ok value
+
+offsetOf is call
+offsetOf in slotWord
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 position copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findSlot is call
+findSlot in slotWord
+findSlot invokes machine.offset
+findSlot argument address machine.Address block copy
+findSlot argument bytes Int64 offset copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readSlot is call
+readSlot in slotWord
+readSlot invokes machine.loadInt64
+readSlot argument address machine.Address slot copy
+readSlot result value Int64
+readSlot ownedBy none
+readSlot cleanedBy none
+readSlot borrows none
+readSlot catch none
+readSlot suppresses none
+
+setSlotWord is operation
+setSlotWord purpose "Store a whole number in a block of 8-byte slots by its position"
+setSlotWord invariant none
+setSlotWord typeParameter none
+setSlotWord input block machine.Address copied
+setSlotWord input position Int64 copied
+setSlotWord input value Int64 copied
+setSlotWord output none
+setSlotWord outputOwnedBy none
+setSlotWord raises none
+setSlotWord effect use machine.memory
+setSlotWord uses memoryAccess
+setSlotWord memoryHeap false
+setSlotWord async false
+setSlotWord maxRecursion none
+setSlotWord label begin loopKind none
+setSlotWord label begin within none
+setSlotWord let eight Int64 8 immutable
+setSlotWord at begin do offsetOf
+setSlotWord at begin do findSlot
+setSlotWord at begin do storeSlot
+setSlotWord at begin return ok none
+
+offsetOf is call
+offsetOf in setSlotWord
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 position copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findSlot is call
+findSlot in setSlotWord
+findSlot invokes machine.offset
+findSlot argument address machine.Address block copy
+findSlot argument bytes Int64 offset copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeSlot is call
+storeSlot in setSlotWord
+storeSlot invokes machine.storeInt64
+storeSlot argument address machine.Address slot copy
+storeSlot argument value Int64 value copy
+storeSlot result none
+storeSlot ownedBy none
+storeSlot cleanedBy none
+storeSlot borrows none
+storeSlot catch none
+storeSlot suppresses none
+
+# ---------------------------------------------------------------- SHA-256
+compressBlock is operation
+compressBlock purpose "Mix one 64-byte block into the hash's eight words (in a block of slots), with a block of 64 slots for the schedule"
+compressBlock invariant none
+compressBlock typeParameter none
+compressBlock input state machine.Address copied
+compressBlock input data machine.Address copied
+compressBlock input schedule machine.Address copied
+compressBlock output none
+compressBlock outputOwnedBy none
+compressBlock raises none
+compressBlock effect use machine.memory
+compressBlock uses memoryAccess
+compressBlock memoryHeap false
+compressBlock async false
+compressBlock maxRecursion none
+compressBlock label begin loopKind none
+compressBlock label begin within none
+compressBlock label eachWord loopKind while
+compressBlock label eachWord within none
+compressBlock label eachWord maxIterations sixteen
+compressBlock label readWord loopKind none
+compressBlock label readWord within eachWord
+compressBlock label expand loopKind none
+compressBlock label expand within none
+compressBlock label eachExpand loopKind while
+compressBlock label eachExpand within none
+compressBlock label eachExpand maxIterations sixtyFour
+compressBlock label expandOne loopKind none
+compressBlock label expandOne within eachExpand
+compressBlock label start loopKind none
+compressBlock label start within none
+compressBlock label eachRound loopKind while
+compressBlock label eachRound within none
+compressBlock label eachRound maxIterations sixtyFour
+compressBlock label round loopKind none
+compressBlock label round within eachRound
+compressBlock label fold loopKind none
+compressBlock label fold within none
+compressBlock let at Int64 0 mutable
+compressBlock let a Int64 0 mutable
+compressBlock let b Int64 0 mutable
+compressBlock let c Int64 0 mutable
+compressBlock let d Int64 0 mutable
+compressBlock let e Int64 0 mutable
+compressBlock let f Int64 0 mutable
+compressBlock let g Int64 0 mutable
+compressBlock let h Int64 0 mutable
+compressBlock let sixteen Int64 16 immutable
+compressBlock let four Int64 4 immutable
+compressBlock let one Int64 1 immutable
+compressBlock let sixtyFour Int64 64 immutable
+compressBlock let fifteen Int64 15 immutable
+compressBlock let seven Int64 7 immutable
+compressBlock let eighteen Int64 18 immutable
+compressBlock let three Int64 3 immutable
+compressBlock let two Int64 2 immutable
+compressBlock let seventeen Int64 17 immutable
+compressBlock let nineteen Int64 19 immutable
+compressBlock let ten Int64 10 immutable
+compressBlock let zero Int64 0 immutable
+compressBlock let five Int64 5 immutable
+compressBlock let six Int64 6 immutable
+compressBlock let eleven Int64 11 immutable
+compressBlock let twentyFive Int64 25 immutable
+compressBlock let thirteen Int64 13 immutable
+compressBlock let twentyTwo Int64 22 immutable
+compressBlock at begin goto eachWord
+compressBlock at eachWord do wordsDone
+compressBlock at eachWord branch if done goto expand else goto readWord
+compressBlock at readWord do offsetOf
+compressBlock at readWord do readIt
+compressBlock at readWord do storeIt
+compressBlock at readWord do nextWord
+compressBlock at readWord set at after
+compressBlock at readWord goto eachWord
+compressBlock at expand goto eachExpand
+compressBlock at eachExpand do expandDone
+compressBlock at eachExpand branch if expanded goto start else goto expandOne
+compressBlock at expandOne do back15
+compressBlock at expandOne do read15
+compressBlock at expandOne do r7
+compressBlock at expandOne do r18
+compressBlock at expandOne do sh3
+compressBlock at expandOne do x0
+compressBlock at expandOne do x1
+compressBlock at expandOne do back2
+compressBlock at expandOne do read2
+compressBlock at expandOne do r17
+compressBlock at expandOne do r19
+compressBlock at expandOne do sh10
+compressBlock at expandOne do x2
+compressBlock at expandOne do x3
+compressBlock at expandOne do back16
+compressBlock at expandOne do read16
+compressBlock at expandOne do back7
+compressBlock at expandOne do read7
+compressBlock at expandOne do add1
+compressBlock at expandOne do add2
+compressBlock at expandOne do add3
+compressBlock at expandOne do storeExpanded
+compressBlock at expandOne do nextExpand
+compressBlock at expandOne set at afterExpand
+compressBlock at expandOne goto eachExpand
+compressBlock at start do readA
+compressBlock at start set a a0
+compressBlock at start do readB
+compressBlock at start set b b0
+compressBlock at start do readC
+compressBlock at start set c c0
+compressBlock at start do readD
+compressBlock at start set d d0
+compressBlock at start do readE
+compressBlock at start set e e0
+compressBlock at start do readF
+compressBlock at start set f f0
+compressBlock at start do readG
+compressBlock at start set g g0
+compressBlock at start do readH
+compressBlock at start set h h0
+compressBlock at start set at zero
+compressBlock at start do findConstants
+compressBlock at start goto eachRound
+compressBlock at eachRound do roundsDone
+compressBlock at eachRound branch if finished goto fold else goto round
+compressBlock at round do e6
+compressBlock at round do e11
+compressBlock at round do e25
+compressBlock at round do xe1
+compressBlock at round do xe2
+compressBlock at round do andEF
+compressBlock at round do notE
+compressBlock at round do andNotEG
+compressBlock at round do choose
+compressBlock at round do constantOffset
+compressBlock at round do readConstant
+compressBlock at round do readSchedule
+compressBlock at round do t1a
+compressBlock at round do t1b
+compressBlock at round do t1c
+compressBlock at round do t1d
+compressBlock at round do a2
+compressBlock at round do a13
+compressBlock at round do a22
+compressBlock at round do xa1
+compressBlock at round do xa2
+compressBlock at round do andAB
+compressBlock at round do andAC
+compressBlock at round do andBC
+compressBlock at round do majority1
+compressBlock at round do majority2
+compressBlock at round do t2a
+compressBlock at round set h g
+compressBlock at round set g f
+compressBlock at round set f e
+compressBlock at round do newE
+compressBlock at round set e eNext
+compressBlock at round set d c
+compressBlock at round set c b
+compressBlock at round set b a
+compressBlock at round do newA
+compressBlock at round set a aNext
+compressBlock at round do nextRound
+compressBlock at round set at afterRound
+compressBlock at round goto eachRound
+compressBlock at fold do foldA
+compressBlock at fold do storeA
+compressBlock at fold do foldB
+compressBlock at fold do storeB
+compressBlock at fold do foldC
+compressBlock at fold do storeC
+compressBlock at fold do foldD
+compressBlock at fold do storeD
+compressBlock at fold do foldE
+compressBlock at fold do storeE
+compressBlock at fold do foldF
+compressBlock at fold do storeF
+compressBlock at fold do foldG
+compressBlock at fold do storeG
+compressBlock at fold do foldH
+compressBlock at fold do storeH
+compressBlock at fold return ok none
+
+wordsDone is call
+wordsDone in compressBlock
+wordsDone invokes compare.greaterOrEqualInt64
+wordsDone argument left Int64 at copy
+wordsDone argument right Int64 sixteen copy
+wordsDone result done Bool
+wordsDone ownedBy none
+wordsDone cleanedBy none
+wordsDone borrows none
+wordsDone catch none
+wordsDone suppresses none
+
+offsetOf is call
+offsetOf in compressBlock
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 at copy
+offsetOf argument right Int64 four copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+readIt is call
+readIt in compressBlock
+readIt invokes word
+readIt argument data machine.Address data copy
+readIt argument offset Int64 offset copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+storeIt is call
+storeIt in compressBlock
+storeIt invokes setSlotWord
+storeIt argument block machine.Address schedule copy
+storeIt argument position Int64 at copy
+storeIt argument value Int64 value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+nextWord is call
+nextWord in compressBlock
+nextWord invokes math.addInt64
+nextWord argument left Int64 at copy
+nextWord argument right Int64 one copy
+nextWord result after Int64
+nextWord ownedBy none
+nextWord cleanedBy none
+nextWord borrows none
+nextWord catch none
+nextWord suppresses none
+
+expandDone is call
+expandDone in compressBlock
+expandDone invokes compare.greaterOrEqualInt64
+expandDone argument left Int64 at copy
+expandDone argument right Int64 sixtyFour copy
+expandDone result expanded Bool
+expandDone ownedBy none
+expandDone cleanedBy none
+expandDone borrows none
+expandDone catch none
+expandDone suppresses none
+
+back15 is call
+back15 in compressBlock
+back15 invokes math.subtractInt64
+back15 argument left Int64 at copy
+back15 argument right Int64 fifteen copy
+back15 result at15 Int64
+back15 ownedBy none
+back15 cleanedBy none
+back15 borrows none
+back15 catch none
+back15 suppresses none
+
+read15 is call
+read15 in compressBlock
+read15 invokes slotWord
+read15 argument block machine.Address schedule copy
+read15 argument position Int64 at15 copy
+read15 result w15 Int64
+read15 ownedBy none
+read15 cleanedBy none
+read15 borrows none
+read15 catch none
+read15 suppresses none
+
+r7 is call
+r7 in compressBlock
+r7 invokes rotate
+r7 argument value Int64 w15 copy
+r7 argument count Int64 seven copy
+r7 result s0a Int64
+r7 ownedBy none
+r7 cleanedBy none
+r7 borrows none
+r7 catch none
+r7 suppresses none
+
+r18 is call
+r18 in compressBlock
+r18 invokes rotate
+r18 argument value Int64 w15 copy
+r18 argument count Int64 eighteen copy
+r18 result s0b Int64
+r18 ownedBy none
+r18 cleanedBy none
+r18 borrows none
+r18 catch none
+r18 suppresses none
+
+sh3 is call
+sh3 in compressBlock
+sh3 invokes bits.shiftRightInt64
+sh3 argument value Int64 w15 copy
+sh3 argument amount Int64 three copy
+sh3 result s0c Int64
+sh3 ownedBy none
+sh3 cleanedBy none
+sh3 borrows none
+sh3 catch none
+sh3 suppresses none
+
+x0 is call
+x0 in compressBlock
+x0 invokes bits.xorInt64
+x0 argument left Int64 s0a copy
+x0 argument right Int64 s0b copy
+x0 result s0ab Int64
+x0 ownedBy none
+x0 cleanedBy none
+x0 borrows none
+x0 catch none
+x0 suppresses none
+
+x1 is call
+x1 in compressBlock
+x1 invokes bits.xorInt64
+x1 argument left Int64 s0ab copy
+x1 argument right Int64 s0c copy
+x1 result s0 Int64
+x1 ownedBy none
+x1 cleanedBy none
+x1 borrows none
+x1 catch none
+x1 suppresses none
+
+back2 is call
+back2 in compressBlock
+back2 invokes math.subtractInt64
+back2 argument left Int64 at copy
+back2 argument right Int64 two copy
+back2 result at2 Int64
+back2 ownedBy none
+back2 cleanedBy none
+back2 borrows none
+back2 catch none
+back2 suppresses none
+
+read2 is call
+read2 in compressBlock
+read2 invokes slotWord
+read2 argument block machine.Address schedule copy
+read2 argument position Int64 at2 copy
+read2 result w2 Int64
+read2 ownedBy none
+read2 cleanedBy none
+read2 borrows none
+read2 catch none
+read2 suppresses none
+
+r17 is call
+r17 in compressBlock
+r17 invokes rotate
+r17 argument value Int64 w2 copy
+r17 argument count Int64 seventeen copy
+r17 result s1a Int64
+r17 ownedBy none
+r17 cleanedBy none
+r17 borrows none
+r17 catch none
+r17 suppresses none
+
+r19 is call
+r19 in compressBlock
+r19 invokes rotate
+r19 argument value Int64 w2 copy
+r19 argument count Int64 nineteen copy
+r19 result s1b Int64
+r19 ownedBy none
+r19 cleanedBy none
+r19 borrows none
+r19 catch none
+r19 suppresses none
+
+sh10 is call
+sh10 in compressBlock
+sh10 invokes bits.shiftRightInt64
+sh10 argument value Int64 w2 copy
+sh10 argument amount Int64 ten copy
+sh10 result s1c Int64
+sh10 ownedBy none
+sh10 cleanedBy none
+sh10 borrows none
+sh10 catch none
+sh10 suppresses none
+
+x2 is call
+x2 in compressBlock
+x2 invokes bits.xorInt64
+x2 argument left Int64 s1a copy
+x2 argument right Int64 s1b copy
+x2 result s1ab Int64
+x2 ownedBy none
+x2 cleanedBy none
+x2 borrows none
+x2 catch none
+x2 suppresses none
+
+x3 is call
+x3 in compressBlock
+x3 invokes bits.xorInt64
+x3 argument left Int64 s1ab copy
+x3 argument right Int64 s1c copy
+x3 result s1 Int64
+x3 ownedBy none
+x3 cleanedBy none
+x3 borrows none
+x3 catch none
+x3 suppresses none
+
+back16 is call
+back16 in compressBlock
+back16 invokes math.subtractInt64
+back16 argument left Int64 at copy
+back16 argument right Int64 sixteen copy
+back16 result at16 Int64
+back16 ownedBy none
+back16 cleanedBy none
+back16 borrows none
+back16 catch none
+back16 suppresses none
+
+read16 is call
+read16 in compressBlock
+read16 invokes slotWord
+read16 argument block machine.Address schedule copy
+read16 argument position Int64 at16 copy
+read16 result w16 Int64
+read16 ownedBy none
+read16 cleanedBy none
+read16 borrows none
+read16 catch none
+read16 suppresses none
+
+back7 is call
+back7 in compressBlock
+back7 invokes math.subtractInt64
+back7 argument left Int64 at copy
+back7 argument right Int64 seven copy
+back7 result at7 Int64
+back7 ownedBy none
+back7 cleanedBy none
+back7 borrows none
+back7 catch none
+back7 suppresses none
+
+read7 is call
+read7 in compressBlock
+read7 invokes slotWord
+read7 argument block machine.Address schedule copy
+read7 argument position Int64 at7 copy
+read7 result w7 Int64
+read7 ownedBy none
+read7 cleanedBy none
+read7 borrows none
+read7 catch none
+read7 suppresses none
+
+add1 is call
+add1 in compressBlock
+add1 invokes add32
+add1 argument left Int64 w16 copy
+add1 argument right Int64 s0 copy
+add1 result sumA Int64
+add1 ownedBy none
+add1 cleanedBy none
+add1 borrows none
+add1 catch none
+add1 suppresses none
+
+add2 is call
+add2 in compressBlock
+add2 invokes add32
+add2 argument left Int64 sumA copy
+add2 argument right Int64 w7 copy
+add2 result sumB Int64
+add2 ownedBy none
+add2 cleanedBy none
+add2 borrows none
+add2 catch none
+add2 suppresses none
+
+add3 is call
+add3 in compressBlock
+add3 invokes add32
+add3 argument left Int64 sumB copy
+add3 argument right Int64 s1 copy
+add3 result sumC Int64
+add3 ownedBy none
+add3 cleanedBy none
+add3 borrows none
+add3 catch none
+add3 suppresses none
+
+storeExpanded is call
+storeExpanded in compressBlock
+storeExpanded invokes setSlotWord
+storeExpanded argument block machine.Address schedule copy
+storeExpanded argument position Int64 at copy
+storeExpanded argument value Int64 sumC copy
+storeExpanded result none
+storeExpanded ownedBy none
+storeExpanded cleanedBy none
+storeExpanded borrows none
+storeExpanded catch none
+storeExpanded suppresses none
+
+nextExpand is call
+nextExpand in compressBlock
+nextExpand invokes math.addInt64
+nextExpand argument left Int64 at copy
+nextExpand argument right Int64 one copy
+nextExpand result afterExpand Int64
+nextExpand ownedBy none
+nextExpand cleanedBy none
+nextExpand borrows none
+nextExpand catch none
+nextExpand suppresses none
+
+readA is call
+readA in compressBlock
+readA invokes slotWord
+readA argument block machine.Address state copy
+readA argument position Int64 zero copy
+readA result a0 Int64
+readA ownedBy none
+readA cleanedBy none
+readA borrows none
+readA catch none
+readA suppresses none
+
+readB is call
+readB in compressBlock
+readB invokes slotWord
+readB argument block machine.Address state copy
+readB argument position Int64 one copy
+readB result b0 Int64
+readB ownedBy none
+readB cleanedBy none
+readB borrows none
+readB catch none
+readB suppresses none
+
+readC is call
+readC in compressBlock
+readC invokes slotWord
+readC argument block machine.Address state copy
+readC argument position Int64 two copy
+readC result c0 Int64
+readC ownedBy none
+readC cleanedBy none
+readC borrows none
+readC catch none
+readC suppresses none
+
+readD is call
+readD in compressBlock
+readD invokes slotWord
+readD argument block machine.Address state copy
+readD argument position Int64 three copy
+readD result d0 Int64
+readD ownedBy none
+readD cleanedBy none
+readD borrows none
+readD catch none
+readD suppresses none
+
+readE is call
+readE in compressBlock
+readE invokes slotWord
+readE argument block machine.Address state copy
+readE argument position Int64 four copy
+readE result e0 Int64
+readE ownedBy none
+readE cleanedBy none
+readE borrows none
+readE catch none
+readE suppresses none
+
+readF is call
+readF in compressBlock
+readF invokes slotWord
+readF argument block machine.Address state copy
+readF argument position Int64 five copy
+readF result f0 Int64
+readF ownedBy none
+readF cleanedBy none
+readF borrows none
+readF catch none
+readF suppresses none
+
+readG is call
+readG in compressBlock
+readG invokes slotWord
+readG argument block machine.Address state copy
+readG argument position Int64 six copy
+readG result g0 Int64
+readG ownedBy none
+readG cleanedBy none
+readG borrows none
+readG catch none
+readG suppresses none
+
+readH is call
+readH in compressBlock
+readH invokes slotWord
+readH argument block machine.Address state copy
+readH argument position Int64 seven copy
+readH result h0 Int64
+readH ownedBy none
+readH cleanedBy none
+readH borrows none
+readH catch none
+readH suppresses none
+
+findConstants is call
+findConstants in compressBlock
+findConstants invokes machine.addressOfString
+findConstants argument text String roundConstants lend
+findConstants result constants machine.Address
+findConstants ownedBy none
+findConstants cleanedBy none
+findConstants borrows none
+findConstants catch none
+findConstants suppresses none
+
+roundsDone is call
+roundsDone in compressBlock
+roundsDone invokes compare.greaterOrEqualInt64
+roundsDone argument left Int64 at copy
+roundsDone argument right Int64 sixtyFour copy
+roundsDone result finished Bool
+roundsDone ownedBy none
+roundsDone cleanedBy none
+roundsDone borrows none
+roundsDone catch none
+roundsDone suppresses none
+
+e6 is call
+e6 in compressBlock
+e6 invokes rotate
+e6 argument value Int64 e copy
+e6 argument count Int64 six copy
+e6 result sigmaE1 Int64
+e6 ownedBy none
+e6 cleanedBy none
+e6 borrows none
+e6 catch none
+e6 suppresses none
+
+e11 is call
+e11 in compressBlock
+e11 invokes rotate
+e11 argument value Int64 e copy
+e11 argument count Int64 eleven copy
+e11 result sigmaE2 Int64
+e11 ownedBy none
+e11 cleanedBy none
+e11 borrows none
+e11 catch none
+e11 suppresses none
+
+e25 is call
+e25 in compressBlock
+e25 invokes rotate
+e25 argument value Int64 e copy
+e25 argument count Int64 twentyFive copy
+e25 result sigmaE3 Int64
+e25 ownedBy none
+e25 cleanedBy none
+e25 borrows none
+e25 catch none
+e25 suppresses none
+
+xe1 is call
+xe1 in compressBlock
+xe1 invokes bits.xorInt64
+xe1 argument left Int64 sigmaE1 copy
+xe1 argument right Int64 sigmaE2 copy
+xe1 result sigmaE12 Int64
+xe1 ownedBy none
+xe1 cleanedBy none
+xe1 borrows none
+xe1 catch none
+xe1 suppresses none
+
+xe2 is call
+xe2 in compressBlock
+xe2 invokes bits.xorInt64
+xe2 argument left Int64 sigmaE12 copy
+xe2 argument right Int64 sigmaE3 copy
+xe2 result bigSigma1 Int64
+xe2 ownedBy none
+xe2 cleanedBy none
+xe2 borrows none
+xe2 catch none
+xe2 suppresses none
+
+andEF is call
+andEF in compressBlock
+andEF invokes bits.andInt64
+andEF argument left Int64 e copy
+andEF argument right Int64 f copy
+andEF result ef Int64
+andEF ownedBy none
+andEF cleanedBy none
+andEF borrows none
+andEF catch none
+andEF suppresses none
+
+notE is call
+notE in compressBlock
+notE invokes bits.xorInt64
+notE argument left Int64 e copy
+notE argument right Int64 lowWord copy
+notE result notEWide Int64
+notE ownedBy none
+notE cleanedBy none
+notE borrows none
+notE catch none
+notE suppresses none
+
+andNotEG is call
+andNotEG in compressBlock
+andNotEG invokes bits.andInt64
+andNotEG argument left Int64 notEWide copy
+andNotEG argument right Int64 g copy
+andNotEG result neg Int64
+andNotEG ownedBy none
+andNotEG cleanedBy none
+andNotEG borrows none
+andNotEG catch none
+andNotEG suppresses none
+
+choose is call
+choose in compressBlock
+choose invokes bits.xorInt64
+choose argument left Int64 ef copy
+choose argument right Int64 neg copy
+choose result ch Int64
+choose ownedBy none
+choose cleanedBy none
+choose borrows none
+choose catch none
+choose suppresses none
+
+constantOffset is call
+constantOffset in compressBlock
+constantOffset invokes math.multiplyInt64
+constantOffset argument left Int64 at copy
+constantOffset argument right Int64 four copy
+constantOffset result kOffset Int64
+constantOffset ownedBy none
+constantOffset cleanedBy none
+constantOffset borrows none
+constantOffset catch none
+constantOffset suppresses none
+
+readConstant is call
+readConstant in compressBlock
+readConstant invokes word
+readConstant argument data machine.Address constants copy
+readConstant argument offset Int64 kOffset copy
+readConstant result k Int64
+readConstant ownedBy none
+readConstant cleanedBy none
+readConstant borrows none
+readConstant catch none
+readConstant suppresses none
+
+readSchedule is call
+readSchedule in compressBlock
+readSchedule invokes slotWord
+readSchedule argument block machine.Address schedule copy
+readSchedule argument position Int64 at copy
+readSchedule result w Int64
+readSchedule ownedBy none
+readSchedule cleanedBy none
+readSchedule borrows none
+readSchedule catch none
+readSchedule suppresses none
+
+t1a is call
+t1a in compressBlock
+t1a invokes add32
+t1a argument left Int64 h copy
+t1a argument right Int64 bigSigma1 copy
+t1a result t1ha Int64
+t1a ownedBy none
+t1a cleanedBy none
+t1a borrows none
+t1a catch none
+t1a suppresses none
+
+t1b is call
+t1b in compressBlock
+t1b invokes add32
+t1b argument left Int64 t1ha copy
+t1b argument right Int64 ch copy
+t1b result t1hb Int64
+t1b ownedBy none
+t1b cleanedBy none
+t1b borrows none
+t1b catch none
+t1b suppresses none
+
+t1c is call
+t1c in compressBlock
+t1c invokes add32
+t1c argument left Int64 t1hb copy
+t1c argument right Int64 k copy
+t1c result t1hc Int64
+t1c ownedBy none
+t1c cleanedBy none
+t1c borrows none
+t1c catch none
+t1c suppresses none
+
+t1d is call
+t1d in compressBlock
+t1d invokes add32
+t1d argument left Int64 t1hc copy
+t1d argument right Int64 w copy
+t1d result t1 Int64
+t1d ownedBy none
+t1d cleanedBy none
+t1d borrows none
+t1d catch none
+t1d suppresses none
+
+a2 is call
+a2 in compressBlock
+a2 invokes rotate
+a2 argument value Int64 a copy
+a2 argument count Int64 two copy
+a2 result sigmaA1 Int64
+a2 ownedBy none
+a2 cleanedBy none
+a2 borrows none
+a2 catch none
+a2 suppresses none
+
+a13 is call
+a13 in compressBlock
+a13 invokes rotate
+a13 argument value Int64 a copy
+a13 argument count Int64 thirteen copy
+a13 result sigmaA2 Int64
+a13 ownedBy none
+a13 cleanedBy none
+a13 borrows none
+a13 catch none
+a13 suppresses none
+
+a22 is call
+a22 in compressBlock
+a22 invokes rotate
+a22 argument value Int64 a copy
+a22 argument count Int64 twentyTwo copy
+a22 result sigmaA3 Int64
+a22 ownedBy none
+a22 cleanedBy none
+a22 borrows none
+a22 catch none
+a22 suppresses none
+
+xa1 is call
+xa1 in compressBlock
+xa1 invokes bits.xorInt64
+xa1 argument left Int64 sigmaA1 copy
+xa1 argument right Int64 sigmaA2 copy
+xa1 result sigmaA12 Int64
+xa1 ownedBy none
+xa1 cleanedBy none
+xa1 borrows none
+xa1 catch none
+xa1 suppresses none
+
+xa2 is call
+xa2 in compressBlock
+xa2 invokes bits.xorInt64
+xa2 argument left Int64 sigmaA12 copy
+xa2 argument right Int64 sigmaA3 copy
+xa2 result bigSigma0 Int64
+xa2 ownedBy none
+xa2 cleanedBy none
+xa2 borrows none
+xa2 catch none
+xa2 suppresses none
+
+andAB is call
+andAB in compressBlock
+andAB invokes bits.andInt64
+andAB argument left Int64 a copy
+andAB argument right Int64 b copy
+andAB result ab Int64
+andAB ownedBy none
+andAB cleanedBy none
+andAB borrows none
+andAB catch none
+andAB suppresses none
+
+andAC is call
+andAC in compressBlock
+andAC invokes bits.andInt64
+andAC argument left Int64 a copy
+andAC argument right Int64 c copy
+andAC result ac Int64
+andAC ownedBy none
+andAC cleanedBy none
+andAC borrows none
+andAC catch none
+andAC suppresses none
+
+andBC is call
+andBC in compressBlock
+andBC invokes bits.andInt64
+andBC argument left Int64 b copy
+andBC argument right Int64 c copy
+andBC result bc Int64
+andBC ownedBy none
+andBC cleanedBy none
+andBC borrows none
+andBC catch none
+andBC suppresses none
+
+majority1 is call
+majority1 in compressBlock
+majority1 invokes bits.xorInt64
+majority1 argument left Int64 ab copy
+majority1 argument right Int64 ac copy
+majority1 result majAB Int64
+majority1 ownedBy none
+majority1 cleanedBy none
+majority1 borrows none
+majority1 catch none
+majority1 suppresses none
+
+majority2 is call
+majority2 in compressBlock
+majority2 invokes bits.xorInt64
+majority2 argument left Int64 majAB copy
+majority2 argument right Int64 bc copy
+majority2 result maj Int64
+majority2 ownedBy none
+majority2 cleanedBy none
+majority2 borrows none
+majority2 catch none
+majority2 suppresses none
+
+t2a is call
+t2a in compressBlock
+t2a invokes add32
+t2a argument left Int64 bigSigma0 copy
+t2a argument right Int64 maj copy
+t2a result t2 Int64
+t2a ownedBy none
+t2a cleanedBy none
+t2a borrows none
+t2a catch none
+t2a suppresses none
+
+newE is call
+newE in compressBlock
+newE invokes add32
+newE argument left Int64 d copy
+newE argument right Int64 t1 copy
+newE result eNext Int64
+newE ownedBy none
+newE cleanedBy none
+newE borrows none
+newE catch none
+newE suppresses none
+
+newA is call
+newA in compressBlock
+newA invokes add32
+newA argument left Int64 t1 copy
+newA argument right Int64 t2 copy
+newA result aNext Int64
+newA ownedBy none
+newA cleanedBy none
+newA borrows none
+newA catch none
+newA suppresses none
+
+nextRound is call
+nextRound in compressBlock
+nextRound invokes math.addInt64
+nextRound argument left Int64 at copy
+nextRound argument right Int64 one copy
+nextRound result afterRound Int64
+nextRound ownedBy none
+nextRound cleanedBy none
+nextRound borrows none
+nextRound catch none
+nextRound suppresses none
+
+foldA is call
+foldA in compressBlock
+foldA invokes add32
+foldA argument left Int64 a0 copy
+foldA argument right Int64 a copy
+foldA result sumHA Int64
+foldA ownedBy none
+foldA cleanedBy none
+foldA borrows none
+foldA catch none
+foldA suppresses none
+
+storeA is call
+storeA in compressBlock
+storeA invokes setSlotWord
+storeA argument block machine.Address state copy
+storeA argument position Int64 zero copy
+storeA argument value Int64 sumHA copy
+storeA result none
+storeA ownedBy none
+storeA cleanedBy none
+storeA borrows none
+storeA catch none
+storeA suppresses none
+
+foldB is call
+foldB in compressBlock
+foldB invokes add32
+foldB argument left Int64 b0 copy
+foldB argument right Int64 b copy
+foldB result sumHB Int64
+foldB ownedBy none
+foldB cleanedBy none
+foldB borrows none
+foldB catch none
+foldB suppresses none
+
+storeB is call
+storeB in compressBlock
+storeB invokes setSlotWord
+storeB argument block machine.Address state copy
+storeB argument position Int64 one copy
+storeB argument value Int64 sumHB copy
+storeB result none
+storeB ownedBy none
+storeB cleanedBy none
+storeB borrows none
+storeB catch none
+storeB suppresses none
+
+foldC is call
+foldC in compressBlock
+foldC invokes add32
+foldC argument left Int64 c0 copy
+foldC argument right Int64 c copy
+foldC result sumHC Int64
+foldC ownedBy none
+foldC cleanedBy none
+foldC borrows none
+foldC catch none
+foldC suppresses none
+
+storeC is call
+storeC in compressBlock
+storeC invokes setSlotWord
+storeC argument block machine.Address state copy
+storeC argument position Int64 two copy
+storeC argument value Int64 sumHC copy
+storeC result none
+storeC ownedBy none
+storeC cleanedBy none
+storeC borrows none
+storeC catch none
+storeC suppresses none
+
+foldD is call
+foldD in compressBlock
+foldD invokes add32
+foldD argument left Int64 d0 copy
+foldD argument right Int64 d copy
+foldD result sumHD Int64
+foldD ownedBy none
+foldD cleanedBy none
+foldD borrows none
+foldD catch none
+foldD suppresses none
+
+storeD is call
+storeD in compressBlock
+storeD invokes setSlotWord
+storeD argument block machine.Address state copy
+storeD argument position Int64 three copy
+storeD argument value Int64 sumHD copy
+storeD result none
+storeD ownedBy none
+storeD cleanedBy none
+storeD borrows none
+storeD catch none
+storeD suppresses none
+
+foldE is call
+foldE in compressBlock
+foldE invokes add32
+foldE argument left Int64 e0 copy
+foldE argument right Int64 e copy
+foldE result sumHE Int64
+foldE ownedBy none
+foldE cleanedBy none
+foldE borrows none
+foldE catch none
+foldE suppresses none
+
+storeE is call
+storeE in compressBlock
+storeE invokes setSlotWord
+storeE argument block machine.Address state copy
+storeE argument position Int64 four copy
+storeE argument value Int64 sumHE copy
+storeE result none
+storeE ownedBy none
+storeE cleanedBy none
+storeE borrows none
+storeE catch none
+storeE suppresses none
+
+foldF is call
+foldF in compressBlock
+foldF invokes add32
+foldF argument left Int64 f0 copy
+foldF argument right Int64 f copy
+foldF result sumHF Int64
+foldF ownedBy none
+foldF cleanedBy none
+foldF borrows none
+foldF catch none
+foldF suppresses none
+
+storeF is call
+storeF in compressBlock
+storeF invokes setSlotWord
+storeF argument block machine.Address state copy
+storeF argument position Int64 five copy
+storeF argument value Int64 sumHF copy
+storeF result none
+storeF ownedBy none
+storeF cleanedBy none
+storeF borrows none
+storeF catch none
+storeF suppresses none
+
+foldG is call
+foldG in compressBlock
+foldG invokes add32
+foldG argument left Int64 g0 copy
+foldG argument right Int64 g copy
+foldG result sumHG Int64
+foldG ownedBy none
+foldG cleanedBy none
+foldG borrows none
+foldG catch none
+foldG suppresses none
+
+storeG is call
+storeG in compressBlock
+storeG invokes setSlotWord
+storeG argument block machine.Address state copy
+storeG argument position Int64 six copy
+storeG argument value Int64 sumHG copy
+storeG result none
+storeG ownedBy none
+storeG cleanedBy none
+storeG borrows none
+storeG catch none
+storeG suppresses none
+
+foldH is call
+foldH in compressBlock
+foldH invokes add32
+foldH argument left Int64 h0 copy
+foldH argument right Int64 h copy
+foldH result sumHH Int64
+foldH ownedBy none
+foldH cleanedBy none
+foldH borrows none
+foldH catch none
+foldH suppresses none
+
+storeH is call
+storeH in compressBlock
+storeH invokes setSlotWord
+storeH argument block machine.Address state copy
+storeH argument position Int64 seven copy
+storeH argument value Int64 sumHH copy
+storeH result none
+storeH ownedBy none
+storeH cleanedBy none
+storeH borrows none
+storeH catch none
+storeH suppresses none
+
+sha256 is operation
+sha256 purpose "The SHA-256 digest of some bytes, its 32 bytes written at an address"
+sha256 invariant hashesLikeHashlib "\"Writes the digest hashlib.sha256 gives for the bytes\""
+sha256 typeParameter none
+sha256 input data machine.Address copied
+sha256 input bytes Int64 copied
+sha256 input digest machine.Address copied
+sha256 output none
+sha256 outputOwnedBy none
+sha256 raises none
+sha256 effect use machine.memory
+sha256 effect use system.calls
+sha256 uses memoryAccess
+sha256 uses systemCalls
+sha256 memoryHeap false
+sha256 async false
+sha256 maxRecursion none
+sha256 label begin loopKind none
+sha256 label begin within none
+sha256 label eachInitial loopKind while
+sha256 label eachInitial within none
+sha256 label eachInitial maxIterations eight
+sha256 label initialOne loopKind none
+sha256 label initialOne within eachInitial
+sha256 label blocksStart loopKind none
+sha256 label blocksStart within none
+sha256 label eachBlock loopKind while
+sha256 label eachBlock within none
+sha256 label eachBlock maxIterations blocks
+sha256 label compress loopKind none
+sha256 label compress within eachBlock
+sha256 label output loopKind none
+sha256 label output within none
+sha256 label eachOutput loopKind while
+sha256 label eachOutput within none
+sha256 label eachOutput maxIterations eight
+sha256 label outputOne loopKind none
+sha256 label outputOne within eachOutput
+sha256 label finish loopKind none
+sha256 label finish within none
+sha256 let at Int64 0 mutable
+sha256 let zero Int64 0 immutable
+sha256 let nine Int64 9 immutable
+sha256 let sixtyThree Int64 63 immutable
+sha256 let sixtyFour Int64 64 immutable
+sha256 let markerByte Byte 128 immutable
+sha256 let eight Int64 8 immutable
+sha256 let thirtyTwo Int64 32 immutable
+sha256 let four Int64 4 immutable
+sha256 let fiveTwelve Int64 512 immutable
+sha256 let one Int64 1 immutable
+sha256 at begin do withEnd
+sha256 at begin do roundUp
+sha256 at begin do blocksOf
+sha256 at begin do sizeOf
+sha256 at begin do takeMessage
+sha256 at begin do copyIn
+sha256 at begin do findMarker
+sha256 at begin do storeMarker
+sha256 at begin do bitsOf
+sha256 at begin do lengthAt
+sha256 at begin do highOf
+sha256 at begin do storeHigh
+sha256 at begin do lowAt
+sha256 at begin do lowOf
+sha256 at begin do storeLow
+sha256 at begin do takeState
+sha256 at begin do takeSchedule
+sha256 at begin do findInitial
+sha256 at begin goto eachInitial
+sha256 at eachInitial do initialDone
+sha256 at eachInitial branch if initialized goto blocksStart else goto initialOne
+sha256 at initialOne do initialOffset
+sha256 at initialOne do readInitial
+sha256 at initialOne do storeInitial
+sha256 at initialOne do nextInitial
+sha256 at initialOne set at afterInitial
+sha256 at initialOne goto eachInitial
+sha256 at blocksStart set at zero
+sha256 at blocksStart goto eachBlock
+sha256 at eachBlock do blocksDone
+sha256 at eachBlock branch if hashed goto output else goto compress
+sha256 at compress do blockOffset
+sha256 at compress do findBlock
+sha256 at compress do mixIt
+sha256 at compress do nextBlock
+sha256 at compress set at afterBlock
+sha256 at compress goto eachBlock
+sha256 at output set at zero
+sha256 at output goto eachOutput
+sha256 at eachOutput do outputDone
+sha256 at eachOutput branch if written goto finish else goto outputOne
+sha256 at outputOne do readHash
+sha256 at outputOne do outputOffset
+sha256 at outputOne do storeHash
+sha256 at outputOne do nextOutput
+sha256 at outputOne set at afterOutput
+sha256 at outputOne goto eachOutput
+sha256 at finish do giveMessage
+sha256 at finish do giveState
+sha256 at finish do giveSchedule
+sha256 at finish return ok none
+
+withEnd is call
+withEnd in sha256
+withEnd invokes math.addInt64
+withEnd argument left Int64 bytes copy
+withEnd argument right Int64 nine copy
+withEnd result withMarker Int64
+withEnd ownedBy none
+withEnd cleanedBy none
+withEnd borrows none
+withEnd catch none
+withEnd suppresses none
+
+roundUp is call
+roundUp in sha256
+roundUp invokes math.addInt64
+roundUp argument left Int64 withMarker copy
+roundUp argument right Int64 sixtyThree copy
+roundUp result padded Int64
+roundUp ownedBy none
+roundUp cleanedBy none
+roundUp borrows none
+roundUp catch none
+roundUp suppresses none
+
+blocksOf is call
+blocksOf in sha256
+blocksOf invokes math.divideInt64
+blocksOf argument left Int64 padded copy
+blocksOf argument right Int64 sixtyFour copy
+blocksOf result blocks Int64
+blocksOf ownedBy none
+blocksOf cleanedBy none
+blocksOf borrows none
+blocksOf catch none
+blocksOf suppresses none
+
+sizeOf is call
+sizeOf in sha256
+sizeOf invokes math.multiplyInt64
+sizeOf argument left Int64 blocks copy
+sizeOf argument right Int64 sixtyFour copy
+sizeOf result size Int64
+sizeOf ownedBy none
+sizeOf cleanedBy none
+sizeOf borrows none
+sizeOf catch none
+sizeOf suppresses none
+
+takeMessage is call
+takeMessage in sha256
+takeMessage invokes heap.take
+takeMessage argument bytes Int64 size copy
+takeMessage result message machine.Address
+takeMessage ownedBy none
+takeMessage cleanedBy none
+takeMessage borrows none
+takeMessage catch none
+takeMessage suppresses none
+
+copyIn is call
+copyIn in sha256
+copyIn invokes machine.copy
+copyIn argument target machine.Address message copy
+copyIn argument source machine.Address data copy
+copyIn argument bytes Int64 bytes copy
+copyIn result none
+copyIn ownedBy none
+copyIn cleanedBy none
+copyIn borrows none
+copyIn catch none
+copyIn suppresses none
+
+findMarker is call
+findMarker in sha256
+findMarker invokes machine.offset
+findMarker argument address machine.Address message copy
+findMarker argument bytes Int64 bytes copy
+findMarker result marker machine.Address
+findMarker ownedBy none
+findMarker cleanedBy none
+findMarker borrows none
+findMarker catch none
+findMarker suppresses none
+
+storeMarker is call
+storeMarker in sha256
+storeMarker invokes machine.storeByte
+storeMarker argument address machine.Address marker copy
+storeMarker argument value Byte markerByte copy
+storeMarker result none
+storeMarker ownedBy none
+storeMarker cleanedBy none
+storeMarker borrows none
+storeMarker catch none
+storeMarker suppresses none
+
+bitsOf is call
+bitsOf in sha256
+bitsOf invokes math.multiplyInt64
+bitsOf argument left Int64 bytes copy
+bitsOf argument right Int64 eight copy
+bitsOf result bitLength Int64
+bitsOf ownedBy none
+bitsOf cleanedBy none
+bitsOf borrows none
+bitsOf catch none
+bitsOf suppresses none
+
+lengthAt is call
+lengthAt in sha256
+lengthAt invokes math.subtractInt64
+lengthAt argument left Int64 size copy
+lengthAt argument right Int64 eight copy
+lengthAt result lengthOffset Int64
+lengthAt ownedBy none
+lengthAt cleanedBy none
+lengthAt borrows none
+lengthAt catch none
+lengthAt suppresses none
+
+highOf is call
+highOf in sha256
+highOf invokes bits.shiftRightInt64
+highOf argument value Int64 bitLength copy
+highOf argument amount Int64 thirtyTwo copy
+highOf result high Int64
+highOf ownedBy none
+highOf cleanedBy none
+highOf borrows none
+highOf catch none
+highOf suppresses none
+
+storeHigh is call
+storeHigh in sha256
+storeHigh invokes storeWord
+storeHigh argument data machine.Address message copy
+storeHigh argument offset Int64 lengthOffset copy
+storeHigh argument value Int64 high copy
+storeHigh result none
+storeHigh ownedBy none
+storeHigh cleanedBy none
+storeHigh borrows none
+storeHigh catch none
+storeHigh suppresses none
+
+lowAt is call
+lowAt in sha256
+lowAt invokes math.addInt64
+lowAt argument left Int64 lengthOffset copy
+lowAt argument right Int64 four copy
+lowAt result lowOffset Int64
+lowAt ownedBy none
+lowAt cleanedBy none
+lowAt borrows none
+lowAt catch none
+lowAt suppresses none
+
+lowOf is call
+lowOf in sha256
+lowOf invokes bits.andInt64
+lowOf argument left Int64 bitLength copy
+lowOf argument right Int64 lowWord copy
+lowOf result low Int64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+storeLow is call
+storeLow in sha256
+storeLow invokes storeWord
+storeLow argument data machine.Address message copy
+storeLow argument offset Int64 lowOffset copy
+storeLow argument value Int64 low copy
+storeLow result none
+storeLow ownedBy none
+storeLow cleanedBy none
+storeLow borrows none
+storeLow catch none
+storeLow suppresses none
+
+takeState is call
+takeState in sha256
+takeState invokes heap.take
+takeState argument bytes Int64 sixtyFour copy
+takeState result state machine.Address
+takeState ownedBy none
+takeState cleanedBy none
+takeState borrows none
+takeState catch none
+takeState suppresses none
+
+takeSchedule is call
+takeSchedule in sha256
+takeSchedule invokes heap.take
+takeSchedule argument bytes Int64 fiveTwelve copy
+takeSchedule result schedule machine.Address
+takeSchedule ownedBy none
+takeSchedule cleanedBy none
+takeSchedule borrows none
+takeSchedule catch none
+takeSchedule suppresses none
+
+findInitial is call
+findInitial in sha256
+findInitial invokes machine.addressOfString
+findInitial argument text String initialHash lend
+findInitial result initial machine.Address
+findInitial ownedBy none
+findInitial cleanedBy none
+findInitial borrows none
+findInitial catch none
+findInitial suppresses none
+
+initialDone is call
+initialDone in sha256
+initialDone invokes compare.greaterOrEqualInt64
+initialDone argument left Int64 at copy
+initialDone argument right Int64 eight copy
+initialDone result initialized Bool
+initialDone ownedBy none
+initialDone cleanedBy none
+initialDone borrows none
+initialDone catch none
+initialDone suppresses none
+
+initialOffset is call
+initialOffset in sha256
+initialOffset invokes math.multiplyInt64
+initialOffset argument left Int64 at copy
+initialOffset argument right Int64 four copy
+initialOffset result offset Int64
+initialOffset ownedBy none
+initialOffset cleanedBy none
+initialOffset borrows none
+initialOffset catch none
+initialOffset suppresses none
+
+readInitial is call
+readInitial in sha256
+readInitial invokes word
+readInitial argument data machine.Address initial copy
+readInitial argument offset Int64 offset copy
+readInitial result value Int64
+readInitial ownedBy none
+readInitial cleanedBy none
+readInitial borrows none
+readInitial catch none
+readInitial suppresses none
+
+storeInitial is call
+storeInitial in sha256
+storeInitial invokes setSlotWord
+storeInitial argument block machine.Address state copy
+storeInitial argument position Int64 at copy
+storeInitial argument value Int64 value copy
+storeInitial result none
+storeInitial ownedBy none
+storeInitial cleanedBy none
+storeInitial borrows none
+storeInitial catch none
+storeInitial suppresses none
+
+nextInitial is call
+nextInitial in sha256
+nextInitial invokes math.addInt64
+nextInitial argument left Int64 at copy
+nextInitial argument right Int64 one copy
+nextInitial result afterInitial Int64
+nextInitial ownedBy none
+nextInitial cleanedBy none
+nextInitial borrows none
+nextInitial catch none
+nextInitial suppresses none
+
+blocksDone is call
+blocksDone in sha256
+blocksDone invokes compare.greaterOrEqualInt64
+blocksDone argument left Int64 at copy
+blocksDone argument right Int64 blocks copy
+blocksDone result hashed Bool
+blocksDone ownedBy none
+blocksDone cleanedBy none
+blocksDone borrows none
+blocksDone catch none
+blocksDone suppresses none
+
+blockOffset is call
+blockOffset in sha256
+blockOffset invokes math.multiplyInt64
+blockOffset argument left Int64 at copy
+blockOffset argument right Int64 sixtyFour copy
+blockOffset result blockAt Int64
+blockOffset ownedBy none
+blockOffset cleanedBy none
+blockOffset borrows none
+blockOffset catch none
+blockOffset suppresses none
+
+findBlock is call
+findBlock in sha256
+findBlock invokes machine.offset
+findBlock argument address machine.Address message copy
+findBlock argument bytes Int64 blockAt copy
+findBlock result block machine.Address
+findBlock ownedBy none
+findBlock cleanedBy none
+findBlock borrows none
+findBlock catch none
+findBlock suppresses none
+
+mixIt is call
+mixIt in sha256
+mixIt invokes compressBlock
+mixIt argument state machine.Address state copy
+mixIt argument data machine.Address block copy
+mixIt argument schedule machine.Address schedule copy
+mixIt result none
+mixIt ownedBy none
+mixIt cleanedBy none
+mixIt borrows none
+mixIt catch none
+mixIt suppresses none
+
+nextBlock is call
+nextBlock in sha256
+nextBlock invokes math.addInt64
+nextBlock argument left Int64 at copy
+nextBlock argument right Int64 one copy
+nextBlock result afterBlock Int64
+nextBlock ownedBy none
+nextBlock cleanedBy none
+nextBlock borrows none
+nextBlock catch none
+nextBlock suppresses none
+
+outputDone is call
+outputDone in sha256
+outputDone invokes compare.greaterOrEqualInt64
+outputDone argument left Int64 at copy
+outputDone argument right Int64 eight copy
+outputDone result written Bool
+outputDone ownedBy none
+outputDone cleanedBy none
+outputDone borrows none
+outputDone catch none
+outputDone suppresses none
+
+readHash is call
+readHash in sha256
+readHash invokes slotWord
+readHash argument block machine.Address state copy
+readHash argument position Int64 at copy
+readHash result hashWord Int64
+readHash ownedBy none
+readHash cleanedBy none
+readHash borrows none
+readHash catch none
+readHash suppresses none
+
+outputOffset is call
+outputOffset in sha256
+outputOffset invokes math.multiplyInt64
+outputOffset argument left Int64 at copy
+outputOffset argument right Int64 four copy
+outputOffset result outAt Int64
+outputOffset ownedBy none
+outputOffset cleanedBy none
+outputOffset borrows none
+outputOffset catch none
+outputOffset suppresses none
+
+storeHash is call
+storeHash in sha256
+storeHash invokes storeWord
+storeHash argument data machine.Address digest copy
+storeHash argument offset Int64 outAt copy
+storeHash argument value Int64 hashWord copy
+storeHash result none
+storeHash ownedBy none
+storeHash cleanedBy none
+storeHash borrows none
+storeHash catch none
+storeHash suppresses none
+
+nextOutput is call
+nextOutput in sha256
+nextOutput invokes math.addInt64
+nextOutput argument left Int64 at copy
+nextOutput argument right Int64 one copy
+nextOutput result afterOutput Int64
+nextOutput ownedBy none
+nextOutput cleanedBy none
+nextOutput borrows none
+nextOutput catch none
+nextOutput suppresses none
+
+giveMessage is call
+giveMessage in sha256
+giveMessage invokes heap.give
+giveMessage argument block machine.Address message copy
+giveMessage result none
+giveMessage ownedBy none
+giveMessage cleanedBy none
+giveMessage borrows none
+giveMessage catch none
+giveMessage suppresses none
+
+giveState is call
+giveState in sha256
+giveState invokes heap.give
+giveState argument block machine.Address state copy
+giveState result none
+giveState ownedBy none
+giveState cleanedBy none
+giveState borrows none
+giveState catch none
+giveState suppresses none
+
+giveSchedule is call
+giveSchedule in sha256
+giveSchedule invokes heap.give
+giveSchedule argument block machine.Address schedule copy
+giveSchedule result none
+giveSchedule ownedBy none
+giveSchedule cleanedBy none
+giveSchedule borrows none
+giveSchedule catch none
+giveSchedule suppresses none
+
+# ---------------------------------------------------------------- crypto targets
+cryptoSha256 is operation
+cryptoSha256 purpose "crypto.sha256: the SHA-256 digest of bytes, 32 bytes into a region"
+cryptoSha256 invariant digestsBytes "\"The result slots hold the 32 bytes hashlib.sha256 gives\""
+cryptoSha256 typeParameter none
+cryptoSha256 input shape machine.Address copied
+cryptoSha256 input args machine.Address copied
+cryptoSha256 input results machine.Address copied
+cryptoSha256 output none
+cryptoSha256 outputOwnedBy none
+cryptoSha256 raises none
+cryptoSha256 effect use machine.memory
+cryptoSha256 effect use system.calls
+cryptoSha256 uses memoryAccess
+cryptoSha256 uses systemCalls
+cryptoSha256 memoryHeap false
+cryptoSha256 async false
+cryptoSha256 maxRecursion none
+cryptoSha256 label begin loopKind none
+cryptoSha256 label begin within none
+cryptoSha256 let zero Int64 0 immutable
+cryptoSha256 let thirtyTwo Int64 32 immutable
+cryptoSha256 let one Int64 1 immutable
+cryptoSha256 at begin do readData
+cryptoSha256 at begin do readBytes
+cryptoSha256 at begin do takeDigest
+cryptoSha256 at begin do hashIt
+cryptoSha256 at begin do readRegion
+cryptoSha256 at begin do putIt
+cryptoSha256 at begin do giveDigest
+cryptoSha256 at begin return ok none
+
+readData is call
+readData in cryptoSha256
+readData invokes files.textAt
+readData argument shape machine.Address shape copy
+readData argument args machine.Address args copy
+readData argument parameter Int64 zero copy
+readData result data machine.Address
+readData ownedBy none
+readData cleanedBy none
+readData borrows none
+readData catch none
+readData suppresses none
+
+readBytes is call
+readBytes in cryptoSha256
+readBytes invokes files.textBytes
+readBytes argument shape machine.Address shape copy
+readBytes argument args machine.Address args copy
+readBytes argument parameter Int64 zero copy
+readBytes result bytes Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+takeDigest is call
+takeDigest in cryptoSha256
+takeDigest invokes heap.take
+takeDigest argument bytes Int64 thirtyTwo copy
+takeDigest result digest machine.Address
+takeDigest ownedBy none
+takeDigest cleanedBy none
+takeDigest borrows none
+takeDigest catch none
+takeDigest suppresses none
+
+hashIt is call
+hashIt in cryptoSha256
+hashIt invokes sha256
+hashIt argument data machine.Address data copy
+hashIt argument bytes Int64 bytes copy
+hashIt argument digest machine.Address digest copy
+hashIt result none
+hashIt ownedBy none
+hashIt cleanedBy none
+hashIt borrows none
+hashIt catch none
+hashIt suppresses none
+
+readRegion is call
+readRegion in cryptoSha256
+readRegion invokes slots.addressArg
+readRegion argument shape machine.Address shape copy
+readRegion argument args machine.Address args copy
+readRegion argument parameter Int64 one copy
+readRegion result region machine.Address
+readRegion ownedBy none
+readRegion cleanedBy none
+readRegion borrows none
+readRegion catch none
+readRegion suppresses none
+
+putIt is call
+putIt in cryptoSha256
+putIt invokes slots.putText
+putIt argument region machine.Address region copy
+putIt argument data machine.Address digest copy
+putIt argument bytes Int64 thirtyTwo copy
+putIt argument out machine.Address results copy
+putIt result none
+putIt ownedBy none
+putIt cleanedBy none
+putIt borrows none
+putIt catch none
+putIt suppresses none
+
+giveDigest is call
+giveDigest in cryptoSha256
+giveDigest invokes heap.give
+giveDigest argument block machine.Address digest copy
+giveDigest result none
+giveDigest ownedBy none
+giveDigest cleanedBy none
+giveDigest borrows none
+giveDigest catch none
+giveDigest suppresses none
+
+cryptoHmacSha256 is operation
+cryptoHmacSha256 purpose "crypto.hmacSha256: HMAC with SHA-256 of a message under a key, 32 bytes into a region"
+cryptoHmacSha256 invariant authenticates "\"The result slots hold the 32 bytes hmac.new(key, message, sha256) gives\""
+cryptoHmacSha256 typeParameter none
+cryptoHmacSha256 input shape machine.Address copied
+cryptoHmacSha256 input args machine.Address copied
+cryptoHmacSha256 input results machine.Address copied
+cryptoHmacSha256 output none
+cryptoHmacSha256 outputOwnedBy none
+cryptoHmacSha256 raises none
+cryptoHmacSha256 effect use machine.memory
+cryptoHmacSha256 effect use system.calls
+cryptoHmacSha256 uses memoryAccess
+cryptoHmacSha256 uses systemCalls
+cryptoHmacSha256 memoryHeap false
+cryptoHmacSha256 async false
+cryptoHmacSha256 maxRecursion none
+cryptoHmacSha256 label begin loopKind none
+cryptoHmacSha256 label begin within none
+cryptoHmacSha256 label hashKey loopKind none
+cryptoHmacSha256 label hashKey within none
+cryptoHmacSha256 label copyKey loopKind none
+cryptoHmacSha256 label copyKey within none
+cryptoHmacSha256 label pads loopKind none
+cryptoHmacSha256 label pads within none
+cryptoHmacSha256 label eachPad loopKind while
+cryptoHmacSha256 label eachPad within none
+cryptoHmacSha256 label eachPad maxIterations sixtyFour
+cryptoHmacSha256 label padOne loopKind none
+cryptoHmacSha256 label padOne within eachPad
+cryptoHmacSha256 label innerHash loopKind none
+cryptoHmacSha256 label innerHash within none
+cryptoHmacSha256 let at Int64 0 mutable
+cryptoHmacSha256 let zero Int64 0 immutable
+cryptoHmacSha256 let one Int64 1 immutable
+cryptoHmacSha256 let sixtyFour Int64 64 immutable
+cryptoHmacSha256 let ninetySix Int64 96 immutable
+cryptoHmacSha256 let ipad Byte 54 immutable
+cryptoHmacSha256 let opad Byte 92 immutable
+cryptoHmacSha256 let thirtyTwo Int64 32 immutable
+cryptoHmacSha256 let two Int64 2 immutable
+cryptoHmacSha256 at begin do readKey
+cryptoHmacSha256 at begin do readKeyBytes
+cryptoHmacSha256 at begin do readMessage
+cryptoHmacSha256 at begin do readMessageBytes
+cryptoHmacSha256 at begin do takeBlock
+cryptoHmacSha256 at begin do longCheck
+cryptoHmacSha256 at begin branch if long goto hashKey else goto copyKey
+cryptoHmacSha256 at hashKey do hashIt
+cryptoHmacSha256 at hashKey goto pads
+cryptoHmacSha256 at copyKey do copyIt
+cryptoHmacSha256 at copyKey goto pads
+cryptoHmacSha256 at pads do innerSize
+cryptoHmacSha256 at pads do takeInner
+cryptoHmacSha256 at pads do takeOuter
+cryptoHmacSha256 at pads goto eachPad
+cryptoHmacSha256 at eachPad do padsDone
+cryptoHmacSha256 at eachPad branch if done goto innerHash else goto padOne
+cryptoHmacSha256 at padOne do findKeyByte
+cryptoHmacSha256 at padOne do readKeyByte
+cryptoHmacSha256 at padOne do innerByte
+cryptoHmacSha256 at padOne do findInner
+cryptoHmacSha256 at padOne do storeInner
+cryptoHmacSha256 at padOne do outerByte
+cryptoHmacSha256 at padOne do findOuter
+cryptoHmacSha256 at padOne do storeOuter
+cryptoHmacSha256 at padOne do nextPad
+cryptoHmacSha256 at padOne set at after
+cryptoHmacSha256 at padOne goto eachPad
+cryptoHmacSha256 at innerHash do findMessageCopy
+cryptoHmacSha256 at innerHash do copyMessage
+cryptoHmacSha256 at innerHash do findInnerDigest
+cryptoHmacSha256 at innerHash do hashInner
+cryptoHmacSha256 at innerHash do takeDigest
+cryptoHmacSha256 at innerHash do hashOuter
+cryptoHmacSha256 at innerHash do readRegion
+cryptoHmacSha256 at innerHash do putIt
+cryptoHmacSha256 at innerHash do giveBlock
+cryptoHmacSha256 at innerHash do giveInner
+cryptoHmacSha256 at innerHash do giveOuter
+cryptoHmacSha256 at innerHash do giveDigest
+cryptoHmacSha256 at innerHash return ok none
+
+readKey is call
+readKey in cryptoHmacSha256
+readKey invokes files.textAt
+readKey argument shape machine.Address shape copy
+readKey argument args machine.Address args copy
+readKey argument parameter Int64 zero copy
+readKey result key machine.Address
+readKey ownedBy none
+readKey cleanedBy none
+readKey borrows none
+readKey catch none
+readKey suppresses none
+
+readKeyBytes is call
+readKeyBytes in cryptoHmacSha256
+readKeyBytes invokes files.textBytes
+readKeyBytes argument shape machine.Address shape copy
+readKeyBytes argument args machine.Address args copy
+readKeyBytes argument parameter Int64 zero copy
+readKeyBytes result keyBytes Int64
+readKeyBytes ownedBy none
+readKeyBytes cleanedBy none
+readKeyBytes borrows none
+readKeyBytes catch none
+readKeyBytes suppresses none
+
+readMessage is call
+readMessage in cryptoHmacSha256
+readMessage invokes files.textAt
+readMessage argument shape machine.Address shape copy
+readMessage argument args machine.Address args copy
+readMessage argument parameter Int64 one copy
+readMessage result message machine.Address
+readMessage ownedBy none
+readMessage cleanedBy none
+readMessage borrows none
+readMessage catch none
+readMessage suppresses none
+
+readMessageBytes is call
+readMessageBytes in cryptoHmacSha256
+readMessageBytes invokes files.textBytes
+readMessageBytes argument shape machine.Address shape copy
+readMessageBytes argument args machine.Address args copy
+readMessageBytes argument parameter Int64 one copy
+readMessageBytes result messageBytes Int64
+readMessageBytes ownedBy none
+readMessageBytes cleanedBy none
+readMessageBytes borrows none
+readMessageBytes catch none
+readMessageBytes suppresses none
+
+takeBlock is call
+takeBlock in cryptoHmacSha256
+takeBlock invokes heap.take
+takeBlock argument bytes Int64 sixtyFour copy
+takeBlock result block machine.Address
+takeBlock ownedBy none
+takeBlock cleanedBy none
+takeBlock borrows none
+takeBlock catch none
+takeBlock suppresses none
+
+longCheck is call
+longCheck in cryptoHmacSha256
+longCheck invokes compare.greaterThanInt64
+longCheck argument left Int64 keyBytes copy
+longCheck argument right Int64 sixtyFour copy
+longCheck result long Bool
+longCheck ownedBy none
+longCheck cleanedBy none
+longCheck borrows none
+longCheck catch none
+longCheck suppresses none
+
+hashIt is call
+hashIt in cryptoHmacSha256
+hashIt invokes sha256
+hashIt argument data machine.Address key copy
+hashIt argument bytes Int64 keyBytes copy
+hashIt argument digest machine.Address block copy
+hashIt result none
+hashIt ownedBy none
+hashIt cleanedBy none
+hashIt borrows none
+hashIt catch none
+hashIt suppresses none
+
+copyIt is call
+copyIt in cryptoHmacSha256
+copyIt invokes machine.copy
+copyIt argument target machine.Address block copy
+copyIt argument source machine.Address key copy
+copyIt argument bytes Int64 keyBytes copy
+copyIt result none
+copyIt ownedBy none
+copyIt cleanedBy none
+copyIt borrows none
+copyIt catch none
+copyIt suppresses none
+
+innerSize is call
+innerSize in cryptoHmacSha256
+innerSize invokes math.addInt64
+innerSize argument left Int64 sixtyFour copy
+innerSize argument right Int64 messageBytes copy
+innerSize result innerBytes Int64
+innerSize ownedBy none
+innerSize cleanedBy none
+innerSize borrows none
+innerSize catch none
+innerSize suppresses none
+
+takeInner is call
+takeInner in cryptoHmacSha256
+takeInner invokes heap.take
+takeInner argument bytes Int64 innerBytes copy
+takeInner result inner machine.Address
+takeInner ownedBy none
+takeInner cleanedBy none
+takeInner borrows none
+takeInner catch none
+takeInner suppresses none
+
+takeOuter is call
+takeOuter in cryptoHmacSha256
+takeOuter invokes heap.take
+takeOuter argument bytes Int64 ninetySix copy
+takeOuter result outer machine.Address
+takeOuter ownedBy none
+takeOuter cleanedBy none
+takeOuter borrows none
+takeOuter catch none
+takeOuter suppresses none
+
+padsDone is call
+padsDone in cryptoHmacSha256
+padsDone invokes compare.greaterOrEqualInt64
+padsDone argument left Int64 at copy
+padsDone argument right Int64 sixtyFour copy
+padsDone result done Bool
+padsDone ownedBy none
+padsDone cleanedBy none
+padsDone borrows none
+padsDone catch none
+padsDone suppresses none
+
+findKeyByte is call
+findKeyByte in cryptoHmacSha256
+findKeyByte invokes machine.offset
+findKeyByte argument address machine.Address block copy
+findKeyByte argument bytes Int64 at copy
+findKeyByte result keyAt machine.Address
+findKeyByte ownedBy none
+findKeyByte cleanedBy none
+findKeyByte borrows none
+findKeyByte catch none
+findKeyByte suppresses none
+
+readKeyByte is call
+readKeyByte in cryptoHmacSha256
+readKeyByte invokes machine.loadByte
+readKeyByte argument address machine.Address keyAt copy
+readKeyByte result keyByte Byte
+readKeyByte ownedBy none
+readKeyByte cleanedBy none
+readKeyByte borrows none
+readKeyByte catch none
+readKeyByte suppresses none
+
+innerByte is call
+innerByte in cryptoHmacSha256
+innerByte invokes bits.xorByte
+innerByte argument left Byte keyByte copy
+innerByte argument right Byte ipad copy
+innerByte result innerValue Byte
+innerByte ownedBy none
+innerByte cleanedBy none
+innerByte borrows none
+innerByte catch none
+innerByte suppresses none
+
+findInner is call
+findInner in cryptoHmacSha256
+findInner invokes machine.offset
+findInner argument address machine.Address inner copy
+findInner argument bytes Int64 at copy
+findInner result innerAt machine.Address
+findInner ownedBy none
+findInner cleanedBy none
+findInner borrows none
+findInner catch none
+findInner suppresses none
+
+storeInner is call
+storeInner in cryptoHmacSha256
+storeInner invokes machine.storeByte
+storeInner argument address machine.Address innerAt copy
+storeInner argument value Byte innerValue copy
+storeInner result none
+storeInner ownedBy none
+storeInner cleanedBy none
+storeInner borrows none
+storeInner catch none
+storeInner suppresses none
+
+outerByte is call
+outerByte in cryptoHmacSha256
+outerByte invokes bits.xorByte
+outerByte argument left Byte keyByte copy
+outerByte argument right Byte opad copy
+outerByte result outerValue Byte
+outerByte ownedBy none
+outerByte cleanedBy none
+outerByte borrows none
+outerByte catch none
+outerByte suppresses none
+
+findOuter is call
+findOuter in cryptoHmacSha256
+findOuter invokes machine.offset
+findOuter argument address machine.Address outer copy
+findOuter argument bytes Int64 at copy
+findOuter result outerAt machine.Address
+findOuter ownedBy none
+findOuter cleanedBy none
+findOuter borrows none
+findOuter catch none
+findOuter suppresses none
+
+storeOuter is call
+storeOuter in cryptoHmacSha256
+storeOuter invokes machine.storeByte
+storeOuter argument address machine.Address outerAt copy
+storeOuter argument value Byte outerValue copy
+storeOuter result none
+storeOuter ownedBy none
+storeOuter cleanedBy none
+storeOuter borrows none
+storeOuter catch none
+storeOuter suppresses none
+
+nextPad is call
+nextPad in cryptoHmacSha256
+nextPad invokes math.addInt64
+nextPad argument left Int64 at copy
+nextPad argument right Int64 one copy
+nextPad result after Int64
+nextPad ownedBy none
+nextPad cleanedBy none
+nextPad borrows none
+nextPad catch none
+nextPad suppresses none
+
+findMessageCopy is call
+findMessageCopy in cryptoHmacSha256
+findMessageCopy invokes machine.offset
+findMessageCopy argument address machine.Address inner copy
+findMessageCopy argument bytes Int64 sixtyFour copy
+findMessageCopy result messageAt machine.Address
+findMessageCopy ownedBy none
+findMessageCopy cleanedBy none
+findMessageCopy borrows none
+findMessageCopy catch none
+findMessageCopy suppresses none
+
+copyMessage is call
+copyMessage in cryptoHmacSha256
+copyMessage invokes machine.copy
+copyMessage argument target machine.Address messageAt copy
+copyMessage argument source machine.Address message copy
+copyMessage argument bytes Int64 messageBytes copy
+copyMessage result none
+copyMessage ownedBy none
+copyMessage cleanedBy none
+copyMessage borrows none
+copyMessage catch none
+copyMessage suppresses none
+
+findInnerDigest is call
+findInnerDigest in cryptoHmacSha256
+findInnerDigest invokes machine.offset
+findInnerDigest argument address machine.Address outer copy
+findInnerDigest argument bytes Int64 sixtyFour copy
+findInnerDigest result innerDigest machine.Address
+findInnerDigest ownedBy none
+findInnerDigest cleanedBy none
+findInnerDigest borrows none
+findInnerDigest catch none
+findInnerDigest suppresses none
+
+hashInner is call
+hashInner in cryptoHmacSha256
+hashInner invokes sha256
+hashInner argument data machine.Address inner copy
+hashInner argument bytes Int64 innerBytes copy
+hashInner argument digest machine.Address innerDigest copy
+hashInner result none
+hashInner ownedBy none
+hashInner cleanedBy none
+hashInner borrows none
+hashInner catch none
+hashInner suppresses none
+
+takeDigest is call
+takeDigest in cryptoHmacSha256
+takeDigest invokes heap.take
+takeDigest argument bytes Int64 thirtyTwo copy
+takeDigest result digest machine.Address
+takeDigest ownedBy none
+takeDigest cleanedBy none
+takeDigest borrows none
+takeDigest catch none
+takeDigest suppresses none
+
+hashOuter is call
+hashOuter in cryptoHmacSha256
+hashOuter invokes sha256
+hashOuter argument data machine.Address outer copy
+hashOuter argument bytes Int64 ninetySix copy
+hashOuter argument digest machine.Address digest copy
+hashOuter result none
+hashOuter ownedBy none
+hashOuter cleanedBy none
+hashOuter borrows none
+hashOuter catch none
+hashOuter suppresses none
+
+readRegion is call
+readRegion in cryptoHmacSha256
+readRegion invokes slots.addressArg
+readRegion argument shape machine.Address shape copy
+readRegion argument args machine.Address args copy
+readRegion argument parameter Int64 two copy
+readRegion result region machine.Address
+readRegion ownedBy none
+readRegion cleanedBy none
+readRegion borrows none
+readRegion catch none
+readRegion suppresses none
+
+putIt is call
+putIt in cryptoHmacSha256
+putIt invokes slots.putText
+putIt argument region machine.Address region copy
+putIt argument data machine.Address digest copy
+putIt argument bytes Int64 thirtyTwo copy
+putIt argument out machine.Address results copy
+putIt result none
+putIt ownedBy none
+putIt cleanedBy none
+putIt borrows none
+putIt catch none
+putIt suppresses none
+
+giveBlock is call
+giveBlock in cryptoHmacSha256
+giveBlock invokes heap.give
+giveBlock argument block machine.Address block copy
+giveBlock result none
+giveBlock ownedBy none
+giveBlock cleanedBy none
+giveBlock borrows none
+giveBlock catch none
+giveBlock suppresses none
+
+giveInner is call
+giveInner in cryptoHmacSha256
+giveInner invokes heap.give
+giveInner argument block machine.Address inner copy
+giveInner result none
+giveInner ownedBy none
+giveInner cleanedBy none
+giveInner borrows none
+giveInner catch none
+giveInner suppresses none
+
+giveOuter is call
+giveOuter in cryptoHmacSha256
+giveOuter invokes heap.give
+giveOuter argument block machine.Address outer copy
+giveOuter result none
+giveOuter ownedBy none
+giveOuter cleanedBy none
+giveOuter borrows none
+giveOuter catch none
+giveOuter suppresses none
+
+giveDigest is call
+giveDigest in cryptoHmacSha256
+giveDigest invokes heap.give
+giveDigest argument block machine.Address digest copy
+giveDigest result none
+giveDigest ownedBy none
+giveDigest cleanedBy none
+giveDigest borrows none
+giveDigest catch none
+giveDigest suppresses none
+
+cryptoToHex is operation
+cryptoToHex purpose "crypto.toHex: bytes as lower-case hexadecimal text, two digits a byte, into a region"
+cryptoToHex invariant writesHex "\"The result slots hold bytes.hex()\""
+cryptoToHex typeParameter none
+cryptoToHex input shape machine.Address copied
+cryptoToHex input args machine.Address copied
+cryptoToHex input results machine.Address copied
+cryptoToHex output none
+cryptoToHex outputOwnedBy none
+cryptoToHex raises none
+cryptoToHex effect use machine.memory
+cryptoToHex effect use system.calls
+cryptoToHex uses memoryAccess
+cryptoToHex uses systemCalls
+cryptoToHex memoryHeap false
+cryptoToHex async false
+cryptoToHex maxRecursion none
+cryptoToHex label begin loopKind none
+cryptoToHex label begin within none
+cryptoToHex label eachByte loopKind while
+cryptoToHex label eachByte within none
+cryptoToHex label eachByte maxIterations bytes
+cryptoToHex label hexOne loopKind none
+cryptoToHex label hexOne within eachByte
+cryptoToHex label finish loopKind none
+cryptoToHex label finish within none
+cryptoToHex let at Int64 0 mutable
+cryptoToHex let zero Int64 0 immutable
+cryptoToHex let two Int64 2 immutable
+cryptoToHex let one Int64 1 immutable
+cryptoToHex let four Int64 4 immutable
+cryptoToHex let fifteen Int64 15 immutable
+cryptoToHex let eight Int64 8 immutable
+cryptoToHex at begin do readData
+cryptoToHex at begin do readBytes
+cryptoToHex at begin do twice
+cryptoToHex at begin do readRegion
+cryptoToHex at begin do take
+cryptoToHex at begin do findDigits
+cryptoToHex at begin goto eachByte
+cryptoToHex at eachByte do doneCheck
+cryptoToHex at eachByte branch if done goto finish else goto hexOne
+cryptoToHex at hexOne do findByte
+cryptoToHex at hexOne do readByte
+cryptoToHex at hexOne do widenByte
+cryptoToHex at hexOne do highOf
+cryptoToHex at hexOne do lowOf
+cryptoToHex at hexOne do findHigh
+cryptoToHex at hexOne do readHigh
+cryptoToHex at hexOne do findLow
+cryptoToHex at hexOne do readLow
+cryptoToHex at hexOne do outOf
+cryptoToHex at hexOne do findOut
+cryptoToHex at hexOne do storeHigh
+cryptoToHex at hexOne do findOutLow
+cryptoToHex at hexOne do storeLow
+cryptoToHex at hexOne do nextByte
+cryptoToHex at hexOne set at after
+cryptoToHex at hexOne goto eachByte
+cryptoToHex at finish do storeText
+cryptoToHex at finish do findLength
+cryptoToHex at finish do storeLength
+cryptoToHex at finish return ok none
+
+readData is call
+readData in cryptoToHex
+readData invokes files.textAt
+readData argument shape machine.Address shape copy
+readData argument args machine.Address args copy
+readData argument parameter Int64 zero copy
+readData result data machine.Address
+readData ownedBy none
+readData cleanedBy none
+readData borrows none
+readData catch none
+readData suppresses none
+
+readBytes is call
+readBytes in cryptoToHex
+readBytes invokes files.textBytes
+readBytes argument shape machine.Address shape copy
+readBytes argument args machine.Address args copy
+readBytes argument parameter Int64 zero copy
+readBytes result bytes Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+twice is call
+twice in cryptoToHex
+twice invokes math.multiplyInt64
+twice argument left Int64 bytes copy
+twice argument right Int64 two copy
+twice result textBytes Int64
+twice ownedBy none
+twice cleanedBy none
+twice borrows none
+twice catch none
+twice suppresses none
+
+readRegion is call
+readRegion in cryptoToHex
+readRegion invokes slots.addressArg
+readRegion argument shape machine.Address shape copy
+readRegion argument args machine.Address args copy
+readRegion argument parameter Int64 one copy
+readRegion result region machine.Address
+readRegion ownedBy none
+readRegion cleanedBy none
+readRegion borrows none
+readRegion catch none
+readRegion suppresses none
+
+take is call
+take in cryptoToHex
+take invokes regions.allocate
+take argument region machine.Address region copy
+take argument size Int64 textBytes copy
+take result text machine.Address
+take ownedBy none
+take cleanedBy none
+take borrows none
+take catch none
+take suppresses none
+
+findDigits is call
+findDigits in cryptoToHex
+findDigits invokes machine.addressOfString
+findDigits argument text String hexDigits lend
+findDigits result digits machine.Address
+findDigits ownedBy none
+findDigits cleanedBy none
+findDigits borrows none
+findDigits catch none
+findDigits suppresses none
+
+doneCheck is call
+doneCheck in cryptoToHex
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 bytes copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+findByte is call
+findByte in cryptoToHex
+findByte invokes machine.offset
+findByte argument address machine.Address data copy
+findByte argument bytes Int64 at copy
+findByte result byteAt machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+readByte is call
+readByte in cryptoToHex
+readByte invokes machine.loadByte
+readByte argument address machine.Address byteAt copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+widenByte is call
+widenByte in cryptoToHex
+widenByte invokes convert.byteToInt64
+widenByte argument value Byte byte copy
+widenByte result value Int64
+widenByte ownedBy none
+widenByte cleanedBy none
+widenByte borrows none
+widenByte catch none
+widenByte suppresses none
+
+highOf is call
+highOf in cryptoToHex
+highOf invokes bits.shiftRightInt64
+highOf argument value Int64 value copy
+highOf argument amount Int64 four copy
+highOf result high Int64
+highOf ownedBy none
+highOf cleanedBy none
+highOf borrows none
+highOf catch none
+highOf suppresses none
+
+lowOf is call
+lowOf in cryptoToHex
+lowOf invokes bits.andInt64
+lowOf argument left Int64 value copy
+lowOf argument right Int64 fifteen copy
+lowOf result low Int64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+findHigh is call
+findHigh in cryptoToHex
+findHigh invokes machine.offset
+findHigh argument address machine.Address digits copy
+findHigh argument bytes Int64 high copy
+findHigh result highDigit machine.Address
+findHigh ownedBy none
+findHigh cleanedBy none
+findHigh borrows none
+findHigh catch none
+findHigh suppresses none
+
+readHigh is call
+readHigh in cryptoToHex
+readHigh invokes machine.loadByte
+readHigh argument address machine.Address highDigit copy
+readHigh result highByte Byte
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+findLow is call
+findLow in cryptoToHex
+findLow invokes machine.offset
+findLow argument address machine.Address digits copy
+findLow argument bytes Int64 low copy
+findLow result lowDigit machine.Address
+findLow ownedBy none
+findLow cleanedBy none
+findLow borrows none
+findLow catch none
+findLow suppresses none
+
+readLow is call
+readLow in cryptoToHex
+readLow invokes machine.loadByte
+readLow argument address machine.Address lowDigit copy
+readLow result lowByte Byte
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+outOf is call
+outOf in cryptoToHex
+outOf invokes math.multiplyInt64
+outOf argument left Int64 at copy
+outOf argument right Int64 two copy
+outOf result outAt Int64
+outOf ownedBy none
+outOf cleanedBy none
+outOf borrows none
+outOf catch none
+outOf suppresses none
+
+findOut is call
+findOut in cryptoToHex
+findOut invokes machine.offset
+findOut argument address machine.Address text copy
+findOut argument bytes Int64 outAt copy
+findOut result out machine.Address
+findOut ownedBy none
+findOut cleanedBy none
+findOut borrows none
+findOut catch none
+findOut suppresses none
+
+storeHigh is call
+storeHigh in cryptoToHex
+storeHigh invokes machine.storeByte
+storeHigh argument address machine.Address out copy
+storeHigh argument value Byte highByte copy
+storeHigh result none
+storeHigh ownedBy none
+storeHigh cleanedBy none
+storeHigh borrows none
+storeHigh catch none
+storeHigh suppresses none
+
+findOutLow is call
+findOutLow in cryptoToHex
+findOutLow invokes machine.offset
+findOutLow argument address machine.Address out copy
+findOutLow argument bytes Int64 one copy
+findOutLow result outLow machine.Address
+findOutLow ownedBy none
+findOutLow cleanedBy none
+findOutLow borrows none
+findOutLow catch none
+findOutLow suppresses none
+
+storeLow is call
+storeLow in cryptoToHex
+storeLow invokes machine.storeByte
+storeLow argument address machine.Address outLow copy
+storeLow argument value Byte lowByte copy
+storeLow result none
+storeLow ownedBy none
+storeLow cleanedBy none
+storeLow borrows none
+storeLow catch none
+storeLow suppresses none
+
+nextByte is call
+nextByte in cryptoToHex
+nextByte invokes math.addInt64
+nextByte argument left Int64 at copy
+nextByte argument right Int64 one copy
+nextByte result after Int64
+nextByte ownedBy none
+nextByte cleanedBy none
+nextByte borrows none
+nextByte catch none
+nextByte suppresses none
+
+storeText is call
+storeText in cryptoToHex
+storeText invokes machine.storeAddress
+storeText argument address machine.Address results copy
+storeText argument value machine.Address text copy
+storeText result none
+storeText ownedBy none
+storeText cleanedBy none
+storeText borrows none
+storeText catch none
+storeText suppresses none
+
+findLength is call
+findLength in cryptoToHex
+findLength invokes machine.offset
+findLength argument address machine.Address results copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in cryptoToHex
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 textBytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+cryptoConstantTimeEquals is operation
+cryptoConstantTimeEquals purpose "crypto.constantTimeEquals: whether two byte strings are the same, compared in time that depends on their lengths only, as hmac.compare_digest compares"
+cryptoConstantTimeEquals invariant comparesEvenly "\"The result slot holds 1 when the bytes are the same, otherwise 0\""
+cryptoConstantTimeEquals typeParameter none
+cryptoConstantTimeEquals input shape machine.Address copied
+cryptoConstantTimeEquals input args machine.Address copied
+cryptoConstantTimeEquals input results machine.Address copied
+cryptoConstantTimeEquals output none
+cryptoConstantTimeEquals outputOwnedBy none
+cryptoConstantTimeEquals raises none
+cryptoConstantTimeEquals effect use machine.memory
+cryptoConstantTimeEquals uses memoryAccess
+cryptoConstantTimeEquals memoryHeap false
+cryptoConstantTimeEquals async false
+cryptoConstantTimeEquals maxRecursion none
+cryptoConstantTimeEquals label begin loopKind none
+cryptoConstantTimeEquals label begin within none
+cryptoConstantTimeEquals label eachByte loopKind while
+cryptoConstantTimeEquals label eachByte within none
+cryptoConstantTimeEquals label eachByte maxIterations leftBytes
+cryptoConstantTimeEquals label compareByte loopKind none
+cryptoConstantTimeEquals label compareByte within eachByte
+cryptoConstantTimeEquals label decide loopKind none
+cryptoConstantTimeEquals label decide within none
+cryptoConstantTimeEquals label matched loopKind none
+cryptoConstantTimeEquals label matched within none
+cryptoConstantTimeEquals label different loopKind none
+cryptoConstantTimeEquals label different within none
+cryptoConstantTimeEquals let at Int64 0 mutable
+cryptoConstantTimeEquals let differ Int64 0 mutable
+cryptoConstantTimeEquals let zero Int64 0 immutable
+cryptoConstantTimeEquals let one Int64 1 immutable
+cryptoConstantTimeEquals at begin do readLeft
+cryptoConstantTimeEquals at begin do readLeftBytes
+cryptoConstantTimeEquals at begin do readRight
+cryptoConstantTimeEquals at begin do readRightBytes
+cryptoConstantTimeEquals at begin do sameLength
+cryptoConstantTimeEquals at begin branch if equalLength goto eachByte else goto different
+cryptoConstantTimeEquals at eachByte do doneCheck
+cryptoConstantTimeEquals at eachByte branch if done goto decide else goto compareByte
+cryptoConstantTimeEquals at compareByte do findLeft
+cryptoConstantTimeEquals at compareByte do readLeftByte
+cryptoConstantTimeEquals at compareByte do findRight
+cryptoConstantTimeEquals at compareByte do readRightByte
+cryptoConstantTimeEquals at compareByte do widenLeft
+cryptoConstantTimeEquals at compareByte do widenRight
+cryptoConstantTimeEquals at compareByte do mixIt
+cryptoConstantTimeEquals at compareByte do keepIt
+cryptoConstantTimeEquals at compareByte set differ kept
+cryptoConstantTimeEquals at compareByte do nextByte
+cryptoConstantTimeEquals at compareByte set at after
+cryptoConstantTimeEquals at compareByte goto eachByte
+cryptoConstantTimeEquals at decide do sameCheck
+cryptoConstantTimeEquals at decide branch if same goto matched else goto different
+cryptoConstantTimeEquals at matched do storeYes
+cryptoConstantTimeEquals at matched return ok none
+cryptoConstantTimeEquals at different do storeNo
+cryptoConstantTimeEquals at different return ok none
+
+readLeft is call
+readLeft in cryptoConstantTimeEquals
+readLeft invokes files.textAt
+readLeft argument shape machine.Address shape copy
+readLeft argument args machine.Address args copy
+readLeft argument parameter Int64 zero copy
+readLeft result left machine.Address
+readLeft ownedBy none
+readLeft cleanedBy none
+readLeft borrows none
+readLeft catch none
+readLeft suppresses none
+
+readLeftBytes is call
+readLeftBytes in cryptoConstantTimeEquals
+readLeftBytes invokes files.textBytes
+readLeftBytes argument shape machine.Address shape copy
+readLeftBytes argument args machine.Address args copy
+readLeftBytes argument parameter Int64 zero copy
+readLeftBytes result leftBytes Int64
+readLeftBytes ownedBy none
+readLeftBytes cleanedBy none
+readLeftBytes borrows none
+readLeftBytes catch none
+readLeftBytes suppresses none
+
+readRight is call
+readRight in cryptoConstantTimeEquals
+readRight invokes files.textAt
+readRight argument shape machine.Address shape copy
+readRight argument args machine.Address args copy
+readRight argument parameter Int64 one copy
+readRight result right machine.Address
+readRight ownedBy none
+readRight cleanedBy none
+readRight borrows none
+readRight catch none
+readRight suppresses none
+
+readRightBytes is call
+readRightBytes in cryptoConstantTimeEquals
+readRightBytes invokes files.textBytes
+readRightBytes argument shape machine.Address shape copy
+readRightBytes argument args machine.Address args copy
+readRightBytes argument parameter Int64 one copy
+readRightBytes result rightBytes Int64
+readRightBytes ownedBy none
+readRightBytes cleanedBy none
+readRightBytes borrows none
+readRightBytes catch none
+readRightBytes suppresses none
+
+sameLength is call
+sameLength in cryptoConstantTimeEquals
+sameLength invokes compare.equalInt64
+sameLength argument left Int64 leftBytes copy
+sameLength argument right Int64 rightBytes copy
+sameLength result equalLength Bool
+sameLength ownedBy none
+sameLength cleanedBy none
+sameLength borrows none
+sameLength catch none
+sameLength suppresses none
+
+doneCheck is call
+doneCheck in cryptoConstantTimeEquals
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 leftBytes copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+findLeft is call
+findLeft in cryptoConstantTimeEquals
+findLeft invokes machine.offset
+findLeft argument address machine.Address left copy
+findLeft argument bytes Int64 at copy
+findLeft result leftAt machine.Address
+findLeft ownedBy none
+findLeft cleanedBy none
+findLeft borrows none
+findLeft catch none
+findLeft suppresses none
+
+readLeftByte is call
+readLeftByte in cryptoConstantTimeEquals
+readLeftByte invokes machine.loadByte
+readLeftByte argument address machine.Address leftAt copy
+readLeftByte result leftByte Byte
+readLeftByte ownedBy none
+readLeftByte cleanedBy none
+readLeftByte borrows none
+readLeftByte catch none
+readLeftByte suppresses none
+
+findRight is call
+findRight in cryptoConstantTimeEquals
+findRight invokes machine.offset
+findRight argument address machine.Address right copy
+findRight argument bytes Int64 at copy
+findRight result rightAt machine.Address
+findRight ownedBy none
+findRight cleanedBy none
+findRight borrows none
+findRight catch none
+findRight suppresses none
+
+readRightByte is call
+readRightByte in cryptoConstantTimeEquals
+readRightByte invokes machine.loadByte
+readRightByte argument address machine.Address rightAt copy
+readRightByte result rightByte Byte
+readRightByte ownedBy none
+readRightByte cleanedBy none
+readRightByte borrows none
+readRightByte catch none
+readRightByte suppresses none
+
+widenLeft is call
+widenLeft in cryptoConstantTimeEquals
+widenLeft invokes convert.byteToInt64
+widenLeft argument value Byte leftByte copy
+widenLeft result leftValue Int64
+widenLeft ownedBy none
+widenLeft cleanedBy none
+widenLeft borrows none
+widenLeft catch none
+widenLeft suppresses none
+
+widenRight is call
+widenRight in cryptoConstantTimeEquals
+widenRight invokes convert.byteToInt64
+widenRight argument value Byte rightByte copy
+widenRight result rightValue Int64
+widenRight ownedBy none
+widenRight cleanedBy none
+widenRight borrows none
+widenRight catch none
+widenRight suppresses none
+
+mixIt is call
+mixIt in cryptoConstantTimeEquals
+mixIt invokes bits.xorInt64
+mixIt argument left Int64 leftValue copy
+mixIt argument right Int64 rightValue copy
+mixIt result mixed Int64
+mixIt ownedBy none
+mixIt cleanedBy none
+mixIt borrows none
+mixIt catch none
+mixIt suppresses none
+
+keepIt is call
+keepIt in cryptoConstantTimeEquals
+keepIt invokes bits.orInt64
+keepIt argument left Int64 differ copy
+keepIt argument right Int64 mixed copy
+keepIt result kept Int64
+keepIt ownedBy none
+keepIt cleanedBy none
+keepIt borrows none
+keepIt catch none
+keepIt suppresses none
+
+nextByte is call
+nextByte in cryptoConstantTimeEquals
+nextByte invokes math.addInt64
+nextByte argument left Int64 at copy
+nextByte argument right Int64 one copy
+nextByte result after Int64
+nextByte ownedBy none
+nextByte cleanedBy none
+nextByte borrows none
+nextByte catch none
+nextByte suppresses none
+
+sameCheck is call
+sameCheck in cryptoConstantTimeEquals
+sameCheck invokes compare.equalInt64
+sameCheck argument left Int64 differ copy
+sameCheck argument right Int64 zero copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+storeYes is call
+storeYes in cryptoConstantTimeEquals
+storeYes invokes machine.storeInt64
+storeYes argument address machine.Address results copy
+storeYes argument value Int64 one copy
+storeYes result none
+storeYes ownedBy none
+storeYes cleanedBy none
+storeYes borrows none
+storeYes catch none
+storeYes suppresses none
+
+storeNo is call
+storeNo in cryptoConstantTimeEquals
+storeNo invokes machine.storeInt64
+storeNo argument address machine.Address results copy
+storeNo argument value Int64 zero copy
+storeNo result none
+storeNo ownedBy none
+storeNo cleanedBy none
+storeNo borrows none
+storeNo catch none
+storeNo suppresses none

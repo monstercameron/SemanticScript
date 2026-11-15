@@ -1,7 +1,7 @@
 module handles "Handles: the small numbers a program holds for the host's objects, the region that owns each, and what is given back when an object is closed or its region released"
   path handles
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.logic standard.test frames heap tables
-  exports newHandle objectOf kindOf regionOf drop dropRegion
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test frames heap tables
+  exports newHandle objectOf kindOf regionOf drop dropRegion addName nameAt nameCount
 
 capability memoryAccess "Authority to keep the table of handles and each region's list of them in memory" use machine.memory none
 
@@ -17,7 +17,10 @@ capability systemCalls "Authority to take memory for the handles and give their 
 ## The objects (heap blocks): a Buffer, at 0 its bytes, 8 how many, 16 how many the block holds, 24 a list of the
 ## copies `toBytes` handed out, 32 how many, 40 how many the list holds; a Map, at 0 its region, 8 whether its
 ## values are text, 16 its table of keys and values, 104 its table of the text keys copied into its region; a Set,
-## its table at 0.
+## its table at 0; a Listing or an Arguments list, a list of names: at 0 how many, 8 how many its block holds, 16 the
+## block, two slots a name (the address of a heap block holding its bytes, and how many); a Channel, at 56 the block
+## of its items (the rest is the tasks module's); a Secret, at 0 its bytes (a heap block) and 8 how many; a
+## Generator, a heap block of its own; a Library, nothing to give back (the library stays loaded).
 constant tableAt "Where the address of the table of handles is kept, in machine.state" Int64 256
 
 constant capacityAt "Where the number of entries the table holds is kept, in machine.state" Int64 264
@@ -31,6 +34,18 @@ constant kindBuffer "The kind of a byte buffer" Int64 3
 constant kindMap "The kind of a map" Int64 4
 
 constant kindSet "The kind of a set" Int64 5
+
+constant kindListing "The kind of a directory's listing" Int64 2
+
+constant kindArguments "The kind of a child process's list of arguments" Int64 6
+
+constant kindChannel "The kind of a channel" Int64 7
+
+constant kindSecret "The kind of a secret" Int64 8
+
+constant kindGenerator "The kind of a random number generator" Int64 9
+
+constant kindLibrary "The kind of a foreign library" Int64 10
 
 ## ---------------------------------------------------------------- the table
 
@@ -122,9 +137,33 @@ op failStale "Trap because a handle of a kind was used after it was closed or it
   return
 :argumentsCheck
   checkArguments: isArguments = compare.equalInt64(kind, six=6)
-  if isArguments staleArguments staleOther
+  if isArguments staleArguments channelCheck
 :staleArguments
   failArguments: failText(argumentsText="a Arguments handle was used after it was closed or its region was released")
+  return
+:channelCheck
+  checkChannel: isChannel = compare.equalInt64(kind, kindChannel)
+  if isChannel staleChannel secretCheck
+:staleChannel
+  failChannel: failText(channelText="a Channel handle was used after it was closed or its region was released")
+  return
+:secretCheck
+  checkSecret: isSecret = compare.equalInt64(kind, kindSecret)
+  if isSecret staleSecret generatorCheck
+:staleSecret
+  failSecret: failText(secretText="a Secret handle was used after it was closed or its region was released")
+  return
+:generatorCheck
+  checkGenerator: isGenerator = compare.equalInt64(kind, kindGenerator)
+  if isGenerator staleGenerator libraryCheck
+:staleGenerator
+  failGenerator: failText(generatorText="a Generator handle was used after it was closed or its region was released")
+  return
+:libraryCheck
+  checkLibrary: isLibrary = compare.equalInt64(kind, kindLibrary)
+  if isLibrary staleLibrary staleOther
+:staleLibrary
+  failLibrary: failText(libraryText="a Library handle was used after it was closed or its region was released")
   return
 :staleOther
   failOther: failText(otherText="a  handle was used after it was closed or its region was released")
@@ -329,6 +368,100 @@ op dropBuffer "Give back a buffer's bytes, every copy `toBytes` handed out, and 
   giveObject: heap.give(object)
   return
 
+op dropNames "Give back a list of names: each name's bytes, the block of names, and the list itself"
+  input object machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+:begin
+  readCount: count = machine.loadInt64(object)
+  findBlock: blockSlot = machine.offset(object, sixteen=16)
+  readBlock: block = machine.loadAddress(blockSlot)
+  goto eachName
+:eachName loop=while max=count
+  namesDone: done = compare.greaterOrEqualInt64(at, count)
+  if done finish giveName
+:giveName in=eachName
+  nameOffset: offset = math.multiplyInt64(at, sixteen)
+  findName: nameSlot = machine.offset(block, offset)
+  readName: name = machine.loadAddress(nameSlot)
+  giveIt: heap.give(name)
+  nextName: after = math.addInt64(at, one=1)
+  set at after
+  goto eachName
+:finish
+  giveBlock: heap.give(block)
+  giveObject: heap.give(object)
+  return
+
+## ---------------------------------------------------------------- lists of names (listings, arguments)
+
+op addName "Add a copy of some bytes to the end of a list of names, doubling its block (from 8 names) when it is full"
+  invariant addsName "The list holds one name more, the last a copy of the bytes"
+  input names machine.Address copied
+  input data machine.Address copied
+  input bytes Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let capacity Int64 0 mut
+:begin
+  readCount: count = machine.loadInt64(names)
+  findCapacity: capacitySlot = machine.offset(names, eight=8)
+  readCapacity: held = machine.loadInt64(capacitySlot)
+  findBlock: blockSlot = machine.offset(names, sixteen=16)
+  roomCheck: room = compare.lessThanInt64(count, held)
+  if room append grow
+:grow
+  twice: doubled = math.multiplyInt64(held, two=2)
+  more: grown = math.addInt64(doubled, eight)
+  set capacity grown
+  readOld: old = machine.loadAddress(blockSlot)
+  sizeOf: size = math.multiplyInt64(capacity, sixteen)
+  resizeBlock: block = heap.resize(old, size)
+  storeBlock: machine.storeAddress(blockSlot, block)
+  storeCapacity: machine.storeInt64(capacitySlot, capacity)
+  goto append
+:append
+  takeCopy: copy = heap.take(bytes)
+  copyIn: machine.copy(copy, data, bytes)
+  readBlockNow: blockNow = machine.loadAddress(blockSlot)
+  nameOffset: offset = math.multiplyInt64(count, sixteen)
+  findName: nameSlot = machine.offset(blockNow, offset)
+  storeName: machine.storeAddress(nameSlot, copy)
+  findLength: lengthSlot = machine.offset(nameSlot, eight)
+  storeLength: machine.storeInt64(lengthSlot, bytes)
+  addOne: nextCount = math.addInt64(count, one=1)
+  storeCount: machine.storeInt64(names, nextCount)
+  return
+
+op nameCount "How many names a list holds"
+  invariant countsNames "Gives how many names were added to the list"
+  input names machine.Address copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  readCount: count = machine.loadInt64(names)
+  return count
+
+op nameAt "The address of a name of a list by its position: two slots, the address of its bytes and how many"
+  invariant findsName "Gives the slots of the name added at that position"
+  input names machine.Address copied
+  input position Int64 copied
+  output machine.Address
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  findBlock: blockSlot = machine.offset(names, sixteen=16)
+  readBlock: block = machine.loadAddress(blockSlot)
+  nameOffset: offset = math.multiplyInt64(position, sixteen)
+  findName: nameSlot = machine.offset(block, offset)
+  return nameSlot
+
 op drop "Give back the object a handle names and mark the handle closed; a closed handle or another number is left as it is"
   invariant closesHandle "After a drop the handle's kind is 0 and its object has been given back"
   input handle Int64 copied
@@ -361,10 +494,41 @@ op drop "Give back the object a handle names and mark the handle closed; a close
   goto close
 :setCheck
   checkSet: isSet = compare.equalInt64(kind, kindSet)
-  if isSet giveSet close
+  if isSet giveSet listingCheck
 :giveSet
   releaseSet: tables.release(object)
   giveSetObject: heap.give(object)
+  goto close
+:listingCheck
+  checkListing: isListing = compare.equalInt64(kind, kindListing)
+  checkArguments: isArguments = compare.equalInt64(kind, kindArguments)
+  namesCheck: isNames = logic.or(isListing, isArguments)
+  if isNames giveNames channelCheck
+:giveNames
+  dropNamesIt: dropNames(object)
+  goto close
+:channelCheck
+  checkChannel: isChannel = compare.equalInt64(kind, kindChannel)
+  if isChannel giveChannel secretCheck
+:giveChannel
+  findItems: itemsSlot = machine.offset(object, fiftySix=56)
+  readItems: items = machine.loadAddress(itemsSlot)
+  giveItems: heap.give(items)
+  giveChannelObject: heap.give(object)
+  goto close
+:secretCheck
+  checkSecret: isSecret = compare.equalInt64(kind, kindSecret)
+  if isSecret giveSecret generatorCheck
+:giveSecret
+  readSecretBytes: secretBytes = machine.loadAddress(object)
+  giveSecretBytes: heap.give(secretBytes)
+  giveSecretObject: heap.give(object)
+  goto close
+:generatorCheck
+  checkGenerator: isGenerator = compare.equalInt64(kind, kindGenerator)
+  if isGenerator giveGenerator close
+:giveGenerator
+  giveGeneratorObject: heap.give(object)
   goto close
 :close
   clearKind: machine.storeInt64(entry, zero)
@@ -470,4 +634,42 @@ test regionOfTest "A handle made with a region gives it back as the place its st
   sameCheck: same = machine.equal(owner, region)
   expectOwner: test.assertTrue(same)
   release: dropRegion(region)
+  return
+
+test namesTest "A list of names keeps copies of the names added, in order, and is given back with its region"
+  verifies addName addsName
+  verifies nameCount countsNames
+  verifies nameAt findsName
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let first String "first"
+  let second String "second name"
+:begin
+  findState: state = machine.state()
+  findRegion: region = machine.offset(state, regionAt=61440)
+  clearRegion: machine.fill(region, zeroByte=0, sixtyFour=64)
+  takeNames: names = heap.take(twentyFour=24)
+  makeNames: handle = newHandle(kindListing, names, region)
+  findFirst: firstAt = machine.addressOfString(first)
+  addFirst: addName(names, firstAt, five=5)
+  findSecond: secondAt = machine.addressOfString(second)
+  addSecond: addName(names, secondAt, eleven=11)
+  readCount: count = nameCount(names)
+  expectCount: test.assertEqualInt64(two=2, count)
+  findName: nameSlot = nameAt(names, one=1)
+  readName: name = machine.loadAddress(nameSlot)
+  findLength: lengthSlot = machine.offset(nameSlot, eight=8)
+  readLength: length = machine.loadInt64(lengthSlot)
+  expectLength: test.assertEqualInt64(eleven, length)
+  compareName: order = machine.compare(name, secondAt, eleven)
+  orderWide: orderValue = convert.int32ToInt64(order)
+  expectName: test.assertEqualInt64(zero=0, orderValue)
+  copyCheck: copied = machine.equal(name, secondAt)
+  notSame: notCopied = logic.not(copied)
+  expectCopied: test.assertTrue(notCopied)
+  release: dropRegion(region)
+  readDropped: droppedKind = kindOf(handle)
+  expectDropped: test.assertEqualInt64(zero, droppedKind)
   return

@@ -1,0 +1,1499 @@
+# Tests of the `hashes` module; generated from tools/hashes.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests build a call's shape and slots in the last 4 KiB of machine.state: the shape from byte 61440, the
+# arguments from 61952, the results from 62016.
+prepareTwo is operation
+prepareTwo purpose "Make the tests' call two parameters of two slots and one of one, the texts and a region"
+prepareTwo invariant none
+prepareTwo typeParameter none
+prepareTwo input first String borrowed
+prepareTwo input second String borrowed
+prepareTwo input region machine.Address copied
+prepareTwo output machine.Address
+prepareTwo outputOwnedBy none
+prepareTwo raises none
+prepareTwo effect use machine.memory
+prepareTwo uses memoryAccess
+prepareTwo memoryHeap false
+prepareTwo async false
+prepareTwo maxRecursion none
+prepareTwo label begin loopKind none
+prepareTwo label begin within none
+prepareTwo let shapeAt Int64 61440 immutable
+prepareTwo let twentyFour Int64 24 immutable
+prepareTwo let three Int64 3 immutable
+prepareTwo let five Int64 5 immutable
+prepareTwo let two Int64 2 immutable
+prepareTwo let six Int64 6 immutable
+prepareTwo let seven Int64 7 immutable
+prepareTwo let one Int64 1 immutable
+prepareTwo let twentyNine Int64 29 immutable
+prepareTwo let zero Int64 0 immutable
+prepareTwo let thirty Int64 30 immutable
+prepareTwo let thirtyOne Int64 31 immutable
+prepareTwo let four Int64 4 immutable
+prepareTwo let argsAt Int64 61952 immutable
+prepareTwo let sixteen Int64 16 immutable
+prepareTwo let thirtyTwo Int64 32 immutable
+prepareTwo at begin do findState
+prepareTwo at begin do findShape
+prepareTwo at begin do findParams
+prepareTwo at begin do storeParams
+prepareTwo at begin do storeCountA
+prepareTwo at begin do storeCountB
+prepareTwo at begin do storeCountC
+prepareTwo at begin do storeStartA
+prepareTwo at begin do storeStartB
+prepareTwo at begin do storeStartC
+prepareTwo at begin do findArgs
+prepareTwo at begin do findFirst
+prepareTwo at begin do firstLength
+prepareTwo at begin do storeFirst
+prepareTwo at begin do storeFirstAt
+prepareTwo at begin do storeFirstBytes
+prepareTwo at begin do findSecond
+prepareTwo at begin do secondLength
+prepareTwo at begin do findSecondSlot
+prepareTwo at begin do storeSecondAt
+prepareTwo at begin do storeSecondBytes
+prepareTwo at begin do findRegionSlot
+prepareTwo at begin do storeRegion
+prepareTwo at begin return ok shape
+
+findState is call
+findState in prepareTwo
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findShape is call
+findShape in prepareTwo
+findShape invokes machine.offset
+findShape argument address machine.Address state copy
+findShape argument bytes Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findParams is call
+findParams in prepareTwo
+findParams invokes machine.offset
+findParams argument address machine.Address shape copy
+findParams argument bytes Int64 twentyFour copy
+findParams result paramsSlot machine.Address
+findParams ownedBy none
+findParams cleanedBy none
+findParams borrows none
+findParams catch none
+findParams suppresses none
+
+storeParams is call
+storeParams in prepareTwo
+storeParams invokes machine.storeInt64
+storeParams argument address machine.Address paramsSlot copy
+storeParams argument value Int64 three copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+storeCountA is call
+storeCountA in prepareTwo
+storeCountA invokes setSlotWord
+storeCountA argument block machine.Address shape copy
+storeCountA argument position Int64 five copy
+storeCountA argument value Int64 two copy
+storeCountA result none
+storeCountA ownedBy none
+storeCountA cleanedBy none
+storeCountA borrows none
+storeCountA catch none
+storeCountA suppresses none
+
+storeCountB is call
+storeCountB in prepareTwo
+storeCountB invokes setSlotWord
+storeCountB argument block machine.Address shape copy
+storeCountB argument position Int64 six copy
+storeCountB argument value Int64 two copy
+storeCountB result none
+storeCountB ownedBy none
+storeCountB cleanedBy none
+storeCountB borrows none
+storeCountB catch none
+storeCountB suppresses none
+
+storeCountC is call
+storeCountC in prepareTwo
+storeCountC invokes setSlotWord
+storeCountC argument block machine.Address shape copy
+storeCountC argument position Int64 seven copy
+storeCountC argument value Int64 one copy
+storeCountC result none
+storeCountC ownedBy none
+storeCountC cleanedBy none
+storeCountC borrows none
+storeCountC catch none
+storeCountC suppresses none
+
+storeStartA is call
+storeStartA in prepareTwo
+storeStartA invokes setSlotWord
+storeStartA argument block machine.Address shape copy
+storeStartA argument position Int64 twentyNine copy
+storeStartA argument value Int64 zero copy
+storeStartA result none
+storeStartA ownedBy none
+storeStartA cleanedBy none
+storeStartA borrows none
+storeStartA catch none
+storeStartA suppresses none
+
+storeStartB is call
+storeStartB in prepareTwo
+storeStartB invokes setSlotWord
+storeStartB argument block machine.Address shape copy
+storeStartB argument position Int64 thirty copy
+storeStartB argument value Int64 two copy
+storeStartB result none
+storeStartB ownedBy none
+storeStartB cleanedBy none
+storeStartB borrows none
+storeStartB catch none
+storeStartB suppresses none
+
+storeStartC is call
+storeStartC in prepareTwo
+storeStartC invokes setSlotWord
+storeStartC argument block machine.Address shape copy
+storeStartC argument position Int64 thirtyOne copy
+storeStartC argument value Int64 four copy
+storeStartC result none
+storeStartC ownedBy none
+storeStartC cleanedBy none
+storeStartC borrows none
+storeStartC catch none
+storeStartC suppresses none
+
+findArgs is call
+findArgs in prepareTwo
+findArgs invokes machine.offset
+findArgs argument address machine.Address state copy
+findArgs argument bytes Int64 argsAt copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findFirst is call
+findFirst in prepareTwo
+findFirst invokes machine.addressOfString
+findFirst argument text String first lend
+findFirst result firstAt machine.Address
+findFirst ownedBy none
+findFirst cleanedBy none
+findFirst borrows none
+findFirst catch none
+findFirst suppresses none
+
+firstLength is call
+firstLength in prepareTwo
+firstLength invokes string.byteLength
+firstLength argument text String first lend
+firstLength result firstBytes Int64
+firstLength ownedBy none
+firstLength cleanedBy none
+firstLength borrows none
+firstLength catch none
+firstLength suppresses none
+
+storeFirst is call
+storeFirst in prepareTwo
+storeFirst invokes setSlotWord
+storeFirst argument block machine.Address args copy
+storeFirst argument position Int64 zero copy
+storeFirst argument value Int64 firstBytes copy
+storeFirst result none
+storeFirst ownedBy none
+storeFirst cleanedBy none
+storeFirst borrows none
+storeFirst catch none
+storeFirst suppresses none
+
+storeFirstAt is call
+storeFirstAt in prepareTwo
+storeFirstAt invokes machine.storeAddress
+storeFirstAt argument address machine.Address args copy
+storeFirstAt argument value machine.Address firstAt copy
+storeFirstAt result none
+storeFirstAt ownedBy none
+storeFirstAt cleanedBy none
+storeFirstAt borrows none
+storeFirstAt catch none
+storeFirstAt suppresses none
+
+storeFirstBytes is call
+storeFirstBytes in prepareTwo
+storeFirstBytes invokes setSlotWord
+storeFirstBytes argument block machine.Address args copy
+storeFirstBytes argument position Int64 one copy
+storeFirstBytes argument value Int64 firstBytes copy
+storeFirstBytes result none
+storeFirstBytes ownedBy none
+storeFirstBytes cleanedBy none
+storeFirstBytes borrows none
+storeFirstBytes catch none
+storeFirstBytes suppresses none
+
+findSecond is call
+findSecond in prepareTwo
+findSecond invokes machine.addressOfString
+findSecond argument text String second lend
+findSecond result secondAt machine.Address
+findSecond ownedBy none
+findSecond cleanedBy none
+findSecond borrows none
+findSecond catch none
+findSecond suppresses none
+
+secondLength is call
+secondLength in prepareTwo
+secondLength invokes string.byteLength
+secondLength argument text String second lend
+secondLength result secondBytes Int64
+secondLength ownedBy none
+secondLength cleanedBy none
+secondLength borrows none
+secondLength catch none
+secondLength suppresses none
+
+findSecondSlot is call
+findSecondSlot in prepareTwo
+findSecondSlot invokes machine.offset
+findSecondSlot argument address machine.Address args copy
+findSecondSlot argument bytes Int64 sixteen copy
+findSecondSlot result secondSlot machine.Address
+findSecondSlot ownedBy none
+findSecondSlot cleanedBy none
+findSecondSlot borrows none
+findSecondSlot catch none
+findSecondSlot suppresses none
+
+storeSecondAt is call
+storeSecondAt in prepareTwo
+storeSecondAt invokes machine.storeAddress
+storeSecondAt argument address machine.Address secondSlot copy
+storeSecondAt argument value machine.Address secondAt copy
+storeSecondAt result none
+storeSecondAt ownedBy none
+storeSecondAt cleanedBy none
+storeSecondAt borrows none
+storeSecondAt catch none
+storeSecondAt suppresses none
+
+storeSecondBytes is call
+storeSecondBytes in prepareTwo
+storeSecondBytes invokes setSlotWord
+storeSecondBytes argument block machine.Address args copy
+storeSecondBytes argument position Int64 three copy
+storeSecondBytes argument value Int64 secondBytes copy
+storeSecondBytes result none
+storeSecondBytes ownedBy none
+storeSecondBytes cleanedBy none
+storeSecondBytes borrows none
+storeSecondBytes catch none
+storeSecondBytes suppresses none
+
+findRegionSlot is call
+findRegionSlot in prepareTwo
+findRegionSlot invokes machine.offset
+findRegionSlot argument address machine.Address args copy
+findRegionSlot argument bytes Int64 thirtyTwo copy
+findRegionSlot result regionSlot machine.Address
+findRegionSlot ownedBy none
+findRegionSlot cleanedBy none
+findRegionSlot borrows none
+findRegionSlot catch none
+findRegionSlot suppresses none
+
+storeRegion is call
+storeRegion in prepareTwo
+storeRegion invokes machine.storeAddress
+storeRegion argument address machine.Address regionSlot copy
+storeRegion argument value machine.Address region copy
+storeRegion result none
+storeRegion ownedBy none
+storeRegion cleanedBy none
+storeRegion borrows none
+storeRegion catch none
+storeRegion suppresses none
+
+expectHex is operation
+expectHex purpose "Compare the hexadecimal text of 32 bytes in the result slots with what is expected"
+expectHex invariant none
+expectHex typeParameter none
+expectHex input wanted String borrowed
+expectHex input region machine.Address copied
+expectHex output none
+expectHex outputOwnedBy none
+expectHex raises none
+expectHex effect use machine.memory
+expectHex effect use system.calls
+expectHex uses memoryAccess
+expectHex uses systemCalls
+expectHex memoryHeap false
+expectHex async false
+expectHex maxRecursion none
+expectHex label begin loopKind none
+expectHex label begin within none
+expectHex let resultsAt Int64 62016 immutable
+expectHex let argsAt Int64 61952 immutable
+expectHex let one Int64 1 immutable
+expectHex let thirtyTwo Int64 32 immutable
+expectHex let sixteen Int64 16 immutable
+expectHex let shapeAt Int64 61440 immutable
+expectHex let twentyFour Int64 24 immutable
+expectHex let two Int64 2 immutable
+expectHex let five Int64 5 immutable
+expectHex let six Int64 6 immutable
+expectHex let twentyNine Int64 29 immutable
+expectHex let zero Int64 0 immutable
+expectHex let thirty Int64 30 immutable
+expectHex let eight Int64 8 immutable
+expectHex at begin do findState
+expectHex at begin do findResults
+expectHex at begin do readDigest
+expectHex at begin do findArgs
+expectHex at begin do storeDigest
+expectHex at begin do storeLength
+expectHex at begin do findRegionSlot
+expectHex at begin do storeRegion
+expectHex at begin do findShape
+expectHex at begin do findParams
+expectHex at begin do storeParams
+expectHex at begin do storeCountA
+expectHex at begin do storeCountB
+expectHex at begin do storeStartA
+expectHex at begin do storeStartB
+expectHex at begin do hexIt
+expectHex at begin do readText
+expectHex at begin do findTextLength
+expectHex at begin do readTextLength
+expectHex at begin do findWanted
+expectHex at begin do wantedLength
+expectHex at begin do compareLength
+expectHex at begin do compareText
+expectHex at begin do widenOrder
+expectHex at begin do compareIt
+expectHex at begin return ok none
+
+findState is call
+findState in expectHex
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findResults is call
+findResults in expectHex
+findResults invokes machine.offset
+findResults argument address machine.Address state copy
+findResults argument bytes Int64 resultsAt copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+readDigest is call
+readDigest in expectHex
+readDigest invokes machine.loadAddress
+readDigest argument address machine.Address results copy
+readDigest result digest machine.Address
+readDigest ownedBy none
+readDigest cleanedBy none
+readDigest borrows none
+readDigest catch none
+readDigest suppresses none
+
+findArgs is call
+findArgs in expectHex
+findArgs invokes machine.offset
+findArgs argument address machine.Address state copy
+findArgs argument bytes Int64 argsAt copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+storeDigest is call
+storeDigest in expectHex
+storeDigest invokes machine.storeAddress
+storeDigest argument address machine.Address args copy
+storeDigest argument value machine.Address digest copy
+storeDigest result none
+storeDigest ownedBy none
+storeDigest cleanedBy none
+storeDigest borrows none
+storeDigest catch none
+storeDigest suppresses none
+
+storeLength is call
+storeLength in expectHex
+storeLength invokes setSlotWord
+storeLength argument block machine.Address args copy
+storeLength argument position Int64 one copy
+storeLength argument value Int64 thirtyTwo copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+findRegionSlot is call
+findRegionSlot in expectHex
+findRegionSlot invokes machine.offset
+findRegionSlot argument address machine.Address args copy
+findRegionSlot argument bytes Int64 sixteen copy
+findRegionSlot result regionSlot machine.Address
+findRegionSlot ownedBy none
+findRegionSlot cleanedBy none
+findRegionSlot borrows none
+findRegionSlot catch none
+findRegionSlot suppresses none
+
+storeRegion is call
+storeRegion in expectHex
+storeRegion invokes machine.storeAddress
+storeRegion argument address machine.Address regionSlot copy
+storeRegion argument value machine.Address region copy
+storeRegion result none
+storeRegion ownedBy none
+storeRegion cleanedBy none
+storeRegion borrows none
+storeRegion catch none
+storeRegion suppresses none
+
+findShape is call
+findShape in expectHex
+findShape invokes machine.offset
+findShape argument address machine.Address state copy
+findShape argument bytes Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findParams is call
+findParams in expectHex
+findParams invokes machine.offset
+findParams argument address machine.Address shape copy
+findParams argument bytes Int64 twentyFour copy
+findParams result paramsSlot machine.Address
+findParams ownedBy none
+findParams cleanedBy none
+findParams borrows none
+findParams catch none
+findParams suppresses none
+
+storeParams is call
+storeParams in expectHex
+storeParams invokes machine.storeInt64
+storeParams argument address machine.Address paramsSlot copy
+storeParams argument value Int64 two copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+storeCountA is call
+storeCountA in expectHex
+storeCountA invokes setSlotWord
+storeCountA argument block machine.Address shape copy
+storeCountA argument position Int64 five copy
+storeCountA argument value Int64 two copy
+storeCountA result none
+storeCountA ownedBy none
+storeCountA cleanedBy none
+storeCountA borrows none
+storeCountA catch none
+storeCountA suppresses none
+
+storeCountB is call
+storeCountB in expectHex
+storeCountB invokes setSlotWord
+storeCountB argument block machine.Address shape copy
+storeCountB argument position Int64 six copy
+storeCountB argument value Int64 one copy
+storeCountB result none
+storeCountB ownedBy none
+storeCountB cleanedBy none
+storeCountB borrows none
+storeCountB catch none
+storeCountB suppresses none
+
+storeStartA is call
+storeStartA in expectHex
+storeStartA invokes setSlotWord
+storeStartA argument block machine.Address shape copy
+storeStartA argument position Int64 twentyNine copy
+storeStartA argument value Int64 zero copy
+storeStartA result none
+storeStartA ownedBy none
+storeStartA cleanedBy none
+storeStartA borrows none
+storeStartA catch none
+storeStartA suppresses none
+
+storeStartB is call
+storeStartB in expectHex
+storeStartB invokes setSlotWord
+storeStartB argument block machine.Address shape copy
+storeStartB argument position Int64 thirty copy
+storeStartB argument value Int64 two copy
+storeStartB result none
+storeStartB ownedBy none
+storeStartB cleanedBy none
+storeStartB borrows none
+storeStartB catch none
+storeStartB suppresses none
+
+hexIt is call
+hexIt in expectHex
+hexIt invokes cryptoToHex
+hexIt argument shape machine.Address shape copy
+hexIt argument args machine.Address args copy
+hexIt argument results machine.Address results copy
+hexIt result none
+hexIt ownedBy none
+hexIt cleanedBy none
+hexIt borrows none
+hexIt catch none
+hexIt suppresses none
+
+readText is call
+readText in expectHex
+readText invokes machine.loadAddress
+readText argument address machine.Address results copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+findTextLength is call
+findTextLength in expectHex
+findTextLength invokes machine.offset
+findTextLength argument address machine.Address results copy
+findTextLength argument bytes Int64 eight copy
+findTextLength result textLengthSlot machine.Address
+findTextLength ownedBy none
+findTextLength cleanedBy none
+findTextLength borrows none
+findTextLength catch none
+findTextLength suppresses none
+
+readTextLength is call
+readTextLength in expectHex
+readTextLength invokes machine.loadInt64
+readTextLength argument address machine.Address textLengthSlot copy
+readTextLength result textLength Int64
+readTextLength ownedBy none
+readTextLength cleanedBy none
+readTextLength borrows none
+readTextLength catch none
+readTextLength suppresses none
+
+findWanted is call
+findWanted in expectHex
+findWanted invokes machine.addressOfString
+findWanted argument text String wanted lend
+findWanted result wantedAt machine.Address
+findWanted ownedBy none
+findWanted cleanedBy none
+findWanted borrows none
+findWanted catch none
+findWanted suppresses none
+
+wantedLength is call
+wantedLength in expectHex
+wantedLength invokes string.byteLength
+wantedLength argument text String wanted lend
+wantedLength result wantedBytes Int64
+wantedLength ownedBy none
+wantedLength cleanedBy none
+wantedLength borrows none
+wantedLength catch none
+wantedLength suppresses none
+
+compareLength is call
+compareLength in expectHex
+compareLength invokes test.assertEqualInt64
+compareLength argument expected Int64 wantedBytes copy
+compareLength argument actual Int64 textLength copy
+compareLength result none
+compareLength ownedBy none
+compareLength cleanedBy none
+compareLength borrows none
+compareLength catch none
+compareLength suppresses none
+
+compareText is call
+compareText in expectHex
+compareText invokes machine.compare
+compareText argument left machine.Address text copy
+compareText argument right machine.Address wantedAt copy
+compareText argument bytes Int64 wantedBytes copy
+compareText result order Int32
+compareText ownedBy none
+compareText cleanedBy none
+compareText borrows none
+compareText catch none
+compareText suppresses none
+
+widenOrder is call
+widenOrder in expectHex
+widenOrder invokes convert.int32ToInt64
+widenOrder argument value Int32 order copy
+widenOrder result orderValue Int64
+widenOrder ownedBy none
+widenOrder cleanedBy none
+widenOrder borrows none
+widenOrder catch none
+widenOrder suppresses none
+
+compareIt is call
+compareIt in expectHex
+compareIt invokes test.assertEqualInt64
+compareIt argument expected Int64 zero copy
+compareIt argument actual Int64 orderValue copy
+compareIt result none
+compareIt ownedBy none
+compareIt cleanedBy none
+compareIt borrows none
+compareIt catch none
+compareIt suppresses none
+
+cryptoTest is test
+cryptoTest purpose "SHA-256 and HMAC-SHA-256 give what hashlib and hmac give, hex text is bytes.hex(), and equal bytes compare equal"
+cryptoTest verifies sha256 hashesLikeHashlib
+cryptoTest verifies cryptoSha256 digestsBytes
+cryptoTest verifies cryptoHmacSha256 authenticates
+cryptoTest verifies cryptoToHex writesHex
+cryptoTest verifies cryptoConstantTimeEquals comparesEvenly
+cryptoTest typeParameter none
+cryptoTest input none
+cryptoTest output none
+cryptoTest outputOwnedBy none
+cryptoTest raises none
+cryptoTest effect use machine.memory
+cryptoTest effect use system.calls
+cryptoTest uses memoryAccess
+cryptoTest uses systemCalls
+cryptoTest memoryHeap false
+cryptoTest async false
+cryptoTest maxRecursion none
+cryptoTest label begin loopKind none
+cryptoTest label begin within none
+cryptoTest let label String "crypto test" immutable
+cryptoTest let abc String "abc" immutable
+cryptoTest let long String "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" immutable
+cryptoTest let capacity Int64 65536 immutable
+cryptoTest let argsAt Int64 61952 immutable
+cryptoTest let resultsAt Int64 62016 immutable
+cryptoTest let two Int64 2 immutable
+cryptoTest let zero Int64 0 immutable
+cryptoTest let sixteen Int64 16 immutable
+cryptoTest let shapeAt Int64 61440 immutable
+cryptoTest let twentyFour Int64 24 immutable
+cryptoTest let six Int64 6 immutable
+cryptoTest let one Int64 1 immutable
+cryptoTest let az String "Az" immutable
+cryptoTest let hexAz String "417a" immutable
+cryptoTest let four Int64 4 immutable
+cryptoTest let abcDigest String "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" immutable
+cryptoTest let key String "key" immutable
+cryptoTest let message String "The quick brown fox" immutable
+cryptoTest let macDigest String "203d1e5cedd2d18f8c5a3beff0bd9c1ebcb97097dfcb288c46b00c9227fde2c0" immutable
+cryptoTest let longDigest String "343c0393c4ae8ef0398a29a5155358e5cad0b9fcb70afdb8cd9d0e83abdd9378" immutable
+cryptoTest let abd String "abd" immutable
+cryptoTest let ab String "ab" immutable
+cryptoTest let thirtyTwo Int64 32 immutable
+cryptoTest let three Int64 3 immutable
+cryptoTest let oneEightySix Int64 186 immutable
+cryptoTest at begin do findLabel
+cryptoTest at begin do labelLength
+cryptoTest at begin do make
+cryptoTest at begin do shapeAbc
+cryptoTest at begin do findState
+cryptoTest at begin do findArgs
+cryptoTest at begin do findResults
+cryptoTest at begin do storeRegionFirst
+cryptoTest at begin do findRegionSlot
+cryptoTest at begin do storeRegionSlot
+cryptoTest at begin do findShape
+cryptoTest at begin do findParams
+cryptoTest at begin do storeParams
+cryptoTest at begin do storeCountB
+cryptoTest at begin do hashIt
+cryptoTest at begin do shapeHex
+cryptoTest at begin do storeHexRegion
+cryptoTest at begin do storeHexParams
+cryptoTest at begin do storeHexCount
+cryptoTest at begin do hexIt
+cryptoTest at begin do readHex
+cryptoTest at begin do findWantedHex
+cryptoTest at begin do compareHex
+cryptoTest at begin do widenHex
+cryptoTest at begin do expectHexAz
+cryptoTest at begin do shapeAgain
+cryptoTest at begin do storeAgainRegion
+cryptoTest at begin do storeAgainParams
+cryptoTest at begin do storeAgainCount
+cryptoTest at begin do hashAgain
+cryptoTest at begin do expectAbc
+cryptoTest at begin do shapeHmac
+cryptoTest at begin do macIt
+cryptoTest at begin do expectMac
+cryptoTest at begin do shapeLong
+cryptoTest at begin do longMac
+cryptoTest at begin do expectLong
+cryptoTest at begin do shapeSame
+cryptoTest at begin do sameIt
+cryptoTest at begin do readSame
+cryptoTest at begin do expectSame
+cryptoTest at begin do shapeDiffer
+cryptoTest at begin do differIt
+cryptoTest at begin do readDiffer
+cryptoTest at begin do expectDiffer
+cryptoTest at begin do shapeLength
+cryptoTest at begin do lengthIt
+cryptoTest at begin do readLength
+cryptoTest at begin do expectLength
+cryptoTest at begin do findAbc
+cryptoTest at begin do takeDigest
+cryptoTest at begin do directIt
+cryptoTest at begin do readFirst
+cryptoTest at begin do widenFirst
+cryptoTest at begin do expectFirst
+cryptoTest at begin do giveDigest
+cryptoTest at begin do free
+cryptoTest at begin return ok none
+
+findLabel is call
+findLabel in cryptoTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in cryptoTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in cryptoTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+shapeAbc is call
+shapeAbc in cryptoTest
+shapeAbc invokes prepareTwo
+shapeAbc argument first String abc lend
+shapeAbc argument second String abc lend
+shapeAbc argument region machine.Address region copy
+shapeAbc result shape1 machine.Address
+shapeAbc ownedBy none
+shapeAbc cleanedBy none
+shapeAbc borrows none
+shapeAbc catch none
+shapeAbc suppresses none
+
+findState is call
+findState in cryptoTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findArgs is call
+findArgs in cryptoTest
+findArgs invokes machine.offset
+findArgs argument address machine.Address state copy
+findArgs argument bytes Int64 argsAt copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in cryptoTest
+findResults invokes machine.offset
+findResults argument address machine.Address state copy
+findResults argument bytes Int64 resultsAt copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+storeRegionFirst is call
+storeRegionFirst in cryptoTest
+storeRegionFirst invokes setSlotWord
+storeRegionFirst argument block machine.Address args copy
+storeRegionFirst argument position Int64 two copy
+storeRegionFirst argument value Int64 zero copy
+storeRegionFirst result none
+storeRegionFirst ownedBy none
+storeRegionFirst cleanedBy none
+storeRegionFirst borrows none
+storeRegionFirst catch none
+storeRegionFirst suppresses none
+
+findRegionSlot is call
+findRegionSlot in cryptoTest
+findRegionSlot invokes machine.offset
+findRegionSlot argument address machine.Address args copy
+findRegionSlot argument bytes Int64 sixteen copy
+findRegionSlot result regionSlot machine.Address
+findRegionSlot ownedBy none
+findRegionSlot cleanedBy none
+findRegionSlot borrows none
+findRegionSlot catch none
+findRegionSlot suppresses none
+
+storeRegionSlot is call
+storeRegionSlot in cryptoTest
+storeRegionSlot invokes machine.storeAddress
+storeRegionSlot argument address machine.Address regionSlot copy
+storeRegionSlot argument value machine.Address region copy
+storeRegionSlot result none
+storeRegionSlot ownedBy none
+storeRegionSlot cleanedBy none
+storeRegionSlot borrows none
+storeRegionSlot catch none
+storeRegionSlot suppresses none
+
+findShape is call
+findShape in cryptoTest
+findShape invokes machine.offset
+findShape argument address machine.Address state copy
+findShape argument bytes Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findParams is call
+findParams in cryptoTest
+findParams invokes machine.offset
+findParams argument address machine.Address shape copy
+findParams argument bytes Int64 twentyFour copy
+findParams result paramsSlot machine.Address
+findParams ownedBy none
+findParams cleanedBy none
+findParams borrows none
+findParams catch none
+findParams suppresses none
+
+storeParams is call
+storeParams in cryptoTest
+storeParams invokes machine.storeInt64
+storeParams argument address machine.Address paramsSlot copy
+storeParams argument value Int64 two copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+storeCountB is call
+storeCountB in cryptoTest
+storeCountB invokes setSlotWord
+storeCountB argument block machine.Address shape copy
+storeCountB argument position Int64 six copy
+storeCountB argument value Int64 one copy
+storeCountB result none
+storeCountB ownedBy none
+storeCountB cleanedBy none
+storeCountB borrows none
+storeCountB catch none
+storeCountB suppresses none
+
+hashIt is call
+hashIt in cryptoTest
+hashIt invokes cryptoSha256
+hashIt argument shape machine.Address shape copy
+hashIt argument args machine.Address args copy
+hashIt argument results machine.Address results copy
+hashIt result none
+hashIt ownedBy none
+hashIt cleanedBy none
+hashIt borrows none
+hashIt catch none
+hashIt suppresses none
+
+shapeHex is call
+shapeHex in cryptoTest
+shapeHex invokes prepareTwo
+shapeHex argument first String az lend
+shapeHex argument second String az lend
+shapeHex argument region machine.Address region copy
+shapeHex result shape7 machine.Address
+shapeHex ownedBy none
+shapeHex cleanedBy none
+shapeHex borrows none
+shapeHex catch none
+shapeHex suppresses none
+
+storeHexRegion is call
+storeHexRegion in cryptoTest
+storeHexRegion invokes machine.storeAddress
+storeHexRegion argument address machine.Address regionSlot copy
+storeHexRegion argument value machine.Address region copy
+storeHexRegion result none
+storeHexRegion ownedBy none
+storeHexRegion cleanedBy none
+storeHexRegion borrows none
+storeHexRegion catch none
+storeHexRegion suppresses none
+
+storeHexParams is call
+storeHexParams in cryptoTest
+storeHexParams invokes machine.storeInt64
+storeHexParams argument address machine.Address paramsSlot copy
+storeHexParams argument value Int64 two copy
+storeHexParams result none
+storeHexParams ownedBy none
+storeHexParams cleanedBy none
+storeHexParams borrows none
+storeHexParams catch none
+storeHexParams suppresses none
+
+storeHexCount is call
+storeHexCount in cryptoTest
+storeHexCount invokes setSlotWord
+storeHexCount argument block machine.Address shape copy
+storeHexCount argument position Int64 six copy
+storeHexCount argument value Int64 one copy
+storeHexCount result none
+storeHexCount ownedBy none
+storeHexCount cleanedBy none
+storeHexCount borrows none
+storeHexCount catch none
+storeHexCount suppresses none
+
+hexIt is call
+hexIt in cryptoTest
+hexIt invokes cryptoToHex
+hexIt argument shape machine.Address shape copy
+hexIt argument args machine.Address args copy
+hexIt argument results machine.Address results copy
+hexIt result none
+hexIt ownedBy none
+hexIt cleanedBy none
+hexIt borrows none
+hexIt catch none
+hexIt suppresses none
+
+readHex is call
+readHex in cryptoTest
+readHex invokes machine.loadAddress
+readHex argument address machine.Address results copy
+readHex result hexText machine.Address
+readHex ownedBy none
+readHex cleanedBy none
+readHex borrows none
+readHex catch none
+readHex suppresses none
+
+findWantedHex is call
+findWantedHex in cryptoTest
+findWantedHex invokes machine.addressOfString
+findWantedHex argument text String hexAz lend
+findWantedHex result wantedHex machine.Address
+findWantedHex ownedBy none
+findWantedHex cleanedBy none
+findWantedHex borrows none
+findWantedHex catch none
+findWantedHex suppresses none
+
+compareHex is call
+compareHex in cryptoTest
+compareHex invokes machine.compare
+compareHex argument left machine.Address hexText copy
+compareHex argument right machine.Address wantedHex copy
+compareHex argument bytes Int64 four copy
+compareHex result hexOrder Int32
+compareHex ownedBy none
+compareHex cleanedBy none
+compareHex borrows none
+compareHex catch none
+compareHex suppresses none
+
+widenHex is call
+widenHex in cryptoTest
+widenHex invokes convert.int32ToInt64
+widenHex argument value Int32 hexOrder copy
+widenHex result hexValue Int64
+widenHex ownedBy none
+widenHex cleanedBy none
+widenHex borrows none
+widenHex catch none
+widenHex suppresses none
+
+expectHexAz is call
+expectHexAz in cryptoTest
+expectHexAz invokes test.assertEqualInt64
+expectHexAz argument expected Int64 zero copy
+expectHexAz argument actual Int64 hexValue copy
+expectHexAz result none
+expectHexAz ownedBy none
+expectHexAz cleanedBy none
+expectHexAz borrows none
+expectHexAz catch none
+expectHexAz suppresses none
+
+shapeAgain is call
+shapeAgain in cryptoTest
+shapeAgain invokes prepareTwo
+shapeAgain argument first String abc lend
+shapeAgain argument second String abc lend
+shapeAgain argument region machine.Address region copy
+shapeAgain result shape8 machine.Address
+shapeAgain ownedBy none
+shapeAgain cleanedBy none
+shapeAgain borrows none
+shapeAgain catch none
+shapeAgain suppresses none
+
+storeAgainRegion is call
+storeAgainRegion in cryptoTest
+storeAgainRegion invokes machine.storeAddress
+storeAgainRegion argument address machine.Address regionSlot copy
+storeAgainRegion argument value machine.Address region copy
+storeAgainRegion result none
+storeAgainRegion ownedBy none
+storeAgainRegion cleanedBy none
+storeAgainRegion borrows none
+storeAgainRegion catch none
+storeAgainRegion suppresses none
+
+storeAgainParams is call
+storeAgainParams in cryptoTest
+storeAgainParams invokes machine.storeInt64
+storeAgainParams argument address machine.Address paramsSlot copy
+storeAgainParams argument value Int64 two copy
+storeAgainParams result none
+storeAgainParams ownedBy none
+storeAgainParams cleanedBy none
+storeAgainParams borrows none
+storeAgainParams catch none
+storeAgainParams suppresses none
+
+storeAgainCount is call
+storeAgainCount in cryptoTest
+storeAgainCount invokes setSlotWord
+storeAgainCount argument block machine.Address shape copy
+storeAgainCount argument position Int64 six copy
+storeAgainCount argument value Int64 one copy
+storeAgainCount result none
+storeAgainCount ownedBy none
+storeAgainCount cleanedBy none
+storeAgainCount borrows none
+storeAgainCount catch none
+storeAgainCount suppresses none
+
+hashAgain is call
+hashAgain in cryptoTest
+hashAgain invokes cryptoSha256
+hashAgain argument shape machine.Address shape copy
+hashAgain argument args machine.Address args copy
+hashAgain argument results machine.Address results copy
+hashAgain result none
+hashAgain ownedBy none
+hashAgain cleanedBy none
+hashAgain borrows none
+hashAgain catch none
+hashAgain suppresses none
+
+expectAbc is call
+expectAbc in cryptoTest
+expectAbc invokes expectHex
+expectAbc argument wanted String abcDigest lend
+expectAbc argument region machine.Address region copy
+expectAbc result none
+expectAbc ownedBy none
+expectAbc cleanedBy none
+expectAbc borrows none
+expectAbc catch none
+expectAbc suppresses none
+
+shapeHmac is call
+shapeHmac in cryptoTest
+shapeHmac invokes prepareTwo
+shapeHmac argument first String key lend
+shapeHmac argument second String message lend
+shapeHmac argument region machine.Address region copy
+shapeHmac result shape2 machine.Address
+shapeHmac ownedBy none
+shapeHmac cleanedBy none
+shapeHmac borrows none
+shapeHmac catch none
+shapeHmac suppresses none
+
+macIt is call
+macIt in cryptoTest
+macIt invokes cryptoHmacSha256
+macIt argument shape machine.Address shape2 copy
+macIt argument args machine.Address args copy
+macIt argument results machine.Address results copy
+macIt result none
+macIt ownedBy none
+macIt cleanedBy none
+macIt borrows none
+macIt catch none
+macIt suppresses none
+
+expectMac is call
+expectMac in cryptoTest
+expectMac invokes expectHex
+expectMac argument wanted String macDigest lend
+expectMac argument region machine.Address region copy
+expectMac result none
+expectMac ownedBy none
+expectMac cleanedBy none
+expectMac borrows none
+expectMac catch none
+expectMac suppresses none
+
+shapeLong is call
+shapeLong in cryptoTest
+shapeLong invokes prepareTwo
+shapeLong argument first String long lend
+shapeLong argument second String abc lend
+shapeLong argument region machine.Address region copy
+shapeLong result shape3 machine.Address
+shapeLong ownedBy none
+shapeLong cleanedBy none
+shapeLong borrows none
+shapeLong catch none
+shapeLong suppresses none
+
+longMac is call
+longMac in cryptoTest
+longMac invokes cryptoHmacSha256
+longMac argument shape machine.Address shape3 copy
+longMac argument args machine.Address args copy
+longMac argument results machine.Address results copy
+longMac result none
+longMac ownedBy none
+longMac cleanedBy none
+longMac borrows none
+longMac catch none
+longMac suppresses none
+
+expectLong is call
+expectLong in cryptoTest
+expectLong invokes expectHex
+expectLong argument wanted String longDigest lend
+expectLong argument region machine.Address region copy
+expectLong result none
+expectLong ownedBy none
+expectLong cleanedBy none
+expectLong borrows none
+expectLong catch none
+expectLong suppresses none
+
+shapeSame is call
+shapeSame in cryptoTest
+shapeSame invokes prepareTwo
+shapeSame argument first String abc lend
+shapeSame argument second String abc lend
+shapeSame argument region machine.Address region copy
+shapeSame result shape4 machine.Address
+shapeSame ownedBy none
+shapeSame cleanedBy none
+shapeSame borrows none
+shapeSame catch none
+shapeSame suppresses none
+
+sameIt is call
+sameIt in cryptoTest
+sameIt invokes cryptoConstantTimeEquals
+sameIt argument shape machine.Address shape4 copy
+sameIt argument args machine.Address args copy
+sameIt argument results machine.Address results copy
+sameIt result none
+sameIt ownedBy none
+sameIt cleanedBy none
+sameIt borrows none
+sameIt catch none
+sameIt suppresses none
+
+readSame is call
+readSame in cryptoTest
+readSame invokes machine.loadInt64
+readSame argument address machine.Address results copy
+readSame result same Int64
+readSame ownedBy none
+readSame cleanedBy none
+readSame borrows none
+readSame catch none
+readSame suppresses none
+
+expectSame is call
+expectSame in cryptoTest
+expectSame invokes test.assertEqualInt64
+expectSame argument expected Int64 one copy
+expectSame argument actual Int64 same copy
+expectSame result none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none
+expectSame suppresses none
+
+shapeDiffer is call
+shapeDiffer in cryptoTest
+shapeDiffer invokes prepareTwo
+shapeDiffer argument first String abc lend
+shapeDiffer argument second String abd lend
+shapeDiffer argument region machine.Address region copy
+shapeDiffer result shape5 machine.Address
+shapeDiffer ownedBy none
+shapeDiffer cleanedBy none
+shapeDiffer borrows none
+shapeDiffer catch none
+shapeDiffer suppresses none
+
+differIt is call
+differIt in cryptoTest
+differIt invokes cryptoConstantTimeEquals
+differIt argument shape machine.Address shape5 copy
+differIt argument args machine.Address args copy
+differIt argument results machine.Address results copy
+differIt result none
+differIt ownedBy none
+differIt cleanedBy none
+differIt borrows none
+differIt catch none
+differIt suppresses none
+
+readDiffer is call
+readDiffer in cryptoTest
+readDiffer invokes machine.loadInt64
+readDiffer argument address machine.Address results copy
+readDiffer result differ Int64
+readDiffer ownedBy none
+readDiffer cleanedBy none
+readDiffer borrows none
+readDiffer catch none
+readDiffer suppresses none
+
+expectDiffer is call
+expectDiffer in cryptoTest
+expectDiffer invokes test.assertEqualInt64
+expectDiffer argument expected Int64 zero copy
+expectDiffer argument actual Int64 differ copy
+expectDiffer result none
+expectDiffer ownedBy none
+expectDiffer cleanedBy none
+expectDiffer borrows none
+expectDiffer catch none
+expectDiffer suppresses none
+
+shapeLength is call
+shapeLength in cryptoTest
+shapeLength invokes prepareTwo
+shapeLength argument first String abc lend
+shapeLength argument second String ab lend
+shapeLength argument region machine.Address region copy
+shapeLength result shape6 machine.Address
+shapeLength ownedBy none
+shapeLength cleanedBy none
+shapeLength borrows none
+shapeLength catch none
+shapeLength suppresses none
+
+lengthIt is call
+lengthIt in cryptoTest
+lengthIt invokes cryptoConstantTimeEquals
+lengthIt argument shape machine.Address shape6 copy
+lengthIt argument args machine.Address args copy
+lengthIt argument results machine.Address results copy
+lengthIt result none
+lengthIt ownedBy none
+lengthIt cleanedBy none
+lengthIt borrows none
+lengthIt catch none
+lengthIt suppresses none
+
+readLength is call
+readLength in cryptoTest
+readLength invokes machine.loadInt64
+readLength argument address machine.Address results copy
+readLength result lengthSame Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+expectLength is call
+expectLength in cryptoTest
+expectLength invokes test.assertEqualInt64
+expectLength argument expected Int64 zero copy
+expectLength argument actual Int64 lengthSame copy
+expectLength result none
+expectLength ownedBy none
+expectLength cleanedBy none
+expectLength borrows none
+expectLength catch none
+expectLength suppresses none
+
+findAbc is call
+findAbc in cryptoTest
+findAbc invokes machine.addressOfString
+findAbc argument text String abc lend
+findAbc result abcAt machine.Address
+findAbc ownedBy none
+findAbc cleanedBy none
+findAbc borrows none
+findAbc catch none
+findAbc suppresses none
+
+takeDigest is call
+takeDigest in cryptoTest
+takeDigest invokes heap.take
+takeDigest argument bytes Int64 thirtyTwo copy
+takeDigest result digest machine.Address
+takeDigest ownedBy none
+takeDigest cleanedBy none
+takeDigest borrows none
+takeDigest catch none
+takeDigest suppresses none
+
+directIt is call
+directIt in cryptoTest
+directIt invokes sha256
+directIt argument data machine.Address abcAt copy
+directIt argument bytes Int64 three copy
+directIt argument digest machine.Address digest copy
+directIt result none
+directIt ownedBy none
+directIt cleanedBy none
+directIt borrows none
+directIt catch none
+directIt suppresses none
+
+readFirst is call
+readFirst in cryptoTest
+readFirst invokes machine.loadByte
+readFirst argument address machine.Address digest copy
+readFirst result firstByte Byte
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+widenFirst is call
+widenFirst in cryptoTest
+widenFirst invokes convert.byteToInt64
+widenFirst argument value Byte firstByte copy
+widenFirst result firstValue Int64
+widenFirst ownedBy none
+widenFirst cleanedBy none
+widenFirst borrows none
+widenFirst catch none
+widenFirst suppresses none
+
+expectFirst is call
+expectFirst in cryptoTest
+expectFirst invokes test.assertEqualInt64
+expectFirst argument expected Int64 oneEightySix copy
+expectFirst argument actual Int64 firstValue copy
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+giveDigest is call
+giveDigest in cryptoTest
+giveDigest invokes heap.give
+giveDigest argument block machine.Address digest copy
+giveDigest result none
+giveDigest ownedBy none
+giveDigest cleanedBy none
+giveDigest borrows none
+giveDigest catch none
+giveDigest suppresses none
+
+free is call
+free in cryptoTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none

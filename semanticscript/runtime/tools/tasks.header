@@ -1,0 +1,5 @@
+# Tasks, task groups, and channels for a standalone executable: each task runs on a fiber of its
+# own, started when the task starts and run until it waits or ends, one at a time; waits that
+# nothing can end trap as a deadlock, as under `refined run`. Also deadlines, the clocks, and sleep.
+#
+# This module is generated from tools/tasks.dsl by tools/build.py.

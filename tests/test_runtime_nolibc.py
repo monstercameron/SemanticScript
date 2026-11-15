@@ -1,4 +1,4 @@
-"""The runtime in SemanticScript, stages 1 and 2 (docs/runtime-in-semanticscript.md, D-120 to D-130).
+"""The runtime in SemanticScript, stages 1 to 4 (docs/runtime-in-semanticscript.md, D-120 to D-136).
 
 `refined build --kind executable --runtime semanticscript` links a program with the runtime project in
 semanticscript/runtime and no C library. These tests hold it to the bar's first parts: what links behaves exactly
@@ -6,7 +6,11 @@ as `refined run` does (output, exit code, trap report), the executable imports f
 that needs what the runtime does not provide yet is refused before linking, the runtime project checks and passes
 its own tests, and the primitive layer (`machine`, `system`, `abi c`) is held to its rules by the checker. Stage 2
 adds floating-point text (checked against Python, which `refined run` uses, over a large table of values) and the
-host library's buffers, maps, sets, string.fromBytes, and log lines (checked against `refined run`)."""
+host library's buffers, maps, sets, string.fromBytes, and log lines (checked against `refined run`). Stages 3 and 4
+add files, directories, claims, scopes, the environment, arguments, standard input, child processes and pipes, time,
+tasks on fibers, groups, cancellation, channels, and deadlocks: every running suite program but those that need what
+no executable runtime has, every conformance program, the stage0 samples, and the warehouse example link and match
+`refined run`, and the runtime and the program are linked as one module, so an executable holds only what it uses."""
 from __future__ import annotations
 
 import os
@@ -102,7 +106,15 @@ PICKED_CASES = ["02-types/integers", "05-functions/functions", "08-strings-colle
                 "10-errors/trap-stack-trace", "06-recursion/trap-recursion-depth",
                 # stage 2: floating-point text, maps, sets, buffers, log lines
                 "02-types/floats", "08-strings-collections/text-and-bytes", "08-strings-collections/collections",
-                "08-strings-collections/text-sets", "08-strings-collections/trees", "19-stdlib/log"]
+                "08-strings-collections/text-sets", "08-strings-collections/trees", "19-stdlib/log",
+                # stages 3 and 4: files, claims, scopes, the environment, arguments, standard input, child processes,
+                # time, tasks, groups, cancellation, and channels
+                "07-memory/resources", "12-io/file-write", "12-io/directories", "19-stdlib/file-lock",
+                "17-security/trap-computed-path-escape", "12-io/arguments", "12-io/environment", "12-io/stdin",
+                "12-io/process-run", "17-security/trap-computed-program", "12-io/clock", "11-concurrency/parallel",
+                "11-concurrency/cancellation", "11-concurrency/tasks-and-channels",
+                # secrets, crypto, and foreign libraries (D-137)
+                "19-stdlib/secret", "19-stdlib/crypto", "18-interop/foreign"]
 
 
 @needs_windows_cc
@@ -135,11 +147,17 @@ def test_linked_without_libc_matches_the_jit(name, tmp_path):
         assert "\n  in " in ran.stderr
 
 
+# What the runtime in SemanticScript does not implement (D-137): sockets (Winsock is not kernel32), HTTP requests,
+# JSON, random numbers, and interrupts stay under `refined run`; each of these programs needs one of them.
+REFUSED = {"12-io/network-connect": "net", "19-stdlib/json": "json", "19-stdlib/library-tour": "http",
+           "19-stdlib/random": "random", "19-stdlib/signal": "signal"}
+
+
 @needs_windows_cc
 def test_suite_programs_link_or_are_refused(tmp_path):
-    """18 Static linking: every program case of the suite that runs either links with the runtime in SemanticScript
-    and does exactly what its case says, or is refused when it is built (R901) because it needs runtime functions
-    that runtime does not provide yet, named in the message; no executable is left behind for a refused one."""
+    """18 Static linking: every program case of the suite that runs links with the runtime in SemanticScript and does
+    exactly what its case says, but those that need a host target no executable runtime has, which are refused when
+    they are built (R901), naming the targets; no executable is left behind for a refused one."""
     cases = [c for c in CASES.values() if c.mode in ("run", "trap") and not c.missing_tools()]
 
     def one(i: int) -> str:
@@ -149,8 +167,9 @@ def test_suite_programs_link_or_are_refused(tmp_path):
         built = _build(project, exe)
         if built.returncode != 0:
             assert "R901" in built.stdout and "does not provide yet" in built.stdout, (case.name, built.stdout)
+            assert f"`{REFUSED.get(case.name, '?')}." in built.stdout, (case.name, built.stdout)
             assert not os.path.exists(exe), case.name
-            return "refused"
+            return "refused:" + case.name
         proc = _exe(exe, project, case.args, case.stdin)
         expected = case.stdout if case.stdout is not None else ([] if not case.stdout_any else None)
         if case.mode == "run":
@@ -168,21 +187,23 @@ def test_suite_programs_link_or_are_refused(tmp_path):
 
     with ThreadPoolExecutor(6) as pool:
         outcomes = list(pool.map(one, range(len(cases))))
-    # stage 1 linked 42 of the 76; stage 2 adds floating-point text and the host's buffers, maps, sets, and logs
-    assert outcomes.count("linked") >= 49, outcomes.count("linked")
+    # stage 1 linked 42 of the 76, stage 2 49; stages 3 and 4 every program but the five REFUSED names
+    refused = {o.split(":", 1)[1] for o in outcomes if o.startswith("refused:")}
+    assert refused == set(REFUSED) & {c.name for c in cases}, refused
+    assert outcomes.count("linked") == len(cases) - len(refused) >= 71, outcomes.count("linked")
 
 
 @needs_windows_cc
 def test_program_needing_more_runtime_is_refused(tmp_path):
-    """18 Static linking: a program that needs a host target the runtime in SemanticScript does not provide yet (here
-    the clock, which is stage 3) is refused before linking, naming the targets, while the C runtime still builds it."""
-    project = caselib.materialize(CASES["12-io/clock"], str(tmp_path / "clock"))
+    """18 Static linking: a program that needs a host target the runtime in SemanticScript does not provide (here
+    JSON, D-137) is refused before linking, naming the targets, as the C runtime refuses it."""
+    project = caselib.materialize(CASES["19-stdlib/json"], str(tmp_path / "json"))
     exe = os.path.join(project, "program.exe")
     built = _build(project, exe)
-    assert built.returncode != 0 and "R901" in built.stdout and "`clock.now`" in built.stdout, built.stdout
+    assert built.returncode != 0 and "R901" in built.stdout and "`json.parse`" in built.stdout, built.stdout
     assert "does not provide yet" in built.stdout and not os.path.exists(exe)
     with_c = caselib.refined("build", project, "--kind", "executable", "--output", exe)
-    assert with_c.returncode == 0, with_c.stdout
+    assert with_c.returncode != 0 and "R901" in with_c.stdout, with_c.stdout
 
 
 # ---------------------------------------------------------------- floating-point text and the host library (stage 2)
@@ -234,20 +255,169 @@ def test_host_targets_match_the_jit(tmp_path):
     assert ran.returncode == 0 and "[warn] a warning" in ran.stderr and "4000" in ran.stdout.splitlines()
 
 
+# ---------------------------------------------------------------- stages 3 and 4: examples, conformance, size
+
+def _same_as_jit(project: str, args=(), stdin: str = "") -> tuple:
+    """Build `project` with the runtime in SemanticScript and run it and `refined run`; (executable, JIT) results,
+    the project's path written `<project>` in standard error."""
+    exe = os.path.join(project, "program.exe")
+    built = _build(project, exe)
+    assert built.returncode == 0, built.stdout + built.stderr
+    assert imported_dlls(exe) == ["KERNEL32.dll"]
+    ran, jit = _exe(exe, project, args, stdin), _jit(project, args, stdin)
+    where = os.path.normpath(project)
+    return ((ran.returncode, ran.stdout, ran.stderr.replace(where, "<project>")),
+            (jit.returncode, jit.stdout, jit.stderr.replace(where, "<project>")))
+
+
+WAREHOUSE_EDITS = {"good": None, "duplicate": ("order cell gadget sku 102", "order cell gadget sku 101"),
+                   "cycle": ("components cell kitWidgets partSku 101", "components cell kitWidgets partSku 300"),
+                   "invalid": ("order cell gadget quantity 2", "order cell gadget quantity -2"),
+                   "unknown": ("order cell gizmo sku 103", "order cell gizmo sku 999")}
+
+
+@needs_windows_cc
+@pytest.mark.parametrize("variant", sorted(WAREHOUSE_EDITS))
+def test_warehouse_example_without_libc(tmp_path, variant):
+    """Roadmap 1 to 3, 11 Structured concurrency, 18 Static linking: the warehouse example (bundles through the bill
+    of materials, a map of category subtotals, a set that rejects a repeated SKU, two pricing tasks, files) linked with
+    the runtime in SemanticScript imports KERNEL32.dll alone and prints, fails, and exits exactly as under `refined
+    run`, on its good path and each failure path: a repeated SKU (8), a bundle that holds itself (9), an invalid line
+    that fails both tasks (2, the second failure on standard error), an unknown SKU (7)."""
+    project = str(tmp_path / variant)
+    shutil.copytree(os.path.join(EXAMPLES, "warehouse"), project, ignore=shutil.ignore_patterns(".refined-cache"))
+    edit = WAREHOUSE_EDITS[variant]
+    if edit is not None:
+        path = os.path.join(project, "warehouse.sem")
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        assert text.count(edit[0]) == 1, edit
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text.replace(*edit))
+    ran, jit = _same_as_jit(project)
+    assert ran == jit
+    assert ran[0] == {"good": 0, "duplicate": 8, "cycle": 9, "invalid": 2, "unknown": 7}[variant], ran
+    if variant == "good":
+        assert ran[1].splitlines()[-1] == "list=5625 discounted=5062"
+    if variant == "invalid":
+        assert "the discount total failed too" in ran[2]
+
+
+@needs_windows_cc
+def test_conformance_programs_without_libc(tmp_path):
+    """18 Static linking, 11 Structured concurrency, 13 Capabilities: every conformance check that runs a program,
+    the group whose first failure cancels a ten-second sleep included (tasks wait on fibers, D-133), behaves under
+    the runtime in SemanticScript exactly as under `refined run`: output, errors, and exit code."""
+    sys.path.insert(0, SUITE)
+    import conformance
+    checks = [c for g in conformance.GUARANTEES for c in g.checks if c.kind in ("run", "trap")]
+
+    def one(i: int):
+        check = checks[i]
+        project = str(tmp_path / str(i) / check.base)
+        shutil.copytree(conformance.BASES[check.base], project)
+        for file, old, new in check.edits:
+            path = os.path.join(project, file)
+            with open(path, encoding="utf-8", newline="") as fh:
+                text = fh.read()
+            text = (text.rstrip("\n") + "\n\n" + new.strip("\n") + "\n") if old == "<append>" else text.replace(old, new)
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
+        ran, jit = _same_as_jit(project, check.args)
+        return check.id, ran, jit
+
+    with ThreadPoolExecutor(6) as pool:
+        results = list(pool.map(one, range(len(checks))))
+    wrong = [(cid, ran, jit) for cid, ran, jit in results if ran != jit]
+    assert not wrong, wrong[:3]
+    assert len(results) >= 15 and "group-first-failure" in {cid for cid, _r, _j in results}
+
+
+@needs_windows_cc
+def test_stage0_samples_without_libc(tmp_path):
+    """18 Static linking: every sample stage0 compiles, built instead by `refined build` with the runtime in
+    SemanticScript, does exactly what it does under `refined run`."""
+    samples = os.path.join(EXAMPLES, "stage0", "samples")
+    names = [n for n in sorted(os.listdir(samples)) if os.path.exists(os.path.join(samples, n, "build.sem"))
+             and n not in ("refused", "outside")]
+
+    def one(name: str):
+        project = str(tmp_path / name)
+        shutil.copytree(os.path.join(samples, name), project, ignore=shutil.ignore_patterns(".refined-cache", "build"))
+        return (name, *_same_as_jit(project))
+
+    with ThreadPoolExecutor(6) as pool:
+        results = list(pool.map(one, names))
+    wrong = [r for r in results if r[1] != r[2]]
+    assert not wrong, wrong[:3]
+    assert len(results) >= 20
+
+
+@needs_windows_cc
+def test_stage0_compiler_without_libc(tmp_path, stage0_native):
+    """Roadmap: stage0, the compiler written in SemanticScript, built with the runtime in SemanticScript and no C
+    library, compiles samples exactly as stage0 built with the C runtime does: the same output, errors, and exit
+    code, and the same C (its executables still link the C runtime until stage 5)."""
+    stage0 = os.path.join(EXAMPLES, "stage0")
+    exe = str(tmp_path / "stage0ss.exe")
+    built = caselib.refined("build", stage0, "--kind", "executable", "--runtime", "semanticscript", "--output", exe,
+                            timeout=1800)
+    assert built.returncode == 0, built.stdout + built.stderr
+    assert imported_dlls(exe) == ["KERNEL32.dll"]
+    from conftest import c_compiler
+    link = [os.path.join(caselib.ROOT, "semanticscript", "compiler", "refined", "native_runtime.c"), "-lshell32"]
+    for sample in ("hello", "maps", "files", "lists"):
+        outcomes = []
+        for name, compiler in (("ss", exe), ("c", stage0_native)):
+            work = str(tmp_path / f"{name}-{sample}")
+            shutil.copytree(stage0, work, ignore=shutil.ignore_patterns("build", ".refined-cache"))
+            proc = subprocess.run([compiler, f"samples/{sample}", f"build/{sample}", c_compiler(), *link],
+                                  capture_output=True, text=True, cwd=work, timeout=600)
+            assert proc.returncode == 0, (name, sample, proc.stdout, proc.stderr)
+            with open(os.path.join(work, "build", sample + ".c"), encoding="utf-8") as fh:
+                c_text = fh.read()
+            ran = subprocess.run([os.path.join(work, "build", sample + ".exe")], capture_output=True, text=True,
+                                 cwd=work, timeout=60)
+            outcomes.append((proc.stdout, proc.stderr, c_text, ran.returncode, ran.stdout, ran.stderr))
+        assert outcomes[0] == outcomes[1], sample
+
+
+@needs_windows_cc
+def test_executables_hold_only_what_they_use(tmp_path):
+    """D-135: the runtime and the program are compiled into one module whose functions are all internal but the
+    entry, and what the entry never reaches is dropped, so `hello` is a few tens of kilobytes (it was 145 KB when the
+    whole runtime object was linked) while a program using tasks, files, and maps is larger."""
+    hello = str(tmp_path / "hello")
+    shutil.copytree(PICKED["hello"], hello, ignore=shutil.ignore_patterns(".refined-cache"))
+    ran, jit = _same_as_jit(hello)
+    assert ran == jit and ran[1] == "Hello, world!\n"
+    small = os.path.getsize(os.path.join(hello, "program.exe"))
+    assert small < 48 * 1024, small
+    project = caselib.materialize(CASES["11-concurrency/parallel"], str(tmp_path / "parallel"))
+    ran, jit = _same_as_jit(project)
+    assert ran == jit and os.path.getsize(os.path.join(project, "program.exe")) > small
+
+
 def test_runtime_host_targets_are_the_c_runtimes():
-    """D-130: every host target the runtime in SemanticScript dispatches over is one the C runtime and host.py
-    implement, with the same scoped parameter; native.py reads the runtime's table to refuse any other (R901)."""
+    """D-130, D-136, D-137: the runtime in SemanticScript dispatches over every host target the C runtime
+    implements, and channels, secrets, crypto, and foreign libraries besides, each one host.py implements, with the
+    scoped parameter host.py checks (D-38); native.py reads the runtime's table to refuse any other (R901)."""
     import re
     from refined import host
     from refined.native import native_targets, runtime_host_targets
     ours, theirs = runtime_host_targets(), native_targets()
-    assert len(ours) >= 25 and ours <= set(theirs) and ours <= set(host.HANDLERS), ours - set(theirs)
+    assert set(theirs) <= ours <= set(host.HANDLERS), (set(theirs) - ours, ours - set(host.HANDLERS))
+    extra = {f"channel.Channel.{n}" for n in ("new", "send", "receive", "close")}
+    extra |= {f"secret.{n}" for n in ("fromText", "fromEnvironment", "reveal", "matches", "length")}
+    extra |= {f"crypto.{n}" for n in ("sha256", "hmacSha256", "toHex", "constantTimeEquals")}
+    extra |= {"ffi.open", "ffi.close", "ffi.Function.bind"}
+    assert ours - set(theirs) == extra, ours - set(theirs)
     with open(os.path.join(RUNTIME, "host.sem"), encoding="utf-8") as fh:
         text = fh.read()
     for name in ours:
         row = re.search(rf'^hostTargets cell (\w+) name "{re.escape(name)}"$', text, re.M).group(1)
         scoped = int(re.search(rf"^hostTargets cell {row} scoped (-?\d+)$", text, re.M).group(1))
-        assert scoped == theirs[name], name
+        assert scoped == host.SCOPED.get(name, -1) == theirs.get(name, scoped), name
 
 
 # ---------------------------------------------------------------- the runtime project
@@ -264,7 +434,7 @@ def test_runtime_project_checks_and_passes_its_tests():
         pytest.skip("the runtime's system targets are Windows functions")
     tested = caselib.refined("test", RUNTIME)
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "41 of 41 tests passed" in tested.stdout
+    assert "57 of 57 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

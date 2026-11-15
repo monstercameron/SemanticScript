@@ -1,0 +1,4 @@
+# SHA-256, HMAC-SHA-256, hexadecimal text, and constant-time equality for a standalone executable:
+# the crypto targets, computed as Python's hashlib and hmac compute them.
+#
+# This module is generated from tools/hashes.dsl by tools/build.py.

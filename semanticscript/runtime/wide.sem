@@ -1,0 +1,1493 @@
+# Text for the operating system: UTF-8 to UTF-16 and back, lower case as Python's normcase gives it,
+# text put together piece by piece, and text in byte order.
+#
+# This module is generated from tools/wide.dsl by tools/build.py.
+
+wide is module
+wide purpose "Text for the operating system: UTF-8 to UTF-16 and back, lower case as Python's normcase, text put together piece by piece, and text in order"
+wide path wide
+wide imports standard.machine
+wide imports standard.system
+wide imports standard.string
+wide imports standard.math
+wide imports standard.compare
+wide imports standard.convert
+wide imports standard.logic
+wide imports standard.test
+wide imports heap
+wide exports widen
+wide exports narrow
+wide exports wideUnits
+wide exports lowercase
+wide exports builderNew
+wide exports builderAdd
+wide exports builderAddByte
+wide exports builderText
+wide exports builderLength
+wide exports textOrder
+
+memoryAccess is capability
+memoryAccess purpose "Authority to read and write text in memory"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to convert text with MultiByteToWideChar, WideCharToMultiByte, and LCMapStringEx, and take memory for it"
+systemCalls grants use system.calls none
+
+# The operating system's names (paths, the environment, command lines) are UTF-16; the program's text is UTF-8.
+# Both conversions are kernel32's (code page 65001), and lower case is LCMapStringEx with the invariant locale,
+# which is what Python's os.path.normcase uses on Windows.
+# machine.state bytes 640 to 703 belong to this module: 640 the invariant locale's name, the empty text (always 0).
+# A builder (a heap block of 24 bytes): 0 the address of its bytes (a heap block), 8 how many, 16 how many the
+# block holds.
+localeAt is constant
+localeAt purpose "Where the invariant locale's name, the empty UTF-16 text, is, in machine.state"
+localeAt type Int64
+localeAt value 640
+
+utf8 is constant
+utf8 purpose "The UTF-8 code page"
+utf8 type Int32
+utf8 value 65001
+
+lowercaseFlag is constant
+lowercaseFlag purpose "LCMAP_LOWERCASE"
+lowercaseFlag type Int32
+lowercaseFlag value 256
+
+# ---------------------------------------------------------------- UTF-8 and UTF-16
+widen is operation
+widen purpose "UTF-8 text as UTF-16 with a 0 after it, in a new heap block"
+widen invariant widensText "\"The block holds the text's characters as UTF-16 units, then a 0 unit\""
+widen typeParameter none
+widen input text machine.Address copied
+widen input bytes Int64 copied
+widen output machine.Address
+widen outputOwnedBy none
+widen raises none
+widen effect use machine.memory
+widen effect use system.calls
+widen uses memoryAccess
+widen uses systemCalls
+widen memoryHeap false
+widen async false
+widen maxRecursion none
+widen label begin loopKind none
+widen label begin within none
+widen label measure loopKind none
+widen label measure within none
+widen label make loopKind none
+widen label make within none
+widen label convert loopKind none
+widen label convert within none
+widen label done loopKind none
+widen label done within none
+widen let units Int64 0 mutable
+widen let zero Int64 0 immutable
+widen let flags Int32 0 immutable
+widen let none32 Int32 0 immutable
+widen let one Int64 1 immutable
+widen let two Int64 2 immutable
+widen at begin do nowhere
+widen at begin do anyCheck
+widen at begin branch if some goto measure else goto make
+widen at measure do narrowBytes
+widen at measure do count
+widen at measure do widenCount
+widen at measure set units countedWide
+widen at measure goto make
+widen at make do withEnd
+widen at make do sizeOf
+widen at make do takeBlock
+widen at make do anyUnits
+widen at make branch if hasUnits goto convert else goto done
+widen at convert do narrowAgain
+widen at convert do narrowUnits
+widen at convert do convertIt
+widen at convert goto done
+widen at done return ok block
+
+nowhere is call
+nowhere in widen
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+anyCheck is call
+anyCheck in widen
+anyCheck invokes compare.greaterThanInt64
+anyCheck argument left Int64 bytes copy
+anyCheck argument right Int64 zero copy
+anyCheck result some Bool
+anyCheck ownedBy none
+anyCheck cleanedBy none
+anyCheck borrows none
+anyCheck catch none
+anyCheck suppresses none
+
+narrowBytes is call
+narrowBytes in widen
+narrowBytes invokes convert.int64ToInt32
+narrowBytes argument value Int64 bytes copy
+narrowBytes result bytes32 Int32
+narrowBytes ownedBy none
+narrowBytes cleanedBy none
+narrowBytes borrows none
+narrowBytes catch none
+narrowBytes suppresses none
+
+count is call
+count in widen
+count invokes system.multiByteToWideChar
+count argument codePage Int32 utf8 copy
+count argument flags Int32 flags copy
+count argument text machine.Address text copy
+count argument bytes Int32 bytes32 copy
+count argument wide machine.Address anywhere copy
+count argument units Int32 none32 copy
+count result counted Int32
+count ownedBy none
+count cleanedBy none
+count borrows none
+count catch none
+count suppresses none
+
+widenCount is call
+widenCount in widen
+widenCount invokes convert.int32ToInt64
+widenCount argument value Int32 counted copy
+widenCount result countedWide Int64
+widenCount ownedBy none
+widenCount cleanedBy none
+widenCount borrows none
+widenCount catch none
+widenCount suppresses none
+
+withEnd is call
+withEnd in widen
+withEnd invokes math.addInt64
+withEnd argument left Int64 units copy
+withEnd argument right Int64 one copy
+withEnd result unitsAndEnd Int64
+withEnd ownedBy none
+withEnd cleanedBy none
+withEnd borrows none
+withEnd catch none
+withEnd suppresses none
+
+sizeOf is call
+sizeOf in widen
+sizeOf invokes math.multiplyInt64
+sizeOf argument left Int64 unitsAndEnd copy
+sizeOf argument right Int64 two copy
+sizeOf result size Int64
+sizeOf ownedBy none
+sizeOf cleanedBy none
+sizeOf borrows none
+sizeOf catch none
+sizeOf suppresses none
+
+takeBlock is call
+takeBlock in widen
+takeBlock invokes heap.take
+takeBlock argument bytes Int64 size copy
+takeBlock result block machine.Address
+takeBlock ownedBy none
+takeBlock cleanedBy none
+takeBlock borrows none
+takeBlock catch none
+takeBlock suppresses none
+
+anyUnits is call
+anyUnits in widen
+anyUnits invokes compare.greaterThanInt64
+anyUnits argument left Int64 units copy
+anyUnits argument right Int64 zero copy
+anyUnits result hasUnits Bool
+anyUnits ownedBy none
+anyUnits cleanedBy none
+anyUnits borrows none
+anyUnits catch none
+anyUnits suppresses none
+
+narrowAgain is call
+narrowAgain in widen
+narrowAgain invokes convert.int64ToInt32
+narrowAgain argument value Int64 bytes copy
+narrowAgain result againBytes Int32
+narrowAgain ownedBy none
+narrowAgain cleanedBy none
+narrowAgain borrows none
+narrowAgain catch none
+narrowAgain suppresses none
+
+narrowUnits is call
+narrowUnits in widen
+narrowUnits invokes convert.int64ToInt32
+narrowUnits argument value Int64 units copy
+narrowUnits result units32 Int32
+narrowUnits ownedBy none
+narrowUnits cleanedBy none
+narrowUnits borrows none
+narrowUnits catch none
+narrowUnits suppresses none
+
+convertIt is call
+convertIt in widen
+convertIt invokes system.multiByteToWideChar
+convertIt argument codePage Int32 utf8 copy
+convertIt argument flags Int32 flags copy
+convertIt argument text machine.Address text copy
+convertIt argument bytes Int32 againBytes copy
+convertIt argument wide machine.Address block copy
+convertIt argument units Int32 units32 copy
+convertIt result written Int32
+convertIt ownedBy none
+convertIt cleanedBy none
+convertIt borrows none
+convertIt catch none
+convertIt suppresses none
+
+wideUnits is operation
+wideUnits purpose "How many UTF-16 units come before the first 0 unit"
+wideUnits invariant countsUnits "\"Gives the number of units before the terminating 0\""
+wideUnits typeParameter none
+wideUnits input wide machine.Address copied
+wideUnits output Int64
+wideUnits outputOwnedBy none
+wideUnits raises none
+wideUnits effect use machine.memory
+wideUnits uses memoryAccess
+wideUnits memoryHeap false
+wideUnits async false
+wideUnits maxRecursion none
+wideUnits label begin loopKind none
+wideUnits label begin within none
+wideUnits label eachUnit loopKind while
+wideUnits label eachUnit within none
+wideUnits label eachUnit maxIterations most
+wideUnits label advance loopKind none
+wideUnits label advance within eachUnit
+wideUnits label done loopKind none
+wideUnits label done within none
+wideUnits let at Int64 0 mutable
+wideUnits let most Int64 1073741824 immutable
+wideUnits let two Int64 2 immutable
+wideUnits let one Int64 1 immutable
+wideUnits let zeroByte Byte 0 immutable
+wideUnits at begin goto eachUnit
+wideUnits at eachUnit do offsetOf
+wideUnits at eachUnit do findLow
+wideUnits at eachUnit do readLow
+wideUnits at eachUnit do findHigh
+wideUnits at eachUnit do readHigh
+wideUnits at eachUnit do lowZero
+wideUnits at eachUnit do highZero
+wideUnits at eachUnit do endCheck
+wideUnits at eachUnit branch if atEnd goto done else goto advance
+wideUnits at advance do nextUnit
+wideUnits at advance set at after
+wideUnits at advance goto eachUnit
+wideUnits at done return ok at
+
+offsetOf is call
+offsetOf in wideUnits
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 at copy
+offsetOf argument right Int64 two copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findLow is call
+findLow in wideUnits
+findLow invokes machine.offset
+findLow argument address machine.Address wide copy
+findLow argument bytes Int64 offset copy
+findLow result low machine.Address
+findLow ownedBy none
+findLow cleanedBy none
+findLow borrows none
+findLow catch none
+findLow suppresses none
+
+readLow is call
+readLow in wideUnits
+readLow invokes machine.loadByte
+readLow argument address machine.Address low copy
+readLow result lowByte Byte
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+findHigh is call
+findHigh in wideUnits
+findHigh invokes machine.offset
+findHigh argument address machine.Address low copy
+findHigh argument bytes Int64 one copy
+findHigh result high machine.Address
+findHigh ownedBy none
+findHigh cleanedBy none
+findHigh borrows none
+findHigh catch none
+findHigh suppresses none
+
+readHigh is call
+readHigh in wideUnits
+readHigh invokes machine.loadByte
+readHigh argument address machine.Address high copy
+readHigh result highByte Byte
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+lowZero is call
+lowZero in wideUnits
+lowZero invokes compare.equalByte
+lowZero argument left Byte lowByte copy
+lowZero argument right Byte zeroByte copy
+lowZero result lowIsZero Bool
+lowZero ownedBy none
+lowZero cleanedBy none
+lowZero borrows none
+lowZero catch none
+lowZero suppresses none
+
+highZero is call
+highZero in wideUnits
+highZero invokes compare.equalByte
+highZero argument left Byte highByte copy
+highZero argument right Byte zeroByte copy
+highZero result highIsZero Bool
+highZero ownedBy none
+highZero cleanedBy none
+highZero borrows none
+highZero catch none
+highZero suppresses none
+
+endCheck is call
+endCheck in wideUnits
+endCheck invokes logic.and
+endCheck argument left Bool lowIsZero copy
+endCheck argument right Bool highIsZero copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+nextUnit is call
+nextUnit in wideUnits
+nextUnit invokes math.addInt64
+nextUnit argument left Int64 at copy
+nextUnit argument right Int64 one copy
+nextUnit result after Int64
+nextUnit ownedBy none
+nextUnit cleanedBy none
+nextUnit borrows none
+nextUnit catch none
+nextUnit suppresses none
+
+narrow is operation
+narrow purpose "UTF-16 units as UTF-8 text in a new heap block, with a 0 byte after it; its length (without the 0) is stored at an address"
+narrow invariant narrowsText "\"The block holds the units' characters as UTF-8 and the length stored is its bytes\""
+narrow typeParameter none
+narrow input wide machine.Address copied
+narrow input units Int64 copied
+narrow input lengthAt machine.Address copied
+narrow output machine.Address
+narrow outputOwnedBy none
+narrow raises none
+narrow effect use machine.memory
+narrow effect use system.calls
+narrow uses memoryAccess
+narrow uses systemCalls
+narrow memoryHeap false
+narrow async false
+narrow maxRecursion none
+narrow label begin loopKind none
+narrow label begin within none
+narrow label measure loopKind none
+narrow label measure within none
+narrow label make loopKind none
+narrow label make within none
+narrow label convert loopKind none
+narrow label convert within none
+narrow label done loopKind none
+narrow label done within none
+narrow let bytes Int64 0 mutable
+narrow let zero Int64 0 immutable
+narrow let flags Int32 0 immutable
+narrow let none32 Int32 0 immutable
+narrow let one Int64 1 immutable
+narrow at begin do nowhere
+narrow at begin do anyCheck
+narrow at begin branch if some goto measure else goto make
+narrow at measure do narrowUnits
+narrow at measure do count
+narrow at measure do widenCount
+narrow at measure set bytes countedWide
+narrow at measure goto make
+narrow at make do withEnd
+narrow at make do takeBlock
+narrow at make do anyBytes
+narrow at make branch if hasBytes goto convert else goto done
+narrow at convert do narrowAgain
+narrow at convert do narrowBytes
+narrow at convert do convertIt
+narrow at convert goto done
+narrow at done do storeLength
+narrow at done return ok block
+
+nowhere is call
+nowhere in narrow
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+anyCheck is call
+anyCheck in narrow
+anyCheck invokes compare.greaterThanInt64
+anyCheck argument left Int64 units copy
+anyCheck argument right Int64 zero copy
+anyCheck result some Bool
+anyCheck ownedBy none
+anyCheck cleanedBy none
+anyCheck borrows none
+anyCheck catch none
+anyCheck suppresses none
+
+narrowUnits is call
+narrowUnits in narrow
+narrowUnits invokes convert.int64ToInt32
+narrowUnits argument value Int64 units copy
+narrowUnits result units32 Int32
+narrowUnits ownedBy none
+narrowUnits cleanedBy none
+narrowUnits borrows none
+narrowUnits catch none
+narrowUnits suppresses none
+
+count is call
+count in narrow
+count invokes system.wideCharToMultiByte
+count argument codePage Int32 utf8 copy
+count argument flags Int32 flags copy
+count argument wide machine.Address wide copy
+count argument units Int32 units32 copy
+count argument text machine.Address anywhere copy
+count argument bytes Int32 none32 copy
+count argument defaultCharacter machine.Address anywhere copy
+count argument usedDefault machine.Address anywhere copy
+count result counted Int32
+count ownedBy none
+count cleanedBy none
+count borrows none
+count catch none
+count suppresses none
+
+widenCount is call
+widenCount in narrow
+widenCount invokes convert.int32ToInt64
+widenCount argument value Int32 counted copy
+widenCount result countedWide Int64
+widenCount ownedBy none
+widenCount cleanedBy none
+widenCount borrows none
+widenCount catch none
+widenCount suppresses none
+
+withEnd is call
+withEnd in narrow
+withEnd invokes math.addInt64
+withEnd argument left Int64 bytes copy
+withEnd argument right Int64 one copy
+withEnd result size Int64
+withEnd ownedBy none
+withEnd cleanedBy none
+withEnd borrows none
+withEnd catch none
+withEnd suppresses none
+
+takeBlock is call
+takeBlock in narrow
+takeBlock invokes heap.take
+takeBlock argument bytes Int64 size copy
+takeBlock result block machine.Address
+takeBlock ownedBy none
+takeBlock cleanedBy none
+takeBlock borrows none
+takeBlock catch none
+takeBlock suppresses none
+
+anyBytes is call
+anyBytes in narrow
+anyBytes invokes compare.greaterThanInt64
+anyBytes argument left Int64 bytes copy
+anyBytes argument right Int64 zero copy
+anyBytes result hasBytes Bool
+anyBytes ownedBy none
+anyBytes cleanedBy none
+anyBytes borrows none
+anyBytes catch none
+anyBytes suppresses none
+
+narrowAgain is call
+narrowAgain in narrow
+narrowAgain invokes convert.int64ToInt32
+narrowAgain argument value Int64 units copy
+narrowAgain result againUnits Int32
+narrowAgain ownedBy none
+narrowAgain cleanedBy none
+narrowAgain borrows none
+narrowAgain catch none
+narrowAgain suppresses none
+
+narrowBytes is call
+narrowBytes in narrow
+narrowBytes invokes convert.int64ToInt32
+narrowBytes argument value Int64 bytes copy
+narrowBytes result bytes32 Int32
+narrowBytes ownedBy none
+narrowBytes cleanedBy none
+narrowBytes borrows none
+narrowBytes catch none
+narrowBytes suppresses none
+
+convertIt is call
+convertIt in narrow
+convertIt invokes system.wideCharToMultiByte
+convertIt argument codePage Int32 utf8 copy
+convertIt argument flags Int32 flags copy
+convertIt argument wide machine.Address wide copy
+convertIt argument units Int32 againUnits copy
+convertIt argument text machine.Address block copy
+convertIt argument bytes Int32 bytes32 copy
+convertIt argument defaultCharacter machine.Address anywhere copy
+convertIt argument usedDefault machine.Address anywhere copy
+convertIt result written Int32
+convertIt ownedBy none
+convertIt cleanedBy none
+convertIt borrows none
+convertIt catch none
+convertIt suppresses none
+
+storeLength is call
+storeLength in narrow
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthAt copy
+storeLength argument value Int64 bytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+lowercase is operation
+lowercase purpose "Text in lower case as Python's normcase gives it on Windows (LCMapStringEx, the invariant locale), every `/` made `\\`, in a new heap block; its length is stored at an address"
+lowercase invariant lowersText "\"The block holds the text in lower case with `\\\\` for `/`\""
+lowercase typeParameter none
+lowercase input text machine.Address copied
+lowercase input bytes Int64 copied
+lowercase input lengthAt machine.Address copied
+lowercase output machine.Address
+lowercase outputOwnedBy none
+lowercase raises none
+lowercase effect use machine.memory
+lowercase effect use system.calls
+lowercase uses memoryAccess
+lowercase uses systemCalls
+lowercase memoryHeap false
+lowercase async false
+lowercase maxRecursion none
+lowercase label begin loopKind none
+lowercase label begin within none
+lowercase label lower loopKind none
+lowercase label lower within none
+lowercase label narrowIt loopKind none
+lowercase label narrowIt within none
+lowercase label eachByte loopKind while
+lowercase label eachByte within none
+lowercase label eachByte maxIterations length
+lowercase label checkByte loopKind none
+lowercase label checkByte within eachByte
+lowercase label swap loopKind none
+lowercase label swap within eachByte
+lowercase label advance loopKind none
+lowercase label advance within eachByte
+lowercase label finish loopKind none
+lowercase label finish within none
+lowercase let at Int64 0 mutable
+lowercase let slash Byte 47 immutable
+lowercase let backslash Byte 92 immutable
+lowercase let one Int64 1 immutable
+lowercase let two Int64 2 immutable
+lowercase let zero Int64 0 immutable
+lowercase let noSort Int64 0 immutable
+lowercase at begin do wideText
+lowercase at begin do countUnits
+lowercase at begin do withEnd
+lowercase at begin do sizeOf
+lowercase at begin do takeTarget
+lowercase at begin do anyCheck
+lowercase at begin branch if some goto lower else goto narrowIt
+lowercase at lower do findState
+lowercase at lower do findLocale
+lowercase at lower do narrowUnits
+lowercase at lower do nowhere
+lowercase at lower do mapIt
+lowercase at lower goto narrowIt
+lowercase at narrowIt do makeText
+lowercase at narrowIt do giveSource
+lowercase at narrowIt do giveTarget
+lowercase at narrowIt do readLength
+lowercase at narrowIt goto eachByte
+lowercase at eachByte do doneCheck
+lowercase at eachByte branch if done goto finish else goto checkByte
+lowercase at checkByte do findByte
+lowercase at checkByte do readByte
+lowercase at checkByte do slashCheck
+lowercase at checkByte branch if isSlash goto swap else goto advance
+lowercase at swap do storeBackslash
+lowercase at swap goto advance
+lowercase at advance do nextByte
+lowercase at advance set at after
+lowercase at advance goto eachByte
+lowercase at finish return ok result
+
+wideText is call
+wideText in lowercase
+wideText invokes widen
+wideText argument text machine.Address text copy
+wideText argument bytes Int64 bytes copy
+wideText result source machine.Address
+wideText ownedBy none
+wideText cleanedBy none
+wideText borrows none
+wideText catch none
+wideText suppresses none
+
+countUnits is call
+countUnits in lowercase
+countUnits invokes wideUnits
+countUnits argument wide machine.Address source copy
+countUnits result units Int64
+countUnits ownedBy none
+countUnits cleanedBy none
+countUnits borrows none
+countUnits catch none
+countUnits suppresses none
+
+withEnd is call
+withEnd in lowercase
+withEnd invokes math.addInt64
+withEnd argument left Int64 units copy
+withEnd argument right Int64 one copy
+withEnd result unitsAndEnd Int64
+withEnd ownedBy none
+withEnd cleanedBy none
+withEnd borrows none
+withEnd catch none
+withEnd suppresses none
+
+sizeOf is call
+sizeOf in lowercase
+sizeOf invokes math.multiplyInt64
+sizeOf argument left Int64 unitsAndEnd copy
+sizeOf argument right Int64 two copy
+sizeOf result size Int64
+sizeOf ownedBy none
+sizeOf cleanedBy none
+sizeOf borrows none
+sizeOf catch none
+sizeOf suppresses none
+
+takeTarget is call
+takeTarget in lowercase
+takeTarget invokes heap.take
+takeTarget argument bytes Int64 size copy
+takeTarget result target machine.Address
+takeTarget ownedBy none
+takeTarget cleanedBy none
+takeTarget borrows none
+takeTarget catch none
+takeTarget suppresses none
+
+anyCheck is call
+anyCheck in lowercase
+anyCheck invokes compare.greaterThanInt64
+anyCheck argument left Int64 units copy
+anyCheck argument right Int64 zero copy
+anyCheck result some Bool
+anyCheck ownedBy none
+anyCheck cleanedBy none
+anyCheck borrows none
+anyCheck catch none
+anyCheck suppresses none
+
+findState is call
+findState in lowercase
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findLocale is call
+findLocale in lowercase
+findLocale invokes machine.offset
+findLocale argument address machine.Address state copy
+findLocale argument bytes Int64 localeAt copy
+findLocale result locale machine.Address
+findLocale ownedBy none
+findLocale cleanedBy none
+findLocale borrows none
+findLocale catch none
+findLocale suppresses none
+
+narrowUnits is call
+narrowUnits in lowercase
+narrowUnits invokes convert.int64ToInt32
+narrowUnits argument value Int64 units copy
+narrowUnits result units32 Int32
+narrowUnits ownedBy none
+narrowUnits cleanedBy none
+narrowUnits borrows none
+narrowUnits catch none
+narrowUnits suppresses none
+
+nowhere is call
+nowhere in lowercase
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+mapIt is call
+mapIt in lowercase
+mapIt invokes system.lcMapStringEx
+mapIt argument locale machine.Address locale copy
+mapIt argument flags Int32 lowercaseFlag copy
+mapIt argument source machine.Address source copy
+mapIt argument sourceUnits Int32 units32 copy
+mapIt argument target machine.Address target copy
+mapIt argument targetUnits Int32 units32 copy
+mapIt argument version machine.Address anywhere copy
+mapIt argument reserved machine.Address anywhere copy
+mapIt argument sortHandle Int64 noSort copy
+mapIt result mapped Int32
+mapIt ownedBy none
+mapIt cleanedBy none
+mapIt borrows none
+mapIt catch none
+mapIt suppresses none
+
+makeText is call
+makeText in lowercase
+makeText invokes narrow
+makeText argument wide machine.Address target copy
+makeText argument units Int64 units copy
+makeText argument lengthAt machine.Address lengthAt copy
+makeText result result machine.Address
+makeText ownedBy none
+makeText cleanedBy none
+makeText borrows none
+makeText catch none
+makeText suppresses none
+
+giveSource is call
+giveSource in lowercase
+giveSource invokes heap.give
+giveSource argument block machine.Address source copy
+giveSource result none
+giveSource ownedBy none
+giveSource cleanedBy none
+giveSource borrows none
+giveSource catch none
+giveSource suppresses none
+
+giveTarget is call
+giveTarget in lowercase
+giveTarget invokes heap.give
+giveTarget argument block machine.Address target copy
+giveTarget result none
+giveTarget ownedBy none
+giveTarget cleanedBy none
+giveTarget borrows none
+giveTarget catch none
+giveTarget suppresses none
+
+readLength is call
+readLength in lowercase
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthAt copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+doneCheck is call
+doneCheck in lowercase
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 length copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+findByte is call
+findByte in lowercase
+findByte invokes machine.offset
+findByte argument address machine.Address result copy
+findByte argument bytes Int64 at copy
+findByte result place machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+readByte is call
+readByte in lowercase
+readByte invokes machine.loadByte
+readByte argument address machine.Address place copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+slashCheck is call
+slashCheck in lowercase
+slashCheck invokes compare.equalByte
+slashCheck argument left Byte byte copy
+slashCheck argument right Byte slash copy
+slashCheck result isSlash Bool
+slashCheck ownedBy none
+slashCheck cleanedBy none
+slashCheck borrows none
+slashCheck catch none
+slashCheck suppresses none
+
+storeBackslash is call
+storeBackslash in lowercase
+storeBackslash invokes machine.storeByte
+storeBackslash argument address machine.Address place copy
+storeBackslash argument value Byte backslash copy
+storeBackslash result none
+storeBackslash ownedBy none
+storeBackslash cleanedBy none
+storeBackslash borrows none
+storeBackslash catch none
+storeBackslash suppresses none
+
+nextByte is call
+nextByte in lowercase
+nextByte invokes math.addInt64
+nextByte argument left Int64 at copy
+nextByte argument right Int64 one copy
+nextByte result after Int64
+nextByte ownedBy none
+nextByte cleanedBy none
+nextByte borrows none
+nextByte catch none
+nextByte suppresses none
+
+# ---------------------------------------------------------------- builders
+builderNew is operation
+builderNew purpose "An empty builder, to put text together piece by piece"
+builderNew invariant startsEmpty "\"The builder holds no bytes\""
+builderNew typeParameter none
+builderNew input none
+builderNew output machine.Address
+builderNew outputOwnedBy none
+builderNew raises none
+builderNew effect use machine.memory
+builderNew effect use system.calls
+builderNew uses memoryAccess
+builderNew uses systemCalls
+builderNew memoryHeap false
+builderNew async false
+builderNew maxRecursion none
+builderNew label begin loopKind none
+builderNew label begin within none
+builderNew let twentyFour Int64 24 immutable
+builderNew at begin do takeBuilder
+builderNew at begin return ok builder
+
+takeBuilder is call
+takeBuilder in builderNew
+takeBuilder invokes heap.take
+takeBuilder argument bytes Int64 twentyFour copy
+takeBuilder result builder machine.Address
+takeBuilder ownedBy none
+takeBuilder cleanedBy none
+takeBuilder borrows none
+takeBuilder catch none
+takeBuilder suppresses none
+
+builderAdd is operation
+builderAdd purpose "Add bytes to the end of a builder, doubling its block (from 64 bytes) when they do not fit"
+builderAdd invariant addsBytes "\"The builder holds its bytes, then the new ones\""
+builderAdd typeParameter none
+builderAdd input builder machine.Address copied
+builderAdd input data machine.Address copied
+builderAdd input bytes Int64 copied
+builderAdd output none
+builderAdd outputOwnedBy none
+builderAdd raises none
+builderAdd effect use machine.memory
+builderAdd effect use system.calls
+builderAdd uses memoryAccess
+builderAdd uses systemCalls
+builderAdd memoryHeap false
+builderAdd async false
+builderAdd maxRecursion none
+builderAdd label begin loopKind none
+builderAdd label begin within none
+builderAdd label grow loopKind none
+builderAdd label grow within none
+builderAdd label useNeeded loopKind none
+builderAdd label useNeeded within none
+builderAdd label resize loopKind none
+builderAdd label resize within none
+builderAdd label append loopKind none
+builderAdd label append within none
+builderAdd let capacity Int64 0 mutable
+builderAdd let eight Int64 8 immutable
+builderAdd let sixteen Int64 16 immutable
+builderAdd let two Int64 2 immutable
+builderAdd let sixtyFour Int64 64 immutable
+builderAdd at begin do findLength
+builderAdd at begin do readLength
+builderAdd at begin do findCapacity
+builderAdd at begin do readCapacity
+builderAdd at begin do needOf
+builderAdd at begin do fitCheck
+builderAdd at begin branch if fits goto append else goto grow
+builderAdd at grow do doubleIt
+builderAdd at grow do moreRoom
+builderAdd at grow set capacity room
+builderAdd at grow do smallCheck
+builderAdd at grow branch if small goto useNeeded else goto resize
+builderAdd at useNeeded set capacity needed
+builderAdd at useNeeded goto resize
+builderAdd at resize do readBlock
+builderAdd at resize do growBlock
+builderAdd at resize do storeBlock
+builderAdd at resize do storeCapacity
+builderAdd at resize goto append
+builderAdd at append do readBlockNow
+builderAdd at append do findEnd
+builderAdd at append do copyIn
+builderAdd at append do storeLength
+builderAdd at append return ok none
+
+findLength is call
+findLength in builderAdd
+findLength invokes machine.offset
+findLength argument address machine.Address builder copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in builderAdd
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+findCapacity is call
+findCapacity in builderAdd
+findCapacity invokes machine.offset
+findCapacity argument address machine.Address builder copy
+findCapacity argument bytes Int64 sixteen copy
+findCapacity result capacitySlot machine.Address
+findCapacity ownedBy none
+findCapacity cleanedBy none
+findCapacity borrows none
+findCapacity catch none
+findCapacity suppresses none
+
+readCapacity is call
+readCapacity in builderAdd
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address capacitySlot copy
+readCapacity result held Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+needOf is call
+needOf in builderAdd
+needOf invokes math.addInt64
+needOf argument left Int64 length copy
+needOf argument right Int64 bytes copy
+needOf result needed Int64
+needOf ownedBy none
+needOf cleanedBy none
+needOf borrows none
+needOf catch none
+needOf suppresses none
+
+fitCheck is call
+fitCheck in builderAdd
+fitCheck invokes compare.lessOrEqualInt64
+fitCheck argument left Int64 needed copy
+fitCheck argument right Int64 held copy
+fitCheck result fits Bool
+fitCheck ownedBy none
+fitCheck cleanedBy none
+fitCheck borrows none
+fitCheck catch none
+fitCheck suppresses none
+
+doubleIt is call
+doubleIt in builderAdd
+doubleIt invokes math.multiplyInt64
+doubleIt argument left Int64 held copy
+doubleIt argument right Int64 two copy
+doubleIt result doubled Int64
+doubleIt ownedBy none
+doubleIt cleanedBy none
+doubleIt borrows none
+doubleIt catch none
+doubleIt suppresses none
+
+moreRoom is call
+moreRoom in builderAdd
+moreRoom invokes math.addInt64
+moreRoom argument left Int64 doubled copy
+moreRoom argument right Int64 sixtyFour copy
+moreRoom result room Int64
+moreRoom ownedBy none
+moreRoom cleanedBy none
+moreRoom borrows none
+moreRoom catch none
+moreRoom suppresses none
+
+smallCheck is call
+smallCheck in builderAdd
+smallCheck invokes compare.lessThanInt64
+smallCheck argument left Int64 room copy
+smallCheck argument right Int64 needed copy
+smallCheck result small Bool
+smallCheck ownedBy none
+smallCheck cleanedBy none
+smallCheck borrows none
+smallCheck catch none
+smallCheck suppresses none
+
+readBlock is call
+readBlock in builderAdd
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address builder copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+growBlock is call
+growBlock in builderAdd
+growBlock invokes heap.resize
+growBlock argument block machine.Address block copy
+growBlock argument bytes Int64 capacity copy
+growBlock result grown machine.Address
+growBlock ownedBy none
+growBlock cleanedBy none
+growBlock borrows none
+growBlock catch none
+growBlock suppresses none
+
+storeBlock is call
+storeBlock in builderAdd
+storeBlock invokes machine.storeAddress
+storeBlock argument address machine.Address builder copy
+storeBlock argument value machine.Address grown copy
+storeBlock result none
+storeBlock ownedBy none
+storeBlock cleanedBy none
+storeBlock borrows none
+storeBlock catch none
+storeBlock suppresses none
+
+storeCapacity is call
+storeCapacity in builderAdd
+storeCapacity invokes machine.storeInt64
+storeCapacity argument address machine.Address capacitySlot copy
+storeCapacity argument value Int64 capacity copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+readBlockNow is call
+readBlockNow in builderAdd
+readBlockNow invokes machine.loadAddress
+readBlockNow argument address machine.Address builder copy
+readBlockNow result blockNow machine.Address
+readBlockNow ownedBy none
+readBlockNow cleanedBy none
+readBlockNow borrows none
+readBlockNow catch none
+readBlockNow suppresses none
+
+findEnd is call
+findEnd in builderAdd
+findEnd invokes machine.offset
+findEnd argument address machine.Address blockNow copy
+findEnd argument bytes Int64 length copy
+findEnd result endAt machine.Address
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+copyIn is call
+copyIn in builderAdd
+copyIn invokes machine.copy
+copyIn argument target machine.Address endAt copy
+copyIn argument source machine.Address data copy
+copyIn argument bytes Int64 bytes copy
+copyIn result none
+copyIn ownedBy none
+copyIn cleanedBy none
+copyIn borrows none
+copyIn catch none
+copyIn suppresses none
+
+storeLength is call
+storeLength in builderAdd
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 needed copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+builderAddByte is operation
+builderAddByte purpose "Add one byte to the end of a builder"
+builderAddByte invariant addsByte "\"The builder holds its bytes, then the byte\""
+builderAddByte typeParameter none
+builderAddByte input builder machine.Address copied
+builderAddByte input byte Byte copied
+builderAddByte output none
+builderAddByte outputOwnedBy none
+builderAddByte raises none
+builderAddByte effect use machine.memory
+builderAddByte effect use system.calls
+builderAddByte uses memoryAccess
+builderAddByte uses systemCalls
+builderAddByte memoryHeap false
+builderAddByte async false
+builderAddByte maxRecursion none
+builderAddByte label begin loopKind none
+builderAddByte label begin within none
+builderAddByte let scratchAt Int64 648 immutable
+builderAddByte let one Int64 1 immutable
+builderAddByte at begin do findState
+builderAddByte at begin do findScratch
+builderAddByte at begin do storeByte
+builderAddByte at begin do addIt
+builderAddByte at begin return ok none
+
+findState is call
+findState in builderAddByte
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in builderAddByte
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+storeByte is call
+storeByte in builderAddByte
+storeByte invokes machine.storeByte
+storeByte argument address machine.Address scratch copy
+storeByte argument value Byte byte copy
+storeByte result none
+storeByte ownedBy none
+storeByte cleanedBy none
+storeByte borrows none
+storeByte catch none
+storeByte suppresses none
+
+addIt is call
+addIt in builderAddByte
+addIt invokes builderAdd
+addIt argument builder machine.Address builder copy
+addIt argument data machine.Address scratch copy
+addIt argument bytes Int64 one copy
+addIt result none
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+builderText is operation
+builderText purpose "The address of a builder's bytes"
+builderText invariant givesBytes "\"Gives the address of the bytes added so far\""
+builderText typeParameter none
+builderText input builder machine.Address copied
+builderText output machine.Address
+builderText outputOwnedBy none
+builderText raises none
+builderText effect use machine.memory
+builderText uses memoryAccess
+builderText memoryHeap false
+builderText async false
+builderText maxRecursion none
+builderText label begin loopKind none
+builderText label begin within none
+builderText let none
+builderText at begin do readBlock
+builderText at begin return ok block
+
+readBlock is call
+readBlock in builderText
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address builder copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+builderLength is operation
+builderLength purpose "How many bytes a builder holds"
+builderLength invariant givesLength "\"Gives how many bytes were added\""
+builderLength typeParameter none
+builderLength input builder machine.Address copied
+builderLength output Int64
+builderLength outputOwnedBy none
+builderLength raises none
+builderLength effect use machine.memory
+builderLength uses memoryAccess
+builderLength memoryHeap false
+builderLength async false
+builderLength maxRecursion none
+builderLength label begin loopKind none
+builderLength label begin within none
+builderLength let eight Int64 8 immutable
+builderLength at begin do findLength
+builderLength at begin do readLength
+builderLength at begin return ok length
+
+findLength is call
+findLength in builderLength
+findLength invokes machine.offset
+findLength argument address machine.Address builder copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in builderLength
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+# ---------------------------------------------------------------- order
+textOrder is operation
+textOrder purpose "How two texts compare byte by byte, as Python orders `str` (UTF-8 keeps code-point order): -1, 0, or 1"
+textOrder invariant ordersText "\"Gives -1 when the left text sorts first, 1 when the right does, 0 when they are the same\""
+textOrder typeParameter none
+textOrder input left machine.Address copied
+textOrder input leftBytes Int64 copied
+textOrder input right machine.Address copied
+textOrder input rightBytes Int64 copied
+textOrder output Int64
+textOrder outputOwnedBy none
+textOrder raises none
+textOrder effect use machine.memory
+textOrder uses memoryAccess
+textOrder memoryHeap false
+textOrder async false
+textOrder maxRecursion none
+textOrder label begin loopKind none
+textOrder label begin within none
+textOrder label useLeft loopKind none
+textOrder label useLeft within none
+textOrder label compareBytes loopKind none
+textOrder label compareBytes within none
+textOrder label give loopKind none
+textOrder label give within none
+textOrder label byLength loopKind none
+textOrder label byLength within none
+textOrder label giveLess loopKind none
+textOrder label giveLess within none
+textOrder label moreCheck loopKind none
+textOrder label moreCheck within none
+textOrder label giveMore loopKind none
+textOrder label giveMore within none
+textOrder label giveSame loopKind none
+textOrder label giveSame within none
+textOrder let shorter Int64 0 mutable
+textOrder let less Int64 -1 immutable
+textOrder let greater Int64 1 immutable
+textOrder let zero Int64 0 immutable
+textOrder at begin set shorter rightBytes
+textOrder at begin do leftShorter
+textOrder at begin branch if leftLess goto useLeft else goto compareBytes
+textOrder at useLeft set shorter leftBytes
+textOrder at useLeft goto compareBytes
+textOrder at compareBytes do compareThem
+textOrder at compareBytes do widenOrder
+textOrder at compareBytes do differCheck
+textOrder at compareBytes branch if differ goto give else goto byLength
+textOrder at give return ok orderValue
+textOrder at byLength do lessCheck
+textOrder at byLength branch if isLess goto giveLess else goto moreCheck
+textOrder at giveLess return ok less
+textOrder at moreCheck do checkMore
+textOrder at moreCheck branch if more goto giveMore else goto giveSame
+textOrder at giveMore return ok greater
+textOrder at giveSame return ok zero
+
+leftShorter is call
+leftShorter in textOrder
+leftShorter invokes compare.lessThanInt64
+leftShorter argument left Int64 leftBytes copy
+leftShorter argument right Int64 rightBytes copy
+leftShorter result leftLess Bool
+leftShorter ownedBy none
+leftShorter cleanedBy none
+leftShorter borrows none
+leftShorter catch none
+leftShorter suppresses none
+
+compareThem is call
+compareThem in textOrder
+compareThem invokes machine.compare
+compareThem argument left machine.Address left copy
+compareThem argument right machine.Address right copy
+compareThem argument bytes Int64 shorter copy
+compareThem result order Int32
+compareThem ownedBy none
+compareThem cleanedBy none
+compareThem borrows none
+compareThem catch none
+compareThem suppresses none
+
+widenOrder is call
+widenOrder in textOrder
+widenOrder invokes convert.int32ToInt64
+widenOrder argument value Int32 order copy
+widenOrder result orderValue Int64
+widenOrder ownedBy none
+widenOrder cleanedBy none
+widenOrder borrows none
+widenOrder catch none
+widenOrder suppresses none
+
+differCheck is call
+differCheck in textOrder
+differCheck invokes compare.notEqualInt64
+differCheck argument left Int64 orderValue copy
+differCheck argument right Int64 zero copy
+differCheck result differ Bool
+differCheck ownedBy none
+differCheck cleanedBy none
+differCheck borrows none
+differCheck catch none
+differCheck suppresses none
+
+lessCheck is call
+lessCheck in textOrder
+lessCheck invokes compare.lessThanInt64
+lessCheck argument left Int64 leftBytes copy
+lessCheck argument right Int64 rightBytes copy
+lessCheck result isLess Bool
+lessCheck ownedBy none
+lessCheck cleanedBy none
+lessCheck borrows none
+lessCheck catch none
+lessCheck suppresses none
+
+checkMore is call
+checkMore in textOrder
+checkMore invokes compare.greaterThanInt64
+checkMore argument left Int64 leftBytes copy
+checkMore argument right Int64 rightBytes copy
+checkMore result more Bool
+checkMore ownedBy none
+checkMore cleanedBy none
+checkMore borrows none
+checkMore catch none
+checkMore suppresses none

@@ -1,0 +1,4 @@
+# Text for the operating system: UTF-8 to UTF-16 and back, lower case as Python's normcase gives it,
+# text put together piece by piece, and text in byte order.
+#
+# This module is generated from tools/wide.dsl by tools/build.py.

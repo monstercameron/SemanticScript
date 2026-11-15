@@ -15,8 +15,9 @@ allows. The C runtime implements most of the host library natively (D-80); a
 program that calls a target it does not implement is refused (R901, D-81).
 
 `--kind executable --runtime semanticscript` (D-124) links the program instead
-with the runtime written in SemanticScript (semanticscript/runtime), compiled to
-a second object, and no C library: no CRT start files, no libc, the entry point
+with the runtime written in SemanticScript (semanticscript/runtime), linked with
+the program into one LLVM module that keeps only what the entry reaches (D-135),
+and no C library: no CRT start files, no libc, the entry point
 `refined_entry`, and only kernel32 (plus the compiler's own support library, for
 stack probes). It runs on Windows so far. A program that needs a runtime
 function or host target that runtime does not provide yet is refused (R901)
@@ -208,12 +209,15 @@ def _imported(ir_text: str) -> str:
     return re.sub(rf'^declare ([^@\n]*@"?(?:{names})"?\()', r"declare dllimport \1", ir_text, flags=re.M)
 
 
-def _ss_runtime_object(triple: str, folder: str) -> tuple[str | None, set[str], str]:
-    """The runtime's object, compiled once per runtime and compiler source text and kept in the temporary
+_KEPT = ("refined_entry", "memcpy", "memmove", "memset", "memcmp")  # the entry, and what LLVM's code may call
+
+
+def _ss_runtime_bitcode() -> tuple[bytes | None, set[str], str]:
+    """The runtime as LLVM bitcode, compiled once per runtime and compiler source text and kept in the temporary
     directory, with the symbols it defines."""
     import hashlib
     import json
-    h = hashlib.sha256(triple.encode())
+    h = hashlib.sha256(b"bitcode")
     here = os.path.dirname(os.path.abspath(__file__))
     for root in (RUNTIME_PROJECT, here):
         for name in sorted(os.listdir(root)):
@@ -221,29 +225,53 @@ def _ss_runtime_object(triple: str, folder: str) -> tuple[str | None, set[str], 
                 with open(os.path.join(root, name), "rb") as fh:
                     h.update(name.encode() + b"\0" + fh.read())
     digest = h.hexdigest()[:20]
-    cached = os.path.join(tempfile.gettempdir(), f"refined-runtime-ss-{digest}.o")
+    cached = os.path.join(tempfile.gettempdir(), f"refined-runtime-ss-{digest}.bc")
     listed = cached + ".symbols"
     if os.path.exists(cached) and os.path.exists(listed):
-        with open(listed, encoding="utf-8") as fh:
-            return cached, set(json.load(fh)), ""
+        with open(cached, "rb") as fh, open(listed, encoding="utf-8") as fl:
+            return fh.read(), set(json.load(fl)), ""
     ir_text, symbols, problem = runtime_ir()
     if ir_text is None:
         return None, set(), problem
-    fresh = os.path.join(folder, "runtime.o")
-    with open(fresh, "wb") as fh:
-        fh.write(emit(_imported(ir_text), triple, "object"))
+    _init()
+    bitcode = llvm.parse_assembly(_imported(ir_text)).as_bitcode()
     try:
-        for path, data in ((cached, None), (listed, json.dumps(sorted(symbols)))):
+        for path, data, mode in ((cached, bitcode, "wb"), (listed, json.dumps(sorted(symbols)), "w")):
             partial = f"{path}.{os.getpid()}"
-            if data is None:
-                shutil.copyfile(fresh, partial)
-            else:
-                with open(partial, "w", encoding="utf-8") as fh:
-                    fh.write(data)
+            with open(partial, mode, **({} if mode == "wb" else {"encoding": "utf-8"})) as fh:
+                fh.write(data)
             os.replace(partial, path)
-        return cached, symbols, ""
     except OSError:
-        return fresh, symbols, ""
+        pass
+    return bitcode, symbols, ""
+
+
+def _whole_program(runtime_bitcode: bytes, program_ir: str, triple: str) -> bytes:
+    """D-135: the runtime and the program as one LLVM module, every function but the entry (and `memcpy` and the
+    like) internal, and what nothing reaches from the entry dropped (global dead code elimination), emitted as one
+    object. The runtime's own functions are made internal before the program is linked in, so a program operation
+    named like one of them is a different function."""
+    from .codegen import CALLBACKS
+    _init()
+    runtime = llvm.parse_bitcode(runtime_bitcode)
+    for fn in runtime.functions:
+        if not fn.is_declaration and fn.name not in CALLBACKS and fn.name not in _KEPT \
+                and fn.name != "refined_task_entry":
+            fn.linkage = llvm.Linkage.internal
+    runtime.link_in(llvm.parse_assembly(program_ir))
+    for fn in runtime.functions:
+        if not fn.is_declaration and fn.name not in _KEPT:
+            fn.linkage = llvm.Linkage.internal
+    target = llvm.Target.from_triple(triple)
+    tm = target.create_target_machine(reloc="pic", codemodel="default", opt=2)
+    runtime.triple = triple
+    runtime.data_layout = str(tm.target_data)
+    passes = llvm.create_new_module_pass_manager()
+    passes.add_global_dead_code_eliminate_pass()
+    passes.add_strip_dead_prototype_pass()
+    passes.run(runtime, llvm.create_pass_builder(tm, llvm.create_pipeline_tuning_options()))
+    runtime.verify()
+    return tm.emit_object(runtime)
 
 
 _HOST_TARGET_CELL = re.compile(r'^hostTargets cell \w+ name "([A-Za-z0-9.]+)"$', re.M)
@@ -276,26 +304,26 @@ def executable_semanticscript(ir_text: str, entry: str, output: str) -> tuple[bo
         return False, (f"R901 the runtime in SemanticScript calls Windows only so far (D-122); `{machine}` needs "
                        "the C runtime (`--runtime c`)")
     triple = machine.split("-")[0] + "-w64-windows-gnu"
+    runtime_bitcode, provided, problem = _ss_runtime_bitcode()
+    if runtime_bitcode is None:
+        return False, problem
+    missing = sorted(needed_runtime(ir_text) - provided)
+    missing += sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z0-9.]+)\|', ir_text)) - runtime_host_targets())
+    if missing:
+        return False, ("R901 this program needs " + ", ".join(f"`{n}`" for n in missing) + ", which the runtime "
+                       "in SemanticScript does not provide yet (docs/runtime-in-semanticscript.md); build it "
+                       "with the C runtime (`--runtime c`)")
+    mod, _dot, op = entry.partition(".")
+    from .codegen import function_name
+    program = (_imported(ir_text) + "\n; the program's entry, which the runtime's `refined_entry` runs (D-124)\n"
+               "define i32 @refined_program_main() {\nentry:\n"
+               f'  %code = call i32 @"{function_name(mod, op)}"()\n  ret i32 %code\n}}\n')
     with tempfile.TemporaryDirectory() as d:
-        runtime_obj, provided, problem = _ss_runtime_object(triple, d)
-        if runtime_obj is None:
-            return False, problem
-        missing = sorted(needed_runtime(ir_text) - provided)
-        missing += sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z0-9.]+)\|', ir_text)) - runtime_host_targets())
-        if missing:
-            return False, ("R901 this program needs " + ", ".join(f"`{n}`" for n in missing) + ", which the runtime "
-                           "in SemanticScript does not provide yet (docs/runtime-in-semanticscript.md); build it "
-                           "with the C runtime (`--runtime c`)")
-        mod, _dot, op = entry.partition(".")
-        from .codegen import function_name
-        program = (_imported(ir_text) + "\n; the program's entry, which the runtime's `refined_entry` runs (D-124)\n"
-                   "define i32 @refined_program_main() {\nentry:\n"
-                   f'  %code = call i32 @"{function_name(mod, op)}"()\n  ret i32 %code\n}}\n')
         obj = os.path.join(d, "program.o")
         with open(obj, "wb") as fh:
-            fh.write(emit(program, triple, "object"))
-        cmd = cc + ["-nostdlib", "-nostartfiles", "-Wl,-e,refined_entry", f"-Wl,--stack,{STACK_BYTES}", "-o", output,
-                    obj, runtime_obj, "-lkernel32", "-lgcc"]
+            fh.write(_whole_program(runtime_bitcode, program, triple))
+        cmd = cc + ["-nostdlib", "-nostartfiles", "-Wl,-e,refined_entry", f"-Wl,--stack,{STACK_BYTES}",
+                    "-Wl,--gc-sections", "-s", "-o", output, obj, "-lkernel32", "-lgcc"]
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
             return False, f"linking failed:\n{proc.stdout}{proc.stderr}"

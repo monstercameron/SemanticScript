@@ -1,0 +1,4 @@
+# Files and directories for a standalone executable: paths resolved as Python resolves them, the
+# claims that keep one writer per file (D-52, D-109), and capability scopes on paths at run time (D-38).
+#
+# This module is generated from tools/files.dsl by tools/build.py.

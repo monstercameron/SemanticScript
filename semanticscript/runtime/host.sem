@@ -27,6 +27,11 @@ host imports heap
 host imports tables
 host imports handles
 host imports regions
+host imports slots
+host imports tasks
+host imports files
+host imports processes
+host imports hashes
 host exports hostCall
 host exports utf8InvalidAt
 
@@ -154,6 +159,53 @@ hostTargets row setLength 22
 hostTargets row setNew 23
 hostTargets row setRemove 24
 hostTargets row stringFromBytes 25
+hostTargets row deadlineNever 26
+hostTargets row deadlineAfter 27
+hostTargets row timeSleep 28
+hostTargets row clockNow 29
+hostTargets row clockMonotonic 30
+hostTargets row channelNew 31
+hostTargets row channelSend 32
+hostTargets row channelReceive 33
+hostTargets row channelClose 34
+hostTargets row fsClose 35
+hostTargets row fsCreate 36
+hostTargets row fsCreateDirectory 37
+hostTargets row fsEntryCount 38
+hostTargets row fsEntryName 39
+hostTargets row fsExists 40
+hostTargets row fsListDirectory 41
+hostTargets row fsLock 42
+hostTargets row fsOpenAppend 43
+hostTargets row fsOpenRead 44
+hostTargets row fsOpenWrite 45
+hostTargets row fsRead 46
+hostTargets row fsReadAll 47
+hostTargets row fsRemove 48
+hostTargets row fsRemoveDirectory 49
+hostTargets row fsUnlock 50
+hostTargets row fsWrite 51
+hostTargets row fsWriteAll 52
+hostTargets row consoleReadLine 53
+hostTargets row environmentGet 54
+hostTargets row processAddArgument 55
+hostTargets row processArgument 56
+hostTargets row processArgumentCount 57
+hostTargets row processNewArguments 58
+hostTargets row processRun 59
+hostTargets row processRunCaptured 60
+hostTargets row secretFromEnvironment 61
+hostTargets row secretFromText 62
+hostTargets row secretLength 63
+hostTargets row secretMatches 64
+hostTargets row secretReveal 65
+hostTargets row cryptoConstantTimeEquals 66
+hostTargets row cryptoHmacSha256 67
+hostTargets row cryptoSha256 68
+hostTargets row cryptoToHex 69
+hostTargets row ffiBind 70
+hostTargets row ffiClose 71
+hostTargets row ffiOpen 72
 hostTargets cell bufferAppendByte name "buffer.appendByte"
 hostTargets cell bufferAppendByte scoped -1
 hostTargets cell bufferAppendInt64 name "buffer.appendInt64"
@@ -204,6 +256,100 @@ hostTargets cell setRemove name "set.Set.remove"
 hostTargets cell setRemove scoped -1
 hostTargets cell stringFromBytes name "string.fromBytes"
 hostTargets cell stringFromBytes scoped -1
+hostTargets cell deadlineNever name "time.Deadline.never"
+hostTargets cell deadlineNever scoped -1
+hostTargets cell deadlineAfter name "time.Deadline.after"
+hostTargets cell deadlineAfter scoped -1
+hostTargets cell timeSleep name "time.sleep"
+hostTargets cell timeSleep scoped -1
+hostTargets cell clockNow name "clock.now"
+hostTargets cell clockNow scoped -1
+hostTargets cell clockMonotonic name "clock.monotonic"
+hostTargets cell clockMonotonic scoped -1
+hostTargets cell channelNew name "channel.Channel.new"
+hostTargets cell channelNew scoped -1
+hostTargets cell channelSend name "channel.Channel.send"
+hostTargets cell channelSend scoped -1
+hostTargets cell channelReceive name "channel.Channel.receive"
+hostTargets cell channelReceive scoped -1
+hostTargets cell channelClose name "channel.Channel.close"
+hostTargets cell channelClose scoped -1
+hostTargets cell fsClose name "fs.close"
+hostTargets cell fsClose scoped -1
+hostTargets cell fsCreate name "fs.create"
+hostTargets cell fsCreate scoped 0
+hostTargets cell fsCreateDirectory name "fs.createDirectory"
+hostTargets cell fsCreateDirectory scoped 0
+hostTargets cell fsEntryCount name "fs.entryCount"
+hostTargets cell fsEntryCount scoped -1
+hostTargets cell fsEntryName name "fs.entryName"
+hostTargets cell fsEntryName scoped -1
+hostTargets cell fsExists name "fs.exists"
+hostTargets cell fsExists scoped 0
+hostTargets cell fsListDirectory name "fs.listDirectory"
+hostTargets cell fsListDirectory scoped 0
+hostTargets cell fsLock name "fs.lock"
+hostTargets cell fsLock scoped -1
+hostTargets cell fsOpenAppend name "fs.openAppend"
+hostTargets cell fsOpenAppend scoped 0
+hostTargets cell fsOpenRead name "fs.openRead"
+hostTargets cell fsOpenRead scoped 0
+hostTargets cell fsOpenWrite name "fs.openWrite"
+hostTargets cell fsOpenWrite scoped 0
+hostTargets cell fsRead name "fs.read"
+hostTargets cell fsRead scoped -1
+hostTargets cell fsReadAll name "fs.readAll"
+hostTargets cell fsReadAll scoped 0
+hostTargets cell fsRemove name "fs.remove"
+hostTargets cell fsRemove scoped 0
+hostTargets cell fsRemoveDirectory name "fs.removeDirectory"
+hostTargets cell fsRemoveDirectory scoped 0
+hostTargets cell fsUnlock name "fs.unlock"
+hostTargets cell fsUnlock scoped -1
+hostTargets cell fsWrite name "fs.write"
+hostTargets cell fsWrite scoped -1
+hostTargets cell fsWriteAll name "fs.writeAll"
+hostTargets cell fsWriteAll scoped 0
+hostTargets cell consoleReadLine name "console.readLine"
+hostTargets cell consoleReadLine scoped -1
+hostTargets cell environmentGet name "environment.get"
+hostTargets cell environmentGet scoped -1
+hostTargets cell processAddArgument name "process.addArgument"
+hostTargets cell processAddArgument scoped -1
+hostTargets cell processArgument name "process.argument"
+hostTargets cell processArgument scoped -1
+hostTargets cell processArgumentCount name "process.argumentCount"
+hostTargets cell processArgumentCount scoped -1
+hostTargets cell processNewArguments name "process.newArguments"
+hostTargets cell processNewArguments scoped -1
+hostTargets cell processRun name "process.run"
+hostTargets cell processRun scoped 0
+hostTargets cell processRunCaptured name "process.runCaptured"
+hostTargets cell processRunCaptured scoped 0
+hostTargets cell secretFromEnvironment name "secret.fromEnvironment"
+hostTargets cell secretFromEnvironment scoped -1
+hostTargets cell secretFromText name "secret.fromText"
+hostTargets cell secretFromText scoped -1
+hostTargets cell secretLength name "secret.length"
+hostTargets cell secretLength scoped -1
+hostTargets cell secretMatches name "secret.matches"
+hostTargets cell secretMatches scoped -1
+hostTargets cell secretReveal name "secret.reveal"
+hostTargets cell secretReveal scoped -1
+hostTargets cell cryptoConstantTimeEquals name "crypto.constantTimeEquals"
+hostTargets cell cryptoConstantTimeEquals scoped -1
+hostTargets cell cryptoHmacSha256 name "crypto.hmacSha256"
+hostTargets cell cryptoHmacSha256 scoped -1
+hostTargets cell cryptoSha256 name "crypto.sha256"
+hostTargets cell cryptoSha256 scoped -1
+hostTargets cell cryptoToHex name "crypto.toHex"
+hostTargets cell cryptoToHex scoped -1
+hostTargets cell ffiBind name "ffi.Function.bind"
+hostTargets cell ffiBind scoped 1
+hostTargets cell ffiClose name "ffi.close"
+hostTargets cell ffiClose scoped -1
+hostTargets cell ffiOpen name "ffi.open"
+hostTargets cell ffiOpen scoped 0
 
 # ---------------------------------------------------------------- traps
 failText is operation
@@ -2464,517 +2610,6 @@ storeCount catch none
 storeCount suppresses none
 
 # ---------------------------------------------------------------- a call's slots
-slotOf is operation
-slotOf purpose "The address of a parameter's first slot among a call's argument slots"
-slotOf invariant none
-slotOf typeParameter none
-slotOf input shape machine.Address copied
-slotOf input args machine.Address copied
-slotOf input parameter Int64 copied
-slotOf output machine.Address
-slotOf outputOwnedBy none
-slotOf raises none
-slotOf effect use machine.memory
-slotOf uses memoryAccess
-slotOf memoryHeap false
-slotOf async false
-slotOf maxRecursion none
-slotOf label begin loopKind none
-slotOf label begin within none
-slotOf let eight Int64 8 immutable
-slotOf let twoThirtyTwo Int64 232 immutable
-slotOf at begin do parameterOffset
-slotOf at begin do startOffset
-slotOf at begin do findStart
-slotOf at begin do readStart
-slotOf at begin do startBytes
-slotOf at begin do findSlot
-slotOf at begin return ok slot
-
-parameterOffset is call
-parameterOffset in slotOf
-parameterOffset invokes math.multiplyInt64
-parameterOffset argument left Int64 parameter copy
-parameterOffset argument right Int64 eight copy
-parameterOffset result place Int64
-parameterOffset ownedBy none
-parameterOffset cleanedBy none
-parameterOffset borrows none
-parameterOffset catch none
-parameterOffset suppresses none
-
-startOffset is call
-startOffset in slotOf
-startOffset invokes math.addInt64
-startOffset argument left Int64 place copy
-startOffset argument right Int64 twoThirtyTwo copy
-startOffset result startSlotOffset Int64
-startOffset ownedBy none
-startOffset cleanedBy none
-startOffset borrows none
-startOffset catch none
-startOffset suppresses none
-
-findStart is call
-findStart in slotOf
-findStart invokes machine.offset
-findStart argument address machine.Address shape copy
-findStart argument bytes Int64 startSlotOffset copy
-findStart result startSlot machine.Address
-findStart ownedBy none
-findStart cleanedBy none
-findStart borrows none
-findStart catch none
-findStart suppresses none
-
-readStart is call
-readStart in slotOf
-readStart invokes machine.loadInt64
-readStart argument address machine.Address startSlot copy
-readStart result start Int64
-readStart ownedBy none
-readStart cleanedBy none
-readStart borrows none
-readStart catch none
-readStart suppresses none
-
-startBytes is call
-startBytes in slotOf
-startBytes invokes math.multiplyInt64
-startBytes argument left Int64 start copy
-startBytes argument right Int64 eight copy
-startBytes result offset Int64
-startBytes ownedBy none
-startBytes cleanedBy none
-startBytes borrows none
-startBytes catch none
-startBytes suppresses none
-
-findSlot is call
-findSlot in slotOf
-findSlot invokes machine.offset
-findSlot argument address machine.Address args copy
-findSlot argument bytes Int64 offset copy
-findSlot result slot machine.Address
-findSlot ownedBy none
-findSlot cleanedBy none
-findSlot borrows none
-findSlot catch none
-findSlot suppresses none
-
-argOf is operation
-argOf purpose "A parameter's first slot as a number"
-argOf invariant none
-argOf typeParameter none
-argOf input shape machine.Address copied
-argOf input args machine.Address copied
-argOf input parameter Int64 copied
-argOf output Int64
-argOf outputOwnedBy none
-argOf raises none
-argOf effect use machine.memory
-argOf uses memoryAccess
-argOf memoryHeap false
-argOf async false
-argOf maxRecursion none
-argOf label begin loopKind none
-argOf label begin within none
-argOf let none
-argOf at begin do findSlot
-argOf at begin do readSlot
-argOf at begin return ok value
-
-findSlot is call
-findSlot in argOf
-findSlot invokes slotOf
-findSlot argument shape machine.Address shape copy
-findSlot argument args machine.Address args copy
-findSlot argument parameter Int64 parameter copy
-findSlot result slot machine.Address
-findSlot ownedBy none
-findSlot cleanedBy none
-findSlot borrows none
-findSlot catch none
-findSlot suppresses none
-
-readSlot is call
-readSlot in argOf
-readSlot invokes machine.loadInt64
-readSlot argument address machine.Address slot copy
-readSlot result value Int64
-readSlot ownedBy none
-readSlot cleanedBy none
-readSlot borrows none
-readSlot catch none
-readSlot suppresses none
-
-addressArg is operation
-addressArg purpose "A parameter's first slot as an address"
-addressArg invariant none
-addressArg typeParameter none
-addressArg input shape machine.Address copied
-addressArg input args machine.Address copied
-addressArg input parameter Int64 copied
-addressArg output machine.Address
-addressArg outputOwnedBy none
-addressArg raises none
-addressArg effect use machine.memory
-addressArg uses memoryAccess
-addressArg memoryHeap false
-addressArg async false
-addressArg maxRecursion none
-addressArg label begin loopKind none
-addressArg label begin within none
-addressArg let none
-addressArg at begin do findSlot
-addressArg at begin do readSlot
-addressArg at begin return ok value
-
-findSlot is call
-findSlot in addressArg
-findSlot invokes slotOf
-findSlot argument shape machine.Address shape copy
-findSlot argument args machine.Address args copy
-findSlot argument parameter Int64 parameter copy
-findSlot result slot machine.Address
-findSlot ownedBy none
-findSlot cleanedBy none
-findSlot borrows none
-findSlot catch none
-findSlot suppresses none
-
-readSlot is call
-readSlot in addressArg
-readSlot invokes machine.loadAddress
-readSlot argument address machine.Address slot copy
-readSlot result value machine.Address
-readSlot ownedBy none
-readSlot cleanedBy none
-readSlot borrows none
-readSlot catch none
-readSlot suppresses none
-
-countOf is operation
-countOf purpose "How many slots a parameter takes"
-countOf invariant none
-countOf typeParameter none
-countOf input shape machine.Address copied
-countOf input parameter Int64 copied
-countOf output Int64
-countOf outputOwnedBy none
-countOf raises none
-countOf effect use machine.memory
-countOf uses memoryAccess
-countOf memoryHeap false
-countOf async false
-countOf maxRecursion none
-countOf label begin loopKind none
-countOf label begin within none
-countOf let eight Int64 8 immutable
-countOf let forty Int64 40 immutable
-countOf at begin do parameterOffset
-countOf at begin do countOffset
-countOf at begin do findCount
-countOf at begin do readCount
-countOf at begin return ok count
-
-parameterOffset is call
-parameterOffset in countOf
-parameterOffset invokes math.multiplyInt64
-parameterOffset argument left Int64 parameter copy
-parameterOffset argument right Int64 eight copy
-parameterOffset result place Int64
-parameterOffset ownedBy none
-parameterOffset cleanedBy none
-parameterOffset borrows none
-parameterOffset catch none
-parameterOffset suppresses none
-
-countOffset is call
-countOffset in countOf
-countOffset invokes math.addInt64
-countOffset argument left Int64 place copy
-countOffset argument right Int64 forty copy
-countOffset result countSlotOffset Int64
-countOffset ownedBy none
-countOffset cleanedBy none
-countOffset borrows none
-countOffset catch none
-countOffset suppresses none
-
-findCount is call
-findCount in countOf
-findCount invokes machine.offset
-findCount argument address machine.Address shape copy
-findCount argument bytes Int64 countSlotOffset copy
-findCount result countSlot machine.Address
-findCount ownedBy none
-findCount cleanedBy none
-findCount borrows none
-findCount catch none
-findCount suppresses none
-
-readCount is call
-readCount in countOf
-readCount invokes machine.loadInt64
-readCount argument address machine.Address countSlot copy
-readCount result count Int64
-readCount ownedBy none
-readCount cleanedBy none
-readCount borrows none
-readCount catch none
-readCount suppresses none
-
-shapeField is operation
-shapeField purpose "A whole number of a shape at an offset: 16 its target, 24 its parameters, 32 its result slots"
-shapeField invariant none
-shapeField typeParameter none
-shapeField input shape machine.Address copied
-shapeField input offset Int64 copied
-shapeField output Int64
-shapeField outputOwnedBy none
-shapeField raises none
-shapeField effect use machine.memory
-shapeField uses memoryAccess
-shapeField memoryHeap false
-shapeField async false
-shapeField maxRecursion none
-shapeField label begin loopKind none
-shapeField label begin within none
-shapeField let none
-shapeField at begin do findField
-shapeField at begin do readField
-shapeField at begin return ok value
-
-findField is call
-findField in shapeField
-findField invokes machine.offset
-findField argument address machine.Address shape copy
-findField argument bytes Int64 offset copy
-findField result field machine.Address
-findField ownedBy none
-findField cleanedBy none
-findField borrows none
-findField catch none
-findField suppresses none
-
-readField is call
-readField in shapeField
-readField invokes machine.loadInt64
-readField argument address machine.Address field copy
-readField result value Int64
-readField ownedBy none
-readField cleanedBy none
-readField borrows none
-readField catch none
-readField suppresses none
-
-flagArg is operation
-flagArg purpose "Whether a call has a parameter at a position and its slot is not 0 (the flags the compiler adds to `new`)"
-flagArg invariant none
-flagArg typeParameter none
-flagArg input shape machine.Address copied
-flagArg input args machine.Address copied
-flagArg input parameter Int64 copied
-flagArg output Int64
-flagArg outputOwnedBy none
-flagArg raises none
-flagArg effect use machine.memory
-flagArg uses memoryAccess
-flagArg memoryHeap false
-flagArg async false
-flagArg maxRecursion none
-flagArg label begin loopKind none
-flagArg label begin within none
-flagArg label absent loopKind none
-flagArg label absent within none
-flagArg label readFlag loopKind none
-flagArg label readFlag within none
-flagArg label giveYes loopKind none
-flagArg label giveYes within none
-flagArg let no Int64 0 immutable
-flagArg let yes Int64 1 immutable
-flagArg let twentyFour Int64 24 immutable
-flagArg at begin do readParams
-flagArg at begin do presentCheck
-flagArg at begin branch if present goto readFlag else goto absent
-flagArg at absent return ok no
-flagArg at readFlag do readValue
-flagArg at readFlag do setCheck
-flagArg at readFlag branch if flagged goto giveYes else goto absent
-flagArg at giveYes return ok yes
-
-readParams is call
-readParams in flagArg
-readParams invokes shapeField
-readParams argument shape machine.Address shape copy
-readParams argument offset Int64 twentyFour copy
-readParams result params Int64
-readParams ownedBy none
-readParams cleanedBy none
-readParams borrows none
-readParams catch none
-readParams suppresses none
-
-presentCheck is call
-presentCheck in flagArg
-presentCheck invokes compare.lessThanInt64
-presentCheck argument left Int64 parameter copy
-presentCheck argument right Int64 params copy
-presentCheck result present Bool
-presentCheck ownedBy none
-presentCheck cleanedBy none
-presentCheck borrows none
-presentCheck catch none
-presentCheck suppresses none
-
-readValue is call
-readValue in flagArg
-readValue invokes argOf
-readValue argument shape machine.Address shape copy
-readValue argument args machine.Address args copy
-readValue argument parameter Int64 parameter copy
-readValue result value Int64
-readValue ownedBy none
-readValue cleanedBy none
-readValue borrows none
-readValue catch none
-readValue suppresses none
-
-setCheck is call
-setCheck in flagArg
-setCheck invokes compare.notEqualInt64
-setCheck argument left Int64 value copy
-setCheck argument right Int64 no copy
-setCheck result flagged Bool
-setCheck ownedBy none
-setCheck cleanedBy none
-setCheck borrows none
-setCheck catch none
-setCheck suppresses none
-
-putText is operation
-putText purpose "Copy bytes into a region and store the copy's address and length in two slots"
-putText invariant none
-putText typeParameter none
-putText input region machine.Address copied
-putText input data machine.Address copied
-putText input bytes Int64 copied
-putText input out machine.Address copied
-putText output none
-putText outputOwnedBy none
-putText raises none
-putText effect use machine.memory
-putText effect use system.calls
-putText uses memoryAccess
-putText uses systemCalls
-putText memoryHeap false
-putText async false
-putText maxRecursion none
-putText label begin loopKind none
-putText label begin within none
-putText let eight Int64 8 immutable
-putText at begin do take
-putText at begin do copyIn
-putText at begin do storeAddress
-putText at begin do findLength
-putText at begin do storeLength
-putText at begin return ok none
-
-take is call
-take in putText
-take invokes regions.allocate
-take argument region machine.Address region copy
-take argument size Int64 bytes copy
-take result block machine.Address
-take ownedBy none
-take cleanedBy none
-take borrows none
-take catch none
-take suppresses none
-
-copyIn is call
-copyIn in putText
-copyIn invokes machine.copy
-copyIn argument target machine.Address block copy
-copyIn argument source machine.Address data copy
-copyIn argument bytes Int64 bytes copy
-copyIn result none
-copyIn ownedBy none
-copyIn cleanedBy none
-copyIn borrows none
-copyIn catch none
-copyIn suppresses none
-
-storeAddress is call
-storeAddress in putText
-storeAddress invokes machine.storeAddress
-storeAddress argument address machine.Address out copy
-storeAddress argument value machine.Address block copy
-storeAddress result none
-storeAddress ownedBy none
-storeAddress cleanedBy none
-storeAddress borrows none
-storeAddress catch none
-storeAddress suppresses none
-
-findLength is call
-findLength in putText
-findLength invokes machine.offset
-findLength argument address machine.Address out copy
-findLength argument bytes Int64 eight copy
-findLength result lengthSlot machine.Address
-findLength ownedBy none
-findLength cleanedBy none
-findLength borrows none
-findLength catch none
-findLength suppresses none
-
-storeLength is call
-storeLength in putText
-storeLength invokes machine.storeInt64
-storeLength argument address machine.Address lengthSlot copy
-storeLength argument value Int64 bytes copy
-storeLength result none
-storeLength ownedBy none
-storeLength cleanedBy none
-storeLength borrows none
-storeLength catch none
-storeLength suppresses none
-
-failWith is operation
-failWith purpose "Store an error's payload and give its variant's number"
-failWith invariant none
-failWith typeParameter none
-failWith input payload machine.Address copied
-failWith input status Int32 copied
-failWith input value Int64 copied
-failWith output Int32
-failWith outputOwnedBy none
-failWith raises none
-failWith effect use machine.memory
-failWith uses memoryAccess
-failWith memoryHeap false
-failWith async false
-failWith maxRecursion none
-failWith label begin loopKind none
-failWith label begin within none
-failWith let none
-failWith at begin do storePayload
-failWith at begin return ok status
-
-storePayload is call
-storePayload in failWith
-storePayload invokes machine.storeInt64
-storePayload argument address machine.Address payload copy
-storePayload argument value Int64 value copy
-storePayload result none
-storePayload ownedBy none
-storePayload cleanedBy none
-storePayload borrows none
-storePayload catch none
-storePayload suppresses none
-
 # ---------------------------------------------------------------- text
 utf8InvalidAt is operation
 utf8InvalidAt purpose "The offset of the first byte that does not start a valid UTF-8 sequence, or -1: the strict rules and offset of Python's decoder (no overlong forms, no surrogates, nothing past U+10FFFF)"
@@ -3643,7 +3278,7 @@ fromBytes at copy return ok ok
 
 findRaw is call
 findRaw in fromBytes
-findRaw invokes slotOf
+findRaw invokes slots.slotOf
 findRaw argument shape machine.Address shape copy
 findRaw argument args machine.Address args copy
 findRaw argument parameter Int64 zero copy
@@ -3714,7 +3349,7 @@ badCheck suppresses none
 
 failed is call
 failed in fromBytes
-failed invokes failWith
+failed invokes slots.failWith
 failed argument payload machine.Address payload copy
 failed argument status Int32 utf8Invalid copy
 failed argument value Int64 bad copy
@@ -3727,7 +3362,7 @@ failed suppresses none
 
 readRegion is call
 readRegion in fromBytes
-readRegion invokes addressArg
+readRegion invokes slots.addressArg
 readRegion argument shape machine.Address shape copy
 readRegion argument args machine.Address args copy
 readRegion argument parameter Int64 one copy
@@ -3740,7 +3375,7 @@ readRegion suppresses none
 
 copyText is call
 copyText in fromBytes
-copyText invokes putText
+copyText invokes slots.putText
 copyText argument region machine.Address region copy
 copyText argument data machine.Address data copy
 copyText argument bytes Int64 length copy
@@ -3793,7 +3428,7 @@ takeBuffer suppresses none
 
 readRegion is call
 readRegion in bufferNew
-readRegion invokes addressArg
+readRegion invokes slots.addressArg
 readRegion argument shape machine.Address shape copy
 readRegion argument args machine.Address args copy
 readRegion argument parameter Int64 zero copy
@@ -4128,7 +3763,7 @@ bufferAppendString at begin return ok none
 
 readHandle is call
 readHandle in bufferAppendString
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -4153,7 +3788,7 @@ findBuffer suppresses none
 
 findText is call
 findText in bufferAppendString
-findText invokes slotOf
+findText invokes slots.slotOf
 findText argument shape machine.Address shape copy
 findText argument args machine.Address args copy
 findText argument parameter Int64 one copy
@@ -4244,7 +3879,7 @@ bufferAppendByte at begin return ok none
 
 readHandle is call
 readHandle in bufferAppendByte
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -4269,7 +3904,7 @@ findBuffer suppresses none
 
 readValue is call
 readValue in bufferAppendByte
-readValue invokes argOf
+readValue invokes slots.argOf
 readValue argument shape machine.Address shape copy
 readValue argument args machine.Address args copy
 readValue argument parameter Int64 one copy
@@ -4369,7 +4004,7 @@ bufferAppendInt at begin return ok none
 
 readHandle is call
 readHandle in bufferAppendInt
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -4394,7 +4029,7 @@ findBuffer suppresses none
 
 readValue is call
 readValue in bufferAppendInt
-readValue invokes argOf
+readValue invokes slots.argOf
 readValue argument shape machine.Address shape copy
 readValue argument args machine.Address args copy
 readValue argument parameter Int64 one copy
@@ -4471,7 +4106,7 @@ bufferLength at begin return ok none
 
 readHandle is call
 readHandle in bufferLength
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -4573,7 +4208,7 @@ bufferToString at copy return ok ok
 
 readHandle is call
 readHandle in bufferToString
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -4656,7 +4291,7 @@ badCheck suppresses none
 
 failed is call
 failed in bufferToString
-failed invokes failWith
+failed invokes slots.failWith
 failed argument payload machine.Address payload copy
 failed argument status Int32 utf8Invalid copy
 failed argument value Int64 bad copy
@@ -4669,7 +4304,7 @@ failed suppresses none
 
 readRegion is call
 readRegion in bufferToString
-readRegion invokes addressArg
+readRegion invokes slots.addressArg
 readRegion argument shape machine.Address shape copy
 readRegion argument args machine.Address args copy
 readRegion argument parameter Int64 one copy
@@ -4682,7 +4317,7 @@ readRegion suppresses none
 
 copyText is call
 copyText in bufferToString
-copyText invokes putText
+copyText invokes slots.putText
 copyText argument region machine.Address region copy
 copyText argument data machine.Address data copy
 copyText argument bytes Int64 length copy
@@ -4759,7 +4394,7 @@ bufferToBytes at keep return ok none
 
 readHandle is call
 readHandle in bufferToBytes
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -5310,7 +4945,7 @@ closeCheck suppresses none
 
 findText is call
 findText in logLine
-findText invokes slotOf
+findText invokes slots.slotOf
 findText argument shape machine.Address shape copy
 findText argument args machine.Address args copy
 findText argument parameter Int64 zero copy
@@ -5429,7 +5064,7 @@ widen suppresses none
 
 report is call
 report in logLine
-report invokes failWith
+report invokes slots.failWith
 report argument payload machine.Address payload copy
 report argument status Int32 logFailed copy
 report argument value Int64 code copy
@@ -5505,7 +5140,7 @@ takeMap suppresses none
 
 readRegion is call
 readRegion in mapNew
-readRegion invokes addressArg
+readRegion invokes slots.addressArg
 readRegion argument shape machine.Address shape copy
 readRegion argument args machine.Address args copy
 readRegion argument parameter Int64 zero copy
@@ -5530,7 +5165,7 @@ storeRegion suppresses none
 
 readText is call
 readText in mapNew
-readText invokes flagArg
+readText invokes slots.flagArg
 readText argument shape machine.Address shape copy
 readText argument args machine.Address args copy
 readText argument parameter Int64 one copy
@@ -5543,7 +5178,7 @@ readText suppresses none
 
 readTextValues is call
 readTextValues in mapNew
-readTextValues invokes flagArg
+readTextValues invokes slots.flagArg
 readTextValues argument shape machine.Address shape copy
 readTextValues argument args machine.Address args copy
 readTextValues argument parameter Int64 two copy
@@ -5698,7 +5333,7 @@ mapArg at begin return ok map
 
 readHandle is call
 readHandle in mapArg
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -5735,7 +5370,7 @@ findTable suppresses none
 
 keySlots is call
 keySlots in mapArg
-keySlots invokes countOf
+keySlots invokes slots.countOf
 keySlots argument shape machine.Address shape copy
 keySlots argument parameter Int64 one copy
 keySlots result keyCount Int64
@@ -5971,7 +5606,7 @@ mapPut at plainValue return ok none
 
 valueSlots is call
 valueSlots in mapPut
-valueSlots invokes countOf
+valueSlots invokes slots.countOf
 valueSlots argument shape machine.Address shape copy
 valueSlots argument parameter Int64 two copy
 valueSlots result valueCount Int64
@@ -6008,7 +5643,7 @@ findTable suppresses none
 
 findKey is call
 findKey in mapPut
-findKey invokes slotOf
+findKey invokes slots.slotOf
 findKey argument shape machine.Address shape copy
 findKey argument args machine.Address args copy
 findKey argument parameter Int64 one copy
@@ -6149,7 +5784,7 @@ readLength suppresses none
 
 copyText is call
 copyText in mapPut
-copyText invokes putText
+copyText invokes slots.putText
 copyText argument region machine.Address region copy
 copyText argument data machine.Address data copy
 copyText argument bytes Int64 length copy
@@ -6275,7 +5910,7 @@ findValue suppresses none
 
 findGiven is call
 findGiven in mapPut
-findGiven invokes slotOf
+findGiven invokes slots.slotOf
 findGiven argument shape machine.Address shape copy
 findGiven argument args machine.Address args copy
 findGiven argument parameter Int64 two copy
@@ -6357,7 +5992,7 @@ readValueLength suppresses none
 
 copyValueText is call
 copyValueText in mapPut
-copyValueText invokes putText
+copyValueText invokes slots.putText
 copyValueText argument region machine.Address region copy
 copyValueText argument data machine.Address valueData copy
 copyValueText argument bytes Int64 valueLength copy
@@ -6467,7 +6102,7 @@ mapGet at give return ok ok
 
 resultSlots is call
 resultSlots in mapGet
-resultSlots invokes shapeField
+resultSlots invokes slots.shapeField
 resultSlots argument shape machine.Address shape copy
 resultSlots argument offset Int64 thirtyTwo copy
 resultSlots result resultCount Int64
@@ -6504,7 +6139,7 @@ findTable suppresses none
 
 findKey is call
 findKey in mapGet
-findKey invokes slotOf
+findKey invokes slots.slotOf
 findKey argument shape machine.Address shape copy
 findKey argument args machine.Address args copy
 findKey argument parameter Int64 one copy
@@ -6554,7 +6189,7 @@ missingCheck suppresses none
 
 failed is call
 failed in mapGet
-failed invokes failWith
+failed invokes slots.failWith
 failed argument payload machine.Address payload copy
 failed argument status Int32 keyMissing copy
 failed argument value Int64 zero copy
@@ -6704,7 +6339,7 @@ findTable suppresses none
 
 findKey is call
 findKey in mapContains
-findKey invokes slotOf
+findKey invokes slots.slotOf
 findKey argument shape machine.Address shape copy
 findKey argument args machine.Address args copy
 findKey argument parameter Int64 one copy
@@ -6843,7 +6478,7 @@ findTable suppresses none
 
 findKey is call
 findKey in mapRemove
-findKey invokes slotOf
+findKey invokes slots.slotOf
 findKey argument shape machine.Address shape copy
 findKey argument args machine.Address args copy
 findKey argument parameter Int64 one copy
@@ -6893,7 +6528,7 @@ missingCheck suppresses none
 
 failed is call
 failed in mapRemove
-failed invokes failWith
+failed invokes slots.failWith
 failed argument payload machine.Address payload copy
 failed argument status Int32 keyMissing copy
 failed argument value Int64 zero copy
@@ -6946,7 +6581,7 @@ mapLength at begin return ok none
 
 readHandle is call
 readHandle in mapLength
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -7051,7 +6686,7 @@ mapKeyAt at give return ok none
 
 readHandle is call
 readHandle in mapKeyAt
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -7088,7 +6723,7 @@ findTable suppresses none
 
 readPosition is call
 readPosition in mapKeyAt
-readPosition invokes argOf
+readPosition invokes slots.argOf
 readPosition argument shape machine.Address shape copy
 readPosition argument args machine.Address args copy
 readPosition argument parameter Int64 one copy
@@ -7261,7 +6896,7 @@ takeSet suppresses none
 
 readRegion is call
 readRegion in setNew
-readRegion invokes addressArg
+readRegion invokes slots.addressArg
 readRegion argument shape machine.Address shape copy
 readRegion argument args machine.Address args copy
 readRegion argument parameter Int64 zero copy
@@ -7274,7 +6909,7 @@ readRegion suppresses none
 
 readText is call
 readText in setNew
-readText invokes flagArg
+readText invokes slots.flagArg
 readText argument shape machine.Address shape copy
 readText argument args machine.Address args copy
 readText argument parameter Int64 one copy
@@ -7364,7 +6999,7 @@ setArg at begin return ok items
 
 readHandle is call
 readHandle in setArg
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -7389,7 +7024,7 @@ findSet suppresses none
 
 itemSlots is call
 itemSlots in setArg
-itemSlots invokes countOf
+itemSlots invokes slots.countOf
 itemSlots argument shape machine.Address shape copy
 itemSlots argument parameter Int64 one copy
 itemSlots result itemCount Int64
@@ -7477,7 +7112,7 @@ findSet suppresses none
 
 findItem is call
 findItem in setAdd
-findItem invokes slotOf
+findItem invokes slots.slotOf
 findItem argument shape machine.Address shape copy
 findItem argument args machine.Address args copy
 findItem argument parameter Int64 one copy
@@ -7550,7 +7185,7 @@ isTextCheck suppresses none
 
 readHandle is call
 readHandle in setAdd
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -7619,7 +7254,7 @@ readLength suppresses none
 
 copyText is call
 copyText in setAdd
-copyText invokes putText
+copyText invokes slots.putText
 copyText argument region machine.Address region copy
 copyText argument data machine.Address data copy
 copyText argument bytes Int64 length copy
@@ -7702,7 +7337,7 @@ setItemAt at give return ok none
 
 readHandle is call
 readHandle in setItemAt
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -7727,7 +7362,7 @@ findSet suppresses none
 
 readPosition is call
 readPosition in setItemAt
-readPosition invokes argOf
+readPosition invokes slots.argOf
 readPosition argument shape machine.Address shape copy
 readPosition argument args machine.Address args copy
 readPosition argument parameter Int64 one copy
@@ -7897,7 +7532,7 @@ findSet suppresses none
 
 findItem is call
 findItem in setContains
-findItem invokes slotOf
+findItem invokes slots.slotOf
 findItem argument shape machine.Address shape copy
 findItem argument args machine.Address args copy
 findItem argument parameter Int64 one copy
@@ -8017,7 +7652,7 @@ findSet suppresses none
 
 findItem is call
 findItem in setRemove
-findItem invokes slotOf
+findItem invokes slots.slotOf
 findItem argument shape machine.Address shape copy
 findItem argument args machine.Address args copy
 findItem argument parameter Int64 one copy
@@ -8105,7 +7740,7 @@ setLength at begin return ok none
 
 readHandle is call
 readHandle in setLength
-readHandle invokes argOf
+readHandle invokes slots.argOf
 readHandle argument shape machine.Address shape copy
 readHandle argument args machine.Address args copy
 readHandle argument parameter Int64 zero copy
@@ -8303,7 +7938,6 @@ dispatch let n22 Int64 22 immutable
 dispatch let n23 Int64 23 immutable
 dispatch let n24 Int64 24 immutable
 dispatch let n25 Int64 25 immutable
-dispatch let unknownText String "a host call named a target this runtime does not number" immutable
 dispatch at begin do is1
 dispatch at begin branch if t1 goto do1 else goto check2
 dispatch at do1 do run1
@@ -8404,8 +8038,8 @@ dispatch at check25 do is25
 dispatch at check25 branch if t25 goto do25 else goto unknown
 dispatch at do25 do run25
 dispatch at do25 return ok status25
-dispatch at unknown do failUnknown
-dispatch at unknown return ok ok
+dispatch at unknown do runMore
+dispatch at unknown return ok statusMore
 
 is1 is call
 is1 in dispatch
@@ -9033,8 +8667,1655 @@ run25 borrows none
 run25 catch none
 run25 suppresses none
 
+runMore is call
+runMore in dispatch
+runMore invokes dispatchMore
+runMore argument number Int64 number copy
+runMore argument shape machine.Address shape copy
+runMore argument args machine.Address args copy
+runMore argument results machine.Address results copy
+runMore argument payload machine.Address payload copy
+runMore result statusMore Int32
+runMore ownedBy none
+runMore cleanedBy none
+runMore borrows none
+runMore catch none
+runMore suppresses none
+
+dispatchMore is operation
+dispatchMore purpose "Run a host target of stage 3 and 4 by its number (26 on): 0, or an error's variant number with its payload stored"
+dispatchMore invariant none
+dispatchMore typeParameter none
+dispatchMore input number Int64 copied
+dispatchMore input shape machine.Address copied
+dispatchMore input args machine.Address copied
+dispatchMore input results machine.Address copied
+dispatchMore input payload machine.Address copied
+dispatchMore output Int32
+dispatchMore outputOwnedBy none
+dispatchMore raises none
+dispatchMore effect use machine.memory
+dispatchMore effect use system.calls
+dispatchMore uses memoryAccess
+dispatchMore uses systemCalls
+dispatchMore memoryHeap false
+dispatchMore async false
+dispatchMore maxRecursion none
+dispatchMore label begin loopKind none
+dispatchMore label begin within none
+dispatchMore label check26 loopKind none
+dispatchMore label check26 within none
+dispatchMore label do26 loopKind none
+dispatchMore label do26 within none
+dispatchMore label check27 loopKind none
+dispatchMore label check27 within none
+dispatchMore label do27 loopKind none
+dispatchMore label do27 within none
+dispatchMore label check28 loopKind none
+dispatchMore label check28 within none
+dispatchMore label do28 loopKind none
+dispatchMore label do28 within none
+dispatchMore label check29 loopKind none
+dispatchMore label check29 within none
+dispatchMore label do29 loopKind none
+dispatchMore label do29 within none
+dispatchMore label check30 loopKind none
+dispatchMore label check30 within none
+dispatchMore label do30 loopKind none
+dispatchMore label do30 within none
+dispatchMore label check31 loopKind none
+dispatchMore label check31 within none
+dispatchMore label do31 loopKind none
+dispatchMore label do31 within none
+dispatchMore label check32 loopKind none
+dispatchMore label check32 within none
+dispatchMore label do32 loopKind none
+dispatchMore label do32 within none
+dispatchMore label check33 loopKind none
+dispatchMore label check33 within none
+dispatchMore label do33 loopKind none
+dispatchMore label do33 within none
+dispatchMore label check34 loopKind none
+dispatchMore label check34 within none
+dispatchMore label do34 loopKind none
+dispatchMore label do34 within none
+dispatchMore label check35 loopKind none
+dispatchMore label check35 within none
+dispatchMore label do35 loopKind none
+dispatchMore label do35 within none
+dispatchMore label check36 loopKind none
+dispatchMore label check36 within none
+dispatchMore label do36 loopKind none
+dispatchMore label do36 within none
+dispatchMore label check37 loopKind none
+dispatchMore label check37 within none
+dispatchMore label do37 loopKind none
+dispatchMore label do37 within none
+dispatchMore label check38 loopKind none
+dispatchMore label check38 within none
+dispatchMore label do38 loopKind none
+dispatchMore label do38 within none
+dispatchMore label check39 loopKind none
+dispatchMore label check39 within none
+dispatchMore label do39 loopKind none
+dispatchMore label do39 within none
+dispatchMore label check40 loopKind none
+dispatchMore label check40 within none
+dispatchMore label do40 loopKind none
+dispatchMore label do40 within none
+dispatchMore label check41 loopKind none
+dispatchMore label check41 within none
+dispatchMore label do41 loopKind none
+dispatchMore label do41 within none
+dispatchMore label check42 loopKind none
+dispatchMore label check42 within none
+dispatchMore label do42 loopKind none
+dispatchMore label do42 within none
+dispatchMore label check43 loopKind none
+dispatchMore label check43 within none
+dispatchMore label do43 loopKind none
+dispatchMore label do43 within none
+dispatchMore label check44 loopKind none
+dispatchMore label check44 within none
+dispatchMore label do44 loopKind none
+dispatchMore label do44 within none
+dispatchMore label check45 loopKind none
+dispatchMore label check45 within none
+dispatchMore label do45 loopKind none
+dispatchMore label do45 within none
+dispatchMore label check46 loopKind none
+dispatchMore label check46 within none
+dispatchMore label do46 loopKind none
+dispatchMore label do46 within none
+dispatchMore label check47 loopKind none
+dispatchMore label check47 within none
+dispatchMore label do47 loopKind none
+dispatchMore label do47 within none
+dispatchMore label check48 loopKind none
+dispatchMore label check48 within none
+dispatchMore label do48 loopKind none
+dispatchMore label do48 within none
+dispatchMore label check49 loopKind none
+dispatchMore label check49 within none
+dispatchMore label do49 loopKind none
+dispatchMore label do49 within none
+dispatchMore label check50 loopKind none
+dispatchMore label check50 within none
+dispatchMore label do50 loopKind none
+dispatchMore label do50 within none
+dispatchMore label check51 loopKind none
+dispatchMore label check51 within none
+dispatchMore label do51 loopKind none
+dispatchMore label do51 within none
+dispatchMore label check52 loopKind none
+dispatchMore label check52 within none
+dispatchMore label do52 loopKind none
+dispatchMore label do52 within none
+dispatchMore label check53 loopKind none
+dispatchMore label check53 within none
+dispatchMore label do53 loopKind none
+dispatchMore label do53 within none
+dispatchMore label check54 loopKind none
+dispatchMore label check54 within none
+dispatchMore label do54 loopKind none
+dispatchMore label do54 within none
+dispatchMore label check55 loopKind none
+dispatchMore label check55 within none
+dispatchMore label do55 loopKind none
+dispatchMore label do55 within none
+dispatchMore label check56 loopKind none
+dispatchMore label check56 within none
+dispatchMore label do56 loopKind none
+dispatchMore label do56 within none
+dispatchMore label check57 loopKind none
+dispatchMore label check57 within none
+dispatchMore label do57 loopKind none
+dispatchMore label do57 within none
+dispatchMore label check58 loopKind none
+dispatchMore label check58 within none
+dispatchMore label do58 loopKind none
+dispatchMore label do58 within none
+dispatchMore label check59 loopKind none
+dispatchMore label check59 within none
+dispatchMore label do59 loopKind none
+dispatchMore label do59 within none
+dispatchMore label check60 loopKind none
+dispatchMore label check60 within none
+dispatchMore label do60 loopKind none
+dispatchMore label do60 within none
+dispatchMore label check61 loopKind none
+dispatchMore label check61 within none
+dispatchMore label do61 loopKind none
+dispatchMore label do61 within none
+dispatchMore label check62 loopKind none
+dispatchMore label check62 within none
+dispatchMore label do62 loopKind none
+dispatchMore label do62 within none
+dispatchMore label check63 loopKind none
+dispatchMore label check63 within none
+dispatchMore label do63 loopKind none
+dispatchMore label do63 within none
+dispatchMore label check64 loopKind none
+dispatchMore label check64 within none
+dispatchMore label do64 loopKind none
+dispatchMore label do64 within none
+dispatchMore label check65 loopKind none
+dispatchMore label check65 within none
+dispatchMore label do65 loopKind none
+dispatchMore label do65 within none
+dispatchMore label check66 loopKind none
+dispatchMore label check66 within none
+dispatchMore label do66 loopKind none
+dispatchMore label do66 within none
+dispatchMore label check67 loopKind none
+dispatchMore label check67 within none
+dispatchMore label do67 loopKind none
+dispatchMore label do67 within none
+dispatchMore label check68 loopKind none
+dispatchMore label check68 within none
+dispatchMore label do68 loopKind none
+dispatchMore label do68 within none
+dispatchMore label check69 loopKind none
+dispatchMore label check69 within none
+dispatchMore label do69 loopKind none
+dispatchMore label do69 within none
+dispatchMore label check70 loopKind none
+dispatchMore label check70 within none
+dispatchMore label do70 loopKind none
+dispatchMore label do70 within none
+dispatchMore label check71 loopKind none
+dispatchMore label check71 within none
+dispatchMore label do71 loopKind none
+dispatchMore label do71 within none
+dispatchMore label check72 loopKind none
+dispatchMore label check72 within none
+dispatchMore label do72 loopKind none
+dispatchMore label do72 within none
+dispatchMore label unknown loopKind none
+dispatchMore label unknown within none
+dispatchMore let ok Int32 0 immutable
+dispatchMore let n26 Int64 26 immutable
+dispatchMore let n27 Int64 27 immutable
+dispatchMore let n28 Int64 28 immutable
+dispatchMore let n29 Int64 29 immutable
+dispatchMore let n30 Int64 30 immutable
+dispatchMore let n31 Int64 31 immutable
+dispatchMore let n32 Int64 32 immutable
+dispatchMore let n33 Int64 33 immutable
+dispatchMore let n34 Int64 34 immutable
+dispatchMore let n35 Int64 35 immutable
+dispatchMore let n36 Int64 36 immutable
+dispatchMore let n37 Int64 37 immutable
+dispatchMore let n38 Int64 38 immutable
+dispatchMore let n39 Int64 39 immutable
+dispatchMore let n40 Int64 40 immutable
+dispatchMore let n41 Int64 41 immutable
+dispatchMore let n42 Int64 42 immutable
+dispatchMore let n43 Int64 43 immutable
+dispatchMore let n44 Int64 44 immutable
+dispatchMore let n45 Int64 45 immutable
+dispatchMore let n46 Int64 46 immutable
+dispatchMore let n47 Int64 47 immutable
+dispatchMore let n48 Int64 48 immutable
+dispatchMore let n49 Int64 49 immutable
+dispatchMore let n50 Int64 50 immutable
+dispatchMore let n51 Int64 51 immutable
+dispatchMore let n52 Int64 52 immutable
+dispatchMore let n53 Int64 53 immutable
+dispatchMore let n54 Int64 54 immutable
+dispatchMore let n55 Int64 55 immutable
+dispatchMore let n56 Int64 56 immutable
+dispatchMore let n57 Int64 57 immutable
+dispatchMore let n58 Int64 58 immutable
+dispatchMore let n59 Int64 59 immutable
+dispatchMore let n60 Int64 60 immutable
+dispatchMore let n61 Int64 61 immutable
+dispatchMore let n62 Int64 62 immutable
+dispatchMore let n63 Int64 63 immutable
+dispatchMore let n64 Int64 64 immutable
+dispatchMore let n65 Int64 65 immutable
+dispatchMore let n66 Int64 66 immutable
+dispatchMore let n67 Int64 67 immutable
+dispatchMore let n68 Int64 68 immutable
+dispatchMore let n69 Int64 69 immutable
+dispatchMore let n70 Int64 70 immutable
+dispatchMore let n71 Int64 71 immutable
+dispatchMore let n72 Int64 72 immutable
+dispatchMore let unknownText String "a host call named a target this runtime does not number" immutable
+dispatchMore at begin goto check26
+dispatchMore at check26 do is26
+dispatchMore at check26 branch if t26 goto do26 else goto check27
+dispatchMore at do26 do run26
+dispatchMore at do26 return ok ok
+dispatchMore at check27 do is27
+dispatchMore at check27 branch if t27 goto do27 else goto check28
+dispatchMore at do27 do run27
+dispatchMore at do27 return ok ok
+dispatchMore at check28 do is28
+dispatchMore at check28 branch if t28 goto do28 else goto check29
+dispatchMore at do28 do run28
+dispatchMore at do28 return ok ok
+dispatchMore at check29 do is29
+dispatchMore at check29 branch if t29 goto do29 else goto check30
+dispatchMore at do29 do run29
+dispatchMore at do29 return ok ok
+dispatchMore at check30 do is30
+dispatchMore at check30 branch if t30 goto do30 else goto check31
+dispatchMore at do30 do run30
+dispatchMore at do30 return ok ok
+dispatchMore at check31 do is31
+dispatchMore at check31 branch if t31 goto do31 else goto check32
+dispatchMore at do31 do run31
+dispatchMore at do31 return ok ok
+dispatchMore at check32 do is32
+dispatchMore at check32 branch if t32 goto do32 else goto check33
+dispatchMore at do32 do run32
+dispatchMore at do32 return ok status32
+dispatchMore at check33 do is33
+dispatchMore at check33 branch if t33 goto do33 else goto check34
+dispatchMore at do33 do run33
+dispatchMore at do33 return ok status33
+dispatchMore at check34 do is34
+dispatchMore at check34 branch if t34 goto do34 else goto check35
+dispatchMore at do34 do run34
+dispatchMore at do34 return ok ok
+dispatchMore at check35 do is35
+dispatchMore at check35 branch if t35 goto do35 else goto check36
+dispatchMore at do35 do run35
+dispatchMore at do35 return ok status35
+dispatchMore at check36 do is36
+dispatchMore at check36 branch if t36 goto do36 else goto check37
+dispatchMore at do36 do run36
+dispatchMore at do36 return ok status36
+dispatchMore at check37 do is37
+dispatchMore at check37 branch if t37 goto do37 else goto check38
+dispatchMore at do37 do run37
+dispatchMore at do37 return ok status37
+dispatchMore at check38 do is38
+dispatchMore at check38 branch if t38 goto do38 else goto check39
+dispatchMore at do38 do run38
+dispatchMore at do38 return ok ok
+dispatchMore at check39 do is39
+dispatchMore at check39 branch if t39 goto do39 else goto check40
+dispatchMore at do39 do run39
+dispatchMore at do39 return ok status39
+dispatchMore at check40 do is40
+dispatchMore at check40 branch if t40 goto do40 else goto check41
+dispatchMore at do40 do run40
+dispatchMore at do40 return ok ok
+dispatchMore at check41 do is41
+dispatchMore at check41 branch if t41 goto do41 else goto check42
+dispatchMore at do41 do run41
+dispatchMore at do41 return ok status41
+dispatchMore at check42 do is42
+dispatchMore at check42 branch if t42 goto do42 else goto check43
+dispatchMore at do42 do run42
+dispatchMore at do42 return ok status42
+dispatchMore at check43 do is43
+dispatchMore at check43 branch if t43 goto do43 else goto check44
+dispatchMore at do43 do run43
+dispatchMore at do43 return ok status43
+dispatchMore at check44 do is44
+dispatchMore at check44 branch if t44 goto do44 else goto check45
+dispatchMore at do44 do run44
+dispatchMore at do44 return ok status44
+dispatchMore at check45 do is45
+dispatchMore at check45 branch if t45 goto do45 else goto check46
+dispatchMore at do45 do run45
+dispatchMore at do45 return ok status45
+dispatchMore at check46 do is46
+dispatchMore at check46 branch if t46 goto do46 else goto check47
+dispatchMore at do46 do run46
+dispatchMore at do46 return ok status46
+dispatchMore at check47 do is47
+dispatchMore at check47 branch if t47 goto do47 else goto check48
+dispatchMore at do47 do run47
+dispatchMore at do47 return ok status47
+dispatchMore at check48 do is48
+dispatchMore at check48 branch if t48 goto do48 else goto check49
+dispatchMore at do48 do run48
+dispatchMore at do48 return ok status48
+dispatchMore at check49 do is49
+dispatchMore at check49 branch if t49 goto do49 else goto check50
+dispatchMore at do49 do run49
+dispatchMore at do49 return ok status49
+dispatchMore at check50 do is50
+dispatchMore at check50 branch if t50 goto do50 else goto check51
+dispatchMore at do50 do run50
+dispatchMore at do50 return ok status50
+dispatchMore at check51 do is51
+dispatchMore at check51 branch if t51 goto do51 else goto check52
+dispatchMore at do51 do run51
+dispatchMore at do51 return ok status51
+dispatchMore at check52 do is52
+dispatchMore at check52 branch if t52 goto do52 else goto check53
+dispatchMore at do52 do run52
+dispatchMore at do52 return ok status52
+dispatchMore at check53 do is53
+dispatchMore at check53 branch if t53 goto do53 else goto check54
+dispatchMore at do53 do run53
+dispatchMore at do53 return ok status53
+dispatchMore at check54 do is54
+dispatchMore at check54 branch if t54 goto do54 else goto check55
+dispatchMore at do54 do run54
+dispatchMore at do54 return ok status54
+dispatchMore at check55 do is55
+dispatchMore at check55 branch if t55 goto do55 else goto check56
+dispatchMore at do55 do run55
+dispatchMore at do55 return ok ok
+dispatchMore at check56 do is56
+dispatchMore at check56 branch if t56 goto do56 else goto check57
+dispatchMore at do56 do run56
+dispatchMore at do56 return ok status56
+dispatchMore at check57 do is57
+dispatchMore at check57 branch if t57 goto do57 else goto check58
+dispatchMore at do57 do run57
+dispatchMore at do57 return ok ok
+dispatchMore at check58 do is58
+dispatchMore at check58 branch if t58 goto do58 else goto check59
+dispatchMore at do58 do run58
+dispatchMore at do58 return ok ok
+dispatchMore at check59 do is59
+dispatchMore at check59 branch if t59 goto do59 else goto check60
+dispatchMore at do59 do run59
+dispatchMore at do59 return ok status59
+dispatchMore at check60 do is60
+dispatchMore at check60 branch if t60 goto do60 else goto check61
+dispatchMore at do60 do run60
+dispatchMore at do60 return ok status60
+dispatchMore at check61 do is61
+dispatchMore at check61 branch if t61 goto do61 else goto check62
+dispatchMore at do61 do run61
+dispatchMore at do61 return ok status61
+dispatchMore at check62 do is62
+dispatchMore at check62 branch if t62 goto do62 else goto check63
+dispatchMore at do62 do run62
+dispatchMore at do62 return ok ok
+dispatchMore at check63 do is63
+dispatchMore at check63 branch if t63 goto do63 else goto check64
+dispatchMore at do63 do run63
+dispatchMore at do63 return ok ok
+dispatchMore at check64 do is64
+dispatchMore at check64 branch if t64 goto do64 else goto check65
+dispatchMore at do64 do run64
+dispatchMore at do64 return ok ok
+dispatchMore at check65 do is65
+dispatchMore at check65 branch if t65 goto do65 else goto check66
+dispatchMore at do65 do run65
+dispatchMore at do65 return ok ok
+dispatchMore at check66 do is66
+dispatchMore at check66 branch if t66 goto do66 else goto check67
+dispatchMore at do66 do run66
+dispatchMore at do66 return ok ok
+dispatchMore at check67 do is67
+dispatchMore at check67 branch if t67 goto do67 else goto check68
+dispatchMore at do67 do run67
+dispatchMore at do67 return ok ok
+dispatchMore at check68 do is68
+dispatchMore at check68 branch if t68 goto do68 else goto check69
+dispatchMore at do68 do run68
+dispatchMore at do68 return ok ok
+dispatchMore at check69 do is69
+dispatchMore at check69 branch if t69 goto do69 else goto check70
+dispatchMore at do69 do run69
+dispatchMore at do69 return ok ok
+dispatchMore at check70 do is70
+dispatchMore at check70 branch if t70 goto do70 else goto check71
+dispatchMore at do70 do run70
+dispatchMore at do70 return ok status70
+dispatchMore at check71 do is71
+dispatchMore at check71 branch if t71 goto do71 else goto check72
+dispatchMore at do71 do run71
+dispatchMore at do71 return ok ok
+dispatchMore at check72 do is72
+dispatchMore at check72 branch if t72 goto do72 else goto unknown
+dispatchMore at do72 do run72
+dispatchMore at do72 return ok status72
+dispatchMore at unknown do failUnknown
+dispatchMore at unknown return ok ok
+
+is26 is call
+is26 in dispatchMore
+is26 invokes compare.equalInt64
+is26 argument left Int64 number copy
+is26 argument right Int64 n26 copy
+is26 result t26 Bool
+is26 ownedBy none
+is26 cleanedBy none
+is26 borrows none
+is26 catch none
+is26 suppresses none
+
+run26 is call
+run26 in dispatchMore
+run26 invokes tasks.deadlineNever
+run26 argument results machine.Address results copy
+run26 result none
+run26 ownedBy none
+run26 cleanedBy none
+run26 borrows none
+run26 catch none
+run26 suppresses none
+
+is27 is call
+is27 in dispatchMore
+is27 invokes compare.equalInt64
+is27 argument left Int64 number copy
+is27 argument right Int64 n27 copy
+is27 result t27 Bool
+is27 ownedBy none
+is27 cleanedBy none
+is27 borrows none
+is27 catch none
+is27 suppresses none
+
+run27 is call
+run27 in dispatchMore
+run27 invokes tasks.deadlineAfter
+run27 argument shape machine.Address shape copy
+run27 argument args machine.Address args copy
+run27 argument results machine.Address results copy
+run27 result none
+run27 ownedBy none
+run27 cleanedBy none
+run27 borrows none
+run27 catch none
+run27 suppresses none
+
+is28 is call
+is28 in dispatchMore
+is28 invokes compare.equalInt64
+is28 argument left Int64 number copy
+is28 argument right Int64 n28 copy
+is28 result t28 Bool
+is28 ownedBy none
+is28 cleanedBy none
+is28 borrows none
+is28 catch none
+is28 suppresses none
+
+run28 is call
+run28 in dispatchMore
+run28 invokes tasks.sleepFor
+run28 argument shape machine.Address shape copy
+run28 argument args machine.Address args copy
+run28 result none
+run28 ownedBy none
+run28 cleanedBy none
+run28 borrows none
+run28 catch none
+run28 suppresses none
+
+is29 is call
+is29 in dispatchMore
+is29 invokes compare.equalInt64
+is29 argument left Int64 number copy
+is29 argument right Int64 n29 copy
+is29 result t29 Bool
+is29 ownedBy none
+is29 cleanedBy none
+is29 borrows none
+is29 catch none
+is29 suppresses none
+
+run29 is call
+run29 in dispatchMore
+run29 invokes tasks.clockNow
+run29 argument results machine.Address results copy
+run29 result none
+run29 ownedBy none
+run29 cleanedBy none
+run29 borrows none
+run29 catch none
+run29 suppresses none
+
+is30 is call
+is30 in dispatchMore
+is30 invokes compare.equalInt64
+is30 argument left Int64 number copy
+is30 argument right Int64 n30 copy
+is30 result t30 Bool
+is30 ownedBy none
+is30 cleanedBy none
+is30 borrows none
+is30 catch none
+is30 suppresses none
+
+run30 is call
+run30 in dispatchMore
+run30 invokes tasks.clockMonotonic
+run30 argument results machine.Address results copy
+run30 result none
+run30 ownedBy none
+run30 cleanedBy none
+run30 borrows none
+run30 catch none
+run30 suppresses none
+
+is31 is call
+is31 in dispatchMore
+is31 invokes compare.equalInt64
+is31 argument left Int64 number copy
+is31 argument right Int64 n31 copy
+is31 result t31 Bool
+is31 ownedBy none
+is31 cleanedBy none
+is31 borrows none
+is31 catch none
+is31 suppresses none
+
+run31 is call
+run31 in dispatchMore
+run31 invokes tasks.channelNew
+run31 argument shape machine.Address shape copy
+run31 argument args machine.Address args copy
+run31 argument results machine.Address results copy
+run31 result none
+run31 ownedBy none
+run31 cleanedBy none
+run31 borrows none
+run31 catch none
+run31 suppresses none
+
+is32 is call
+is32 in dispatchMore
+is32 invokes compare.equalInt64
+is32 argument left Int64 number copy
+is32 argument right Int64 n32 copy
+is32 result t32 Bool
+is32 ownedBy none
+is32 cleanedBy none
+is32 borrows none
+is32 catch none
+is32 suppresses none
+
+run32 is call
+run32 in dispatchMore
+run32 invokes tasks.channelSend
+run32 argument shape machine.Address shape copy
+run32 argument args machine.Address args copy
+run32 argument payload machine.Address payload copy
+run32 result status32 Int32
+run32 ownedBy none
+run32 cleanedBy none
+run32 borrows none
+run32 catch none
+run32 suppresses none
+
+is33 is call
+is33 in dispatchMore
+is33 invokes compare.equalInt64
+is33 argument left Int64 number copy
+is33 argument right Int64 n33 copy
+is33 result t33 Bool
+is33 ownedBy none
+is33 cleanedBy none
+is33 borrows none
+is33 catch none
+is33 suppresses none
+
+run33 is call
+run33 in dispatchMore
+run33 invokes tasks.channelReceive
+run33 argument shape machine.Address shape copy
+run33 argument args machine.Address args copy
+run33 argument results machine.Address results copy
+run33 argument payload machine.Address payload copy
+run33 result status33 Int32
+run33 ownedBy none
+run33 cleanedBy none
+run33 borrows none
+run33 catch none
+run33 suppresses none
+
+is34 is call
+is34 in dispatchMore
+is34 invokes compare.equalInt64
+is34 argument left Int64 number copy
+is34 argument right Int64 n34 copy
+is34 result t34 Bool
+is34 ownedBy none
+is34 cleanedBy none
+is34 borrows none
+is34 catch none
+is34 suppresses none
+
+run34 is call
+run34 in dispatchMore
+run34 invokes tasks.channelClose
+run34 argument shape machine.Address shape copy
+run34 argument args machine.Address args copy
+run34 result none
+run34 ownedBy none
+run34 cleanedBy none
+run34 borrows none
+run34 catch none
+run34 suppresses none
+
+is35 is call
+is35 in dispatchMore
+is35 invokes compare.equalInt64
+is35 argument left Int64 number copy
+is35 argument right Int64 n35 copy
+is35 result t35 Bool
+is35 ownedBy none
+is35 cleanedBy none
+is35 borrows none
+is35 catch none
+is35 suppresses none
+
+run35 is call
+run35 in dispatchMore
+run35 invokes files.fsClose
+run35 argument shape machine.Address shape copy
+run35 argument args machine.Address args copy
+run35 argument payload machine.Address payload copy
+run35 result status35 Int32
+run35 ownedBy none
+run35 cleanedBy none
+run35 borrows none
+run35 catch none
+run35 suppresses none
+
+is36 is call
+is36 in dispatchMore
+is36 invokes compare.equalInt64
+is36 argument left Int64 number copy
+is36 argument right Int64 n36 copy
+is36 result t36 Bool
+is36 ownedBy none
+is36 cleanedBy none
+is36 borrows none
+is36 catch none
+is36 suppresses none
+
+run36 is call
+run36 in dispatchMore
+run36 invokes files.fsCreate
+run36 argument shape machine.Address shape copy
+run36 argument args machine.Address args copy
+run36 argument results machine.Address results copy
+run36 argument payload machine.Address payload copy
+run36 result status36 Int32
+run36 ownedBy none
+run36 cleanedBy none
+run36 borrows none
+run36 catch none
+run36 suppresses none
+
+is37 is call
+is37 in dispatchMore
+is37 invokes compare.equalInt64
+is37 argument left Int64 number copy
+is37 argument right Int64 n37 copy
+is37 result t37 Bool
+is37 ownedBy none
+is37 cleanedBy none
+is37 borrows none
+is37 catch none
+is37 suppresses none
+
+run37 is call
+run37 in dispatchMore
+run37 invokes files.fsCreateDirectory
+run37 argument shape machine.Address shape copy
+run37 argument args machine.Address args copy
+run37 argument payload machine.Address payload copy
+run37 result status37 Int32
+run37 ownedBy none
+run37 cleanedBy none
+run37 borrows none
+run37 catch none
+run37 suppresses none
+
+is38 is call
+is38 in dispatchMore
+is38 invokes compare.equalInt64
+is38 argument left Int64 number copy
+is38 argument right Int64 n38 copy
+is38 result t38 Bool
+is38 ownedBy none
+is38 cleanedBy none
+is38 borrows none
+is38 catch none
+is38 suppresses none
+
+run38 is call
+run38 in dispatchMore
+run38 invokes files.fsEntryCount
+run38 argument shape machine.Address shape copy
+run38 argument args machine.Address args copy
+run38 argument results machine.Address results copy
+run38 result none
+run38 ownedBy none
+run38 cleanedBy none
+run38 borrows none
+run38 catch none
+run38 suppresses none
+
+is39 is call
+is39 in dispatchMore
+is39 invokes compare.equalInt64
+is39 argument left Int64 number copy
+is39 argument right Int64 n39 copy
+is39 result t39 Bool
+is39 ownedBy none
+is39 cleanedBy none
+is39 borrows none
+is39 catch none
+is39 suppresses none
+
+run39 is call
+run39 in dispatchMore
+run39 invokes files.fsEntryName
+run39 argument shape machine.Address shape copy
+run39 argument args machine.Address args copy
+run39 argument results machine.Address results copy
+run39 argument payload machine.Address payload copy
+run39 result status39 Int32
+run39 ownedBy none
+run39 cleanedBy none
+run39 borrows none
+run39 catch none
+run39 suppresses none
+
+is40 is call
+is40 in dispatchMore
+is40 invokes compare.equalInt64
+is40 argument left Int64 number copy
+is40 argument right Int64 n40 copy
+is40 result t40 Bool
+is40 ownedBy none
+is40 cleanedBy none
+is40 borrows none
+is40 catch none
+is40 suppresses none
+
+run40 is call
+run40 in dispatchMore
+run40 invokes files.fsExists
+run40 argument shape machine.Address shape copy
+run40 argument args machine.Address args copy
+run40 argument results machine.Address results copy
+run40 result none
+run40 ownedBy none
+run40 cleanedBy none
+run40 borrows none
+run40 catch none
+run40 suppresses none
+
+is41 is call
+is41 in dispatchMore
+is41 invokes compare.equalInt64
+is41 argument left Int64 number copy
+is41 argument right Int64 n41 copy
+is41 result t41 Bool
+is41 ownedBy none
+is41 cleanedBy none
+is41 borrows none
+is41 catch none
+is41 suppresses none
+
+run41 is call
+run41 in dispatchMore
+run41 invokes files.fsListDirectory
+run41 argument shape machine.Address shape copy
+run41 argument args machine.Address args copy
+run41 argument results machine.Address results copy
+run41 argument payload machine.Address payload copy
+run41 result status41 Int32
+run41 ownedBy none
+run41 cleanedBy none
+run41 borrows none
+run41 catch none
+run41 suppresses none
+
+is42 is call
+is42 in dispatchMore
+is42 invokes compare.equalInt64
+is42 argument left Int64 number copy
+is42 argument right Int64 n42 copy
+is42 result t42 Bool
+is42 ownedBy none
+is42 cleanedBy none
+is42 borrows none
+is42 catch none
+is42 suppresses none
+
+run42 is call
+run42 in dispatchMore
+run42 invokes files.fsLock
+run42 argument shape machine.Address shape copy
+run42 argument args machine.Address args copy
+run42 argument payload machine.Address payload copy
+run42 result status42 Int32
+run42 ownedBy none
+run42 cleanedBy none
+run42 borrows none
+run42 catch none
+run42 suppresses none
+
+is43 is call
+is43 in dispatchMore
+is43 invokes compare.equalInt64
+is43 argument left Int64 number copy
+is43 argument right Int64 n43 copy
+is43 result t43 Bool
+is43 ownedBy none
+is43 cleanedBy none
+is43 borrows none
+is43 catch none
+is43 suppresses none
+
+run43 is call
+run43 in dispatchMore
+run43 invokes files.fsOpenAppend
+run43 argument shape machine.Address shape copy
+run43 argument args machine.Address args copy
+run43 argument results machine.Address results copy
+run43 argument payload machine.Address payload copy
+run43 result status43 Int32
+run43 ownedBy none
+run43 cleanedBy none
+run43 borrows none
+run43 catch none
+run43 suppresses none
+
+is44 is call
+is44 in dispatchMore
+is44 invokes compare.equalInt64
+is44 argument left Int64 number copy
+is44 argument right Int64 n44 copy
+is44 result t44 Bool
+is44 ownedBy none
+is44 cleanedBy none
+is44 borrows none
+is44 catch none
+is44 suppresses none
+
+run44 is call
+run44 in dispatchMore
+run44 invokes files.fsOpenRead
+run44 argument shape machine.Address shape copy
+run44 argument args machine.Address args copy
+run44 argument results machine.Address results copy
+run44 argument payload machine.Address payload copy
+run44 result status44 Int32
+run44 ownedBy none
+run44 cleanedBy none
+run44 borrows none
+run44 catch none
+run44 suppresses none
+
+is45 is call
+is45 in dispatchMore
+is45 invokes compare.equalInt64
+is45 argument left Int64 number copy
+is45 argument right Int64 n45 copy
+is45 result t45 Bool
+is45 ownedBy none
+is45 cleanedBy none
+is45 borrows none
+is45 catch none
+is45 suppresses none
+
+run45 is call
+run45 in dispatchMore
+run45 invokes files.fsOpenWrite
+run45 argument shape machine.Address shape copy
+run45 argument args machine.Address args copy
+run45 argument results machine.Address results copy
+run45 argument payload machine.Address payload copy
+run45 result status45 Int32
+run45 ownedBy none
+run45 cleanedBy none
+run45 borrows none
+run45 catch none
+run45 suppresses none
+
+is46 is call
+is46 in dispatchMore
+is46 invokes compare.equalInt64
+is46 argument left Int64 number copy
+is46 argument right Int64 n46 copy
+is46 result t46 Bool
+is46 ownedBy none
+is46 cleanedBy none
+is46 borrows none
+is46 catch none
+is46 suppresses none
+
+run46 is call
+run46 in dispatchMore
+run46 invokes files.fsRead
+run46 argument shape machine.Address shape copy
+run46 argument args machine.Address args copy
+run46 argument results machine.Address results copy
+run46 argument payload machine.Address payload copy
+run46 result status46 Int32
+run46 ownedBy none
+run46 cleanedBy none
+run46 borrows none
+run46 catch none
+run46 suppresses none
+
+is47 is call
+is47 in dispatchMore
+is47 invokes compare.equalInt64
+is47 argument left Int64 number copy
+is47 argument right Int64 n47 copy
+is47 result t47 Bool
+is47 ownedBy none
+is47 cleanedBy none
+is47 borrows none
+is47 catch none
+is47 suppresses none
+
+run47 is call
+run47 in dispatchMore
+run47 invokes files.fsReadAll
+run47 argument shape machine.Address shape copy
+run47 argument args machine.Address args copy
+run47 argument results machine.Address results copy
+run47 argument payload machine.Address payload copy
+run47 result status47 Int32
+run47 ownedBy none
+run47 cleanedBy none
+run47 borrows none
+run47 catch none
+run47 suppresses none
+
+is48 is call
+is48 in dispatchMore
+is48 invokes compare.equalInt64
+is48 argument left Int64 number copy
+is48 argument right Int64 n48 copy
+is48 result t48 Bool
+is48 ownedBy none
+is48 cleanedBy none
+is48 borrows none
+is48 catch none
+is48 suppresses none
+
+run48 is call
+run48 in dispatchMore
+run48 invokes files.fsRemove
+run48 argument shape machine.Address shape copy
+run48 argument args machine.Address args copy
+run48 argument payload machine.Address payload copy
+run48 result status48 Int32
+run48 ownedBy none
+run48 cleanedBy none
+run48 borrows none
+run48 catch none
+run48 suppresses none
+
+is49 is call
+is49 in dispatchMore
+is49 invokes compare.equalInt64
+is49 argument left Int64 number copy
+is49 argument right Int64 n49 copy
+is49 result t49 Bool
+is49 ownedBy none
+is49 cleanedBy none
+is49 borrows none
+is49 catch none
+is49 suppresses none
+
+run49 is call
+run49 in dispatchMore
+run49 invokes files.fsRemoveDirectory
+run49 argument shape machine.Address shape copy
+run49 argument args machine.Address args copy
+run49 argument payload machine.Address payload copy
+run49 result status49 Int32
+run49 ownedBy none
+run49 cleanedBy none
+run49 borrows none
+run49 catch none
+run49 suppresses none
+
+is50 is call
+is50 in dispatchMore
+is50 invokes compare.equalInt64
+is50 argument left Int64 number copy
+is50 argument right Int64 n50 copy
+is50 result t50 Bool
+is50 ownedBy none
+is50 cleanedBy none
+is50 borrows none
+is50 catch none
+is50 suppresses none
+
+run50 is call
+run50 in dispatchMore
+run50 invokes files.fsUnlock
+run50 argument shape machine.Address shape copy
+run50 argument args machine.Address args copy
+run50 argument payload machine.Address payload copy
+run50 result status50 Int32
+run50 ownedBy none
+run50 cleanedBy none
+run50 borrows none
+run50 catch none
+run50 suppresses none
+
+is51 is call
+is51 in dispatchMore
+is51 invokes compare.equalInt64
+is51 argument left Int64 number copy
+is51 argument right Int64 n51 copy
+is51 result t51 Bool
+is51 ownedBy none
+is51 cleanedBy none
+is51 borrows none
+is51 catch none
+is51 suppresses none
+
+run51 is call
+run51 in dispatchMore
+run51 invokes files.fsWrite
+run51 argument shape machine.Address shape copy
+run51 argument args machine.Address args copy
+run51 argument payload machine.Address payload copy
+run51 result status51 Int32
+run51 ownedBy none
+run51 cleanedBy none
+run51 borrows none
+run51 catch none
+run51 suppresses none
+
+is52 is call
+is52 in dispatchMore
+is52 invokes compare.equalInt64
+is52 argument left Int64 number copy
+is52 argument right Int64 n52 copy
+is52 result t52 Bool
+is52 ownedBy none
+is52 cleanedBy none
+is52 borrows none
+is52 catch none
+is52 suppresses none
+
+run52 is call
+run52 in dispatchMore
+run52 invokes files.fsWriteAll
+run52 argument shape machine.Address shape copy
+run52 argument args machine.Address args copy
+run52 argument payload machine.Address payload copy
+run52 result status52 Int32
+run52 ownedBy none
+run52 cleanedBy none
+run52 borrows none
+run52 catch none
+run52 suppresses none
+
+is53 is call
+is53 in dispatchMore
+is53 invokes compare.equalInt64
+is53 argument left Int64 number copy
+is53 argument right Int64 n53 copy
+is53 result t53 Bool
+is53 ownedBy none
+is53 cleanedBy none
+is53 borrows none
+is53 catch none
+is53 suppresses none
+
+run53 is call
+run53 in dispatchMore
+run53 invokes processes.readLine
+run53 argument shape machine.Address shape copy
+run53 argument args machine.Address args copy
+run53 argument results machine.Address results copy
+run53 argument payload machine.Address payload copy
+run53 result status53 Int32
+run53 ownedBy none
+run53 cleanedBy none
+run53 borrows none
+run53 catch none
+run53 suppresses none
+
+is54 is call
+is54 in dispatchMore
+is54 invokes compare.equalInt64
+is54 argument left Int64 number copy
+is54 argument right Int64 n54 copy
+is54 result t54 Bool
+is54 ownedBy none
+is54 cleanedBy none
+is54 borrows none
+is54 catch none
+is54 suppresses none
+
+run54 is call
+run54 in dispatchMore
+run54 invokes processes.environmentGet
+run54 argument shape machine.Address shape copy
+run54 argument args machine.Address args copy
+run54 argument results machine.Address results copy
+run54 argument payload machine.Address payload copy
+run54 result status54 Int32
+run54 ownedBy none
+run54 cleanedBy none
+run54 borrows none
+run54 catch none
+run54 suppresses none
+
+is55 is call
+is55 in dispatchMore
+is55 invokes compare.equalInt64
+is55 argument left Int64 number copy
+is55 argument right Int64 n55 copy
+is55 result t55 Bool
+is55 ownedBy none
+is55 cleanedBy none
+is55 borrows none
+is55 catch none
+is55 suppresses none
+
+run55 is call
+run55 in dispatchMore
+run55 invokes processes.addArgument
+run55 argument shape machine.Address shape copy
+run55 argument args machine.Address args copy
+run55 result none
+run55 ownedBy none
+run55 cleanedBy none
+run55 borrows none
+run55 catch none
+run55 suppresses none
+
+is56 is call
+is56 in dispatchMore
+is56 invokes compare.equalInt64
+is56 argument left Int64 number copy
+is56 argument right Int64 n56 copy
+is56 result t56 Bool
+is56 ownedBy none
+is56 cleanedBy none
+is56 borrows none
+is56 catch none
+is56 suppresses none
+
+run56 is call
+run56 in dispatchMore
+run56 invokes processes.argument
+run56 argument shape machine.Address shape copy
+run56 argument args machine.Address args copy
+run56 argument results machine.Address results copy
+run56 argument payload machine.Address payload copy
+run56 result status56 Int32
+run56 ownedBy none
+run56 cleanedBy none
+run56 borrows none
+run56 catch none
+run56 suppresses none
+
+is57 is call
+is57 in dispatchMore
+is57 invokes compare.equalInt64
+is57 argument left Int64 number copy
+is57 argument right Int64 n57 copy
+is57 result t57 Bool
+is57 ownedBy none
+is57 cleanedBy none
+is57 borrows none
+is57 catch none
+is57 suppresses none
+
+run57 is call
+run57 in dispatchMore
+run57 invokes processes.argumentCount
+run57 argument results machine.Address results copy
+run57 result none
+run57 ownedBy none
+run57 cleanedBy none
+run57 borrows none
+run57 catch none
+run57 suppresses none
+
+is58 is call
+is58 in dispatchMore
+is58 invokes compare.equalInt64
+is58 argument left Int64 number copy
+is58 argument right Int64 n58 copy
+is58 result t58 Bool
+is58 ownedBy none
+is58 cleanedBy none
+is58 borrows none
+is58 catch none
+is58 suppresses none
+
+run58 is call
+run58 in dispatchMore
+run58 invokes processes.newArguments
+run58 argument shape machine.Address shape copy
+run58 argument args machine.Address args copy
+run58 argument results machine.Address results copy
+run58 result none
+run58 ownedBy none
+run58 cleanedBy none
+run58 borrows none
+run58 catch none
+run58 suppresses none
+
+is59 is call
+is59 in dispatchMore
+is59 invokes compare.equalInt64
+is59 argument left Int64 number copy
+is59 argument right Int64 n59 copy
+is59 result t59 Bool
+is59 ownedBy none
+is59 cleanedBy none
+is59 borrows none
+is59 catch none
+is59 suppresses none
+
+run59 is call
+run59 in dispatchMore
+run59 invokes processes.processRun
+run59 argument shape machine.Address shape copy
+run59 argument args machine.Address args copy
+run59 argument results machine.Address results copy
+run59 argument payload machine.Address payload copy
+run59 result status59 Int32
+run59 ownedBy none
+run59 cleanedBy none
+run59 borrows none
+run59 catch none
+run59 suppresses none
+
+is60 is call
+is60 in dispatchMore
+is60 invokes compare.equalInt64
+is60 argument left Int64 number copy
+is60 argument right Int64 n60 copy
+is60 result t60 Bool
+is60 ownedBy none
+is60 cleanedBy none
+is60 borrows none
+is60 catch none
+is60 suppresses none
+
+run60 is call
+run60 in dispatchMore
+run60 invokes processes.processRunCaptured
+run60 argument shape machine.Address shape copy
+run60 argument args machine.Address args copy
+run60 argument results machine.Address results copy
+run60 argument payload machine.Address payload copy
+run60 result status60 Int32
+run60 ownedBy none
+run60 cleanedBy none
+run60 borrows none
+run60 catch none
+run60 suppresses none
+
+is61 is call
+is61 in dispatchMore
+is61 invokes compare.equalInt64
+is61 argument left Int64 number copy
+is61 argument right Int64 n61 copy
+is61 result t61 Bool
+is61 ownedBy none
+is61 cleanedBy none
+is61 borrows none
+is61 catch none
+is61 suppresses none
+
+run61 is call
+run61 in dispatchMore
+run61 invokes processes.secretFromEnvironment
+run61 argument shape machine.Address shape copy
+run61 argument args machine.Address args copy
+run61 argument results machine.Address results copy
+run61 argument payload machine.Address payload copy
+run61 result status61 Int32
+run61 ownedBy none
+run61 cleanedBy none
+run61 borrows none
+run61 catch none
+run61 suppresses none
+
+is62 is call
+is62 in dispatchMore
+is62 invokes compare.equalInt64
+is62 argument left Int64 number copy
+is62 argument right Int64 n62 copy
+is62 result t62 Bool
+is62 ownedBy none
+is62 cleanedBy none
+is62 borrows none
+is62 catch none
+is62 suppresses none
+
+run62 is call
+run62 in dispatchMore
+run62 invokes processes.secretFromText
+run62 argument shape machine.Address shape copy
+run62 argument args machine.Address args copy
+run62 argument results machine.Address results copy
+run62 result none
+run62 ownedBy none
+run62 cleanedBy none
+run62 borrows none
+run62 catch none
+run62 suppresses none
+
+is63 is call
+is63 in dispatchMore
+is63 invokes compare.equalInt64
+is63 argument left Int64 number copy
+is63 argument right Int64 n63 copy
+is63 result t63 Bool
+is63 ownedBy none
+is63 cleanedBy none
+is63 borrows none
+is63 catch none
+is63 suppresses none
+
+run63 is call
+run63 in dispatchMore
+run63 invokes processes.secretLength
+run63 argument shape machine.Address shape copy
+run63 argument args machine.Address args copy
+run63 argument results machine.Address results copy
+run63 result none
+run63 ownedBy none
+run63 cleanedBy none
+run63 borrows none
+run63 catch none
+run63 suppresses none
+
+is64 is call
+is64 in dispatchMore
+is64 invokes compare.equalInt64
+is64 argument left Int64 number copy
+is64 argument right Int64 n64 copy
+is64 result t64 Bool
+is64 ownedBy none
+is64 cleanedBy none
+is64 borrows none
+is64 catch none
+is64 suppresses none
+
+run64 is call
+run64 in dispatchMore
+run64 invokes processes.secretMatches
+run64 argument shape machine.Address shape copy
+run64 argument args machine.Address args copy
+run64 argument results machine.Address results copy
+run64 result none
+run64 ownedBy none
+run64 cleanedBy none
+run64 borrows none
+run64 catch none
+run64 suppresses none
+
+is65 is call
+is65 in dispatchMore
+is65 invokes compare.equalInt64
+is65 argument left Int64 number copy
+is65 argument right Int64 n65 copy
+is65 result t65 Bool
+is65 ownedBy none
+is65 cleanedBy none
+is65 borrows none
+is65 catch none
+is65 suppresses none
+
+run65 is call
+run65 in dispatchMore
+run65 invokes processes.secretReveal
+run65 argument shape machine.Address shape copy
+run65 argument args machine.Address args copy
+run65 argument results machine.Address results copy
+run65 result none
+run65 ownedBy none
+run65 cleanedBy none
+run65 borrows none
+run65 catch none
+run65 suppresses none
+
+is66 is call
+is66 in dispatchMore
+is66 invokes compare.equalInt64
+is66 argument left Int64 number copy
+is66 argument right Int64 n66 copy
+is66 result t66 Bool
+is66 ownedBy none
+is66 cleanedBy none
+is66 borrows none
+is66 catch none
+is66 suppresses none
+
+run66 is call
+run66 in dispatchMore
+run66 invokes hashes.cryptoConstantTimeEquals
+run66 argument shape machine.Address shape copy
+run66 argument args machine.Address args copy
+run66 argument results machine.Address results copy
+run66 result none
+run66 ownedBy none
+run66 cleanedBy none
+run66 borrows none
+run66 catch none
+run66 suppresses none
+
+is67 is call
+is67 in dispatchMore
+is67 invokes compare.equalInt64
+is67 argument left Int64 number copy
+is67 argument right Int64 n67 copy
+is67 result t67 Bool
+is67 ownedBy none
+is67 cleanedBy none
+is67 borrows none
+is67 catch none
+is67 suppresses none
+
+run67 is call
+run67 in dispatchMore
+run67 invokes hashes.cryptoHmacSha256
+run67 argument shape machine.Address shape copy
+run67 argument args machine.Address args copy
+run67 argument results machine.Address results copy
+run67 result none
+run67 ownedBy none
+run67 cleanedBy none
+run67 borrows none
+run67 catch none
+run67 suppresses none
+
+is68 is call
+is68 in dispatchMore
+is68 invokes compare.equalInt64
+is68 argument left Int64 number copy
+is68 argument right Int64 n68 copy
+is68 result t68 Bool
+is68 ownedBy none
+is68 cleanedBy none
+is68 borrows none
+is68 catch none
+is68 suppresses none
+
+run68 is call
+run68 in dispatchMore
+run68 invokes hashes.cryptoSha256
+run68 argument shape machine.Address shape copy
+run68 argument args machine.Address args copy
+run68 argument results machine.Address results copy
+run68 result none
+run68 ownedBy none
+run68 cleanedBy none
+run68 borrows none
+run68 catch none
+run68 suppresses none
+
+is69 is call
+is69 in dispatchMore
+is69 invokes compare.equalInt64
+is69 argument left Int64 number copy
+is69 argument right Int64 n69 copy
+is69 result t69 Bool
+is69 ownedBy none
+is69 cleanedBy none
+is69 borrows none
+is69 catch none
+is69 suppresses none
+
+run69 is call
+run69 in dispatchMore
+run69 invokes hashes.cryptoToHex
+run69 argument shape machine.Address shape copy
+run69 argument args machine.Address args copy
+run69 argument results machine.Address results copy
+run69 result none
+run69 ownedBy none
+run69 cleanedBy none
+run69 borrows none
+run69 catch none
+run69 suppresses none
+
+is70 is call
+is70 in dispatchMore
+is70 invokes compare.equalInt64
+is70 argument left Int64 number copy
+is70 argument right Int64 n70 copy
+is70 result t70 Bool
+is70 ownedBy none
+is70 cleanedBy none
+is70 borrows none
+is70 catch none
+is70 suppresses none
+
+run70 is call
+run70 in dispatchMore
+run70 invokes processes.ffiBind
+run70 argument shape machine.Address shape copy
+run70 argument args machine.Address args copy
+run70 argument results machine.Address results copy
+run70 argument payload machine.Address payload copy
+run70 result status70 Int32
+run70 ownedBy none
+run70 cleanedBy none
+run70 borrows none
+run70 catch none
+run70 suppresses none
+
+is71 is call
+is71 in dispatchMore
+is71 invokes compare.equalInt64
+is71 argument left Int64 number copy
+is71 argument right Int64 n71 copy
+is71 result t71 Bool
+is71 ownedBy none
+is71 cleanedBy none
+is71 borrows none
+is71 catch none
+is71 suppresses none
+
+run71 is call
+run71 in dispatchMore
+run71 invokes processes.ffiClose
+run71 argument shape machine.Address shape copy
+run71 argument args machine.Address args copy
+run71 result none
+run71 ownedBy none
+run71 cleanedBy none
+run71 borrows none
+run71 catch none
+run71 suppresses none
+
+is72 is call
+is72 in dispatchMore
+is72 invokes compare.equalInt64
+is72 argument left Int64 number copy
+is72 argument right Int64 n72 copy
+is72 result t72 Bool
+is72 ownedBy none
+is72 cleanedBy none
+is72 borrows none
+is72 catch none
+is72 suppresses none
+
+run72 is call
+run72 in dispatchMore
+run72 invokes processes.ffiOpen
+run72 argument shape machine.Address shape copy
+run72 argument args machine.Address args copy
+run72 argument results machine.Address results copy
+run72 argument payload machine.Address payload copy
+run72 result status72 Int32
+run72 ownedBy none
+run72 cleanedBy none
+run72 borrows none
+run72 catch none
+run72 suppresses none
+
 failUnknown is call
-failUnknown in dispatch
+failUnknown in dispatchMore
 failUnknown invokes failText
 failUnknown argument text String unknownText lend
 failUnknown result none
@@ -9066,13 +10347,35 @@ hostCall maxRecursion none
 hostCall abi c "refined_host"
 hostCall label begin loopKind none
 hostCall label begin within none
+hostCall label readRowDone loopKind none
+hostCall label readRowDone within none
+hostCall label checkScope loopKind none
+hostCall label checkScope within none
+hostCall label run loopKind none
+hostCall label run within none
 hostCall let zero Int64 0 immutable
 hostCall let sixteen Int64 16 immutable
+hostCall let twentyFour Int64 24 immutable
+hostCall let one Int64 1 immutable
 hostCall at begin do findShape
 hostCall at begin do clearPayload
 hostCall at begin do readNumber
-hostCall at begin do run
-hostCall at begin return ok status
+hostCall at begin do readRow
+hostCall at begin branch ifError readRow goto run else goto readRowDone
+hostCall at readRowDone do readScoped
+hostCall at readRowDone do scopedCheck
+hostCall at readRowDone branch if isScoped goto checkScope else goto run
+hostCall at checkScope do readName
+hostCall at checkScope do readParams
+hostCall at checkScope do lastOf
+hostCall at checkScope do readValue
+hostCall at checkScope do readValueBytes
+hostCall at checkScope do readScopes
+hostCall at checkScope do readScopesBytes
+hostCall at checkScope do checkIt
+hostCall at checkScope goto run
+hostCall at run do runIt
+hostCall at run return ok status
 
 findShape is call
 findShape in hostCall
@@ -9100,7 +10403,7 @@ clearPayload suppresses none
 
 readNumber is call
 readNumber in hostCall
-readNumber invokes shapeField
+readNumber invokes slots.shapeField
 readNumber argument shape machine.Address shape copy
 readNumber argument offset Int64 sixteen copy
 readNumber result number Int64
@@ -9110,17 +10413,153 @@ readNumber borrows none
 readNumber catch none
 readNumber suppresses none
 
-run is call
-run in hostCall
-run invokes dispatch
-run argument number Int64 number copy
-run argument shape machine.Address shape copy
-run argument args machine.Address args copy
-run argument results machine.Address results copy
-run argument payload machine.Address payload copy
-run result status Int32
-run ownedBy none
-run cleanedBy none
-run borrows none
-run catch none
-run suppresses none
+readRow is call
+readRow in hostCall
+readRow invokes hostTargets.rowAt
+readRow argument position Int64 number copy
+readRow result row HostTarget
+readRow ownedBy none
+readRow cleanedBy none
+readRow borrows none
+readRow catch readRowError list.IndexOutOfRange
+readRow suppresses none
+
+readScoped is call
+readScoped in hostCall
+readScoped invokes HostTarget.scoped
+readScoped argument record HostTarget row lend
+readScoped result scoped Int64
+readScoped ownedBy none
+readScoped cleanedBy none
+readScoped borrows none
+readScoped catch none
+readScoped suppresses none
+
+scopedCheck is call
+scopedCheck in hostCall
+scopedCheck invokes compare.greaterOrEqualInt64
+scopedCheck argument left Int64 scoped copy
+scopedCheck argument right Int64 zero copy
+scopedCheck result isScoped Bool
+scopedCheck ownedBy none
+scopedCheck cleanedBy none
+scopedCheck borrows none
+scopedCheck catch none
+scopedCheck suppresses none
+
+readName is call
+readName in hostCall
+readName invokes HostTarget.name
+readName argument record HostTarget row lend
+readName result name String
+readName ownedBy none
+readName cleanedBy none
+readName borrows row
+readName catch none
+readName suppresses none
+
+readParams is call
+readParams in hostCall
+readParams invokes slots.shapeField
+readParams argument shape machine.Address shape copy
+readParams argument offset Int64 twentyFour copy
+readParams result params Int64
+readParams ownedBy none
+readParams cleanedBy none
+readParams borrows none
+readParams catch none
+readParams suppresses none
+
+lastOf is call
+lastOf in hostCall
+lastOf invokes math.subtractInt64
+lastOf argument left Int64 params copy
+lastOf argument right Int64 one copy
+lastOf result last Int64
+lastOf ownedBy none
+lastOf cleanedBy none
+lastOf borrows none
+lastOf catch none
+lastOf suppresses none
+
+readValue is call
+readValue in hostCall
+readValue invokes files.textAt
+readValue argument shape machine.Address shape copy
+readValue argument args machine.Address args copy
+readValue argument parameter Int64 scoped copy
+readValue result value machine.Address
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+readValueBytes is call
+readValueBytes in hostCall
+readValueBytes invokes files.textBytes
+readValueBytes argument shape machine.Address shape copy
+readValueBytes argument args machine.Address args copy
+readValueBytes argument parameter Int64 scoped copy
+readValueBytes result valueBytes Int64
+readValueBytes ownedBy none
+readValueBytes cleanedBy none
+readValueBytes borrows none
+readValueBytes catch none
+readValueBytes suppresses none
+
+readScopes is call
+readScopes in hostCall
+readScopes invokes files.textAt
+readScopes argument shape machine.Address shape copy
+readScopes argument args machine.Address args copy
+readScopes argument parameter Int64 last copy
+readScopes result scopes machine.Address
+readScopes ownedBy none
+readScopes cleanedBy none
+readScopes borrows none
+readScopes catch none
+readScopes suppresses none
+
+readScopesBytes is call
+readScopesBytes in hostCall
+readScopesBytes invokes files.textBytes
+readScopesBytes argument shape machine.Address shape copy
+readScopesBytes argument args machine.Address args copy
+readScopesBytes argument parameter Int64 last copy
+readScopesBytes result scopesBytes Int64
+readScopesBytes ownedBy none
+readScopesBytes cleanedBy none
+readScopesBytes borrows none
+readScopesBytes catch none
+readScopesBytes suppresses none
+
+checkIt is call
+checkIt in hostCall
+checkIt invokes files.checkScope
+checkIt argument target String name lend
+checkIt argument value machine.Address value copy
+checkIt argument valueBytes Int64 valueBytes copy
+checkIt argument scopes machine.Address scopes copy
+checkIt argument scopesBytes Int64 scopesBytes copy
+checkIt result none
+checkIt ownedBy none
+checkIt cleanedBy none
+checkIt borrows none
+checkIt catch none
+checkIt suppresses none
+
+runIt is call
+runIt in hostCall
+runIt invokes dispatch
+runIt argument number Int64 number copy
+runIt argument shape machine.Address shape copy
+runIt argument args machine.Address args copy
+runIt argument results machine.Address results copy
+runIt argument payload machine.Address payload copy
+runIt result status Int32
+runIt ownedBy none
+runIt cleanedBy none
+runIt borrows none
+runIt catch none
+runIt suppresses none

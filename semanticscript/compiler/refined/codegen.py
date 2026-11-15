@@ -105,6 +105,7 @@ CALLBACKS = {
     # with the block's name, and for --debug the addresses and a description of the operation's values
     "refined_block": ir.FunctionType(ir.VoidType(), [PTR, I64, PTR.as_pointer(), I64, PTR, I64]),
 }
+TEST_CALLBACKS = ("refined_assert_int", "refined_assert_true", "refined_assert_str", "refined_fail", "refined_block")
 HOST_GENERICS = ("map.Map", "set.Set", "channel.Channel", "ffi.Function")
 # list.List value: pointer to {length, capacity, data, region}
 # {length, capacity, data, region, identity}: the identity is unique per list (D-100), so a position from an
@@ -174,7 +175,10 @@ class Backend:
         """A runtime function: the program's own `abi c` operation of that symbol when it is the runtime, otherwise a
         declaration the runtime (runtime.py, native_runtime.c, or semanticscript/runtime) resolves."""
         want = CALLBACKS[name]
-        if self.bare and name in self.abi:
+        # the runtime's own tests, under `refined test`, report through the test runner's callbacks; only the
+        # runtime object built for an executable calls its own assertions and instrumentation (D-134)
+        own = self.options.get("runtime_object") or name not in TEST_CALLBACKS
+        if self.bare and name in self.abi and own:
             mod, op = self.abi[name]
             fn = self.function_for(mod, op, None, 0)
             return fn
@@ -311,7 +315,10 @@ class Backend:
             raise Unsupported(m.file, ent.line, f"generic operation `{op}` without type arguments")
         sig = self.world.concrete_sig(info.sig, sub) if sub else info.sig
         name = function_name(mod, op) + (f"<{','.join(sub[k] for k in sorted(sub))}>" if sub else "")
-        name = abi_symbol(ent) or name  # D-123: exported to C under its symbol
+        symbol = abi_symbol(ent)
+        if symbol in TEST_CALLBACKS and not self.options.get("runtime_object"):
+            symbol = None  # D-134: under `refined test` the test runner's own callbacks keep the name
+        name = symbol or name  # D-123: exported to C under its symbol
         ftype = self.fn_type(sig, m.file, ent.line)
         if self.bare and name in CALLBACKS:
             # D-124: the runtime's own definition of a function compiled code calls has the type those calls have;
@@ -1498,6 +1505,13 @@ class OpGen:
                                        "--kind executable --runtime semanticscript`)")
             entry = self.be.module.globals.get("refined_program_main") or                 ir.Function(self.be.module, ir.FunctionType(I32, []), name="refined_program_main")
             return b.call(entry, []), None, None
+        if name == "taskEntry":
+            # D-131: only the runtime has it, and only for the operation a task's fiber starts in
+            if "refined_task_entry" not in self.be.abi:
+                self.unsupported(line, "`machine.taskEntry` in a program with no `abi c \"refined_task_entry\"` "
+                                       "operation")
+            mod, op = self.be.abi["refined_task_entry"]
+            return b.bitcast(self.be.function_for(mod, op, None, 0), PTR), None, None
         self.unsupported(line, f"the library target `machine.{name}`")
 
     def compare_memory(self, b: ir.IRBuilder, left, right, n, tag: str):

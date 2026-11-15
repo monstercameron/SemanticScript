@@ -1,6 +1,6 @@
 module host "The host library of a standalone executable: refined_host and its targets (byte buffers, maps, sets, string.fromBytes, log lines)"
   path host
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.list standard.test memory numbers output frames heap tables handles regions
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.list standard.test memory numbers output frames heap tables handles regions slots tasks files processes hashes
   exports hostCall utf8InvalidAt
 
 capability memoryAccess "Authority to read a host call's slots and keep the host's objects and call shapes in memory" use machine.memory none
@@ -77,6 +77,53 @@ table hostTargets "The host targets this runtime implements, numbered from 1" Ho
   row setNew name="set.Set.new" scoped=-1
   row setRemove name="set.Set.remove" scoped=-1
   row stringFromBytes name="string.fromBytes" scoped=-1
+  row deadlineNever name="time.Deadline.never" scoped=-1
+  row deadlineAfter name="time.Deadline.after" scoped=-1
+  row timeSleep name="time.sleep" scoped=-1
+  row clockNow name="clock.now" scoped=-1
+  row clockMonotonic name="clock.monotonic" scoped=-1
+  row channelNew name="channel.Channel.new" scoped=-1
+  row channelSend name="channel.Channel.send" scoped=-1
+  row channelReceive name="channel.Channel.receive" scoped=-1
+  row channelClose name="channel.Channel.close" scoped=-1
+  row fsClose name="fs.close" scoped=-1
+  row fsCreate name="fs.create" scoped=0
+  row fsCreateDirectory name="fs.createDirectory" scoped=0
+  row fsEntryCount name="fs.entryCount" scoped=-1
+  row fsEntryName name="fs.entryName" scoped=-1
+  row fsExists name="fs.exists" scoped=0
+  row fsListDirectory name="fs.listDirectory" scoped=0
+  row fsLock name="fs.lock" scoped=-1
+  row fsOpenAppend name="fs.openAppend" scoped=0
+  row fsOpenRead name="fs.openRead" scoped=0
+  row fsOpenWrite name="fs.openWrite" scoped=0
+  row fsRead name="fs.read" scoped=-1
+  row fsReadAll name="fs.readAll" scoped=0
+  row fsRemove name="fs.remove" scoped=0
+  row fsRemoveDirectory name="fs.removeDirectory" scoped=0
+  row fsUnlock name="fs.unlock" scoped=-1
+  row fsWrite name="fs.write" scoped=-1
+  row fsWriteAll name="fs.writeAll" scoped=0
+  row consoleReadLine name="console.readLine" scoped=-1
+  row environmentGet name="environment.get" scoped=-1
+  row processAddArgument name="process.addArgument" scoped=-1
+  row processArgument name="process.argument" scoped=-1
+  row processArgumentCount name="process.argumentCount" scoped=-1
+  row processNewArguments name="process.newArguments" scoped=-1
+  row processRun name="process.run" scoped=0
+  row processRunCaptured name="process.runCaptured" scoped=0
+  row secretFromEnvironment name="secret.fromEnvironment" scoped=-1
+  row secretFromText name="secret.fromText" scoped=-1
+  row secretLength name="secret.length" scoped=-1
+  row secretMatches name="secret.matches" scoped=-1
+  row secretReveal name="secret.reveal" scoped=-1
+  row cryptoConstantTimeEquals name="crypto.constantTimeEquals" scoped=-1
+  row cryptoHmacSha256 name="crypto.hmacSha256" scoped=-1
+  row cryptoSha256 name="crypto.sha256" scoped=-1
+  row cryptoToHex name="crypto.toHex" scoped=-1
+  row ffiBind name="ffi.Function.bind" scoped=1
+  row ffiClose name="ffi.close" scoped=-1
+  row ffiOpen name="ffi.open" scoped=0
 
 ## ---------------------------------------------------------------- traps
 
@@ -459,120 +506,6 @@ op shapeOf "The shape of a key, worked out the first time its address is seen an
 
 ## ---------------------------------------------------------------- a call's slots
 
-op slotOf "The address of a parameter's first slot among a call's argument slots"
-  input shape machine.Address copied
-  input args machine.Address copied
-  input parameter Int64 copied
-  output machine.Address
-  effect use machine.memory
-  uses memoryAccess
-:begin
-  parameterOffset: place = math.multiplyInt64(parameter, eight=8)
-  startOffset: startSlotOffset = math.addInt64(place, twoThirtyTwo=232)
-  findStart: startSlot = machine.offset(shape, startSlotOffset)
-  readStart: start = machine.loadInt64(startSlot)
-  startBytes: offset = math.multiplyInt64(start, eight)
-  findSlot: slot = machine.offset(args, offset)
-  return slot
-
-op argOf "A parameter's first slot as a number"
-  input shape machine.Address copied
-  input args machine.Address copied
-  input parameter Int64 copied
-  output Int64
-  effect use machine.memory
-  uses memoryAccess
-:begin
-  findSlot: slot = slotOf(shape, args, parameter)
-  readSlot: value = machine.loadInt64(slot)
-  return value
-
-op addressArg "A parameter's first slot as an address"
-  input shape machine.Address copied
-  input args machine.Address copied
-  input parameter Int64 copied
-  output machine.Address
-  effect use machine.memory
-  uses memoryAccess
-:begin
-  findSlot: slot = slotOf(shape, args, parameter)
-  readSlot: value = machine.loadAddress(slot)
-  return value
-
-op countOf "How many slots a parameter takes"
-  input shape machine.Address copied
-  input parameter Int64 copied
-  output Int64
-  effect use machine.memory
-  uses memoryAccess
-:begin
-  parameterOffset: place = math.multiplyInt64(parameter, eight=8)
-  countOffset: countSlotOffset = math.addInt64(place, forty=40)
-  findCount: countSlot = machine.offset(shape, countSlotOffset)
-  readCount: count = machine.loadInt64(countSlot)
-  return count
-
-op shapeField "A whole number of a shape at an offset: 16 its target, 24 its parameters, 32 its result slots"
-  input shape machine.Address copied
-  input offset Int64 copied
-  output Int64
-  effect use machine.memory
-  uses memoryAccess
-:begin
-  findField: field = machine.offset(shape, offset)
-  readField: value = machine.loadInt64(field)
-  return value
-
-op flagArg "Whether a call has a parameter at a position and its slot is not 0 (the flags the compiler adds to `new`)"
-  input shape machine.Address copied
-  input args machine.Address copied
-  input parameter Int64 copied
-  output Int64
-  effect use machine.memory
-  uses memoryAccess
-  let no Int64 0
-  let yes Int64 1
-:begin
-  readParams: params = shapeField(shape, twentyFour=24)
-  presentCheck: present = compare.lessThanInt64(parameter, params)
-  if present readFlag absent
-:absent
-  return no
-:readFlag
-  readValue: value = argOf(shape, args, parameter)
-  setCheck: flagged = compare.notEqualInt64(value, no)
-  if flagged giveYes absent
-:giveYes
-  return yes
-
-op putText "Copy bytes into a region and store the copy's address and length in two slots"
-  input region machine.Address copied
-  input data machine.Address copied
-  input bytes Int64 copied
-  input out machine.Address copied
-  effect use machine.memory
-  effect use system.calls
-  uses memoryAccess
-  uses systemCalls
-:begin
-  take: block = regions.allocate(region, bytes)
-  copyIn: machine.copy(block, data, bytes)
-  storeAddress: machine.storeAddress(out, block)
-  findLength: lengthSlot = machine.offset(out, eight=8)
-  storeLength: machine.storeInt64(lengthSlot, bytes)
-  return
-
-op failWith "Store an error's payload and give its variant's number"
-  input payload machine.Address copied
-  input status Int32 copied
-  input value Int64 copied
-  output Int32
-  effect use machine.memory
-  uses memoryAccess
-:begin
-  storePayload: machine.storeInt64(payload, value)
-  return status
-
 ## ---------------------------------------------------------------- text
 
 op utf8InvalidAt "The offset of the first byte that does not start a valid UTF-8 sequence, or -1: the strict rules and offset of Python's decoder (no overlong forms, no surrogates, nothing past U+10FFFF)"
@@ -719,7 +652,7 @@ op fromBytes "string.fromBytes: bytes as text in a region when they are valid UT
   uses systemCalls
   let ok Int32 0
 :begin
-  findRaw: raw = slotOf(shape, args, zero=0)
+  findRaw: raw = slots.slotOf(shape, args, zero=0)
   readData: data = machine.loadAddress(raw)
   findLength: lengthSlot = machine.offset(raw, eight=8)
   readLength: length = machine.loadInt64(lengthSlot)
@@ -727,11 +660,11 @@ op fromBytes "string.fromBytes: bytes as text in a region when they are valid UT
   badCheck: invalid = compare.greaterOrEqualInt64(bad, zero)
   if invalid refuse copy
 :refuse
-  failed: status = failWith(payload, utf8Invalid, bad)
+  failed: status = slots.failWith(payload, utf8Invalid, bad)
   return status
 :copy
-  readRegion: region = addressArg(shape, args, one=1)
-  copyText: putText(region, data, length, results)
+  readRegion: region = slots.addressArg(shape, args, one=1)
+  copyText: slots.putText(region, data, length, results)
   return ok
 
 ## ---------------------------------------------------------------- byte buffers
@@ -746,7 +679,7 @@ op bufferNew "buffer.new: an empty buffer owned by a region"
   uses systemCalls
 :begin
   takeBuffer: buffer = heap.take(fortyEight=48)
-  readRegion: region = addressArg(shape, args, zero=0)
+  readRegion: region = slots.addressArg(shape, args, zero=0)
   makeHandle: handle = handles.newHandle(kindBuffer, buffer, region)
   storeHandle: machine.storeInt64(results, handle)
   return
@@ -804,9 +737,9 @@ op bufferAppendString "buffer.appendString: append text's bytes"
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findBuffer: buffer = handles.objectOf(handle, kindBuffer)
-  findText: text = slotOf(shape, args, one=1)
+  findText: text = slots.slotOf(shape, args, one=1)
   readData: data = machine.loadAddress(text)
   findLength: lengthSlot = machine.offset(text, eight=8)
   readLength: length = machine.loadInt64(lengthSlot)
@@ -821,9 +754,9 @@ op bufferAppendByte "buffer.appendByte: append the low eight bits of a value"
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findBuffer: buffer = handles.objectOf(handle, kindBuffer)
-  readValue: value = argOf(shape, args, one=1)
+  readValue: value = slots.argOf(shape, args, one=1)
   lowBits: low = bits.andInt64(value, byteMask=255)
   narrow: byte = convert.int64ToByte(low)
   findByte: byteSlot = stateAt(byteAt)
@@ -839,9 +772,9 @@ op bufferAppendInt "buffer.appendInt64: append a whole number's decimal text"
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findBuffer: buffer = handles.objectOf(handle, kindBuffer)
-  readValue: value = argOf(shape, args, one=1)
+  readValue: value = slots.argOf(shape, args, one=1)
   findDigits: digits = stateAt(digitsAt)
   format: length = numbers.formatDecimal(value, digits)
   append: bufferAdd(buffer, digits, length)
@@ -856,7 +789,7 @@ op bufferLength "buffer.length: how many bytes a buffer holds"
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findBuffer: buffer = handles.objectOf(handle, kindBuffer)
   findLength: lengthSlot = machine.offset(buffer, eight=8)
   readLength: length = machine.loadInt64(lengthSlot)
@@ -875,7 +808,7 @@ op bufferToString "buffer.toString: the bytes as text in a region when they are 
   uses systemCalls
   let ok Int32 0
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findBuffer: buffer = handles.objectOf(handle, kindBuffer)
   readData: data = machine.loadAddress(buffer)
   findLength: lengthSlot = machine.offset(buffer, eight=8)
@@ -884,11 +817,11 @@ op bufferToString "buffer.toString: the bytes as text in a region when they are 
   badCheck: invalid = compare.greaterOrEqualInt64(bad, zero)
   if invalid refuse copy
 :refuse
-  failed: status = failWith(payload, utf8Invalid, bad)
+  failed: status = slots.failWith(payload, utf8Invalid, bad)
   return status
 :copy
-  readRegion: region = addressArg(shape, args, one=1)
-  copyText: putText(region, data, length, results)
+  readRegion: region = slots.addressArg(shape, args, one=1)
+  copyText: slots.putText(region, data, length, results)
   return ok
 
 op bufferToBytes "buffer.toBytes: a copy of the bytes that lives as long as the buffer"
@@ -900,7 +833,7 @@ op bufferToBytes "buffer.toBytes: a copy of the bytes that lives as long as the 
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findBuffer: buffer = handles.objectOf(handle, kindBuffer)
   readData: data = machine.loadAddress(buffer)
   findLength: lengthSlot = machine.offset(buffer, eight=8)
@@ -972,7 +905,7 @@ op logLine "Write `[<level>] <text>` and a line end to standard error; a write t
   closeCheck: closeFailed = compare.notEqualInt32(closeStatus, zero32)
   if closeFailed failed writeText
 :writeText
-  findText: text = slotOf(shape, args, zero=0)
+  findText: text = slots.slotOf(shape, args, zero=0)
   readData: data = machine.loadAddress(text)
   findLength: lengthSlot = machine.offset(text, eight=8)
   readLength: length = machine.loadInt64(lengthSlot)
@@ -990,7 +923,7 @@ op logLine "Write `[<level>] <text>` and a line end to standard error; a write t
   return zero32
 :failed
   widen: code = convert.int32ToInt64(status)
-  report: result = failWith(payload, logFailed, code)
+  report: result = slots.failWith(payload, logFailed, code)
   return result
 
 ## ---------------------------------------------------------------- maps
@@ -1006,10 +939,10 @@ op mapNew "map.Map.new: an empty map owned by a region; the compiler adds 1 when
   let keySlots Int64 -1 mut
 :begin
   takeMap: map = heap.take(oneNinetyTwo=192)
-  readRegion: region = addressArg(shape, args, zero=0)
+  readRegion: region = slots.addressArg(shape, args, zero=0)
   storeRegion: machine.storeAddress(map, region)
-  readText: text = flagArg(shape, args, one=1)
-  readTextValues: textValues = flagArg(shape, args, two=2)
+  readText: text = slots.flagArg(shape, args, one=1)
+  readTextValues: textValues = slots.flagArg(shape, args, two=2)
   findTextValues: textValuesSlot = machine.offset(map, eight=8)
   storeTextValues: machine.storeInt64(textValuesSlot, textValues)
   textCheck: textKeys = compare.notEqualInt64(text, zero)
@@ -1036,10 +969,10 @@ op mapArg "The map a call's first parameter names, its table's shape learned fro
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findMap: map = handles.objectOf(handle, kindMap)
   findTable: table = machine.offset(map, sixteen=16)
-  keySlots: keyCount = countOf(shape, one=1)
+  keySlots: keyCount = slots.countOf(shape, one=1)
   learn: tables.shape(table, keyCount, valueSlots)
   return map
 
@@ -1076,10 +1009,10 @@ op mapPut "map.Map.put: a text key is copied into the map's region the first tim
   let key machine.Address unset mut
   let row machine.Address unset mut
 :begin
-  valueSlots: valueCount = countOf(shape, two=2)
+  valueSlots: valueCount = slots.countOf(shape, two=2)
   findMap: map = mapArg(shape, args, valueCount)
   findTable: table = machine.offset(map, sixteen=16)
-  findKey: given = slotOf(shape, args, one=1)
+  findKey: given = slots.slotOf(shape, args, one=1)
   set key given
   hashOf: hash = tables.hashKey(table, given)
   readRegion: region = machine.loadAddress(map)
@@ -1096,7 +1029,7 @@ op mapPut "map.Map.put: a text key is copied into the map's region the first tim
   readData: data = machine.loadAddress(given)
   findLength: lengthSlot = machine.offset(given, eight=8)
   readLength: length = machine.loadInt64(lengthSlot)
-  copyText: putText(region, data, length, scratch)
+  copyText: slots.putText(region, data, length, scratch)
   keepCopy: copied = tables.insert(copies, scratch, hash)
   set key scratch
   goto place
@@ -1120,7 +1053,7 @@ op mapPut "map.Map.put: a text key is copied into the map's region the first tim
   goto value
 :value
   findValue: valueAt = valueAddress(table, row)
-  findGiven: givenValue = slotOf(shape, args, two)
+  findGiven: givenValue = slots.slotOf(shape, args, two)
   findTextValues: textValuesSlot = machine.offset(map, eight=8)
   readTextValues: textValues = machine.loadInt64(textValuesSlot)
   textValueCheck: copyValue = compare.notEqualInt64(textValues, zero)
@@ -1129,7 +1062,7 @@ op mapPut "map.Map.put: a text key is copied into the map's region the first tim
   readValueData: valueData = machine.loadAddress(givenValue)
   findValueLength: valueLengthSlot = machine.offset(givenValue, eight)
   readValueLength: valueLength = machine.loadInt64(valueLengthSlot)
-  copyValueText: putText(region, valueData, valueLength, valueAt)
+  copyValueText: slots.putText(region, valueData, valueLength, valueAt)
   return
 :plainValue
   findValueSlots: valuesSlot = machine.offset(table, sixteen)
@@ -1150,16 +1083,16 @@ op mapGet "map.Map.get: the value of a key, or map.KeyMissing.missing"
   uses systemCalls
   let ok Int32 0
 :begin
-  resultSlots: resultCount = shapeField(shape, thirtyTwo=32)
+  resultSlots: resultCount = slots.shapeField(shape, thirtyTwo=32)
   findMap: map = mapArg(shape, args, resultCount)
   findTable: table = machine.offset(map, sixteen=16)
-  findKey: key = slotOf(shape, args, one=1)
+  findKey: key = slots.slotOf(shape, args, one=1)
   hashOf: hash = tables.hashKey(table, key)
   findRow: found = tables.find(table, key, hash)
   missingCheck: missing = compare.lessThanInt64(found, zero=0)
   if missing refuse give
 :refuse
-  failed: status = failWith(payload, keyMissing, zero)
+  failed: status = slots.failWith(payload, keyMissing, zero)
   return status
 :give
   readRow: row = tables.rowAddress(table, found)
@@ -1183,7 +1116,7 @@ op mapContains "map.Map.contains: 1 when the map has the key, otherwise 0"
 :begin
   findMap: map = mapArg(shape, args, minusOne=-1)
   findTable: table = machine.offset(map, sixteen=16)
-  findKey: key = slotOf(shape, args, one=1)
+  findKey: key = slots.slotOf(shape, args, one=1)
   hashOf: hash = tables.hashKey(table, key)
   findRow: found = tables.find(table, key, hash)
   foundCheck: present = compare.greaterOrEqualInt64(found, no)
@@ -1208,13 +1141,13 @@ op mapRemove "map.Map.remove: remove a key, or map.KeyMissing.missing"
 :begin
   findMap: map = mapArg(shape, args, minusOne=-1)
   findTable: table = machine.offset(map, sixteen=16)
-  findKey: key = slotOf(shape, args, one=1)
+  findKey: key = slots.slotOf(shape, args, one=1)
   hashOf: hash = tables.hashKey(table, key)
   findRow: found = tables.find(table, key, hash)
   missingCheck: missing = compare.lessThanInt64(found, zero=0)
   if missing refuse take
 :refuse
-  failed: status = failWith(payload, keyMissing, zero)
+  failed: status = slots.failWith(payload, keyMissing, zero)
   return status
 :take
   removeRow: tables.remove(table, found)
@@ -1229,7 +1162,7 @@ op mapLength "map.Map.length: how many keys a map has"
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findMap: map = handles.objectOf(handle, kindMap)
   findTable: table = machine.offset(map, sixteen=16)
   countLive: count = tables.live(table)
@@ -1245,10 +1178,10 @@ op mapKeyAt "map.Map.keyAt: the key at a position in first-put order, for `forEa
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findMap: map = handles.objectOf(handle, kindMap)
   findTable: table = machine.offset(map, sixteen=16)
-  readPosition: position = argOf(shape, args, one=1)
+  readPosition: position = slots.argOf(shape, args, one=1)
   countLive: count = tables.live(table)
   lowCheck: below = compare.lessThanInt64(position, zero)
   highCheck: above = compare.greaterOrEqualInt64(position, count)
@@ -1278,8 +1211,8 @@ op setNew "set.Set.new: an empty set owned by a region; the compiler adds 1 when
   let two Int64 2
 :begin
   takeSet: items = heap.take(eightyEight=88)
-  readRegion: region = addressArg(shape, args, zero=0)
-  readText: text = flagArg(shape, args, one=1)
+  readRegion: region = slots.addressArg(shape, args, zero=0)
+  readText: text = slots.flagArg(shape, args, one=1)
   textCheck: textItems = compare.notEqualInt64(text, zero)
   if textItems twoSlots prepare
 :twoSlots
@@ -1300,9 +1233,9 @@ op setArg "The set a call's first parameter names, its table's shape learned fro
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findSet: items = handles.objectOf(handle, kindSet)
-  itemSlots: itemCount = countOf(shape, one=1)
+  itemSlots: itemCount = slots.countOf(shape, one=1)
   learn: tables.shape(items, itemCount, zero)
   return items
 
@@ -1315,7 +1248,7 @@ op setAdd "set.Set.add: add an item unless the set has it; a text item is copied
   uses systemCalls
 :begin
   findSet: items = setArg(shape, args)
-  findItem: item = slotOf(shape, args, one=1)
+  findItem: item = slots.slotOf(shape, args, one=1)
   hashOf: hash = tables.hashKey(items, item)
   findRow: found = tables.find(items, item, hash)
   presentCheck: present = compare.greaterOrEqualInt64(found, zero=0)
@@ -1327,13 +1260,13 @@ op setAdd "set.Set.add: add an item unless the set has it; a text item is copied
   isTextCheck: textItem = compare.notEqualInt64(text, zero)
   if textItem copyItem plainItem
 :copyItem
-  readHandle: handle = argOf(shape, args, zero)
+  readHandle: handle = slots.argOf(shape, args, zero)
   readRegion: region = handles.regionOf(handle)
   findScratch: scratch = stateAt(keyCopyAt)
   readData: data = machine.loadAddress(item)
   findLength: lengthSlot = machine.offset(item, eight=8)
   readLength: length = machine.loadInt64(lengthSlot)
-  copyText: putText(region, data, length, scratch)
+  copyText: slots.putText(region, data, length, scratch)
   insertCopy: copied = tables.insert(items, scratch, hash)
   return
 :plainItem
@@ -1349,9 +1282,9 @@ op setItemAt "set.Set.itemAt: the item at a position in first-added order, for `
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findSet: items = handles.objectOf(handle, kindSet)
-  readPosition: position = argOf(shape, args, one=1)
+  readPosition: position = slots.argOf(shape, args, one=1)
   countLive: count = tables.live(items)
   lowCheck: below = compare.lessThanInt64(position, zero)
   highCheck: above = compare.greaterOrEqualInt64(position, count)
@@ -1379,7 +1312,7 @@ op setContains "set.Set.contains: 1 when the set has the item, otherwise 0"
   let no Int64 0
 :begin
   findSet: items = setArg(shape, args)
-  findItem: item = slotOf(shape, args, one=1)
+  findItem: item = slots.slotOf(shape, args, one=1)
   hashOf: hash = tables.hashKey(items, item)
   findRow: found = tables.find(items, item, hash)
   foundCheck: present = compare.greaterOrEqualInt64(found, no)
@@ -1400,7 +1333,7 @@ op setRemove "set.Set.remove: remove an item if the set has it"
   uses systemCalls
 :begin
   findSet: items = setArg(shape, args)
-  findItem: item = slotOf(shape, args, one=1)
+  findItem: item = slots.slotOf(shape, args, one=1)
   hashOf: hash = tables.hashKey(items, item)
   findRow: found = tables.find(items, item, hash)
   foundCheck: present = compare.greaterOrEqualInt64(found, zero=0)
@@ -1420,7 +1353,7 @@ op setLength "set.Set.length: how many items a set has"
   uses memoryAccess
   uses systemCalls
 :begin
-  readHandle: handle = argOf(shape, args, zero=0)
+  readHandle: handle = slots.argOf(shape, args, zero=0)
   findSet: items = handles.objectOf(handle, kindSet)
   countLive: count = tables.live(items)
   storeCount: machine.storeInt64(results, count)
@@ -1591,6 +1524,306 @@ op dispatch "Run the host target of a number with a call's slots: 0, or an error
   run25: status25 = fromBytes(shape, args, results, payload)
   return status25
 :unknown
+  runMore: statusMore = dispatchMore(number, shape, args, results, payload)
+  return statusMore
+
+op dispatchMore "Run a host target of stage 3 and 4 by its number (26 on): 0, or an error's variant number with its payload stored"
+  input number Int64 copied
+  input shape machine.Address copied
+  input args machine.Address copied
+  input results machine.Address copied
+  input payload machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let ok Int32 0
+:begin
+  goto check26
+:check26
+  is26: t26 = compare.equalInt64(number, n26=26)
+  if t26 do26 check27
+:do26
+  run26: tasks.deadlineNever(results)
+  return ok
+:check27
+  is27: t27 = compare.equalInt64(number, n27=27)
+  if t27 do27 check28
+:do27
+  run27: tasks.deadlineAfter(shape, args, results)
+  return ok
+:check28
+  is28: t28 = compare.equalInt64(number, n28=28)
+  if t28 do28 check29
+:do28
+  run28: tasks.sleepFor(shape, args)
+  return ok
+:check29
+  is29: t29 = compare.equalInt64(number, n29=29)
+  if t29 do29 check30
+:do29
+  run29: tasks.clockNow(results)
+  return ok
+:check30
+  is30: t30 = compare.equalInt64(number, n30=30)
+  if t30 do30 check31
+:do30
+  run30: tasks.clockMonotonic(results)
+  return ok
+:check31
+  is31: t31 = compare.equalInt64(number, n31=31)
+  if t31 do31 check32
+:do31
+  run31: tasks.channelNew(shape, args, results)
+  return ok
+:check32
+  is32: t32 = compare.equalInt64(number, n32=32)
+  if t32 do32 check33
+:do32
+  run32: status32 = tasks.channelSend(shape, args, payload)
+  return status32
+:check33
+  is33: t33 = compare.equalInt64(number, n33=33)
+  if t33 do33 check34
+:do33
+  run33: status33 = tasks.channelReceive(shape, args, results, payload)
+  return status33
+:check34
+  is34: t34 = compare.equalInt64(number, n34=34)
+  if t34 do34 check35
+:do34
+  run34: tasks.channelClose(shape, args)
+  return ok
+:check35
+  is35: t35 = compare.equalInt64(number, n35=35)
+  if t35 do35 check36
+:do35
+  run35: status35 = files.fsClose(shape, args, payload)
+  return status35
+:check36
+  is36: t36 = compare.equalInt64(number, n36=36)
+  if t36 do36 check37
+:do36
+  run36: status36 = files.fsCreate(shape, args, results, payload)
+  return status36
+:check37
+  is37: t37 = compare.equalInt64(number, n37=37)
+  if t37 do37 check38
+:do37
+  run37: status37 = files.fsCreateDirectory(shape, args, payload)
+  return status37
+:check38
+  is38: t38 = compare.equalInt64(number, n38=38)
+  if t38 do38 check39
+:do38
+  run38: files.fsEntryCount(shape, args, results)
+  return ok
+:check39
+  is39: t39 = compare.equalInt64(number, n39=39)
+  if t39 do39 check40
+:do39
+  run39: status39 = files.fsEntryName(shape, args, results, payload)
+  return status39
+:check40
+  is40: t40 = compare.equalInt64(number, n40=40)
+  if t40 do40 check41
+:do40
+  run40: files.fsExists(shape, args, results)
+  return ok
+:check41
+  is41: t41 = compare.equalInt64(number, n41=41)
+  if t41 do41 check42
+:do41
+  run41: status41 = files.fsListDirectory(shape, args, results, payload)
+  return status41
+:check42
+  is42: t42 = compare.equalInt64(number, n42=42)
+  if t42 do42 check43
+:do42
+  run42: status42 = files.fsLock(shape, args, payload)
+  return status42
+:check43
+  is43: t43 = compare.equalInt64(number, n43=43)
+  if t43 do43 check44
+:do43
+  run43: status43 = files.fsOpenAppend(shape, args, results, payload)
+  return status43
+:check44
+  is44: t44 = compare.equalInt64(number, n44=44)
+  if t44 do44 check45
+:do44
+  run44: status44 = files.fsOpenRead(shape, args, results, payload)
+  return status44
+:check45
+  is45: t45 = compare.equalInt64(number, n45=45)
+  if t45 do45 check46
+:do45
+  run45: status45 = files.fsOpenWrite(shape, args, results, payload)
+  return status45
+:check46
+  is46: t46 = compare.equalInt64(number, n46=46)
+  if t46 do46 check47
+:do46
+  run46: status46 = files.fsRead(shape, args, results, payload)
+  return status46
+:check47
+  is47: t47 = compare.equalInt64(number, n47=47)
+  if t47 do47 check48
+:do47
+  run47: status47 = files.fsReadAll(shape, args, results, payload)
+  return status47
+:check48
+  is48: t48 = compare.equalInt64(number, n48=48)
+  if t48 do48 check49
+:do48
+  run48: status48 = files.fsRemove(shape, args, payload)
+  return status48
+:check49
+  is49: t49 = compare.equalInt64(number, n49=49)
+  if t49 do49 check50
+:do49
+  run49: status49 = files.fsRemoveDirectory(shape, args, payload)
+  return status49
+:check50
+  is50: t50 = compare.equalInt64(number, n50=50)
+  if t50 do50 check51
+:do50
+  run50: status50 = files.fsUnlock(shape, args, payload)
+  return status50
+:check51
+  is51: t51 = compare.equalInt64(number, n51=51)
+  if t51 do51 check52
+:do51
+  run51: status51 = files.fsWrite(shape, args, payload)
+  return status51
+:check52
+  is52: t52 = compare.equalInt64(number, n52=52)
+  if t52 do52 check53
+:do52
+  run52: status52 = files.fsWriteAll(shape, args, payload)
+  return status52
+:check53
+  is53: t53 = compare.equalInt64(number, n53=53)
+  if t53 do53 check54
+:do53
+  run53: status53 = processes.readLine(shape, args, results, payload)
+  return status53
+:check54
+  is54: t54 = compare.equalInt64(number, n54=54)
+  if t54 do54 check55
+:do54
+  run54: status54 = processes.environmentGet(shape, args, results, payload)
+  return status54
+:check55
+  is55: t55 = compare.equalInt64(number, n55=55)
+  if t55 do55 check56
+:do55
+  run55: processes.addArgument(shape, args)
+  return ok
+:check56
+  is56: t56 = compare.equalInt64(number, n56=56)
+  if t56 do56 check57
+:do56
+  run56: status56 = processes.argument(shape, args, results, payload)
+  return status56
+:check57
+  is57: t57 = compare.equalInt64(number, n57=57)
+  if t57 do57 check58
+:do57
+  run57: processes.argumentCount(results)
+  return ok
+:check58
+  is58: t58 = compare.equalInt64(number, n58=58)
+  if t58 do58 check59
+:do58
+  run58: processes.newArguments(shape, args, results)
+  return ok
+:check59
+  is59: t59 = compare.equalInt64(number, n59=59)
+  if t59 do59 check60
+:do59
+  run59: status59 = processes.processRun(shape, args, results, payload)
+  return status59
+:check60
+  is60: t60 = compare.equalInt64(number, n60=60)
+  if t60 do60 check61
+:do60
+  run60: status60 = processes.processRunCaptured(shape, args, results, payload)
+  return status60
+:check61
+  is61: t61 = compare.equalInt64(number, n61=61)
+  if t61 do61 check62
+:do61
+  run61: status61 = processes.secretFromEnvironment(shape, args, results, payload)
+  return status61
+:check62
+  is62: t62 = compare.equalInt64(number, n62=62)
+  if t62 do62 check63
+:do62
+  run62: processes.secretFromText(shape, args, results)
+  return ok
+:check63
+  is63: t63 = compare.equalInt64(number, n63=63)
+  if t63 do63 check64
+:do63
+  run63: processes.secretLength(shape, args, results)
+  return ok
+:check64
+  is64: t64 = compare.equalInt64(number, n64=64)
+  if t64 do64 check65
+:do64
+  run64: processes.secretMatches(shape, args, results)
+  return ok
+:check65
+  is65: t65 = compare.equalInt64(number, n65=65)
+  if t65 do65 check66
+:do65
+  run65: processes.secretReveal(shape, args, results)
+  return ok
+:check66
+  is66: t66 = compare.equalInt64(number, n66=66)
+  if t66 do66 check67
+:do66
+  run66: hashes.cryptoConstantTimeEquals(shape, args, results)
+  return ok
+:check67
+  is67: t67 = compare.equalInt64(number, n67=67)
+  if t67 do67 check68
+:do67
+  run67: hashes.cryptoHmacSha256(shape, args, results)
+  return ok
+:check68
+  is68: t68 = compare.equalInt64(number, n68=68)
+  if t68 do68 check69
+:do68
+  run68: hashes.cryptoSha256(shape, args, results)
+  return ok
+:check69
+  is69: t69 = compare.equalInt64(number, n69=69)
+  if t69 do69 check70
+:do69
+  run69: hashes.cryptoToHex(shape, args, results)
+  return ok
+:check70
+  is70: t70 = compare.equalInt64(number, n70=70)
+  if t70 do70 check71
+:do70
+  run70: status70 = processes.ffiBind(shape, args, results, payload)
+  return status70
+:check71
+  is71: t71 = compare.equalInt64(number, n71=71)
+  if t71 do71 check72
+:do71
+  run71: processes.ffiClose(shape, args)
+  return ok
+:check72
+  is72: t72 = compare.equalInt64(number, n72=72)
+  if t72 do72 unknown
+:do72
+  run72: status72 = processes.ffiOpen(shape, args, results, payload)
+  return status72
+:unknown
   failUnknown: failText(unknownText="a host call named a target this runtime does not number")
   return ok
 
@@ -1610,8 +1843,23 @@ op hostCall "Run a host target for compiled code: the key's shape, then its targ
 :begin
   findShape: shape = shapeOf(key, bytes)
   clearPayload: machine.storeInt64(payload, zero=0)
-  readNumber: number = shapeField(shape, sixteen=16)
-  run: status = dispatch(number, shape, args, results, payload)
+  readNumber: number = slots.shapeField(shape, sixteen=16)
+  readRow: row = hostTargets.rowAt(number) ? run
+  readScoped: scoped = HostTarget.scoped(row)
+  scopedCheck: isScoped = compare.greaterOrEqualInt64(scoped, zero)
+  if isScoped checkScope run
+:checkScope
+  readName: name = HostTarget.name(row)
+  readParams: params = slots.shapeField(shape, twentyFour=24)
+  lastOf: last = math.subtractInt64(params, one=1)
+  readValue: value = files.textAt(shape, args, scoped)
+  readValueBytes: valueBytes = files.textBytes(shape, args, scoped)
+  readScopes: scopes = files.textAt(shape, args, last)
+  readScopesBytes: scopesBytes = files.textBytes(shape, args, last)
+  checkIt: files.checkScope(name, value, valueBytes, scopes, scopesBytes)
+  goto run
+:run
+  runIt: status = dispatch(number, shape, args, results, payload)
   return status
 
 @tests
@@ -1729,17 +1977,17 @@ test shapeTest "A key gives its target's number, its parameters' slots and where
   findNone: noNumber = targetNumber(strangerAt, twelve=12)
   expectNone: test.assertEqualInt64(zero=0, noNumber)
   parse: shape = parseShape(keyAt, bytes)
-  readNumber: shapeNumber = shapeField(shape, sixteen=16)
+  readNumber: shapeNumber = slots.shapeField(shape, sixteen=16)
   expectShapeNumber: test.assertEqualInt64(seventeen, shapeNumber)
-  readParams: params = shapeField(shape, twentyFour=24)
+  readParams: params = slots.shapeField(shape, twentyFour=24)
   expectParams: test.assertEqualInt64(two=2, params)
-  readResults: resultSlots = shapeField(shape, thirtyTwo=32)
+  readResults: resultSlots = slots.shapeField(shape, thirtyTwo=32)
   expectResults: test.assertEqualInt64(zero, resultSlots)
-  readKeyCount: keyCount = countOf(shape, zero)
+  readKeyCount: keyCount = slots.countOf(shape, zero)
   expectKeyCount: test.assertEqualInt64(two, keyCount)
-  readValueCount: valueCount = countOf(shape, one=1)
+  readValueCount: valueCount = slots.countOf(shape, one=1)
   expectValueCount: test.assertEqualInt64(one, valueCount)
-  readValueStart: valueStart = shapeField(shape, twoForty=240)
+  readValueStart: valueStart = slots.shapeField(shape, twoForty=240)
   expectValueStart: test.assertEqualInt64(two, valueStart)
   giveShape: heap.give(shape)
   keep: kept = shapeOf(keyAt, bytes)

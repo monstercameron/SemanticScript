@@ -1,0 +1,5 @@
+# A host call's slots: where each parameter's slots start in the arguments compiled code passes to
+# refined_host, reading them as numbers, addresses, and text, and putting a result's text in a region
+# or an error's payload.
+#
+# This module is generated from tools/slots.dsl by tools/build.py.

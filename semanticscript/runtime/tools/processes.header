@@ -1,0 +1,4 @@
+# The program's arguments (the command line split as CommandLineToArgvW splits it), the environment,
+# standard input, and child processes with their pipes, for a standalone executable.
+#
+# This module is generated from tools/processes.dsl by tools/build.py.

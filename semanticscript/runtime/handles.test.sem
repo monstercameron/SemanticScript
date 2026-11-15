@@ -552,3 +552,354 @@ release cleanedBy none
 release borrows none
 release catch none
 release suppresses none
+
+namesTest is test
+namesTest purpose "A list of names keeps copies of the names added, in order, and is given back with its region"
+namesTest verifies addName addsName
+namesTest verifies nameCount countsNames
+namesTest verifies nameAt findsName
+namesTest typeParameter none
+namesTest input none
+namesTest output none
+namesTest outputOwnedBy none
+namesTest raises none
+namesTest effect use machine.memory
+namesTest effect use system.calls
+namesTest uses memoryAccess
+namesTest uses systemCalls
+namesTest memoryHeap false
+namesTest async false
+namesTest maxRecursion none
+namesTest label begin loopKind none
+namesTest label begin within none
+namesTest let first String "first" immutable
+namesTest let second String "second name" immutable
+namesTest let regionAt Int64 61440 immutable
+namesTest let zeroByte Byte 0 immutable
+namesTest let sixtyFour Int64 64 immutable
+namesTest let twentyFour Int64 24 immutable
+namesTest let five Int64 5 immutable
+namesTest let eleven Int64 11 immutable
+namesTest let two Int64 2 immutable
+namesTest let one Int64 1 immutable
+namesTest let eight Int64 8 immutable
+namesTest let zero Int64 0 immutable
+namesTest at begin do findState
+namesTest at begin do findRegion
+namesTest at begin do clearRegion
+namesTest at begin do takeNames
+namesTest at begin do makeNames
+namesTest at begin do findFirst
+namesTest at begin do addFirst
+namesTest at begin do findSecond
+namesTest at begin do addSecond
+namesTest at begin do readCount
+namesTest at begin do expectCount
+namesTest at begin do findName
+namesTest at begin do readName
+namesTest at begin do findLength
+namesTest at begin do readLength
+namesTest at begin do expectLength
+namesTest at begin do compareName
+namesTest at begin do orderWide
+namesTest at begin do expectName
+namesTest at begin do copyCheck
+namesTest at begin do notSame
+namesTest at begin do expectCopied
+namesTest at begin do release
+namesTest at begin do readDropped
+namesTest at begin do expectDropped
+namesTest at begin return ok none
+
+findState is call
+findState in namesTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findRegion is call
+findRegion in namesTest
+findRegion invokes machine.offset
+findRegion argument address machine.Address state copy
+findRegion argument bytes Int64 regionAt copy
+findRegion result region machine.Address
+findRegion ownedBy none
+findRegion cleanedBy none
+findRegion borrows none
+findRegion catch none
+findRegion suppresses none
+
+clearRegion is call
+clearRegion in namesTest
+clearRegion invokes machine.fill
+clearRegion argument target machine.Address region copy
+clearRegion argument value Byte zeroByte copy
+clearRegion argument bytes Int64 sixtyFour copy
+clearRegion result none
+clearRegion ownedBy none
+clearRegion cleanedBy none
+clearRegion borrows none
+clearRegion catch none
+clearRegion suppresses none
+
+takeNames is call
+takeNames in namesTest
+takeNames invokes heap.take
+takeNames argument bytes Int64 twentyFour copy
+takeNames result names machine.Address
+takeNames ownedBy none
+takeNames cleanedBy none
+takeNames borrows none
+takeNames catch none
+takeNames suppresses none
+
+makeNames is call
+makeNames in namesTest
+makeNames invokes newHandle
+makeNames argument kind Int64 kindListing copy
+makeNames argument object machine.Address names copy
+makeNames argument region machine.Address region copy
+makeNames result handle Int64
+makeNames ownedBy none
+makeNames cleanedBy none
+makeNames borrows none
+makeNames catch none
+makeNames suppresses none
+
+findFirst is call
+findFirst in namesTest
+findFirst invokes machine.addressOfString
+findFirst argument text String first lend
+findFirst result firstAt machine.Address
+findFirst ownedBy none
+findFirst cleanedBy none
+findFirst borrows none
+findFirst catch none
+findFirst suppresses none
+
+addFirst is call
+addFirst in namesTest
+addFirst invokes addName
+addFirst argument names machine.Address names copy
+addFirst argument data machine.Address firstAt copy
+addFirst argument bytes Int64 five copy
+addFirst result none
+addFirst ownedBy none
+addFirst cleanedBy none
+addFirst borrows none
+addFirst catch none
+addFirst suppresses none
+
+findSecond is call
+findSecond in namesTest
+findSecond invokes machine.addressOfString
+findSecond argument text String second lend
+findSecond result secondAt machine.Address
+findSecond ownedBy none
+findSecond cleanedBy none
+findSecond borrows none
+findSecond catch none
+findSecond suppresses none
+
+addSecond is call
+addSecond in namesTest
+addSecond invokes addName
+addSecond argument names machine.Address names copy
+addSecond argument data machine.Address secondAt copy
+addSecond argument bytes Int64 eleven copy
+addSecond result none
+addSecond ownedBy none
+addSecond cleanedBy none
+addSecond borrows none
+addSecond catch none
+addSecond suppresses none
+
+readCount is call
+readCount in namesTest
+readCount invokes nameCount
+readCount argument names machine.Address names copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+expectCount is call
+expectCount in namesTest
+expectCount invokes test.assertEqualInt64
+expectCount argument expected Int64 two copy
+expectCount argument actual Int64 count copy
+expectCount result none
+expectCount ownedBy none
+expectCount cleanedBy none
+expectCount borrows none
+expectCount catch none
+expectCount suppresses none
+
+findName is call
+findName in namesTest
+findName invokes nameAt
+findName argument names machine.Address names copy
+findName argument position Int64 one copy
+findName result nameSlot machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+readName is call
+readName in namesTest
+readName invokes machine.loadAddress
+readName argument address machine.Address nameSlot copy
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+findLength is call
+findLength in namesTest
+findLength invokes machine.offset
+findLength argument address machine.Address nameSlot copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in namesTest
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+expectLength is call
+expectLength in namesTest
+expectLength invokes test.assertEqualInt64
+expectLength argument expected Int64 eleven copy
+expectLength argument actual Int64 length copy
+expectLength result none
+expectLength ownedBy none
+expectLength cleanedBy none
+expectLength borrows none
+expectLength catch none
+expectLength suppresses none
+
+compareName is call
+compareName in namesTest
+compareName invokes machine.compare
+compareName argument left machine.Address name copy
+compareName argument right machine.Address secondAt copy
+compareName argument bytes Int64 eleven copy
+compareName result order Int32
+compareName ownedBy none
+compareName cleanedBy none
+compareName borrows none
+compareName catch none
+compareName suppresses none
+
+orderWide is call
+orderWide in namesTest
+orderWide invokes convert.int32ToInt64
+orderWide argument value Int32 order copy
+orderWide result orderValue Int64
+orderWide ownedBy none
+orderWide cleanedBy none
+orderWide borrows none
+orderWide catch none
+orderWide suppresses none
+
+expectName is call
+expectName in namesTest
+expectName invokes test.assertEqualInt64
+expectName argument expected Int64 zero copy
+expectName argument actual Int64 orderValue copy
+expectName result none
+expectName ownedBy none
+expectName cleanedBy none
+expectName borrows none
+expectName catch none
+expectName suppresses none
+
+copyCheck is call
+copyCheck in namesTest
+copyCheck invokes machine.equal
+copyCheck argument left machine.Address name copy
+copyCheck argument right machine.Address secondAt copy
+copyCheck result copied Bool
+copyCheck ownedBy none
+copyCheck cleanedBy none
+copyCheck borrows none
+copyCheck catch none
+copyCheck suppresses none
+
+notSame is call
+notSame in namesTest
+notSame invokes logic.not
+notSame argument value Bool copied copy
+notSame result notCopied Bool
+notSame ownedBy none
+notSame cleanedBy none
+notSame borrows none
+notSame catch none
+notSame suppresses none
+
+expectCopied is call
+expectCopied in namesTest
+expectCopied invokes test.assertTrue
+expectCopied argument value Bool notCopied copy
+expectCopied result none
+expectCopied ownedBy none
+expectCopied cleanedBy none
+expectCopied borrows none
+expectCopied catch none
+expectCopied suppresses none
+
+release is call
+release in namesTest
+release invokes dropRegion
+release argument region machine.Address region copy
+release result none
+release ownedBy none
+release cleanedBy none
+release borrows none
+release catch none
+release suppresses none
+
+readDropped is call
+readDropped in namesTest
+readDropped invokes kindOf
+readDropped argument handle Int64 handle copy
+readDropped result droppedKind Int64
+readDropped ownedBy none
+readDropped cleanedBy none
+readDropped borrows none
+readDropped catch none
+readDropped suppresses none
+
+expectDropped is call
+expectDropped in namesTest
+expectDropped invokes test.assertEqualInt64
+expectDropped argument expected Int64 zero copy
+expectDropped argument actual Int64 droppedKind copy
+expectDropped result none
+expectDropped ownedBy none
+expectDropped cleanedBy none
+expectDropped borrows none
+expectDropped catch none
+expectDropped suppresses none

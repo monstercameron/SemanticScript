@@ -1,7 +1,7 @@
 module frames "The call stack a trap prints, recursion depth and the stack floor, and traps"
   path frames
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test memory numbers output
-  exports pushFrame popFrame report
+  exports pushFrame popFrame report holdResource letGoResource
 
 capability memoryAccess "Authority to keep the call stack and the depth counters in memory" use machine.memory none
 
@@ -9,7 +9,12 @@ capability systemCalls "Authority to write a trap's report, take memory for the 
 
 ## machine.state bytes 64 to 127 belong to this module: 64 the address of the call stack's table, 72 how many
 ## frames are on it, 80 how many the table holds, 88 the stack floor (set by `start`), 96 to 127 the digits of a
-## count being written; bytes 8192 to 40959 are the depth counters of 4096 recursive operations.
+## count being written; bytes 8192 to 40959 are the depth counters of 4096 recursive operations (the main
+## program's: a task's are in a heap block of the same size, whose address the tasks module puts at 392 while the
+## task runs); bytes 384 to 447: 384 not 0 while a task runs, 392 the address of the running task's depth counters
+## (0 for the main program's), 400 the address of the table of resources a trap releases (D-51), 408 how many it
+## holds, 416 how many it has room for. A resource is 16 bytes: its kind (1 an open file, 2 a running child
+## process), then the operating system's handle.
 constant framesAt "Where the address of the call stack's table is kept, in machine.state" Int64 64
 
 constant countAt "Where the number of frames on the call stack is kept, in machine.state" Int64 72
@@ -23,6 +28,16 @@ constant digitsAt "Where a count's digits are put together, in machine.state" In
 constant depthsAt "Where the depth counters start, in machine.state: one Int64 per recursive operation, by the number the compiler gives it" Int64 8192
 
 constant depthCount "How many recursive operations have a depth counter" Int64 4096
+
+constant inTaskAt "Where whether a task is running is kept, in machine.state: not 0 while one is" Int64 384
+
+constant depthTableAt "Where the address of the running task's depth counters is kept, in machine.state: 0 for the main program's" Int64 392
+
+constant resourcesAt "Where the address of the table of resources a trap releases is kept, in machine.state" Int64 400
+
+constant resourceCountAt "Where the number of resources held is kept, in machine.state" Int64 408
+
+constant resourceCapacityAt "Where the number of resources the table has room for is kept, in machine.state" Int64 416
 
 constant frameBytes "The size of a frame in the table: the address of the operation's name, then the name's length" Int64 16
 
@@ -145,13 +160,23 @@ op depthSlot "The address of a recursive operation's depth counter, or the addre
   if inside find outside
 :find
   findState: state = machine.state()
+  findTable: tableSlot = machine.offset(state, depthTableAt)
+  readTable: table = machine.loadAddress(tableSlot)
+  nowhere: zeroAddress = machine.zero()
+  mainCheck: isMain = machine.equal(table, zeroAddress)
+  if isMain mainCounters taskCounters
+:mainCounters
   findDepths: depths = machine.offset(state, depthsAt)
   findOffset: offset = math.multiplyInt64(operation, eight=8)
   findSlot: slot = machine.offset(depths, offset)
   return slot
+:taskCounters
+  findTaskOffset: taskOffset = math.multiplyInt64(operation, eight)
+  findTaskSlot: taskSlot = machine.offset(table, taskOffset)
+  return taskSlot
 :outside
-  nowhere: zeroAddress = machine.zero()
-  return zeroAddress
+  nowhereOutside: outsideAddress = machine.zero()
+  return outsideAddress
 
 op enterRecursion "Count one more call of a recursive operation: 0 to go on, 1 when it is deeper than its bound, 2 when its frame lies below the stack floor"
   invariant countsDepth "Each call counts one deeper; past the operation's bound it gives 1, below a stack floor that is set it gives 2, otherwise 0"
@@ -358,7 +383,161 @@ op report "Write a trap's report to standard error as `refined run` writes it: `
   writeTail: tailStatus = writeString(handle, moreText=" more\n")
   goto finish
 :finish
+  findInTask: inTaskSlot = machine.offset(state, inTaskAt)
+  readInTask: inTask = machine.loadInt64(inTaskSlot)
+  taskCheck: isTask = compare.notEqualInt64(inTask, zero)
+  if isTask writeTask release
+:writeTask
+  writeTaskLine: taskStatus = writeString(handle, taskText="  (in a task started with `start`)\n")
+  goto release
+:release
+  releaseAll: released = releaseHeld()
+  anyCheck: any = compare.greaterThanInt64(released, zero)
+  if any writeReleased reported
+:writeReleased
+  writeLeadReleased: releasedStatus = writeString(handle, releasedText="the runtime released ")
+  writeReleasedCount: countStatus = writeCount(handle, released)
+  oneCheck: justOne = compare.equalInt64(released, one)
+  if justOne writeSingular writePlural
+:writeSingular
+  writeOne: oneStatus = writeString(handle, singularText=" resource")
+  goto writeRest
+:writePlural
+  writeMany: manyStatus = writeString(handle, pluralText=" resources")
+  goto writeRest
+:writeRest
+  writeTailReleased: restStatus = writeString(handle, restText=" the program still held (files flushed and closed, connections closed, child processes stopped); deferred cleanups do not run after a trap\n")
+  goto reported
+:reported
   return messageStatus
+
+## ---------------------------------------------------------------- resources a trap releases (D-51)
+
+op holdResource "Note an open file (kind 1) or a running child process (kind 2) by its operating-system handle, for a trap to release"
+  invariant notesResource "The resource is in the table until it is let go; the table grows when full"
+  input kind Int64 copied
+  input handle machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let capacity Int64 0 mut
+:begin
+  findState: state = machine.state()
+  findCount: countSlot = machine.offset(state, resourceCountAt)
+  readCount: count = machine.loadInt64(countSlot)
+  findCapacity: capacitySlot = machine.offset(state, resourceCapacityAt)
+  readCapacity: held = machine.loadInt64(capacitySlot)
+  findTable: tableSlot = machine.offset(state, resourcesAt)
+  fullCheck: full = compare.greaterOrEqualInt64(count, held)
+  if full grow keep
+:grow
+  twice: doubled = math.multiplyInt64(held, two=2)
+  more: grown = math.addInt64(doubled, sixtyFour=64)
+  set capacity grown
+  sizeOf: size = math.multiplyInt64(capacity, sixteen=16)
+  nowhere: anywhere = machine.zero()
+  takeMemory: table = system.virtualAlloc(anywhere, size, commitAndReserve=12288, readWrite=4)
+  failedCheck: failed = machine.equal(table, anywhere)
+  if failed done move
+:move
+  readOld: old = machine.loadAddress(tableSlot)
+  usedOf: used = math.multiplyInt64(held, sixteen)
+  copyOld: machine.copy(table, old, used)
+  storeTable: machine.storeAddress(tableSlot, table)
+  storeCapacity: machine.storeInt64(capacitySlot, capacity)
+  hadCheck: hadTable = compare.greaterThanInt64(held, zero=0)
+  if hadTable releaseOld keep
+:releaseOld
+  freeOld: freed = system.virtualFree(old, zero, releaseMemory=32768)
+  goto keep
+:keep
+  readTableNow: current = machine.loadAddress(tableSlot)
+  findOffset: offset = math.multiplyInt64(count, sixteen)
+  findEntry: entry = machine.offset(current, offset)
+  storeKind: machine.storeInt64(entry, kind)
+  findHandle: handleSlot = machine.offset(entry, eight=8)
+  storeHandle: machine.storeAddress(handleSlot, handle)
+  addOne: nextCount = math.addInt64(count, one=1)
+  storeCount: machine.storeInt64(countSlot, nextCount)
+  goto done
+:done
+  return
+
+op letGoResource "Take a resource out of the table, as its file is closed or its child process has ended; one not in it is left alone"
+  invariant forgetsResource "The handle is no longer in the table; the last entry takes its place"
+  input handle machine.Address copied
+  effect use machine.memory
+  uses memoryAccess
+  let at Int64 0 mut
+:begin
+  findState: state = machine.state()
+  findCount: countSlot = machine.offset(state, resourceCountAt)
+  readCount: count = machine.loadInt64(countSlot)
+  findTable: tableSlot = machine.offset(state, resourcesAt)
+  readTable: table = machine.loadAddress(tableSlot)
+  goto eachResource
+:eachResource loop=while max=count
+  doneCheck: done = compare.greaterOrEqualInt64(at, count)
+  if done finish compareOne
+:compareOne in=eachResource
+  findOffset: offset = math.multiplyInt64(at, sixteen=16)
+  findEntry: entry = machine.offset(table, offset)
+  findHandle: handleSlot = machine.offset(entry, eight=8)
+  readHandle: held = machine.loadAddress(handleSlot)
+  sameCheck: same = machine.equal(held, handle)
+  if same remove nextOne
+:nextOne in=eachResource
+  advance: after = math.addInt64(at, one=1)
+  set at after
+  goto eachResource
+:remove
+  lastOf: last = math.subtractInt64(count, one)
+  lastOffset: lastAt = math.multiplyInt64(last, sixteen)
+  findLast: lastEntry = machine.offset(table, lastAt)
+  moveLast: machine.copy(entry, lastEntry, sixteen)
+  storeCount: machine.storeInt64(countSlot, last)
+  goto finish
+:finish
+  return
+
+op releaseHeld "Release every resource still held, as a trap does (D-51): close each open file, stop and close each running child process; gives how many there were"
+  invariant releasesAll "Every resource in the table is released and the table is empty"
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+:begin
+  findState: state = machine.state()
+  findCount: countSlot = machine.offset(state, resourceCountAt)
+  readCount: count = machine.loadInt64(countSlot)
+  findTable: tableSlot = machine.offset(state, resourcesAt)
+  readTable: table = machine.loadAddress(tableSlot)
+  goto eachResource
+:eachResource loop=while max=count
+  doneCheck: done = compare.greaterOrEqualInt64(at, count)
+  if done finish releaseOne
+:releaseOne in=eachResource
+  findOffset: offset = math.multiplyInt64(at, sixteen=16)
+  findEntry: entry = machine.offset(table, offset)
+  readKind: kind = machine.loadInt64(entry)
+  findHandle: handleSlot = machine.offset(entry, eight=8)
+  readHandle: handle = machine.loadAddress(handleSlot)
+  childCheck: isChild = compare.equalInt64(kind, two=2)
+  if isChild stopChild closeIt
+:stopChild in=eachResource
+  stop: stopped = system.terminateProcess(handle, exitOne=1)
+  goto closeIt
+:closeIt in=eachResource
+  close: closed = system.closeHandle(handle)
+  advance: after = math.addInt64(at, one=1)
+  set at after
+  goto eachResource
+:finish
+  storeCount: machine.storeInt64(countSlot, zero=0)
+  return count
 
 op trap "Report a trap and end the process with exit code 70, as `refined run` does: refined_trap"
   input text machine.Address copied
@@ -371,6 +550,102 @@ op trap "Report a trap and end the process with exit code 70, as `refined run` d
 :begin
   writeReport: status = report(text, bytes)
   stop: system.exitProcess(trapCode=70)
+  return
+
+
+## ---------------------------------------------------------------- test assertions and instrumentation (not part of an executable's run)
+
+op assertInt "A test's assertion of two whole numbers in an executable: when they differ it traps, as the C runtime does: refined_assert_int"
+  input expected Int64 copied
+  input actual Int64 copied
+  input context machine.Address copied
+  input contextBytes Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi c "refined_assert_int"
+  let message String "an assertion failed (tests run with `refined test`)"
+:begin
+  sameCheck: same = compare.equalInt64(expected, actual)
+  if same done failIt
+:failIt
+  findText: textAt = machine.addressOfString(message)
+  textLength: bytes = string.byteLength(message)
+  stop: trap(textAt, bytes)
+  goto done
+:done
+  return
+
+op assertTrue "A test's assertion that a value is true, in an executable: when it is not it traps: refined_assert_true"
+  input value Int32 copied
+  input context machine.Address copied
+  input contextBytes Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi c "refined_assert_true"
+  let message String "an assertion failed (tests run with `refined test`)"
+:begin
+  falseCheck: isFalse = compare.equalInt32(value, zero32=0)
+  if isFalse failIt done
+:failIt
+  findText: textAt = machine.addressOfString(message)
+  textLength: bytes = string.byteLength(message)
+  stop: trap(textAt, bytes)
+  goto done
+:done
+  return
+
+op assertText "A test's assertion that two texts are the same, in an executable: when they differ it traps: refined_assert_str"
+  input left machine.Address copied
+  input leftBytes Int64 copied
+  input right machine.Address copied
+  input rightBytes Int64 copied
+  input context machine.Address copied
+  input contextBytes Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi c "refined_assert_str"
+  let message String "an assertion failed (tests run with `refined test`)"
+:begin
+  compareIt: same = memory.bytesEqual(left, leftBytes, right, rightBytes)
+  sameCheck: isSame = compare.notEqualInt32(same, zero32=0)
+  if isSame done failIt
+:failIt
+  findText: textAt = machine.addressOfString(message)
+  textLength: bytes = string.byteLength(message)
+  stop: trap(textAt, bytes)
+  goto done
+:done
+  return
+
+op failTest "A test's `test.fail` in an executable: it traps with its message: refined_fail"
+  input text machine.Address copied
+  input bytes Int64 copied
+  input context machine.Address copied
+  input contextBytes Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi c "refined_fail"
+:begin
+  stop: trap(text, bytes)
+  return
+
+op block "Entering a block of an instrumented build (--trace, --coverage, --debug): an executable keeps no trace, so nothing happens: refined_block"
+  input name machine.Address copied
+  input nameBytes Int64 copied
+  input values machine.Address copied
+  input count Int64 copied
+  input description machine.Address copied
+  input descriptionBytes Int64 copied
+  abi c "refined_block"
+:begin
   return
 
 @tests
@@ -466,4 +741,38 @@ test reportTest "Writing a report succeeds and leaves the call stack as it was"
   expectKept: test.assertEqualInt64(two=2, count)
   popInner: popFrame()
   popOuter: popFrame()
+  return
+
+test resourceTest "A held resource stays in the table until it is let go, and a trap's release closes the rest and counts them"
+  verifies holdResource notesResource
+  verifies letGoResource forgetsResource
+  verifies releaseHeld releasesAll
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  findState: state = machine.state()
+  findEnds: ends = machine.offset(state, sixtyOneK=61440)
+  findWriteEnd: writeEnd = machine.offset(ends, eight=8)
+  nowhere: anywhere = machine.zero()
+  makePipe: made = system.createPipe(ends, writeEnd, anywhere, zero32=0)
+  readRead: readHandle = machine.loadAddress(ends)
+  readWrite: writeHandle = machine.loadAddress(writeEnd)
+  findCount: countSlot = machine.offset(state, resourceCountAt)
+  readBefore: before = machine.loadInt64(countSlot)
+  holdRead: holdResource(one=1, readHandle)
+  holdWrite: holdResource(one, writeHandle)
+  readHeld: held = machine.loadInt64(countSlot)
+  wantHeld: wanted = math.addInt64(before, two=2)
+  expectHeld: test.assertEqualInt64(wanted, held)
+  forget: letGoResource(writeHandle)
+  closeWrite: closed = system.closeHandle(writeHandle)
+  readLeft: left = machine.loadInt64(countSlot)
+  wantLeft: wantedLeft = math.addInt64(before, one)
+  expectLeft: test.assertEqualInt64(wantedLeft, left)
+  release: released = releaseHeld()
+  expectReleased: test.assertEqualInt64(wantedLeft, released)
+  readAfter: after = machine.loadInt64(countSlot)
+  expectEmpty: test.assertEqualInt64(zero=0, after)
   return

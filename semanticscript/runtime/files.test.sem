@@ -1,0 +1,4044 @@
+# Tests of the `files` module; generated from tools/files.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests build a call's shape and slots in the last 4 KiB of machine.state: the shape from byte 61440, the
+# arguments from 61952 (eight slots), the results from 62016, the payload at 62080. They make and remove a file
+# `refined-runtime-files.tmp` and a directory `refined-runtime-dir.tmp` in the working directory.
+testShape is operation
+testShape purpose "Make the tests' shape from the slot counts of up to four parameters (0 for none) and give it"
+testShape invariant none
+testShape typeParameter none
+testShape input first Int64 copied
+testShape input second Int64 copied
+testShape input third Int64 copied
+testShape input fourth Int64 copied
+testShape output machine.Address
+testShape outputOwnedBy none
+testShape raises none
+testShape effect use machine.memory
+testShape uses memoryAccess
+testShape memoryHeap false
+testShape async false
+testShape maxRecursion none
+testShape label begin loopKind none
+testShape label begin within none
+testShape let shapeAt Int64 61440 immutable
+testShape let forty Int64 40 immutable
+testShape let fortyEight Int64 48 immutable
+testShape let fiftySix Int64 56 immutable
+testShape let sixtyFour Int64 64 immutable
+testShape let twoThirtyTwo Int64 232 immutable
+testShape let zero Int64 0 immutable
+testShape let twoForty Int64 240 immutable
+testShape let twoFortyEight Int64 248 immutable
+testShape let twoFiftySix Int64 256 immutable
+testShape let twentyFour Int64 24 immutable
+testShape at begin do findShape
+testShape at begin do storeFirst
+testShape at begin do storeSecond
+testShape at begin do storeThird
+testShape at begin do storeFourth
+testShape at begin do storeFirstStart
+testShape at begin do secondStart
+testShape at begin do storeSecondStart
+testShape at begin do thirdStart
+testShape at begin do storeThirdStart
+testShape at begin do fourthStart
+testShape at begin do storeFourthStart
+testShape at begin do firstCheck
+testShape at begin do secondCheck
+testShape at begin do thirdCheck
+testShape at begin do fourthCheck
+testShape at begin do firstFlag
+testShape at begin do secondFlag
+testShape at begin do thirdFlag
+testShape at begin do fourthFlag
+testShape at begin do sumTwo
+testShape at begin do sumThree
+testShape at begin do sumFour
+testShape at begin do storeParams
+testShape at begin return ok shape
+
+findShape is call
+findShape in testShape
+findShape invokes stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+storeFirst is call
+storeFirst in testShape
+storeFirst invokes setField
+storeFirst argument block machine.Address shape copy
+storeFirst argument offset Int64 forty copy
+storeFirst argument value Int64 first copy
+storeFirst result none
+storeFirst ownedBy none
+storeFirst cleanedBy none
+storeFirst borrows none
+storeFirst catch none
+storeFirst suppresses none
+
+storeSecond is call
+storeSecond in testShape
+storeSecond invokes setField
+storeSecond argument block machine.Address shape copy
+storeSecond argument offset Int64 fortyEight copy
+storeSecond argument value Int64 second copy
+storeSecond result none
+storeSecond ownedBy none
+storeSecond cleanedBy none
+storeSecond borrows none
+storeSecond catch none
+storeSecond suppresses none
+
+storeThird is call
+storeThird in testShape
+storeThird invokes setField
+storeThird argument block machine.Address shape copy
+storeThird argument offset Int64 fiftySix copy
+storeThird argument value Int64 third copy
+storeThird result none
+storeThird ownedBy none
+storeThird cleanedBy none
+storeThird borrows none
+storeThird catch none
+storeThird suppresses none
+
+storeFourth is call
+storeFourth in testShape
+storeFourth invokes setField
+storeFourth argument block machine.Address shape copy
+storeFourth argument offset Int64 sixtyFour copy
+storeFourth argument value Int64 fourth copy
+storeFourth result none
+storeFourth ownedBy none
+storeFourth cleanedBy none
+storeFourth borrows none
+storeFourth catch none
+storeFourth suppresses none
+
+storeFirstStart is call
+storeFirstStart in testShape
+storeFirstStart invokes setField
+storeFirstStart argument block machine.Address shape copy
+storeFirstStart argument offset Int64 twoThirtyTwo copy
+storeFirstStart argument value Int64 zero copy
+storeFirstStart result none
+storeFirstStart ownedBy none
+storeFirstStart cleanedBy none
+storeFirstStart borrows none
+storeFirstStart catch none
+storeFirstStart suppresses none
+
+secondStart is call
+secondStart in testShape
+secondStart invokes math.addInt64
+secondStart argument left Int64 first copy
+secondStart argument right Int64 zero copy
+secondStart result afterFirst Int64
+secondStart ownedBy none
+secondStart cleanedBy none
+secondStart borrows none
+secondStart catch none
+secondStart suppresses none
+
+storeSecondStart is call
+storeSecondStart in testShape
+storeSecondStart invokes setField
+storeSecondStart argument block machine.Address shape copy
+storeSecondStart argument offset Int64 twoForty copy
+storeSecondStart argument value Int64 afterFirst copy
+storeSecondStart result none
+storeSecondStart ownedBy none
+storeSecondStart cleanedBy none
+storeSecondStart borrows none
+storeSecondStart catch none
+storeSecondStart suppresses none
+
+thirdStart is call
+thirdStart in testShape
+thirdStart invokes math.addInt64
+thirdStart argument left Int64 afterFirst copy
+thirdStart argument right Int64 second copy
+thirdStart result afterSecond Int64
+thirdStart ownedBy none
+thirdStart cleanedBy none
+thirdStart borrows none
+thirdStart catch none
+thirdStart suppresses none
+
+storeThirdStart is call
+storeThirdStart in testShape
+storeThirdStart invokes setField
+storeThirdStart argument block machine.Address shape copy
+storeThirdStart argument offset Int64 twoFortyEight copy
+storeThirdStart argument value Int64 afterSecond copy
+storeThirdStart result none
+storeThirdStart ownedBy none
+storeThirdStart cleanedBy none
+storeThirdStart borrows none
+storeThirdStart catch none
+storeThirdStart suppresses none
+
+fourthStart is call
+fourthStart in testShape
+fourthStart invokes math.addInt64
+fourthStart argument left Int64 afterSecond copy
+fourthStart argument right Int64 third copy
+fourthStart result afterThird Int64
+fourthStart ownedBy none
+fourthStart cleanedBy none
+fourthStart borrows none
+fourthStart catch none
+fourthStart suppresses none
+
+storeFourthStart is call
+storeFourthStart in testShape
+storeFourthStart invokes setField
+storeFourthStart argument block machine.Address shape copy
+storeFourthStart argument offset Int64 twoFiftySix copy
+storeFourthStart argument value Int64 afterThird copy
+storeFourthStart result none
+storeFourthStart ownedBy none
+storeFourthStart cleanedBy none
+storeFourthStart borrows none
+storeFourthStart catch none
+storeFourthStart suppresses none
+
+firstCheck is call
+firstCheck in testShape
+firstCheck invokes compare.greaterThanInt64
+firstCheck argument left Int64 first copy
+firstCheck argument right Int64 zero copy
+firstCheck result hasFirst Bool
+firstCheck ownedBy none
+firstCheck cleanedBy none
+firstCheck borrows none
+firstCheck catch none
+firstCheck suppresses none
+
+secondCheck is call
+secondCheck in testShape
+secondCheck invokes compare.greaterThanInt64
+secondCheck argument left Int64 second copy
+secondCheck argument right Int64 zero copy
+secondCheck result hasSecond Bool
+secondCheck ownedBy none
+secondCheck cleanedBy none
+secondCheck borrows none
+secondCheck catch none
+secondCheck suppresses none
+
+thirdCheck is call
+thirdCheck in testShape
+thirdCheck invokes compare.greaterThanInt64
+thirdCheck argument left Int64 third copy
+thirdCheck argument right Int64 zero copy
+thirdCheck result hasThird Bool
+thirdCheck ownedBy none
+thirdCheck cleanedBy none
+thirdCheck borrows none
+thirdCheck catch none
+thirdCheck suppresses none
+
+fourthCheck is call
+fourthCheck in testShape
+fourthCheck invokes compare.greaterThanInt64
+fourthCheck argument left Int64 fourth copy
+fourthCheck argument right Int64 zero copy
+fourthCheck result hasFourth Bool
+fourthCheck ownedBy none
+fourthCheck cleanedBy none
+fourthCheck borrows none
+fourthCheck catch none
+fourthCheck suppresses none
+
+firstFlag is call
+firstFlag in testShape
+firstFlag invokes flagOf
+firstFlag argument value Bool hasFirst copy
+firstFlag result countFirst Int64
+firstFlag ownedBy none
+firstFlag cleanedBy none
+firstFlag borrows none
+firstFlag catch none
+firstFlag suppresses none
+
+secondFlag is call
+secondFlag in testShape
+secondFlag invokes flagOf
+secondFlag argument value Bool hasSecond copy
+secondFlag result countSecond Int64
+secondFlag ownedBy none
+secondFlag cleanedBy none
+secondFlag borrows none
+secondFlag catch none
+secondFlag suppresses none
+
+thirdFlag is call
+thirdFlag in testShape
+thirdFlag invokes flagOf
+thirdFlag argument value Bool hasThird copy
+thirdFlag result countThird Int64
+thirdFlag ownedBy none
+thirdFlag cleanedBy none
+thirdFlag borrows none
+thirdFlag catch none
+thirdFlag suppresses none
+
+fourthFlag is call
+fourthFlag in testShape
+fourthFlag invokes flagOf
+fourthFlag argument value Bool hasFourth copy
+fourthFlag result countFourth Int64
+fourthFlag ownedBy none
+fourthFlag cleanedBy none
+fourthFlag borrows none
+fourthFlag catch none
+fourthFlag suppresses none
+
+sumTwo is call
+sumTwo in testShape
+sumTwo invokes math.addInt64
+sumTwo argument left Int64 countFirst copy
+sumTwo argument right Int64 countSecond copy
+sumTwo result two Int64
+sumTwo ownedBy none
+sumTwo cleanedBy none
+sumTwo borrows none
+sumTwo catch none
+sumTwo suppresses none
+
+sumThree is call
+sumThree in testShape
+sumThree invokes math.addInt64
+sumThree argument left Int64 two copy
+sumThree argument right Int64 countThird copy
+sumThree result three Int64
+sumThree ownedBy none
+sumThree cleanedBy none
+sumThree borrows none
+sumThree catch none
+sumThree suppresses none
+
+sumFour is call
+sumFour in testShape
+sumFour invokes math.addInt64
+sumFour argument left Int64 three copy
+sumFour argument right Int64 countFourth copy
+sumFour result four Int64
+sumFour ownedBy none
+sumFour cleanedBy none
+sumFour borrows none
+sumFour catch none
+sumFour suppresses none
+
+storeParams is call
+storeParams in testShape
+storeParams invokes setField
+storeParams argument block machine.Address shape copy
+storeParams argument offset Int64 twentyFour copy
+storeParams argument value Int64 four copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+argSlot is operation
+argSlot purpose "The address of an argument slot of the tests' call"
+argSlot invariant none
+argSlot typeParameter none
+argSlot input slot Int64 copied
+argSlot output machine.Address
+argSlot outputOwnedBy none
+argSlot raises none
+argSlot effect use machine.memory
+argSlot uses memoryAccess
+argSlot memoryHeap false
+argSlot async false
+argSlot maxRecursion none
+argSlot label begin loopKind none
+argSlot label begin within none
+argSlot let eight Int64 8 immutable
+argSlot let argsOffset Int64 61952 immutable
+argSlot at begin do offsetOf
+argSlot at begin do withBase
+argSlot at begin do findSlot
+argSlot at begin return ok address
+
+offsetOf is call
+offsetOf in argSlot
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 slot copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+withBase is call
+withBase in argSlot
+withBase invokes math.addInt64
+withBase argument left Int64 offset copy
+withBase argument right Int64 argsOffset copy
+withBase result place Int64
+withBase ownedBy none
+withBase cleanedBy none
+withBase borrows none
+withBase catch none
+withBase suppresses none
+
+findSlot is call
+findSlot in argSlot
+findSlot invokes stateAt
+findSlot argument offset Int64 place copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+setArg is operation
+setArg purpose "Set an argument slot of the tests' call to a number"
+setArg invariant none
+setArg typeParameter none
+setArg input slot Int64 copied
+setArg input value Int64 copied
+setArg output none
+setArg outputOwnedBy none
+setArg raises none
+setArg effect use machine.memory
+setArg uses memoryAccess
+setArg memoryHeap false
+setArg async false
+setArg maxRecursion none
+setArg label begin loopKind none
+setArg label begin within none
+setArg let none
+setArg at begin do findSlot
+setArg at begin do storeIt
+setArg at begin return ok none
+
+findSlot is call
+findSlot in setArg
+findSlot invokes argSlot
+findSlot argument slot Int64 slot copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeIt is call
+storeIt in setArg
+storeIt invokes machine.storeInt64
+storeIt argument address machine.Address address copy
+storeIt argument value Int64 value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+setAddressArg is operation
+setAddressArg purpose "Set an argument slot of the tests' call to an address"
+setAddressArg invariant none
+setAddressArg typeParameter none
+setAddressArg input slot Int64 copied
+setAddressArg input value machine.Address copied
+setAddressArg output none
+setAddressArg outputOwnedBy none
+setAddressArg raises none
+setAddressArg effect use machine.memory
+setAddressArg uses memoryAccess
+setAddressArg memoryHeap false
+setAddressArg async false
+setAddressArg maxRecursion none
+setAddressArg label begin loopKind none
+setAddressArg label begin within none
+setAddressArg let none
+setAddressArg at begin do findSlot
+setAddressArg at begin do storeIt
+setAddressArg at begin return ok none
+
+findSlot is call
+findSlot in setAddressArg
+findSlot invokes argSlot
+findSlot argument slot Int64 slot copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeIt is call
+storeIt in setAddressArg
+storeIt invokes machine.storeAddress
+storeIt argument address machine.Address address copy
+storeIt argument value machine.Address value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+setTextArg is operation
+setTextArg purpose "Set two argument slots of the tests' call to a text's address and length"
+setTextArg invariant none
+setTextArg typeParameter none
+setTextArg input slot Int64 copied
+setTextArg input text String borrowed
+setTextArg output none
+setTextArg outputOwnedBy none
+setTextArg raises none
+setTextArg effect use machine.memory
+setTextArg uses memoryAccess
+setTextArg memoryHeap false
+setTextArg async false
+setTextArg maxRecursion none
+setTextArg label begin loopKind none
+setTextArg label begin within none
+setTextArg let eight Int64 8 immutable
+setTextArg at begin do findText
+setTextArg at begin do textLength
+setTextArg at begin do findSlot
+setTextArg at begin do storeAddress
+setTextArg at begin do findLength
+setTextArg at begin do storeLength
+setTextArg at begin return ok none
+
+findText is call
+findText in setTextArg
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt2 machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in setTextArg
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+findSlot is call
+findSlot in setTextArg
+findSlot invokes argSlot
+findSlot argument slot Int64 slot copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeAddress is call
+storeAddress in setTextArg
+storeAddress invokes machine.storeAddress
+storeAddress argument address machine.Address address copy
+storeAddress argument value machine.Address textAt2 copy
+storeAddress result none
+storeAddress ownedBy none
+storeAddress cleanedBy none
+storeAddress borrows none
+storeAddress catch none
+storeAddress suppresses none
+
+findLength is call
+findLength in setTextArg
+findLength invokes machine.offset
+findLength argument address machine.Address address copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in setTextArg
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 bytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+resultsAt is operation
+resultsAt purpose "The address of the tests' result slots"
+resultsAt invariant none
+resultsAt typeParameter none
+resultsAt input none
+resultsAt output machine.Address
+resultsAt outputOwnedBy none
+resultsAt raises none
+resultsAt effect use machine.memory
+resultsAt uses memoryAccess
+resultsAt memoryHeap false
+resultsAt async false
+resultsAt maxRecursion none
+resultsAt label begin loopKind none
+resultsAt label begin within none
+resultsAt let resultsOffset Int64 62016 immutable
+resultsAt at begin do findResults
+resultsAt at begin return ok results
+
+findResults is call
+findResults in resultsAt
+findResults invokes stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+payloadAt is operation
+payloadAt purpose "The address of the tests' payload slot"
+payloadAt invariant none
+payloadAt typeParameter none
+payloadAt input none
+payloadAt output machine.Address
+payloadAt outputOwnedBy none
+payloadAt raises none
+payloadAt effect use machine.memory
+payloadAt uses memoryAccess
+payloadAt memoryHeap false
+payloadAt async false
+payloadAt maxRecursion none
+payloadAt label begin loopKind none
+payloadAt label begin within none
+payloadAt let payloadOffset Int64 62080 immutable
+payloadAt at begin do findPayload
+payloadAt at begin return ok payload
+
+findPayload is call
+findPayload in payloadAt
+findPayload invokes stateAt
+findPayload argument offset Int64 payloadOffset copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+expectStatus is operation
+expectStatus purpose "Compare a call's status with what is expected"
+expectStatus invariant none
+expectStatus typeParameter none
+expectStatus input wanted Int64 copied
+expectStatus input status Int32 copied
+expectStatus output none
+expectStatus outputOwnedBy none
+expectStatus raises none
+expectStatus effect none
+expectStatus uses none
+expectStatus memoryHeap false
+expectStatus async false
+expectStatus maxRecursion none
+expectStatus label begin loopKind none
+expectStatus label begin within none
+expectStatus let none
+expectStatus at begin do widenStatus
+expectStatus at begin do compareIt
+expectStatus at begin return ok none
+
+widenStatus is call
+widenStatus in expectStatus
+widenStatus invokes convert.int32ToInt64
+widenStatus argument value Int32 status copy
+widenStatus result statusValue Int64
+widenStatus ownedBy none
+widenStatus cleanedBy none
+widenStatus borrows none
+widenStatus catch none
+widenStatus suppresses none
+
+compareIt is call
+compareIt in expectStatus
+compareIt invokes test.assertEqualInt64
+compareIt argument expected Int64 wanted copy
+compareIt argument actual Int64 statusValue copy
+compareIt result none
+compareIt ownedBy none
+compareIt cleanedBy none
+compareIt borrows none
+compareIt catch none
+compareIt suppresses none
+
+expectResultText is operation
+expectResultText purpose "Compare the text in the first two result slots with what is expected"
+expectResultText invariant none
+expectResultText typeParameter none
+expectResultText input wanted String borrowed
+expectResultText output none
+expectResultText outputOwnedBy none
+expectResultText raises none
+expectResultText effect use machine.memory
+expectResultText uses memoryAccess
+expectResultText memoryHeap false
+expectResultText async false
+expectResultText maxRecursion none
+expectResultText label begin loopKind none
+expectResultText label begin within none
+expectResultText let eight Int64 8 immutable
+expectResultText let one Int64 1 immutable
+expectResultText at begin do readResults
+expectResultText at begin do readText
+expectResultText at begin do findLength
+expectResultText at begin do readLength
+expectResultText at begin do findWanted
+expectResultText at begin do wantedLength
+expectResultText at begin do compareLength
+expectResultText at begin do compareText
+expectResultText at begin do sameWide
+expectResultText at begin do compareIt
+expectResultText at begin return ok none
+
+readResults is call
+readResults in expectResultText
+readResults invokes resultsAt
+readResults argument none
+readResults result results machine.Address
+readResults ownedBy none
+readResults cleanedBy none
+readResults borrows none
+readResults catch none
+readResults suppresses none
+
+readText is call
+readText in expectResultText
+readText invokes machine.loadAddress
+readText argument address machine.Address results copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+findLength is call
+findLength in expectResultText
+findLength invokes machine.offset
+findLength argument address machine.Address results copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in expectResultText
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+findWanted is call
+findWanted in expectResultText
+findWanted invokes machine.addressOfString
+findWanted argument text String wanted lend
+findWanted result wantedAt machine.Address
+findWanted ownedBy none
+findWanted cleanedBy none
+findWanted borrows none
+findWanted catch none
+findWanted suppresses none
+
+wantedLength is call
+wantedLength in expectResultText
+wantedLength invokes string.byteLength
+wantedLength argument text String wanted lend
+wantedLength result wantedBytes Int64
+wantedLength ownedBy none
+wantedLength cleanedBy none
+wantedLength borrows none
+wantedLength catch none
+wantedLength suppresses none
+
+compareLength is call
+compareLength in expectResultText
+compareLength invokes test.assertEqualInt64
+compareLength argument expected Int64 wantedBytes copy
+compareLength argument actual Int64 length copy
+compareLength result none
+compareLength ownedBy none
+compareLength cleanedBy none
+compareLength borrows none
+compareLength catch none
+compareLength suppresses none
+
+compareText is call
+compareText in expectResultText
+compareText invokes memory.bytesEqual
+compareText argument left machine.Address text copy
+compareText argument leftBytes Int64 length copy
+compareText argument right machine.Address wantedAt copy
+compareText argument rightBytes Int64 wantedBytes copy
+compareText result same Int32
+compareText ownedBy none
+compareText cleanedBy none
+compareText borrows none
+compareText catch none
+compareText suppresses none
+
+sameWide is call
+sameWide in expectResultText
+sameWide invokes convert.int32ToInt64
+sameWide argument value Int32 same copy
+sameWide result sameValue Int64
+sameWide ownedBy none
+sameWide cleanedBy none
+sameWide borrows none
+sameWide catch none
+sameWide suppresses none
+
+compareIt is call
+compareIt in expectResultText
+compareIt invokes test.assertEqualInt64
+compareIt argument expected Int64 one copy
+compareIt argument actual Int64 sameValue copy
+compareIt result none
+compareIt ownedBy none
+compareIt cleanedBy none
+compareIt borrows none
+compareIt catch none
+compareIt suppresses none
+
+resultHandle is operation
+resultHandle purpose "The handle in the first result slot"
+resultHandle invariant none
+resultHandle typeParameter none
+resultHandle input none
+resultHandle output Int64
+resultHandle outputOwnedBy none
+resultHandle raises none
+resultHandle effect use machine.memory
+resultHandle uses memoryAccess
+resultHandle memoryHeap false
+resultHandle async false
+resultHandle maxRecursion none
+resultHandle label begin loopKind none
+resultHandle label begin within none
+resultHandle let none
+resultHandle at begin do readResults
+resultHandle at begin do readHandle
+resultHandle at begin return ok handle
+
+readResults is call
+readResults in resultHandle
+readResults invokes resultsAt
+readResults argument none
+readResults result results machine.Address
+readResults ownedBy none
+readResults cleanedBy none
+readResults borrows none
+readResults catch none
+readResults suppresses none
+
+readHandle is call
+readHandle in resultHandle
+readHandle invokes machine.loadInt64
+readHandle argument address machine.Address results copy
+readHandle result handle Int64
+readHandle ownedBy none
+readHandle cleanedBy none
+readHandle borrows none
+readHandle catch none
+readHandle suppresses none
+
+preparePath is operation
+preparePath purpose "Make the tests' call one path"
+preparePath invariant none
+preparePath typeParameter none
+preparePath input path String borrowed
+preparePath output machine.Address
+preparePath outputOwnedBy none
+preparePath raises none
+preparePath effect use machine.memory
+preparePath uses memoryAccess
+preparePath memoryHeap false
+preparePath async false
+preparePath maxRecursion none
+preparePath label begin loopKind none
+preparePath label begin within none
+preparePath let two Int64 2 immutable
+preparePath let zero Int64 0 immutable
+preparePath at begin do shapeOf
+preparePath at begin do setPath
+preparePath at begin return ok shape
+
+shapeOf is call
+shapeOf in preparePath
+shapeOf invokes testShape
+shapeOf argument first Int64 two copy
+shapeOf argument second Int64 zero copy
+shapeOf argument third Int64 zero copy
+shapeOf argument fourth Int64 zero copy
+shapeOf result shape machine.Address
+shapeOf ownedBy none
+shapeOf cleanedBy none
+shapeOf borrows none
+shapeOf catch none
+shapeOf suppresses none
+
+setPath is call
+setPath in preparePath
+setPath invokes setTextArg
+setPath argument slot Int64 zero copy
+setPath argument text String path lend
+setPath result none
+setPath ownedBy none
+setPath cleanedBy none
+setPath borrows none
+setPath catch none
+setPath suppresses none
+
+prepareWrite is operation
+prepareWrite purpose "Make the tests' call a handle, a text, and no deadline"
+prepareWrite invariant none
+prepareWrite typeParameter none
+prepareWrite input handle Int64 copied
+prepareWrite input text String borrowed
+prepareWrite output machine.Address
+prepareWrite outputOwnedBy none
+prepareWrite raises none
+prepareWrite effect use machine.memory
+prepareWrite uses memoryAccess
+prepareWrite memoryHeap false
+prepareWrite async false
+prepareWrite maxRecursion none
+prepareWrite label begin loopKind none
+prepareWrite label begin within none
+prepareWrite let one Int64 1 immutable
+prepareWrite let two Int64 2 immutable
+prepareWrite let zero Int64 0 immutable
+prepareWrite let three Int64 3 immutable
+prepareWrite let minusOne Int64 -1 immutable
+prepareWrite at begin do shapeOf
+prepareWrite at begin do setHandle
+prepareWrite at begin do setData
+prepareWrite at begin do setDeadline
+prepareWrite at begin return ok shape
+
+shapeOf is call
+shapeOf in prepareWrite
+shapeOf invokes testShape
+shapeOf argument first Int64 one copy
+shapeOf argument second Int64 two copy
+shapeOf argument third Int64 one copy
+shapeOf argument fourth Int64 zero copy
+shapeOf result shape machine.Address
+shapeOf ownedBy none
+shapeOf cleanedBy none
+shapeOf borrows none
+shapeOf catch none
+shapeOf suppresses none
+
+setHandle is call
+setHandle in prepareWrite
+setHandle invokes setArg
+setHandle argument slot Int64 zero copy
+setHandle argument value Int64 handle copy
+setHandle result none
+setHandle ownedBy none
+setHandle cleanedBy none
+setHandle borrows none
+setHandle catch none
+setHandle suppresses none
+
+setData is call
+setData in prepareWrite
+setData invokes setTextArg
+setData argument slot Int64 one copy
+setData argument text String text lend
+setData result none
+setData ownedBy none
+setData cleanedBy none
+setData borrows none
+setData catch none
+setData suppresses none
+
+setDeadline is call
+setDeadline in prepareWrite
+setDeadline invokes setArg
+setDeadline argument slot Int64 three copy
+setDeadline argument value Int64 minusOne copy
+setDeadline result none
+setDeadline ownedBy none
+setDeadline cleanedBy none
+setDeadline borrows none
+setDeadline catch none
+setDeadline suppresses none
+
+prepareHandle is operation
+prepareHandle purpose "Make the tests' call a handle and no deadline"
+prepareHandle invariant none
+prepareHandle typeParameter none
+prepareHandle input handle Int64 copied
+prepareHandle output machine.Address
+prepareHandle outputOwnedBy none
+prepareHandle raises none
+prepareHandle effect use machine.memory
+prepareHandle uses memoryAccess
+prepareHandle memoryHeap false
+prepareHandle async false
+prepareHandle maxRecursion none
+prepareHandle label begin loopKind none
+prepareHandle label begin within none
+prepareHandle let one Int64 1 immutable
+prepareHandle let zero Int64 0 immutable
+prepareHandle let minusOne Int64 -1 immutable
+prepareHandle at begin do shapeOf
+prepareHandle at begin do setHandle
+prepareHandle at begin do setDeadline
+prepareHandle at begin return ok shape
+
+shapeOf is call
+shapeOf in prepareHandle
+shapeOf invokes testShape
+shapeOf argument first Int64 one copy
+shapeOf argument second Int64 one copy
+shapeOf argument third Int64 zero copy
+shapeOf argument fourth Int64 zero copy
+shapeOf result shape machine.Address
+shapeOf ownedBy none
+shapeOf cleanedBy none
+shapeOf borrows none
+shapeOf catch none
+shapeOf suppresses none
+
+setHandle is call
+setHandle in prepareHandle
+setHandle invokes setArg
+setHandle argument slot Int64 zero copy
+setHandle argument value Int64 handle copy
+setHandle result none
+setHandle ownedBy none
+setHandle cleanedBy none
+setHandle borrows none
+setHandle catch none
+setHandle suppresses none
+
+setDeadline is call
+setDeadline in prepareHandle
+setDeadline invokes setArg
+setDeadline argument slot Int64 one copy
+setDeadline argument value Int64 minusOne copy
+setDeadline result none
+setDeadline ownedBy none
+setDeadline cleanedBy none
+setDeadline borrows none
+setDeadline catch none
+setDeadline suppresses none
+
+prepareRead is operation
+prepareRead purpose "Make the tests' call a handle, a region, a number of bytes, and no deadline"
+prepareRead invariant none
+prepareRead typeParameter none
+prepareRead input handle Int64 copied
+prepareRead input region machine.Address copied
+prepareRead input most Int64 copied
+prepareRead output machine.Address
+prepareRead outputOwnedBy none
+prepareRead raises none
+prepareRead effect use machine.memory
+prepareRead uses memoryAccess
+prepareRead memoryHeap false
+prepareRead async false
+prepareRead maxRecursion none
+prepareRead label begin loopKind none
+prepareRead label begin within none
+prepareRead let one Int64 1 immutable
+prepareRead let zero Int64 0 immutable
+prepareRead let two Int64 2 immutable
+prepareRead let three Int64 3 immutable
+prepareRead let minusOne Int64 -1 immutable
+prepareRead at begin do shapeOf
+prepareRead at begin do setHandle
+prepareRead at begin do setRegion
+prepareRead at begin do setMost
+prepareRead at begin do setDeadline
+prepareRead at begin return ok shape
+
+shapeOf is call
+shapeOf in prepareRead
+shapeOf invokes testShape
+shapeOf argument first Int64 one copy
+shapeOf argument second Int64 one copy
+shapeOf argument third Int64 one copy
+shapeOf argument fourth Int64 one copy
+shapeOf result shape machine.Address
+shapeOf ownedBy none
+shapeOf cleanedBy none
+shapeOf borrows none
+shapeOf catch none
+shapeOf suppresses none
+
+setHandle is call
+setHandle in prepareRead
+setHandle invokes setArg
+setHandle argument slot Int64 zero copy
+setHandle argument value Int64 handle copy
+setHandle result none
+setHandle ownedBy none
+setHandle cleanedBy none
+setHandle borrows none
+setHandle catch none
+setHandle suppresses none
+
+setRegion is call
+setRegion in prepareRead
+setRegion invokes setAddressArg
+setRegion argument slot Int64 one copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+setMost is call
+setMost in prepareRead
+setMost invokes setArg
+setMost argument slot Int64 two copy
+setMost argument value Int64 most copy
+setMost result none
+setMost ownedBy none
+setMost cleanedBy none
+setMost borrows none
+setMost catch none
+setMost suppresses none
+
+setDeadline is call
+setDeadline in prepareRead
+setDeadline invokes setArg
+setDeadline argument slot Int64 three copy
+setDeadline argument value Int64 minusOne copy
+setDeadline result none
+setDeadline ownedBy none
+setDeadline cleanedBy none
+setDeadline borrows none
+setDeadline catch none
+setDeadline suppresses none
+
+prepareReadAll is operation
+prepareReadAll purpose "Make the tests' call a path, a region, a number of bytes, and no deadline"
+prepareReadAll invariant none
+prepareReadAll typeParameter none
+prepareReadAll input path String borrowed
+prepareReadAll input region machine.Address copied
+prepareReadAll input most Int64 copied
+prepareReadAll output machine.Address
+prepareReadAll outputOwnedBy none
+prepareReadAll raises none
+prepareReadAll effect use machine.memory
+prepareReadAll uses memoryAccess
+prepareReadAll memoryHeap false
+prepareReadAll async false
+prepareReadAll maxRecursion none
+prepareReadAll label begin loopKind none
+prepareReadAll label begin within none
+prepareReadAll let two Int64 2 immutable
+prepareReadAll let one Int64 1 immutable
+prepareReadAll let zero Int64 0 immutable
+prepareReadAll let three Int64 3 immutable
+prepareReadAll let four Int64 4 immutable
+prepareReadAll let minusOne Int64 -1 immutable
+prepareReadAll at begin do shapeOf
+prepareReadAll at begin do setPath
+prepareReadAll at begin do setRegion
+prepareReadAll at begin do setMost
+prepareReadAll at begin do setDeadline
+prepareReadAll at begin return ok shape
+
+shapeOf is call
+shapeOf in prepareReadAll
+shapeOf invokes testShape
+shapeOf argument first Int64 two copy
+shapeOf argument second Int64 one copy
+shapeOf argument third Int64 one copy
+shapeOf argument fourth Int64 one copy
+shapeOf result shape machine.Address
+shapeOf ownedBy none
+shapeOf cleanedBy none
+shapeOf borrows none
+shapeOf catch none
+shapeOf suppresses none
+
+setPath is call
+setPath in prepareReadAll
+setPath invokes setTextArg
+setPath argument slot Int64 zero copy
+setPath argument text String path lend
+setPath result none
+setPath ownedBy none
+setPath cleanedBy none
+setPath borrows none
+setPath catch none
+setPath suppresses none
+
+setRegion is call
+setRegion in prepareReadAll
+setRegion invokes setAddressArg
+setRegion argument slot Int64 two copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+setMost is call
+setMost in prepareReadAll
+setMost invokes setArg
+setMost argument slot Int64 three copy
+setMost argument value Int64 most copy
+setMost result none
+setMost ownedBy none
+setMost cleanedBy none
+setMost borrows none
+setMost catch none
+setMost suppresses none
+
+setDeadline is call
+setDeadline in prepareReadAll
+setDeadline invokes setArg
+setDeadline argument slot Int64 four copy
+setDeadline argument value Int64 minusOne copy
+setDeadline result none
+setDeadline ownedBy none
+setDeadline cleanedBy none
+setDeadline borrows none
+setDeadline catch none
+setDeadline suppresses none
+
+prepareWriteAll is operation
+prepareWriteAll purpose "Make the tests' call a path, a text, and no deadline"
+prepareWriteAll invariant none
+prepareWriteAll typeParameter none
+prepareWriteAll input path String borrowed
+prepareWriteAll input text String borrowed
+prepareWriteAll output machine.Address
+prepareWriteAll outputOwnedBy none
+prepareWriteAll raises none
+prepareWriteAll effect use machine.memory
+prepareWriteAll uses memoryAccess
+prepareWriteAll memoryHeap false
+prepareWriteAll async false
+prepareWriteAll maxRecursion none
+prepareWriteAll label begin loopKind none
+prepareWriteAll label begin within none
+prepareWriteAll let two Int64 2 immutable
+prepareWriteAll let one Int64 1 immutable
+prepareWriteAll let zero Int64 0 immutable
+prepareWriteAll let four Int64 4 immutable
+prepareWriteAll let minusOne Int64 -1 immutable
+prepareWriteAll at begin do shapeOf
+prepareWriteAll at begin do setPath
+prepareWriteAll at begin do setData
+prepareWriteAll at begin do setDeadline
+prepareWriteAll at begin return ok shape
+
+shapeOf is call
+shapeOf in prepareWriteAll
+shapeOf invokes testShape
+shapeOf argument first Int64 two copy
+shapeOf argument second Int64 two copy
+shapeOf argument third Int64 one copy
+shapeOf argument fourth Int64 zero copy
+shapeOf result shape machine.Address
+shapeOf ownedBy none
+shapeOf cleanedBy none
+shapeOf borrows none
+shapeOf catch none
+shapeOf suppresses none
+
+setPath is call
+setPath in prepareWriteAll
+setPath invokes setTextArg
+setPath argument slot Int64 zero copy
+setPath argument text String path lend
+setPath result none
+setPath ownedBy none
+setPath cleanedBy none
+setPath borrows none
+setPath catch none
+setPath suppresses none
+
+setData is call
+setData in prepareWriteAll
+setData invokes setTextArg
+setData argument slot Int64 two copy
+setData argument text String text lend
+setData result none
+setData ownedBy none
+setData cleanedBy none
+setData borrows none
+setData catch none
+setData suppresses none
+
+setDeadline is call
+setDeadline in prepareWriteAll
+setDeadline invokes setArg
+setDeadline argument slot Int64 four copy
+setDeadline argument value Int64 minusOne copy
+setDeadline result none
+setDeadline ownedBy none
+setDeadline cleanedBy none
+setDeadline borrows none
+setDeadline catch none
+setDeadline suppresses none
+
+cleanUp is operation
+cleanUp purpose "Remove a file or an empty directory a test may have left, whatever is there"
+cleanUp invariant none
+cleanUp typeParameter none
+cleanUp input path String borrowed
+cleanUp output none
+cleanUp outputOwnedBy none
+cleanUp raises none
+cleanUp effect use machine.memory
+cleanUp effect use system.calls
+cleanUp uses memoryAccess
+cleanUp uses systemCalls
+cleanUp memoryHeap false
+cleanUp async false
+cleanUp maxRecursion none
+cleanUp label begin loopKind none
+cleanUp label begin within none
+cleanUp let none
+cleanUp at begin do findPath
+cleanUp at begin do pathLength
+cleanUp at begin do wideName
+cleanUp at begin do deleteIt
+cleanUp at begin do removeIt
+cleanUp at begin do giveName
+cleanUp at begin return ok none
+
+findPath is call
+findPath in cleanUp
+findPath invokes machine.addressOfString
+findPath argument text String path lend
+findPath result pathAt machine.Address
+findPath ownedBy none
+findPath cleanedBy none
+findPath borrows none
+findPath catch none
+findPath suppresses none
+
+pathLength is call
+pathLength in cleanUp
+pathLength invokes string.byteLength
+pathLength argument text String path lend
+pathLength result bytes Int64
+pathLength ownedBy none
+pathLength cleanedBy none
+pathLength borrows none
+pathLength catch none
+pathLength suppresses none
+
+wideName is call
+wideName in cleanUp
+wideName invokes wide.widen
+wideName argument text machine.Address pathAt copy
+wideName argument bytes Int64 bytes copy
+wideName result name machine.Address
+wideName ownedBy none
+wideName cleanedBy none
+wideName borrows none
+wideName catch none
+wideName suppresses none
+
+deleteIt is call
+deleteIt in cleanUp
+deleteIt invokes system.deleteFileW
+deleteIt argument name machine.Address name copy
+deleteIt result deleted Int32
+deleteIt ownedBy none
+deleteIt cleanedBy none
+deleteIt borrows none
+deleteIt catch none
+deleteIt suppresses none
+
+removeIt is call
+removeIt in cleanUp
+removeIt invokes system.removeDirectoryW
+removeIt argument name machine.Address name copy
+removeIt result removed Int32
+removeIt ownedBy none
+removeIt cleanedBy none
+removeIt borrows none
+removeIt catch none
+removeIt suppresses none
+
+giveName is call
+giveName in cleanUp
+giveName invokes heap.give
+giveName argument block machine.Address name copy
+giveName result none
+giveName ownedBy none
+giveName cleanedBy none
+giveName borrows none
+giveName catch none
+giveName suppresses none
+
+fileTest is test
+fileTest purpose "Files are made, written, read, appended, emptied, locked, listed in order, and removed as host.py does them, with busy for a file open for writing and the errors Python reports"
+fileTest verifies textAt readsTextAddress
+fileTest verifies textBytes readsTextLength
+fileTest verifies fsCreate createsFile
+fileTest verifies fsWrite writesFile
+fileTest verifies fsOpenRead opensForReading
+fileTest verifies fsClose closesFile
+fileTest verifies fsRead readsFile
+fileTest verifies fsReadAll readsWholeFile
+fileTest verifies fsWriteAll writesWholeFile
+fileTest verifies fsOpenAppend opensForAppending
+fileTest verifies fsOpenWrite opensForWriting
+fileTest verifies fsLock locksFile
+fileTest verifies fsUnlock unlocksFile
+fileTest verifies fsExists findsPath
+fileTest verifies fsCreateDirectory makesDirectory
+fileTest verifies fsListDirectory listsDirectory
+fileTest verifies fsEntryCount countsEntries
+fileTest verifies fsEntryName namesEntry
+fileTest verifies fsRemove removesFile
+fileTest verifies fsRemoveDirectory removesDirectory
+fileTest typeParameter none
+fileTest input none
+fileTest output none
+fileTest outputOwnedBy none
+fileTest raises none
+fileTest effect use machine.memory
+fileTest effect use system.calls
+fileTest uses memoryAccess
+fileTest uses systemCalls
+fileTest memoryHeap false
+fileTest async false
+fileTest maxRecursion none
+fileTest label begin loopKind none
+fileTest label begin within none
+fileTest let file String "refined-runtime-files.tmp" immutable
+fileTest let directory String "refined-runtime-dir.tmp" immutable
+fileTest let inA String "refined-runtime-dir.tmp/b" immutable
+fileTest let inB String "refined-runtime-dir.tmp/a" immutable
+fileTest let label String "files test" immutable
+fileTest let hello String "hello" immutable
+fileTest let capacity Int64 65536 immutable
+fileTest let zero Int64 0 immutable
+fileTest let twentyFive Int64 25 immutable
+fileTest let seven Int64 7 immutable
+fileTest let three Int64 3 immutable
+fileTest let hundred Int64 100 immutable
+fileTest let nope String "nope" immutable
+fileTest let eight Int64 8 immutable
+fileTest let four Int64 4 immutable
+fileTest let bye String "bye" immutable
+fileTest let two Int64 2 immutable
+fileTest let bang String "!" immutable
+fileTest let byeBang String "bye!" immutable
+fileTest let empty String "" immutable
+fileTest let one Int64 1 immutable
+fileTest let nameA String "a" immutable
+fileTest at begin do cleanFile
+fileTest at begin do cleanA
+fileTest at begin do cleanB
+fileTest at begin do cleanDirectory
+fileTest at begin do findLabel
+fileTest at begin do labelLength
+fileTest at begin do make
+fileTest at begin do findArgs
+fileTest at begin do readResults
+fileTest at begin do readPayload
+fileTest at begin do pathShape
+fileTest at begin do readTextAt
+fileTest at begin do readTextBytes
+fileTest at begin do findFile
+fileTest at begin do sameText
+fileTest at begin do expectTextAt
+fileTest at begin do expectTextBytes
+fileTest at begin do create
+fileTest at begin do expectCreated
+fileTest at begin do readCreated
+fileTest at begin do writeShape
+fileTest at begin do write
+fileTest at begin do expectWrote
+fileTest at begin do pathShape2
+fileTest at begin do readBusy
+fileTest at begin do expectBusy
+fileTest at begin do closeShape
+fileTest at begin do closeWriter
+fileTest at begin do expectClosed
+fileTest at begin do pathShape3
+fileTest at begin do createAgain
+fileTest at begin do expectExists
+fileTest at begin do openReader
+fileTest at begin do expectOpened
+fileTest at begin do readReader
+fileTest at begin do readShape
+fileTest at begin do readIt
+fileTest at begin do expectRead
+fileTest at begin do expectHello
+fileTest at begin do writeShape2
+fileTest at begin do writeReader
+fileTest at begin do expectRefused
+fileTest at begin do closeShape2
+fileTest at begin do closeReader
+fileTest at begin do readAllShape
+fileTest at begin do readSmall
+fileTest at begin do expectTooLarge
+fileTest at begin do readAllShape2
+fileTest at begin do readAll
+fileTest at begin do expectWhole
+fileTest at begin do expectWholeText
+fileTest at begin do writeAllShape
+fileTest at begin do writeAll
+fileTest at begin do expectReplaced
+fileTest at begin do pathShape4
+fileTest at begin do openAppender
+fileTest at begin do expectAppendOpened
+fileTest at begin do readAppender
+fileTest at begin do lockShape
+fileTest at begin do lockIt
+fileTest at begin do expectLocked
+fileTest at begin do unlockIt
+fileTest at begin do expectUnlocked
+fileTest at begin do unlockAgain
+fileTest at begin do expectNotLocked
+fileTest at begin do writeShape3
+fileTest at begin do appendIt
+fileTest at begin do expectAppended
+fileTest at begin do closeShape3
+fileTest at begin do closeAppender
+fileTest at begin do readAllShape3
+fileTest at begin do readAppended
+fileTest at begin do expectAppendedText
+fileTest at begin do pathShape5
+fileTest at begin do openEmptied
+fileTest at begin do expectEmptied
+fileTest at begin do readEmptied
+fileTest at begin do readShape2
+fileTest at begin do readNothing
+fileTest at begin do expectNothing
+fileTest at begin do closeShape4
+fileTest at begin do closeEmptied
+fileTest at begin do pathShape6
+fileTest at begin do existsFile
+fileTest at begin do readPresent
+fileTest at begin do expectPresent
+fileTest at begin do pathShape7
+fileTest at begin do makeDirectory
+fileTest at begin do expectMade
+fileTest at begin do makeAgain
+fileTest at begin do expectMadeAgain
+fileTest at begin do writeAllShape2
+fileTest at begin do writeA
+fileTest at begin do writeAllShape3
+fileTest at begin do writeB
+fileTest at begin do listShape
+fileTest at begin do setListPath
+fileTest at begin do setListRegion
+fileTest at begin do listIt
+fileTest at begin do expectListed
+fileTest at begin do readListing
+fileTest at begin do countShape
+fileTest at begin do setListing
+fileTest at begin do countIt
+fileTest at begin do readCount
+fileTest at begin do expectCount
+fileTest at begin do nameShape
+fileTest at begin do setListingAgain
+fileTest at begin do setIndex
+fileTest at begin do setNameRegion
+fileTest at begin do nameIt
+fileTest at begin do expectNamed
+fileTest at begin do expectFirstName
+fileTest at begin do setFar
+fileTest at begin do nameFar
+fileTest at begin do expectFar
+fileTest at begin do pathShape8
+fileTest at begin do removeA
+fileTest at begin do pathShape9
+fileTest at begin do removeB
+fileTest at begin do pathShape10
+fileTest at begin do removeDirectory
+fileTest at begin do expectRemovedDirectory
+fileTest at begin do pathShape11
+fileTest at begin do removeFile
+fileTest at begin do expectRemoved
+fileTest at begin do existsGone
+fileTest at begin do readAbsent
+fileTest at begin do expectAbsent
+fileTest at begin do removeAgain
+fileTest at begin do expectMissing
+fileTest at begin do openMissing
+fileTest at begin do expectMissingOpen
+fileTest at begin do free
+fileTest at begin return ok none
+
+cleanFile is call
+cleanFile in fileTest
+cleanFile invokes cleanUp
+cleanFile argument path String file lend
+cleanFile result none
+cleanFile ownedBy none
+cleanFile cleanedBy none
+cleanFile borrows none
+cleanFile catch none
+cleanFile suppresses none
+
+cleanA is call
+cleanA in fileTest
+cleanA invokes cleanUp
+cleanA argument path String inA lend
+cleanA result none
+cleanA ownedBy none
+cleanA cleanedBy none
+cleanA borrows none
+cleanA catch none
+cleanA suppresses none
+
+cleanB is call
+cleanB in fileTest
+cleanB invokes cleanUp
+cleanB argument path String inB lend
+cleanB result none
+cleanB ownedBy none
+cleanB cleanedBy none
+cleanB borrows none
+cleanB catch none
+cleanB suppresses none
+
+cleanDirectory is call
+cleanDirectory in fileTest
+cleanDirectory invokes cleanUp
+cleanDirectory argument path String directory lend
+cleanDirectory result none
+cleanDirectory ownedBy none
+cleanDirectory cleanedBy none
+cleanDirectory borrows none
+cleanDirectory catch none
+cleanDirectory suppresses none
+
+findLabel is call
+findLabel in fileTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in fileTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in fileTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+findArgs is call
+findArgs in fileTest
+findArgs invokes argSlot
+findArgs argument slot Int64 zero copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+readResults is call
+readResults in fileTest
+readResults invokes resultsAt
+readResults argument none
+readResults result results machine.Address
+readResults ownedBy none
+readResults cleanedBy none
+readResults borrows none
+readResults catch none
+readResults suppresses none
+
+readPayload is call
+readPayload in fileTest
+readPayload invokes payloadAt
+readPayload argument none
+readPayload result payload machine.Address
+readPayload ownedBy none
+readPayload cleanedBy none
+readPayload borrows none
+readPayload catch none
+readPayload suppresses none
+
+pathShape is call
+pathShape in fileTest
+pathShape invokes preparePath
+pathShape argument path String file lend
+pathShape result shape1 machine.Address
+pathShape ownedBy none
+pathShape cleanedBy none
+pathShape borrows none
+pathShape catch none
+pathShape suppresses none
+
+readTextAt is call
+readTextAt in fileTest
+readTextAt invokes textAt
+readTextAt argument shape machine.Address shape1 copy
+readTextAt argument args machine.Address args copy
+readTextAt argument parameter Int64 zero copy
+readTextAt result fileText machine.Address
+readTextAt ownedBy none
+readTextAt cleanedBy none
+readTextAt borrows none
+readTextAt catch none
+readTextAt suppresses none
+
+readTextBytes is call
+readTextBytes in fileTest
+readTextBytes invokes textBytes
+readTextBytes argument shape machine.Address shape1 copy
+readTextBytes argument args machine.Address args copy
+readTextBytes argument parameter Int64 zero copy
+readTextBytes result pathLength Int64
+readTextBytes ownedBy none
+readTextBytes cleanedBy none
+readTextBytes borrows none
+readTextBytes catch none
+readTextBytes suppresses none
+
+findFile is call
+findFile in fileTest
+findFile invokes machine.addressOfString
+findFile argument text String file lend
+findFile result fileAt machine.Address
+findFile ownedBy none
+findFile cleanedBy none
+findFile borrows none
+findFile catch none
+findFile suppresses none
+
+sameText is call
+sameText in fileTest
+sameText invokes machine.equal
+sameText argument left machine.Address fileText copy
+sameText argument right machine.Address fileAt copy
+sameText result sameAddress Bool
+sameText ownedBy none
+sameText cleanedBy none
+sameText borrows none
+sameText catch none
+sameText suppresses none
+
+expectTextAt is call
+expectTextAt in fileTest
+expectTextAt invokes test.assertTrue
+expectTextAt argument value Bool sameAddress copy
+expectTextAt result none
+expectTextAt ownedBy none
+expectTextAt cleanedBy none
+expectTextAt borrows none
+expectTextAt catch none
+expectTextAt suppresses none
+
+expectTextBytes is call
+expectTextBytes in fileTest
+expectTextBytes invokes test.assertEqualInt64
+expectTextBytes argument expected Int64 twentyFive copy
+expectTextBytes argument actual Int64 pathLength copy
+expectTextBytes result none
+expectTextBytes ownedBy none
+expectTextBytes cleanedBy none
+expectTextBytes borrows none
+expectTextBytes catch none
+expectTextBytes suppresses none
+
+create is call
+create in fileTest
+create invokes fsCreate
+create argument shape machine.Address shape1 copy
+create argument args machine.Address args copy
+create argument results machine.Address results copy
+create argument payload machine.Address payload copy
+create result created Int32
+create ownedBy none
+create cleanedBy none
+create borrows none
+create catch none
+create suppresses none
+
+expectCreated is call
+expectCreated in fileTest
+expectCreated invokes expectStatus
+expectCreated argument wanted Int64 zero copy
+expectCreated argument status Int32 created copy
+expectCreated result none
+expectCreated ownedBy none
+expectCreated cleanedBy none
+expectCreated borrows none
+expectCreated catch none
+expectCreated suppresses none
+
+readCreated is call
+readCreated in fileTest
+readCreated invokes resultHandle
+readCreated argument none
+readCreated result writer Int64
+readCreated ownedBy none
+readCreated cleanedBy none
+readCreated borrows none
+readCreated catch none
+readCreated suppresses none
+
+writeShape is call
+writeShape in fileTest
+writeShape invokes prepareWrite
+writeShape argument handle Int64 writer copy
+writeShape argument text String hello lend
+writeShape result shape2 machine.Address
+writeShape ownedBy none
+writeShape cleanedBy none
+writeShape borrows none
+writeShape catch none
+writeShape suppresses none
+
+write is call
+write in fileTest
+write invokes fsWrite
+write argument shape machine.Address shape2 copy
+write argument args machine.Address args copy
+write argument payload machine.Address payload copy
+write result wrote Int32
+write ownedBy none
+write cleanedBy none
+write borrows none
+write catch none
+write suppresses none
+
+expectWrote is call
+expectWrote in fileTest
+expectWrote invokes expectStatus
+expectWrote argument wanted Int64 zero copy
+expectWrote argument status Int32 wrote copy
+expectWrote result none
+expectWrote ownedBy none
+expectWrote cleanedBy none
+expectWrote borrows none
+expectWrote catch none
+expectWrote suppresses none
+
+pathShape2 is call
+pathShape2 in fileTest
+pathShape2 invokes preparePath
+pathShape2 argument path String file lend
+pathShape2 result shape3 machine.Address
+pathShape2 ownedBy none
+pathShape2 cleanedBy none
+pathShape2 borrows none
+pathShape2 catch none
+pathShape2 suppresses none
+
+readBusy is call
+readBusy in fileTest
+readBusy invokes fsOpenRead
+readBusy argument shape machine.Address shape3 copy
+readBusy argument args machine.Address args copy
+readBusy argument results machine.Address results copy
+readBusy argument payload machine.Address payload copy
+readBusy result busyStatus Int32
+readBusy ownedBy none
+readBusy cleanedBy none
+readBusy borrows none
+readBusy catch none
+readBusy suppresses none
+
+expectBusy is call
+expectBusy in fileTest
+expectBusy invokes expectStatus
+expectBusy argument wanted Int64 seven copy
+expectBusy argument status Int32 busyStatus copy
+expectBusy result none
+expectBusy ownedBy none
+expectBusy cleanedBy none
+expectBusy borrows none
+expectBusy catch none
+expectBusy suppresses none
+
+closeShape is call
+closeShape in fileTest
+closeShape invokes prepareHandle
+closeShape argument handle Int64 writer copy
+closeShape result shape4 machine.Address
+closeShape ownedBy none
+closeShape cleanedBy none
+closeShape borrows none
+closeShape catch none
+closeShape suppresses none
+
+closeWriter is call
+closeWriter in fileTest
+closeWriter invokes fsClose
+closeWriter argument shape machine.Address shape4 copy
+closeWriter argument args machine.Address args copy
+closeWriter argument payload machine.Address payload copy
+closeWriter result closedWriter Int32
+closeWriter ownedBy none
+closeWriter cleanedBy none
+closeWriter borrows none
+closeWriter catch none
+closeWriter suppresses none
+
+expectClosed is call
+expectClosed in fileTest
+expectClosed invokes expectStatus
+expectClosed argument wanted Int64 zero copy
+expectClosed argument status Int32 closedWriter copy
+expectClosed result none
+expectClosed ownedBy none
+expectClosed cleanedBy none
+expectClosed borrows none
+expectClosed catch none
+expectClosed suppresses none
+
+pathShape3 is call
+pathShape3 in fileTest
+pathShape3 invokes preparePath
+pathShape3 argument path String file lend
+pathShape3 result shape5 machine.Address
+pathShape3 ownedBy none
+pathShape3 cleanedBy none
+pathShape3 borrows none
+pathShape3 catch none
+pathShape3 suppresses none
+
+createAgain is call
+createAgain in fileTest
+createAgain invokes fsCreate
+createAgain argument shape machine.Address shape5 copy
+createAgain argument args machine.Address args copy
+createAgain argument results machine.Address results copy
+createAgain argument payload machine.Address payload copy
+createAgain result again Int32
+createAgain ownedBy none
+createAgain cleanedBy none
+createAgain borrows none
+createAgain catch none
+createAgain suppresses none
+
+expectExists is call
+expectExists in fileTest
+expectExists invokes expectStatus
+expectExists argument wanted Int64 three copy
+expectExists argument status Int32 again copy
+expectExists result none
+expectExists ownedBy none
+expectExists cleanedBy none
+expectExists borrows none
+expectExists catch none
+expectExists suppresses none
+
+openReader is call
+openReader in fileTest
+openReader invokes fsOpenRead
+openReader argument shape machine.Address shape5 copy
+openReader argument args machine.Address args copy
+openReader argument results machine.Address results copy
+openReader argument payload machine.Address payload copy
+openReader result opened Int32
+openReader ownedBy none
+openReader cleanedBy none
+openReader borrows none
+openReader catch none
+openReader suppresses none
+
+expectOpened is call
+expectOpened in fileTest
+expectOpened invokes expectStatus
+expectOpened argument wanted Int64 zero copy
+expectOpened argument status Int32 opened copy
+expectOpened result none
+expectOpened ownedBy none
+expectOpened cleanedBy none
+expectOpened borrows none
+expectOpened catch none
+expectOpened suppresses none
+
+readReader is call
+readReader in fileTest
+readReader invokes resultHandle
+readReader argument none
+readReader result reader Int64
+readReader ownedBy none
+readReader cleanedBy none
+readReader borrows none
+readReader catch none
+readReader suppresses none
+
+readShape is call
+readShape in fileTest
+readShape invokes prepareRead
+readShape argument handle Int64 reader copy
+readShape argument region machine.Address region copy
+readShape argument most Int64 hundred copy
+readShape result shape6 machine.Address
+readShape ownedBy none
+readShape cleanedBy none
+readShape borrows none
+readShape catch none
+readShape suppresses none
+
+readIt is call
+readIt in fileTest
+readIt invokes fsRead
+readIt argument shape machine.Address shape6 copy
+readIt argument args machine.Address args copy
+readIt argument results machine.Address results copy
+readIt argument payload machine.Address payload copy
+readIt result readStatus Int32
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+expectRead is call
+expectRead in fileTest
+expectRead invokes expectStatus
+expectRead argument wanted Int64 zero copy
+expectRead argument status Int32 readStatus copy
+expectRead result none
+expectRead ownedBy none
+expectRead cleanedBy none
+expectRead borrows none
+expectRead catch none
+expectRead suppresses none
+
+expectHello is call
+expectHello in fileTest
+expectHello invokes expectResultText
+expectHello argument wanted String hello lend
+expectHello result none
+expectHello ownedBy none
+expectHello cleanedBy none
+expectHello borrows none
+expectHello catch none
+expectHello suppresses none
+
+writeShape2 is call
+writeShape2 in fileTest
+writeShape2 invokes prepareWrite
+writeShape2 argument handle Int64 reader copy
+writeShape2 argument text String nope lend
+writeShape2 result shape7 machine.Address
+writeShape2 ownedBy none
+writeShape2 cleanedBy none
+writeShape2 borrows none
+writeShape2 catch none
+writeShape2 suppresses none
+
+writeReader is call
+writeReader in fileTest
+writeReader invokes fsWrite
+writeReader argument shape machine.Address shape7 copy
+writeReader argument args machine.Address args copy
+writeReader argument payload machine.Address payload copy
+writeReader result refused Int32
+writeReader ownedBy none
+writeReader cleanedBy none
+writeReader borrows none
+writeReader catch none
+writeReader suppresses none
+
+expectRefused is call
+expectRefused in fileTest
+expectRefused invokes expectStatus
+expectRefused argument wanted Int64 eight copy
+expectRefused argument status Int32 refused copy
+expectRefused result none
+expectRefused ownedBy none
+expectRefused cleanedBy none
+expectRefused borrows none
+expectRefused catch none
+expectRefused suppresses none
+
+closeShape2 is call
+closeShape2 in fileTest
+closeShape2 invokes prepareHandle
+closeShape2 argument handle Int64 reader copy
+closeShape2 result shape8 machine.Address
+closeShape2 ownedBy none
+closeShape2 cleanedBy none
+closeShape2 borrows none
+closeShape2 catch none
+closeShape2 suppresses none
+
+closeReader is call
+closeReader in fileTest
+closeReader invokes fsClose
+closeReader argument shape machine.Address shape8 copy
+closeReader argument args machine.Address args copy
+closeReader argument payload machine.Address payload copy
+closeReader result closedReader Int32
+closeReader ownedBy none
+closeReader cleanedBy none
+closeReader borrows none
+closeReader catch none
+closeReader suppresses none
+
+readAllShape is call
+readAllShape in fileTest
+readAllShape invokes prepareReadAll
+readAllShape argument path String file lend
+readAllShape argument region machine.Address region copy
+readAllShape argument most Int64 three copy
+readAllShape result shape9 machine.Address
+readAllShape ownedBy none
+readAllShape cleanedBy none
+readAllShape borrows none
+readAllShape catch none
+readAllShape suppresses none
+
+readSmall is call
+readSmall in fileTest
+readSmall invokes fsReadAll
+readSmall argument shape machine.Address shape9 copy
+readSmall argument args machine.Address args copy
+readSmall argument results machine.Address results copy
+readSmall argument payload machine.Address payload copy
+readSmall result tooLargeStatus Int32
+readSmall ownedBy none
+readSmall cleanedBy none
+readSmall borrows none
+readSmall catch none
+readSmall suppresses none
+
+expectTooLarge is call
+expectTooLarge in fileTest
+expectTooLarge invokes expectStatus
+expectTooLarge argument wanted Int64 four copy
+expectTooLarge argument status Int32 tooLargeStatus copy
+expectTooLarge result none
+expectTooLarge ownedBy none
+expectTooLarge cleanedBy none
+expectTooLarge borrows none
+expectTooLarge catch none
+expectTooLarge suppresses none
+
+readAllShape2 is call
+readAllShape2 in fileTest
+readAllShape2 invokes prepareReadAll
+readAllShape2 argument path String file lend
+readAllShape2 argument region machine.Address region copy
+readAllShape2 argument most Int64 hundred copy
+readAllShape2 result shape10 machine.Address
+readAllShape2 ownedBy none
+readAllShape2 cleanedBy none
+readAllShape2 borrows none
+readAllShape2 catch none
+readAllShape2 suppresses none
+
+readAll is call
+readAll in fileTest
+readAll invokes fsReadAll
+readAll argument shape machine.Address shape10 copy
+readAll argument args machine.Address args copy
+readAll argument results machine.Address results copy
+readAll argument payload machine.Address payload copy
+readAll result wholeStatus Int32
+readAll ownedBy none
+readAll cleanedBy none
+readAll borrows none
+readAll catch none
+readAll suppresses none
+
+expectWhole is call
+expectWhole in fileTest
+expectWhole invokes expectStatus
+expectWhole argument wanted Int64 zero copy
+expectWhole argument status Int32 wholeStatus copy
+expectWhole result none
+expectWhole ownedBy none
+expectWhole cleanedBy none
+expectWhole borrows none
+expectWhole catch none
+expectWhole suppresses none
+
+expectWholeText is call
+expectWholeText in fileTest
+expectWholeText invokes expectResultText
+expectWholeText argument wanted String hello lend
+expectWholeText result none
+expectWholeText ownedBy none
+expectWholeText cleanedBy none
+expectWholeText borrows none
+expectWholeText catch none
+expectWholeText suppresses none
+
+writeAllShape is call
+writeAllShape in fileTest
+writeAllShape invokes prepareWriteAll
+writeAllShape argument path String file lend
+writeAllShape argument text String bye lend
+writeAllShape result shape11 machine.Address
+writeAllShape ownedBy none
+writeAllShape cleanedBy none
+writeAllShape borrows none
+writeAllShape catch none
+writeAllShape suppresses none
+
+writeAll is call
+writeAll in fileTest
+writeAll invokes fsWriteAll
+writeAll argument shape machine.Address shape11 copy
+writeAll argument args machine.Address args copy
+writeAll argument payload machine.Address payload copy
+writeAll result replaced Int32
+writeAll ownedBy none
+writeAll cleanedBy none
+writeAll borrows none
+writeAll catch none
+writeAll suppresses none
+
+expectReplaced is call
+expectReplaced in fileTest
+expectReplaced invokes expectStatus
+expectReplaced argument wanted Int64 zero copy
+expectReplaced argument status Int32 replaced copy
+expectReplaced result none
+expectReplaced ownedBy none
+expectReplaced cleanedBy none
+expectReplaced borrows none
+expectReplaced catch none
+expectReplaced suppresses none
+
+pathShape4 is call
+pathShape4 in fileTest
+pathShape4 invokes preparePath
+pathShape4 argument path String file lend
+pathShape4 result shape12 machine.Address
+pathShape4 ownedBy none
+pathShape4 cleanedBy none
+pathShape4 borrows none
+pathShape4 catch none
+pathShape4 suppresses none
+
+openAppender is call
+openAppender in fileTest
+openAppender invokes fsOpenAppend
+openAppender argument shape machine.Address shape12 copy
+openAppender argument args machine.Address args copy
+openAppender argument results machine.Address results copy
+openAppender argument payload machine.Address payload copy
+openAppender result appendOpened Int32
+openAppender ownedBy none
+openAppender cleanedBy none
+openAppender borrows none
+openAppender catch none
+openAppender suppresses none
+
+expectAppendOpened is call
+expectAppendOpened in fileTest
+expectAppendOpened invokes expectStatus
+expectAppendOpened argument wanted Int64 zero copy
+expectAppendOpened argument status Int32 appendOpened copy
+expectAppendOpened result none
+expectAppendOpened ownedBy none
+expectAppendOpened cleanedBy none
+expectAppendOpened borrows none
+expectAppendOpened catch none
+expectAppendOpened suppresses none
+
+readAppender is call
+readAppender in fileTest
+readAppender invokes resultHandle
+readAppender argument none
+readAppender result appender Int64
+readAppender ownedBy none
+readAppender cleanedBy none
+readAppender borrows none
+readAppender catch none
+readAppender suppresses none
+
+lockShape is call
+lockShape in fileTest
+lockShape invokes prepareHandle
+lockShape argument handle Int64 appender copy
+lockShape result shape13 machine.Address
+lockShape ownedBy none
+lockShape cleanedBy none
+lockShape borrows none
+lockShape catch none
+lockShape suppresses none
+
+lockIt is call
+lockIt in fileTest
+lockIt invokes fsLock
+lockIt argument shape machine.Address shape13 copy
+lockIt argument args machine.Address args copy
+lockIt argument payload machine.Address payload copy
+lockIt result locked Int32
+lockIt ownedBy none
+lockIt cleanedBy none
+lockIt borrows none
+lockIt catch none
+lockIt suppresses none
+
+expectLocked is call
+expectLocked in fileTest
+expectLocked invokes expectStatus
+expectLocked argument wanted Int64 zero copy
+expectLocked argument status Int32 locked copy
+expectLocked result none
+expectLocked ownedBy none
+expectLocked cleanedBy none
+expectLocked borrows none
+expectLocked catch none
+expectLocked suppresses none
+
+unlockIt is call
+unlockIt in fileTest
+unlockIt invokes fsUnlock
+unlockIt argument shape machine.Address shape13 copy
+unlockIt argument args machine.Address args copy
+unlockIt argument payload machine.Address payload copy
+unlockIt result unlocked Int32
+unlockIt ownedBy none
+unlockIt cleanedBy none
+unlockIt borrows none
+unlockIt catch none
+unlockIt suppresses none
+
+expectUnlocked is call
+expectUnlocked in fileTest
+expectUnlocked invokes expectStatus
+expectUnlocked argument wanted Int64 zero copy
+expectUnlocked argument status Int32 unlocked copy
+expectUnlocked result none
+expectUnlocked ownedBy none
+expectUnlocked cleanedBy none
+expectUnlocked borrows none
+expectUnlocked catch none
+expectUnlocked suppresses none
+
+unlockAgain is call
+unlockAgain in fileTest
+unlockAgain invokes fsUnlock
+unlockAgain argument shape machine.Address shape13 copy
+unlockAgain argument args machine.Address args copy
+unlockAgain argument payload machine.Address payload copy
+unlockAgain result notLocked Int32
+unlockAgain ownedBy none
+unlockAgain cleanedBy none
+unlockAgain borrows none
+unlockAgain catch none
+unlockAgain suppresses none
+
+expectNotLocked is call
+expectNotLocked in fileTest
+expectNotLocked invokes expectStatus
+expectNotLocked argument wanted Int64 two copy
+expectNotLocked argument status Int32 notLocked copy
+expectNotLocked result none
+expectNotLocked ownedBy none
+expectNotLocked cleanedBy none
+expectNotLocked borrows none
+expectNotLocked catch none
+expectNotLocked suppresses none
+
+writeShape3 is call
+writeShape3 in fileTest
+writeShape3 invokes prepareWrite
+writeShape3 argument handle Int64 appender copy
+writeShape3 argument text String bang lend
+writeShape3 result shape14 machine.Address
+writeShape3 ownedBy none
+writeShape3 cleanedBy none
+writeShape3 borrows none
+writeShape3 catch none
+writeShape3 suppresses none
+
+appendIt is call
+appendIt in fileTest
+appendIt invokes fsWrite
+appendIt argument shape machine.Address shape14 copy
+appendIt argument args machine.Address args copy
+appendIt argument payload machine.Address payload copy
+appendIt result appended Int32
+appendIt ownedBy none
+appendIt cleanedBy none
+appendIt borrows none
+appendIt catch none
+appendIt suppresses none
+
+expectAppended is call
+expectAppended in fileTest
+expectAppended invokes expectStatus
+expectAppended argument wanted Int64 zero copy
+expectAppended argument status Int32 appended copy
+expectAppended result none
+expectAppended ownedBy none
+expectAppended cleanedBy none
+expectAppended borrows none
+expectAppended catch none
+expectAppended suppresses none
+
+closeShape3 is call
+closeShape3 in fileTest
+closeShape3 invokes prepareHandle
+closeShape3 argument handle Int64 appender copy
+closeShape3 result shape15 machine.Address
+closeShape3 ownedBy none
+closeShape3 cleanedBy none
+closeShape3 borrows none
+closeShape3 catch none
+closeShape3 suppresses none
+
+closeAppender is call
+closeAppender in fileTest
+closeAppender invokes fsClose
+closeAppender argument shape machine.Address shape15 copy
+closeAppender argument args machine.Address args copy
+closeAppender argument payload machine.Address payload copy
+closeAppender result closedAppender Int32
+closeAppender ownedBy none
+closeAppender cleanedBy none
+closeAppender borrows none
+closeAppender catch none
+closeAppender suppresses none
+
+readAllShape3 is call
+readAllShape3 in fileTest
+readAllShape3 invokes prepareReadAll
+readAllShape3 argument path String file lend
+readAllShape3 argument region machine.Address region copy
+readAllShape3 argument most Int64 hundred copy
+readAllShape3 result shape16 machine.Address
+readAllShape3 ownedBy none
+readAllShape3 cleanedBy none
+readAllShape3 borrows none
+readAllShape3 catch none
+readAllShape3 suppresses none
+
+readAppended is call
+readAppended in fileTest
+readAppended invokes fsReadAll
+readAppended argument shape machine.Address shape16 copy
+readAppended argument args machine.Address args copy
+readAppended argument results machine.Address results copy
+readAppended argument payload machine.Address payload copy
+readAppended result appendedStatus Int32
+readAppended ownedBy none
+readAppended cleanedBy none
+readAppended borrows none
+readAppended catch none
+readAppended suppresses none
+
+expectAppendedText is call
+expectAppendedText in fileTest
+expectAppendedText invokes expectResultText
+expectAppendedText argument wanted String byeBang lend
+expectAppendedText result none
+expectAppendedText ownedBy none
+expectAppendedText cleanedBy none
+expectAppendedText borrows none
+expectAppendedText catch none
+expectAppendedText suppresses none
+
+pathShape5 is call
+pathShape5 in fileTest
+pathShape5 invokes preparePath
+pathShape5 argument path String file lend
+pathShape5 result shape17 machine.Address
+pathShape5 ownedBy none
+pathShape5 cleanedBy none
+pathShape5 borrows none
+pathShape5 catch none
+pathShape5 suppresses none
+
+openEmptied is call
+openEmptied in fileTest
+openEmptied invokes fsOpenWrite
+openEmptied argument shape machine.Address shape17 copy
+openEmptied argument args machine.Address args copy
+openEmptied argument results machine.Address results copy
+openEmptied argument payload machine.Address payload copy
+openEmptied result emptiedStatus Int32
+openEmptied ownedBy none
+openEmptied cleanedBy none
+openEmptied borrows none
+openEmptied catch none
+openEmptied suppresses none
+
+expectEmptied is call
+expectEmptied in fileTest
+expectEmptied invokes expectStatus
+expectEmptied argument wanted Int64 zero copy
+expectEmptied argument status Int32 emptiedStatus copy
+expectEmptied result none
+expectEmptied ownedBy none
+expectEmptied cleanedBy none
+expectEmptied borrows none
+expectEmptied catch none
+expectEmptied suppresses none
+
+readEmptied is call
+readEmptied in fileTest
+readEmptied invokes resultHandle
+readEmptied argument none
+readEmptied result emptied Int64
+readEmptied ownedBy none
+readEmptied cleanedBy none
+readEmptied borrows none
+readEmptied catch none
+readEmptied suppresses none
+
+readShape2 is call
+readShape2 in fileTest
+readShape2 invokes prepareRead
+readShape2 argument handle Int64 emptied copy
+readShape2 argument region machine.Address region copy
+readShape2 argument most Int64 hundred copy
+readShape2 result shape18 machine.Address
+readShape2 ownedBy none
+readShape2 cleanedBy none
+readShape2 borrows none
+readShape2 catch none
+readShape2 suppresses none
+
+readNothing is call
+readNothing in fileTest
+readNothing invokes fsRead
+readNothing argument shape machine.Address shape18 copy
+readNothing argument args machine.Address args copy
+readNothing argument results machine.Address results copy
+readNothing argument payload machine.Address payload copy
+readNothing result nothingStatus Int32
+readNothing ownedBy none
+readNothing cleanedBy none
+readNothing borrows none
+readNothing catch none
+readNothing suppresses none
+
+expectNothing is call
+expectNothing in fileTest
+expectNothing invokes expectResultText
+expectNothing argument wanted String empty lend
+expectNothing result none
+expectNothing ownedBy none
+expectNothing cleanedBy none
+expectNothing borrows none
+expectNothing catch none
+expectNothing suppresses none
+
+closeShape4 is call
+closeShape4 in fileTest
+closeShape4 invokes prepareHandle
+closeShape4 argument handle Int64 emptied copy
+closeShape4 result shape19 machine.Address
+closeShape4 ownedBy none
+closeShape4 cleanedBy none
+closeShape4 borrows none
+closeShape4 catch none
+closeShape4 suppresses none
+
+closeEmptied is call
+closeEmptied in fileTest
+closeEmptied invokes fsClose
+closeEmptied argument shape machine.Address shape19 copy
+closeEmptied argument args machine.Address args copy
+closeEmptied argument payload machine.Address payload copy
+closeEmptied result closedEmptied Int32
+closeEmptied ownedBy none
+closeEmptied cleanedBy none
+closeEmptied borrows none
+closeEmptied catch none
+closeEmptied suppresses none
+
+pathShape6 is call
+pathShape6 in fileTest
+pathShape6 invokes preparePath
+pathShape6 argument path String file lend
+pathShape6 result shape20 machine.Address
+pathShape6 ownedBy none
+pathShape6 cleanedBy none
+pathShape6 borrows none
+pathShape6 catch none
+pathShape6 suppresses none
+
+existsFile is call
+existsFile in fileTest
+existsFile invokes fsExists
+existsFile argument shape machine.Address shape20 copy
+existsFile argument args machine.Address args copy
+existsFile argument results machine.Address results copy
+existsFile result none
+existsFile ownedBy none
+existsFile cleanedBy none
+existsFile borrows none
+existsFile catch none
+existsFile suppresses none
+
+readPresent is call
+readPresent in fileTest
+readPresent invokes machine.loadInt64
+readPresent argument address machine.Address results copy
+readPresent result present Int64
+readPresent ownedBy none
+readPresent cleanedBy none
+readPresent borrows none
+readPresent catch none
+readPresent suppresses none
+
+expectPresent is call
+expectPresent in fileTest
+expectPresent invokes test.assertEqualInt64
+expectPresent argument expected Int64 one copy
+expectPresent argument actual Int64 present copy
+expectPresent result none
+expectPresent ownedBy none
+expectPresent cleanedBy none
+expectPresent borrows none
+expectPresent catch none
+expectPresent suppresses none
+
+pathShape7 is call
+pathShape7 in fileTest
+pathShape7 invokes preparePath
+pathShape7 argument path String directory lend
+pathShape7 result shape21 machine.Address
+pathShape7 ownedBy none
+pathShape7 cleanedBy none
+pathShape7 borrows none
+pathShape7 catch none
+pathShape7 suppresses none
+
+makeDirectory is call
+makeDirectory in fileTest
+makeDirectory invokes fsCreateDirectory
+makeDirectory argument shape machine.Address shape21 copy
+makeDirectory argument args machine.Address args copy
+makeDirectory argument payload machine.Address payload copy
+makeDirectory result madeDirectory Int32
+makeDirectory ownedBy none
+makeDirectory cleanedBy none
+makeDirectory borrows none
+makeDirectory catch none
+makeDirectory suppresses none
+
+expectMade is call
+expectMade in fileTest
+expectMade invokes expectStatus
+expectMade argument wanted Int64 zero copy
+expectMade argument status Int32 madeDirectory copy
+expectMade result none
+expectMade ownedBy none
+expectMade cleanedBy none
+expectMade borrows none
+expectMade catch none
+expectMade suppresses none
+
+makeAgain is call
+makeAgain in fileTest
+makeAgain invokes fsCreateDirectory
+makeAgain argument shape machine.Address shape21 copy
+makeAgain argument args machine.Address args copy
+makeAgain argument payload machine.Address payload copy
+makeAgain result madeAgain Int32
+makeAgain ownedBy none
+makeAgain cleanedBy none
+makeAgain borrows none
+makeAgain catch none
+makeAgain suppresses none
+
+expectMadeAgain is call
+expectMadeAgain in fileTest
+expectMadeAgain invokes expectStatus
+expectMadeAgain argument wanted Int64 three copy
+expectMadeAgain argument status Int32 madeAgain copy
+expectMadeAgain result none
+expectMadeAgain ownedBy none
+expectMadeAgain cleanedBy none
+expectMadeAgain borrows none
+expectMadeAgain catch none
+expectMadeAgain suppresses none
+
+writeAllShape2 is call
+writeAllShape2 in fileTest
+writeAllShape2 invokes prepareWriteAll
+writeAllShape2 argument path String inA lend
+writeAllShape2 argument text String hello lend
+writeAllShape2 result shape22 machine.Address
+writeAllShape2 ownedBy none
+writeAllShape2 cleanedBy none
+writeAllShape2 borrows none
+writeAllShape2 catch none
+writeAllShape2 suppresses none
+
+writeA is call
+writeA in fileTest
+writeA invokes fsWriteAll
+writeA argument shape machine.Address shape22 copy
+writeA argument args machine.Address args copy
+writeA argument payload machine.Address payload copy
+writeA result wroteA Int32
+writeA ownedBy none
+writeA cleanedBy none
+writeA borrows none
+writeA catch none
+writeA suppresses none
+
+writeAllShape3 is call
+writeAllShape3 in fileTest
+writeAllShape3 invokes prepareWriteAll
+writeAllShape3 argument path String inB lend
+writeAllShape3 argument text String hello lend
+writeAllShape3 result shape23 machine.Address
+writeAllShape3 ownedBy none
+writeAllShape3 cleanedBy none
+writeAllShape3 borrows none
+writeAllShape3 catch none
+writeAllShape3 suppresses none
+
+writeB is call
+writeB in fileTest
+writeB invokes fsWriteAll
+writeB argument shape machine.Address shape23 copy
+writeB argument args machine.Address args copy
+writeB argument payload machine.Address payload copy
+writeB result wroteB Int32
+writeB ownedBy none
+writeB cleanedBy none
+writeB borrows none
+writeB catch none
+writeB suppresses none
+
+listShape is call
+listShape in fileTest
+listShape invokes testShape
+listShape argument first Int64 two copy
+listShape argument second Int64 one copy
+listShape argument third Int64 zero copy
+listShape argument fourth Int64 zero copy
+listShape result shape24 machine.Address
+listShape ownedBy none
+listShape cleanedBy none
+listShape borrows none
+listShape catch none
+listShape suppresses none
+
+setListPath is call
+setListPath in fileTest
+setListPath invokes setTextArg
+setListPath argument slot Int64 zero copy
+setListPath argument text String directory lend
+setListPath result none
+setListPath ownedBy none
+setListPath cleanedBy none
+setListPath borrows none
+setListPath catch none
+setListPath suppresses none
+
+setListRegion is call
+setListRegion in fileTest
+setListRegion invokes setAddressArg
+setListRegion argument slot Int64 two copy
+setListRegion argument value machine.Address region copy
+setListRegion result none
+setListRegion ownedBy none
+setListRegion cleanedBy none
+setListRegion borrows none
+setListRegion catch none
+setListRegion suppresses none
+
+listIt is call
+listIt in fileTest
+listIt invokes fsListDirectory
+listIt argument shape machine.Address shape24 copy
+listIt argument args machine.Address args copy
+listIt argument results machine.Address results copy
+listIt argument payload machine.Address payload copy
+listIt result listed Int32
+listIt ownedBy none
+listIt cleanedBy none
+listIt borrows none
+listIt catch none
+listIt suppresses none
+
+expectListed is call
+expectListed in fileTest
+expectListed invokes expectStatus
+expectListed argument wanted Int64 zero copy
+expectListed argument status Int32 listed copy
+expectListed result none
+expectListed ownedBy none
+expectListed cleanedBy none
+expectListed borrows none
+expectListed catch none
+expectListed suppresses none
+
+readListing is call
+readListing in fileTest
+readListing invokes resultHandle
+readListing argument none
+readListing result listing Int64
+readListing ownedBy none
+readListing cleanedBy none
+readListing borrows none
+readListing catch none
+readListing suppresses none
+
+countShape is call
+countShape in fileTest
+countShape invokes testShape
+countShape argument first Int64 one copy
+countShape argument second Int64 zero copy
+countShape argument third Int64 zero copy
+countShape argument fourth Int64 zero copy
+countShape result shape25 machine.Address
+countShape ownedBy none
+countShape cleanedBy none
+countShape borrows none
+countShape catch none
+countShape suppresses none
+
+setListing is call
+setListing in fileTest
+setListing invokes setArg
+setListing argument slot Int64 zero copy
+setListing argument value Int64 listing copy
+setListing result none
+setListing ownedBy none
+setListing cleanedBy none
+setListing borrows none
+setListing catch none
+setListing suppresses none
+
+countIt is call
+countIt in fileTest
+countIt invokes fsEntryCount
+countIt argument shape machine.Address shape25 copy
+countIt argument args machine.Address args copy
+countIt argument results machine.Address results copy
+countIt result none
+countIt ownedBy none
+countIt cleanedBy none
+countIt borrows none
+countIt catch none
+countIt suppresses none
+
+readCount is call
+readCount in fileTest
+readCount invokes machine.loadInt64
+readCount argument address machine.Address results copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+expectCount is call
+expectCount in fileTest
+expectCount invokes test.assertEqualInt64
+expectCount argument expected Int64 two copy
+expectCount argument actual Int64 count copy
+expectCount result none
+expectCount ownedBy none
+expectCount cleanedBy none
+expectCount borrows none
+expectCount catch none
+expectCount suppresses none
+
+nameShape is call
+nameShape in fileTest
+nameShape invokes testShape
+nameShape argument first Int64 one copy
+nameShape argument second Int64 one copy
+nameShape argument third Int64 one copy
+nameShape argument fourth Int64 zero copy
+nameShape result shape26 machine.Address
+nameShape ownedBy none
+nameShape cleanedBy none
+nameShape borrows none
+nameShape catch none
+nameShape suppresses none
+
+setListingAgain is call
+setListingAgain in fileTest
+setListingAgain invokes setArg
+setListingAgain argument slot Int64 zero copy
+setListingAgain argument value Int64 listing copy
+setListingAgain result none
+setListingAgain ownedBy none
+setListingAgain cleanedBy none
+setListingAgain borrows none
+setListingAgain catch none
+setListingAgain suppresses none
+
+setIndex is call
+setIndex in fileTest
+setIndex invokes setArg
+setIndex argument slot Int64 one copy
+setIndex argument value Int64 zero copy
+setIndex result none
+setIndex ownedBy none
+setIndex cleanedBy none
+setIndex borrows none
+setIndex catch none
+setIndex suppresses none
+
+setNameRegion is call
+setNameRegion in fileTest
+setNameRegion invokes setAddressArg
+setNameRegion argument slot Int64 two copy
+setNameRegion argument value machine.Address region copy
+setNameRegion result none
+setNameRegion ownedBy none
+setNameRegion cleanedBy none
+setNameRegion borrows none
+setNameRegion catch none
+setNameRegion suppresses none
+
+nameIt is call
+nameIt in fileTest
+nameIt invokes fsEntryName
+nameIt argument shape machine.Address shape26 copy
+nameIt argument args machine.Address args copy
+nameIt argument results machine.Address results copy
+nameIt argument payload machine.Address payload copy
+nameIt result named Int32
+nameIt ownedBy none
+nameIt cleanedBy none
+nameIt borrows none
+nameIt catch none
+nameIt suppresses none
+
+expectNamed is call
+expectNamed in fileTest
+expectNamed invokes expectStatus
+expectNamed argument wanted Int64 zero copy
+expectNamed argument status Int32 named copy
+expectNamed result none
+expectNamed ownedBy none
+expectNamed cleanedBy none
+expectNamed borrows none
+expectNamed catch none
+expectNamed suppresses none
+
+expectFirstName is call
+expectFirstName in fileTest
+expectFirstName invokes expectResultText
+expectFirstName argument wanted String nameA lend
+expectFirstName result none
+expectFirstName ownedBy none
+expectFirstName cleanedBy none
+expectFirstName borrows none
+expectFirstName catch none
+expectFirstName suppresses none
+
+setFar is call
+setFar in fileTest
+setFar invokes setArg
+setFar argument slot Int64 one copy
+setFar argument value Int64 two copy
+setFar result none
+setFar ownedBy none
+setFar cleanedBy none
+setFar borrows none
+setFar catch none
+setFar suppresses none
+
+nameFar is call
+nameFar in fileTest
+nameFar invokes fsEntryName
+nameFar argument shape machine.Address shape26 copy
+nameFar argument args machine.Address args copy
+nameFar argument results machine.Address results copy
+nameFar argument payload machine.Address payload copy
+nameFar result farStatus Int32
+nameFar ownedBy none
+nameFar cleanedBy none
+nameFar borrows none
+nameFar catch none
+nameFar suppresses none
+
+expectFar is call
+expectFar in fileTest
+expectFar invokes expectStatus
+expectFar argument wanted Int64 one copy
+expectFar argument status Int32 farStatus copy
+expectFar result none
+expectFar ownedBy none
+expectFar cleanedBy none
+expectFar borrows none
+expectFar catch none
+expectFar suppresses none
+
+pathShape8 is call
+pathShape8 in fileTest
+pathShape8 invokes preparePath
+pathShape8 argument path String inA lend
+pathShape8 result shape27 machine.Address
+pathShape8 ownedBy none
+pathShape8 cleanedBy none
+pathShape8 borrows none
+pathShape8 catch none
+pathShape8 suppresses none
+
+removeA is call
+removeA in fileTest
+removeA invokes fsRemove
+removeA argument shape machine.Address shape27 copy
+removeA argument args machine.Address args copy
+removeA argument payload machine.Address payload copy
+removeA result removedA Int32
+removeA ownedBy none
+removeA cleanedBy none
+removeA borrows none
+removeA catch none
+removeA suppresses none
+
+pathShape9 is call
+pathShape9 in fileTest
+pathShape9 invokes preparePath
+pathShape9 argument path String inB lend
+pathShape9 result shape28 machine.Address
+pathShape9 ownedBy none
+pathShape9 cleanedBy none
+pathShape9 borrows none
+pathShape9 catch none
+pathShape9 suppresses none
+
+removeB is call
+removeB in fileTest
+removeB invokes fsRemove
+removeB argument shape machine.Address shape28 copy
+removeB argument args machine.Address args copy
+removeB argument payload machine.Address payload copy
+removeB result removedB Int32
+removeB ownedBy none
+removeB cleanedBy none
+removeB borrows none
+removeB catch none
+removeB suppresses none
+
+pathShape10 is call
+pathShape10 in fileTest
+pathShape10 invokes preparePath
+pathShape10 argument path String directory lend
+pathShape10 result shape29 machine.Address
+pathShape10 ownedBy none
+pathShape10 cleanedBy none
+pathShape10 borrows none
+pathShape10 catch none
+pathShape10 suppresses none
+
+removeDirectory is call
+removeDirectory in fileTest
+removeDirectory invokes fsRemoveDirectory
+removeDirectory argument shape machine.Address shape29 copy
+removeDirectory argument args machine.Address args copy
+removeDirectory argument payload machine.Address payload copy
+removeDirectory result removedDirectory Int32
+removeDirectory ownedBy none
+removeDirectory cleanedBy none
+removeDirectory borrows none
+removeDirectory catch none
+removeDirectory suppresses none
+
+expectRemovedDirectory is call
+expectRemovedDirectory in fileTest
+expectRemovedDirectory invokes expectStatus
+expectRemovedDirectory argument wanted Int64 zero copy
+expectRemovedDirectory argument status Int32 removedDirectory copy
+expectRemovedDirectory result none
+expectRemovedDirectory ownedBy none
+expectRemovedDirectory cleanedBy none
+expectRemovedDirectory borrows none
+expectRemovedDirectory catch none
+expectRemovedDirectory suppresses none
+
+pathShape11 is call
+pathShape11 in fileTest
+pathShape11 invokes preparePath
+pathShape11 argument path String file lend
+pathShape11 result shape30 machine.Address
+pathShape11 ownedBy none
+pathShape11 cleanedBy none
+pathShape11 borrows none
+pathShape11 catch none
+pathShape11 suppresses none
+
+removeFile is call
+removeFile in fileTest
+removeFile invokes fsRemove
+removeFile argument shape machine.Address shape30 copy
+removeFile argument args machine.Address args copy
+removeFile argument payload machine.Address payload copy
+removeFile result removed Int32
+removeFile ownedBy none
+removeFile cleanedBy none
+removeFile borrows none
+removeFile catch none
+removeFile suppresses none
+
+expectRemoved is call
+expectRemoved in fileTest
+expectRemoved invokes expectStatus
+expectRemoved argument wanted Int64 zero copy
+expectRemoved argument status Int32 removed copy
+expectRemoved result none
+expectRemoved ownedBy none
+expectRemoved cleanedBy none
+expectRemoved borrows none
+expectRemoved catch none
+expectRemoved suppresses none
+
+existsGone is call
+existsGone in fileTest
+existsGone invokes fsExists
+existsGone argument shape machine.Address shape30 copy
+existsGone argument args machine.Address args copy
+existsGone argument results machine.Address results copy
+existsGone result none
+existsGone ownedBy none
+existsGone cleanedBy none
+existsGone borrows none
+existsGone catch none
+existsGone suppresses none
+
+readAbsent is call
+readAbsent in fileTest
+readAbsent invokes machine.loadInt64
+readAbsent argument address machine.Address results copy
+readAbsent result absent Int64
+readAbsent ownedBy none
+readAbsent cleanedBy none
+readAbsent borrows none
+readAbsent catch none
+readAbsent suppresses none
+
+expectAbsent is call
+expectAbsent in fileTest
+expectAbsent invokes test.assertEqualInt64
+expectAbsent argument expected Int64 zero copy
+expectAbsent argument actual Int64 absent copy
+expectAbsent result none
+expectAbsent ownedBy none
+expectAbsent cleanedBy none
+expectAbsent borrows none
+expectAbsent catch none
+expectAbsent suppresses none
+
+removeAgain is call
+removeAgain in fileTest
+removeAgain invokes fsRemove
+removeAgain argument shape machine.Address shape30 copy
+removeAgain argument args machine.Address args copy
+removeAgain argument payload machine.Address payload copy
+removeAgain result missing Int32
+removeAgain ownedBy none
+removeAgain cleanedBy none
+removeAgain borrows none
+removeAgain catch none
+removeAgain suppresses none
+
+expectMissing is call
+expectMissing in fileTest
+expectMissing invokes expectStatus
+expectMissing argument wanted Int64 one copy
+expectMissing argument status Int32 missing copy
+expectMissing result none
+expectMissing ownedBy none
+expectMissing cleanedBy none
+expectMissing borrows none
+expectMissing catch none
+expectMissing suppresses none
+
+openMissing is call
+openMissing in fileTest
+openMissing invokes fsOpenRead
+openMissing argument shape machine.Address shape30 copy
+openMissing argument args machine.Address args copy
+openMissing argument results machine.Address results copy
+openMissing argument payload machine.Address payload copy
+openMissing result missingOpen Int32
+openMissing ownedBy none
+openMissing cleanedBy none
+openMissing borrows none
+openMissing catch none
+openMissing suppresses none
+
+expectMissingOpen is call
+expectMissingOpen in fileTest
+expectMissingOpen invokes expectStatus
+expectMissingOpen argument wanted Int64 one copy
+expectMissingOpen argument status Int32 missingOpen copy
+expectMissingOpen result none
+expectMissingOpen ownedBy none
+expectMissingOpen cleanedBy none
+expectMissingOpen borrows none
+expectMissingOpen catch none
+expectMissingOpen suppresses none
+
+free is call
+free in fileTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none
+
+pathTest is test
+pathTest purpose "Paths resolve as Python's normcase(realpath()) does, scopes take in what lies inside them, errors map as Python maps them, and bytes are copied"
+pathTest verifies resolve resolvesPath
+pathTest verifies pathWithin checksScope
+pathTest verifies checkScope checksScopes
+pathTest verifies winErrno mapsErrors
+pathTest verifies fileError classifiesErrno
+pathTest verifies copyBytes copiesBytes
+pathTest typeParameter none
+pathTest input none
+pathTest output none
+pathTest outputOwnedBy none
+pathTest raises none
+pathTest effect use machine.memory
+pathTest effect use system.calls
+pathTest uses memoryAccess
+pathTest uses systemCalls
+pathTest memoryHeap false
+pathTest async false
+pathTest maxRecursion none
+pathTest label begin loopKind none
+pathTest label begin within none
+pathTest let plain String "Some/Name" immutable
+pathTest let roundabout String "some/other/../name" immutable
+pathTest let inside String "data/x.txt" immutable
+pathTest let outside String "other/x.txt" immutable
+pathTest let directoryScope String "data/" immutable
+pathTest let named String "suite-12" immutable
+pathTest let patternScope String "suite-*" immutable
+pathTest let scopes String "read fs.files\ndata/\nsuite-*" immutable
+pathTest let programs String "run process.programs\ntool" immutable
+pathTest let tool String "tool" immutable
+pathTest let eight Int64 8 immutable
+pathTest let one Int64 1 immutable
+pathTest let target String "fs.readAll" immutable
+pathTest let runTarget String "process.run" immutable
+pathTest let two32 Int32 2 immutable
+pathTest let two Int64 2 immutable
+pathTest let five32 Int32 5 immutable
+pathTest let thirteen Int64 13 immutable
+pathTest let eighty32 Int32 80 immutable
+pathTest let seventeen Int64 17 immutable
+pathTest let oneFortyFive32 Int32 145 immutable
+pathTest let fortyOne Int64 41 immutable
+pathTest let twentyTwo Int64 22 immutable
+pathTest at begin do takeCell
+pathTest at begin do findPlain
+pathTest at begin do plainLength
+pathTest at begin do resolvePlain
+pathTest at begin do readFirst
+pathTest at begin do findRoundabout
+pathTest at begin do roundaboutLength
+pathTest at begin do resolveRoundabout
+pathTest at begin do readSecond
+pathTest at begin do compareResolved
+pathTest at begin do sameWide
+pathTest at begin do expectSame
+pathTest at begin do findInside
+pathTest at begin do insideLength
+pathTest at begin do findDirectory
+pathTest at begin do directoryLength
+pathTest at begin do withinCheck
+pathTest at begin do expectWithin
+pathTest at begin do findOutside
+pathTest at begin do outsideLength
+pathTest at begin do outsideCheck
+pathTest at begin do notOutside
+pathTest at begin do expectOutside
+pathTest at begin do findNamed
+pathTest at begin do namedLength
+pathTest at begin do findPattern
+pathTest at begin do patternLength
+pathTest at begin do patternCheck
+pathTest at begin do expectMatches
+pathTest at begin do findScopes
+pathTest at begin do scopesLength
+pathTest at begin do checkInside
+pathTest at begin do checkNamed
+pathTest at begin do findPrograms
+pathTest at begin do programsLength
+pathTest at begin do findTool
+pathTest at begin do toolLength
+pathTest at begin do checkTool
+pathTest at begin do mapMissing
+pathTest at begin do expectMissing
+pathTest at begin do mapDenied
+pathTest at begin do expectDenied
+pathTest at begin do mapExists
+pathTest at begin do expectExists
+pathTest at begin do mapNotEmpty
+pathTest at begin do expectNotEmpty
+pathTest at begin do findPayload
+pathTest at begin do classify
+pathTest at begin do expectFailed
+pathTest at begin do readPayload
+pathTest at begin do expectPayload
+pathTest at begin do copyIt
+pathTest at begin do compareCopy
+pathTest at begin do copiedWide
+pathTest at begin do expectCopy
+pathTest at begin do giveFirst
+pathTest at begin do giveSecond
+pathTest at begin do giveCopy
+pathTest at begin do giveCell
+pathTest at begin return ok none
+
+takeCell is call
+takeCell in pathTest
+takeCell invokes heap.take
+takeCell argument bytes Int64 eight copy
+takeCell result cell machine.Address
+takeCell ownedBy none
+takeCell cleanedBy none
+takeCell borrows none
+takeCell catch none
+takeCell suppresses none
+
+findPlain is call
+findPlain in pathTest
+findPlain invokes machine.addressOfString
+findPlain argument text String plain lend
+findPlain result plainAt machine.Address
+findPlain ownedBy none
+findPlain cleanedBy none
+findPlain borrows none
+findPlain catch none
+findPlain suppresses none
+
+plainLength is call
+plainLength in pathTest
+plainLength invokes string.byteLength
+plainLength argument text String plain lend
+plainLength result plainBytes Int64
+plainLength ownedBy none
+plainLength cleanedBy none
+plainLength borrows none
+plainLength catch none
+plainLength suppresses none
+
+resolvePlain is call
+resolvePlain in pathTest
+resolvePlain invokes resolve
+resolvePlain argument path machine.Address plainAt copy
+resolvePlain argument bytes Int64 plainBytes copy
+resolvePlain argument lengthAt machine.Address cell copy
+resolvePlain result first machine.Address
+resolvePlain ownedBy none
+resolvePlain cleanedBy none
+resolvePlain borrows none
+resolvePlain catch none
+resolvePlain suppresses none
+
+readFirst is call
+readFirst in pathTest
+readFirst invokes machine.loadInt64
+readFirst argument address machine.Address cell copy
+readFirst result firstBytes Int64
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+findRoundabout is call
+findRoundabout in pathTest
+findRoundabout invokes machine.addressOfString
+findRoundabout argument text String roundabout lend
+findRoundabout result roundaboutAt machine.Address
+findRoundabout ownedBy none
+findRoundabout cleanedBy none
+findRoundabout borrows none
+findRoundabout catch none
+findRoundabout suppresses none
+
+roundaboutLength is call
+roundaboutLength in pathTest
+roundaboutLength invokes string.byteLength
+roundaboutLength argument text String roundabout lend
+roundaboutLength result roundaboutBytes Int64
+roundaboutLength ownedBy none
+roundaboutLength cleanedBy none
+roundaboutLength borrows none
+roundaboutLength catch none
+roundaboutLength suppresses none
+
+resolveRoundabout is call
+resolveRoundabout in pathTest
+resolveRoundabout invokes resolve
+resolveRoundabout argument path machine.Address roundaboutAt copy
+resolveRoundabout argument bytes Int64 roundaboutBytes copy
+resolveRoundabout argument lengthAt machine.Address cell copy
+resolveRoundabout result second machine.Address
+resolveRoundabout ownedBy none
+resolveRoundabout cleanedBy none
+resolveRoundabout borrows none
+resolveRoundabout catch none
+resolveRoundabout suppresses none
+
+readSecond is call
+readSecond in pathTest
+readSecond invokes machine.loadInt64
+readSecond argument address machine.Address cell copy
+readSecond result secondBytes Int64
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+readSecond suppresses none
+
+compareResolved is call
+compareResolved in pathTest
+compareResolved invokes memory.bytesEqual
+compareResolved argument left machine.Address first copy
+compareResolved argument leftBytes Int64 firstBytes copy
+compareResolved argument right machine.Address second copy
+compareResolved argument rightBytes Int64 secondBytes copy
+compareResolved result same Int32
+compareResolved ownedBy none
+compareResolved cleanedBy none
+compareResolved borrows none
+compareResolved catch none
+compareResolved suppresses none
+
+sameWide is call
+sameWide in pathTest
+sameWide invokes convert.int32ToInt64
+sameWide argument value Int32 same copy
+sameWide result sameValue Int64
+sameWide ownedBy none
+sameWide cleanedBy none
+sameWide borrows none
+sameWide catch none
+sameWide suppresses none
+
+expectSame is call
+expectSame in pathTest
+expectSame invokes test.assertEqualInt64
+expectSame argument expected Int64 one copy
+expectSame argument actual Int64 sameValue copy
+expectSame result none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none
+expectSame suppresses none
+
+findInside is call
+findInside in pathTest
+findInside invokes machine.addressOfString
+findInside argument text String inside lend
+findInside result insideAt machine.Address
+findInside ownedBy none
+findInside cleanedBy none
+findInside borrows none
+findInside catch none
+findInside suppresses none
+
+insideLength is call
+insideLength in pathTest
+insideLength invokes string.byteLength
+insideLength argument text String inside lend
+insideLength result insideBytes Int64
+insideLength ownedBy none
+insideLength cleanedBy none
+insideLength borrows none
+insideLength catch none
+insideLength suppresses none
+
+findDirectory is call
+findDirectory in pathTest
+findDirectory invokes machine.addressOfString
+findDirectory argument text String directoryScope lend
+findDirectory result directoryAt machine.Address
+findDirectory ownedBy none
+findDirectory cleanedBy none
+findDirectory borrows none
+findDirectory catch none
+findDirectory suppresses none
+
+directoryLength is call
+directoryLength in pathTest
+directoryLength invokes string.byteLength
+directoryLength argument text String directoryScope lend
+directoryLength result directoryBytes Int64
+directoryLength ownedBy none
+directoryLength cleanedBy none
+directoryLength borrows none
+directoryLength catch none
+directoryLength suppresses none
+
+withinCheck is call
+withinCheck in pathTest
+withinCheck invokes pathWithin
+withinCheck argument path machine.Address insideAt copy
+withinCheck argument pathBytes Int64 insideBytes copy
+withinCheck argument scope machine.Address directoryAt copy
+withinCheck argument scopeBytes Int64 directoryBytes copy
+withinCheck result within Bool
+withinCheck ownedBy none
+withinCheck cleanedBy none
+withinCheck borrows none
+withinCheck catch none
+withinCheck suppresses none
+
+expectWithin is call
+expectWithin in pathTest
+expectWithin invokes test.assertTrue
+expectWithin argument value Bool within copy
+expectWithin result none
+expectWithin ownedBy none
+expectWithin cleanedBy none
+expectWithin borrows none
+expectWithin catch none
+expectWithin suppresses none
+
+findOutside is call
+findOutside in pathTest
+findOutside invokes machine.addressOfString
+findOutside argument text String outside lend
+findOutside result outsideAt machine.Address
+findOutside ownedBy none
+findOutside cleanedBy none
+findOutside borrows none
+findOutside catch none
+findOutside suppresses none
+
+outsideLength is call
+outsideLength in pathTest
+outsideLength invokes string.byteLength
+outsideLength argument text String outside lend
+outsideLength result outsideBytes Int64
+outsideLength ownedBy none
+outsideLength cleanedBy none
+outsideLength borrows none
+outsideLength catch none
+outsideLength suppresses none
+
+outsideCheck is call
+outsideCheck in pathTest
+outsideCheck invokes pathWithin
+outsideCheck argument path machine.Address outsideAt copy
+outsideCheck argument pathBytes Int64 outsideBytes copy
+outsideCheck argument scope machine.Address directoryAt copy
+outsideCheck argument scopeBytes Int64 directoryBytes copy
+outsideCheck result notWithin Bool
+outsideCheck ownedBy none
+outsideCheck cleanedBy none
+outsideCheck borrows none
+outsideCheck catch none
+outsideCheck suppresses none
+
+notOutside is call
+notOutside in pathTest
+notOutside invokes logic.not
+notOutside argument value Bool notWithin copy
+notOutside result isOutside Bool
+notOutside ownedBy none
+notOutside cleanedBy none
+notOutside borrows none
+notOutside catch none
+notOutside suppresses none
+
+expectOutside is call
+expectOutside in pathTest
+expectOutside invokes test.assertTrue
+expectOutside argument value Bool isOutside copy
+expectOutside result none
+expectOutside ownedBy none
+expectOutside cleanedBy none
+expectOutside borrows none
+expectOutside catch none
+expectOutside suppresses none
+
+findNamed is call
+findNamed in pathTest
+findNamed invokes machine.addressOfString
+findNamed argument text String named lend
+findNamed result namedAt machine.Address
+findNamed ownedBy none
+findNamed cleanedBy none
+findNamed borrows none
+findNamed catch none
+findNamed suppresses none
+
+namedLength is call
+namedLength in pathTest
+namedLength invokes string.byteLength
+namedLength argument text String named lend
+namedLength result namedBytes Int64
+namedLength ownedBy none
+namedLength cleanedBy none
+namedLength borrows none
+namedLength catch none
+namedLength suppresses none
+
+findPattern is call
+findPattern in pathTest
+findPattern invokes machine.addressOfString
+findPattern argument text String patternScope lend
+findPattern result patternAt machine.Address
+findPattern ownedBy none
+findPattern cleanedBy none
+findPattern borrows none
+findPattern catch none
+findPattern suppresses none
+
+patternLength is call
+patternLength in pathTest
+patternLength invokes string.byteLength
+patternLength argument text String patternScope lend
+patternLength result patternBytes Int64
+patternLength ownedBy none
+patternLength cleanedBy none
+patternLength borrows none
+patternLength catch none
+patternLength suppresses none
+
+patternCheck is call
+patternCheck in pathTest
+patternCheck invokes pathWithin
+patternCheck argument path machine.Address namedAt copy
+patternCheck argument pathBytes Int64 namedBytes copy
+patternCheck argument scope machine.Address patternAt copy
+patternCheck argument scopeBytes Int64 patternBytes copy
+patternCheck result matches Bool
+patternCheck ownedBy none
+patternCheck cleanedBy none
+patternCheck borrows none
+patternCheck catch none
+patternCheck suppresses none
+
+expectMatches is call
+expectMatches in pathTest
+expectMatches invokes test.assertTrue
+expectMatches argument value Bool matches copy
+expectMatches result none
+expectMatches ownedBy none
+expectMatches cleanedBy none
+expectMatches borrows none
+expectMatches catch none
+expectMatches suppresses none
+
+findScopes is call
+findScopes in pathTest
+findScopes invokes machine.addressOfString
+findScopes argument text String scopes lend
+findScopes result scopesAt machine.Address
+findScopes ownedBy none
+findScopes cleanedBy none
+findScopes borrows none
+findScopes catch none
+findScopes suppresses none
+
+scopesLength is call
+scopesLength in pathTest
+scopesLength invokes string.byteLength
+scopesLength argument text String scopes lend
+scopesLength result scopesBytes Int64
+scopesLength ownedBy none
+scopesLength cleanedBy none
+scopesLength borrows none
+scopesLength catch none
+scopesLength suppresses none
+
+checkInside is call
+checkInside in pathTest
+checkInside invokes checkScope
+checkInside argument target String target lend
+checkInside argument value machine.Address insideAt copy
+checkInside argument valueBytes Int64 insideBytes copy
+checkInside argument scopes machine.Address scopesAt copy
+checkInside argument scopesBytes Int64 scopesBytes copy
+checkInside result none
+checkInside ownedBy none
+checkInside cleanedBy none
+checkInside borrows none
+checkInside catch none
+checkInside suppresses none
+
+checkNamed is call
+checkNamed in pathTest
+checkNamed invokes checkScope
+checkNamed argument target String target lend
+checkNamed argument value machine.Address namedAt copy
+checkNamed argument valueBytes Int64 namedBytes copy
+checkNamed argument scopes machine.Address scopesAt copy
+checkNamed argument scopesBytes Int64 scopesBytes copy
+checkNamed result none
+checkNamed ownedBy none
+checkNamed cleanedBy none
+checkNamed borrows none
+checkNamed catch none
+checkNamed suppresses none
+
+findPrograms is call
+findPrograms in pathTest
+findPrograms invokes machine.addressOfString
+findPrograms argument text String programs lend
+findPrograms result programsAt machine.Address
+findPrograms ownedBy none
+findPrograms cleanedBy none
+findPrograms borrows none
+findPrograms catch none
+findPrograms suppresses none
+
+programsLength is call
+programsLength in pathTest
+programsLength invokes string.byteLength
+programsLength argument text String programs lend
+programsLength result programsBytes Int64
+programsLength ownedBy none
+programsLength cleanedBy none
+programsLength borrows none
+programsLength catch none
+programsLength suppresses none
+
+findTool is call
+findTool in pathTest
+findTool invokes machine.addressOfString
+findTool argument text String tool lend
+findTool result toolAt machine.Address
+findTool ownedBy none
+findTool cleanedBy none
+findTool borrows none
+findTool catch none
+findTool suppresses none
+
+toolLength is call
+toolLength in pathTest
+toolLength invokes string.byteLength
+toolLength argument text String tool lend
+toolLength result toolBytes Int64
+toolLength ownedBy none
+toolLength cleanedBy none
+toolLength borrows none
+toolLength catch none
+toolLength suppresses none
+
+checkTool is call
+checkTool in pathTest
+checkTool invokes checkScope
+checkTool argument target String runTarget lend
+checkTool argument value machine.Address toolAt copy
+checkTool argument valueBytes Int64 toolBytes copy
+checkTool argument scopes machine.Address programsAt copy
+checkTool argument scopesBytes Int64 programsBytes copy
+checkTool result none
+checkTool ownedBy none
+checkTool cleanedBy none
+checkTool borrows none
+checkTool catch none
+checkTool suppresses none
+
+mapMissing is call
+mapMissing in pathTest
+mapMissing invokes winErrno
+mapMissing argument code Int32 two32 copy
+mapMissing result missingErrno Int64
+mapMissing ownedBy none
+mapMissing cleanedBy none
+mapMissing borrows none
+mapMissing catch none
+mapMissing suppresses none
+
+expectMissing is call
+expectMissing in pathTest
+expectMissing invokes test.assertEqualInt64
+expectMissing argument expected Int64 two copy
+expectMissing argument actual Int64 missingErrno copy
+expectMissing result none
+expectMissing ownedBy none
+expectMissing cleanedBy none
+expectMissing borrows none
+expectMissing catch none
+expectMissing suppresses none
+
+mapDenied is call
+mapDenied in pathTest
+mapDenied invokes winErrno
+mapDenied argument code Int32 five32 copy
+mapDenied result deniedErrno Int64
+mapDenied ownedBy none
+mapDenied cleanedBy none
+mapDenied borrows none
+mapDenied catch none
+mapDenied suppresses none
+
+expectDenied is call
+expectDenied in pathTest
+expectDenied invokes test.assertEqualInt64
+expectDenied argument expected Int64 thirteen copy
+expectDenied argument actual Int64 deniedErrno copy
+expectDenied result none
+expectDenied ownedBy none
+expectDenied cleanedBy none
+expectDenied borrows none
+expectDenied catch none
+expectDenied suppresses none
+
+mapExists is call
+mapExists in pathTest
+mapExists invokes winErrno
+mapExists argument code Int32 eighty32 copy
+mapExists result existsErrno Int64
+mapExists ownedBy none
+mapExists cleanedBy none
+mapExists borrows none
+mapExists catch none
+mapExists suppresses none
+
+expectExists is call
+expectExists in pathTest
+expectExists invokes test.assertEqualInt64
+expectExists argument expected Int64 seventeen copy
+expectExists argument actual Int64 existsErrno copy
+expectExists result none
+expectExists ownedBy none
+expectExists cleanedBy none
+expectExists borrows none
+expectExists catch none
+expectExists suppresses none
+
+mapNotEmpty is call
+mapNotEmpty in pathTest
+mapNotEmpty invokes winErrno
+mapNotEmpty argument code Int32 oneFortyFive32 copy
+mapNotEmpty result notEmptyErrno Int64
+mapNotEmpty ownedBy none
+mapNotEmpty cleanedBy none
+mapNotEmpty borrows none
+mapNotEmpty catch none
+mapNotEmpty suppresses none
+
+expectNotEmpty is call
+expectNotEmpty in pathTest
+expectNotEmpty invokes test.assertEqualInt64
+expectNotEmpty argument expected Int64 fortyOne copy
+expectNotEmpty argument actual Int64 notEmptyErrno copy
+expectNotEmpty result none
+expectNotEmpty ownedBy none
+expectNotEmpty cleanedBy none
+expectNotEmpty borrows none
+expectNotEmpty catch none
+expectNotEmpty suppresses none
+
+findPayload is call
+findPayload in pathTest
+findPayload invokes payloadAt
+findPayload argument none
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+classify is call
+classify in pathTest
+classify invokes fileError
+classify argument payload machine.Address payload copy
+classify argument errno Int64 twentyTwo copy
+classify result classified Int32
+classify ownedBy none
+classify cleanedBy none
+classify borrows none
+classify catch none
+classify suppresses none
+
+expectFailed is call
+expectFailed in pathTest
+expectFailed invokes expectStatus
+expectFailed argument wanted Int64 eight copy
+expectFailed argument status Int32 classified copy
+expectFailed result none
+expectFailed ownedBy none
+expectFailed cleanedBy none
+expectFailed borrows none
+expectFailed catch none
+expectFailed suppresses none
+
+readPayload is call
+readPayload in pathTest
+readPayload invokes machine.loadInt64
+readPayload argument address machine.Address payload copy
+readPayload result stored Int64
+readPayload ownedBy none
+readPayload cleanedBy none
+readPayload borrows none
+readPayload catch none
+readPayload suppresses none
+
+expectPayload is call
+expectPayload in pathTest
+expectPayload invokes test.assertEqualInt64
+expectPayload argument expected Int64 twentyTwo copy
+expectPayload argument actual Int64 stored copy
+expectPayload result none
+expectPayload ownedBy none
+expectPayload cleanedBy none
+expectPayload borrows none
+expectPayload catch none
+expectPayload suppresses none
+
+copyIt is call
+copyIt in pathTest
+copyIt invokes copyBytes
+copyIt argument data machine.Address plainAt copy
+copyIt argument bytes Int64 plainBytes copy
+copyIt result copy machine.Address
+copyIt ownedBy none
+copyIt cleanedBy none
+copyIt borrows none
+copyIt catch none
+copyIt suppresses none
+
+compareCopy is call
+compareCopy in pathTest
+compareCopy invokes memory.bytesEqual
+compareCopy argument left machine.Address copy copy
+compareCopy argument leftBytes Int64 plainBytes copy
+compareCopy argument right machine.Address plainAt copy
+compareCopy argument rightBytes Int64 plainBytes copy
+compareCopy result copied Int32
+compareCopy ownedBy none
+compareCopy cleanedBy none
+compareCopy borrows none
+compareCopy catch none
+compareCopy suppresses none
+
+copiedWide is call
+copiedWide in pathTest
+copiedWide invokes convert.int32ToInt64
+copiedWide argument value Int32 copied copy
+copiedWide result copiedValue Int64
+copiedWide ownedBy none
+copiedWide cleanedBy none
+copiedWide borrows none
+copiedWide catch none
+copiedWide suppresses none
+
+expectCopy is call
+expectCopy in pathTest
+expectCopy invokes test.assertEqualInt64
+expectCopy argument expected Int64 one copy
+expectCopy argument actual Int64 copiedValue copy
+expectCopy result none
+expectCopy ownedBy none
+expectCopy cleanedBy none
+expectCopy borrows none
+expectCopy catch none
+expectCopy suppresses none
+
+giveFirst is call
+giveFirst in pathTest
+giveFirst invokes heap.give
+giveFirst argument block machine.Address first copy
+giveFirst result none
+giveFirst ownedBy none
+giveFirst cleanedBy none
+giveFirst borrows none
+giveFirst catch none
+giveFirst suppresses none
+
+giveSecond is call
+giveSecond in pathTest
+giveSecond invokes heap.give
+giveSecond argument block machine.Address second copy
+giveSecond result none
+giveSecond ownedBy none
+giveSecond cleanedBy none
+giveSecond borrows none
+giveSecond catch none
+giveSecond suppresses none
+
+giveCopy is call
+giveCopy in pathTest
+giveCopy invokes heap.give
+giveCopy argument block machine.Address copy copy
+giveCopy result none
+giveCopy ownedBy none
+giveCopy cleanedBy none
+giveCopy borrows none
+giveCopy catch none
+giveCopy suppresses none
+
+giveCell is call
+giveCell in pathTest
+giveCell invokes heap.give
+giveCell argument block machine.Address cell copy
+giveCell result none
+giveCell ownedBy none
+giveCell cleanedBy none
+giveCell borrows none
+giveCell catch none
+giveCell suppresses none

@@ -638,7 +638,7 @@ parse suppresses none
 
 readNumber is call
 readNumber in shapeTest
-readNumber invokes shapeField
+readNumber invokes slots.shapeField
 readNumber argument shape machine.Address shape copy
 readNumber argument offset Int64 sixteen copy
 readNumber result shapeNumber Int64
@@ -662,7 +662,7 @@ expectShapeNumber suppresses none
 
 readParams is call
 readParams in shapeTest
-readParams invokes shapeField
+readParams invokes slots.shapeField
 readParams argument shape machine.Address shape copy
 readParams argument offset Int64 twentyFour copy
 readParams result params Int64
@@ -686,7 +686,7 @@ expectParams suppresses none
 
 readResults is call
 readResults in shapeTest
-readResults invokes shapeField
+readResults invokes slots.shapeField
 readResults argument shape machine.Address shape copy
 readResults argument offset Int64 thirtyTwo copy
 readResults result resultSlots Int64
@@ -710,7 +710,7 @@ expectResults suppresses none
 
 readKeyCount is call
 readKeyCount in shapeTest
-readKeyCount invokes countOf
+readKeyCount invokes slots.countOf
 readKeyCount argument shape machine.Address shape copy
 readKeyCount argument parameter Int64 zero copy
 readKeyCount result keyCount Int64
@@ -734,7 +734,7 @@ expectKeyCount suppresses none
 
 readValueCount is call
 readValueCount in shapeTest
-readValueCount invokes countOf
+readValueCount invokes slots.countOf
 readValueCount argument shape machine.Address shape copy
 readValueCount argument parameter Int64 one copy
 readValueCount result valueCount Int64
@@ -758,7 +758,7 @@ expectValueCount suppresses none
 
 readValueStart is call
 readValueStart in shapeTest
-readValueStart invokes shapeField
+readValueStart invokes slots.shapeField
 readValueStart argument shape machine.Address shape copy
 readValueStart argument offset Int64 twoForty copy
 readValueStart result valueStart Int64

@@ -1,0 +1,546 @@
+# A host call's slots: where each parameter's slots start in the arguments compiled code passes to
+# refined_host, reading them as numbers, addresses, and text, and putting a result's text in a region
+# or an error's payload.
+#
+# This module is generated from tools/slots.dsl by tools/build.py.
+
+slots is module
+slots purpose "A host call's slots: where each parameter's slots are, reading them, and putting results and errors"
+slots path slots
+slots imports standard.machine
+slots imports standard.math
+slots imports standard.compare
+slots imports standard.string
+slots imports standard.convert
+slots imports standard.test
+slots imports regions
+slots exports slotOf
+slots exports argOf
+slots exports addressArg
+slots exports countOf
+slots exports shapeField
+slots exports flagArg
+slots exports putText
+slots exports failWith
+
+memoryAccess is capability
+memoryAccess purpose "Authority to read a host call's slots and write its results"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to take a region's memory for a result's copy"
+systemCalls grants use system.calls none
+
+# A host call's shape (the host module works it out from the key): at 16 the target's number, 24 how many
+# parameters, 32 how many result slots, from 40 each parameter's slot count, from 232 each parameter's first slot.
+# The arguments are 64-bit slots; a `String` or `Bytes` is two, its address and its length.
+slotOf is operation
+slotOf purpose "The address of a parameter's first slot among a call's argument slots"
+slotOf invariant findsSlot "\"Gives the argument slot where the parameter's slots start, as the shape places it\""
+slotOf typeParameter none
+slotOf input shape machine.Address copied
+slotOf input args machine.Address copied
+slotOf input parameter Int64 copied
+slotOf output machine.Address
+slotOf outputOwnedBy none
+slotOf raises none
+slotOf effect use machine.memory
+slotOf uses memoryAccess
+slotOf memoryHeap false
+slotOf async false
+slotOf maxRecursion none
+slotOf label begin loopKind none
+slotOf label begin within none
+slotOf let eight Int64 8 immutable
+slotOf let twoThirtyTwo Int64 232 immutable
+slotOf at begin do parameterOffset
+slotOf at begin do startOffset
+slotOf at begin do findStart
+slotOf at begin do readStart
+slotOf at begin do startBytes
+slotOf at begin do findSlot
+slotOf at begin return ok slot
+
+parameterOffset is call
+parameterOffset in slotOf
+parameterOffset invokes math.multiplyInt64
+parameterOffset argument left Int64 parameter copy
+parameterOffset argument right Int64 eight copy
+parameterOffset result place Int64
+parameterOffset ownedBy none
+parameterOffset cleanedBy none
+parameterOffset borrows none
+parameterOffset catch none
+parameterOffset suppresses none
+
+startOffset is call
+startOffset in slotOf
+startOffset invokes math.addInt64
+startOffset argument left Int64 place copy
+startOffset argument right Int64 twoThirtyTwo copy
+startOffset result startSlotOffset Int64
+startOffset ownedBy none
+startOffset cleanedBy none
+startOffset borrows none
+startOffset catch none
+startOffset suppresses none
+
+findStart is call
+findStart in slotOf
+findStart invokes machine.offset
+findStart argument address machine.Address shape copy
+findStart argument bytes Int64 startSlotOffset copy
+findStart result startSlot machine.Address
+findStart ownedBy none
+findStart cleanedBy none
+findStart borrows none
+findStart catch none
+findStart suppresses none
+
+readStart is call
+readStart in slotOf
+readStart invokes machine.loadInt64
+readStart argument address machine.Address startSlot copy
+readStart result start Int64
+readStart ownedBy none
+readStart cleanedBy none
+readStart borrows none
+readStart catch none
+readStart suppresses none
+
+startBytes is call
+startBytes in slotOf
+startBytes invokes math.multiplyInt64
+startBytes argument left Int64 start copy
+startBytes argument right Int64 eight copy
+startBytes result offset Int64
+startBytes ownedBy none
+startBytes cleanedBy none
+startBytes borrows none
+startBytes catch none
+startBytes suppresses none
+
+findSlot is call
+findSlot in slotOf
+findSlot invokes machine.offset
+findSlot argument address machine.Address args copy
+findSlot argument bytes Int64 offset copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+argOf is operation
+argOf purpose "A parameter's first slot as a number"
+argOf invariant readsNumber "\"Gives the parameter's first slot as a whole number\""
+argOf typeParameter none
+argOf input shape machine.Address copied
+argOf input args machine.Address copied
+argOf input parameter Int64 copied
+argOf output Int64
+argOf outputOwnedBy none
+argOf raises none
+argOf effect use machine.memory
+argOf uses memoryAccess
+argOf memoryHeap false
+argOf async false
+argOf maxRecursion none
+argOf label begin loopKind none
+argOf label begin within none
+argOf let none
+argOf at begin do findSlot
+argOf at begin do readSlot
+argOf at begin return ok value
+
+findSlot is call
+findSlot in argOf
+findSlot invokes slotOf
+findSlot argument shape machine.Address shape copy
+findSlot argument args machine.Address args copy
+findSlot argument parameter Int64 parameter copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readSlot is call
+readSlot in argOf
+readSlot invokes machine.loadInt64
+readSlot argument address machine.Address slot copy
+readSlot result value Int64
+readSlot ownedBy none
+readSlot cleanedBy none
+readSlot borrows none
+readSlot catch none
+readSlot suppresses none
+
+addressArg is operation
+addressArg purpose "A parameter's first slot as an address"
+addressArg invariant readsAddress "\"Gives the parameter's first slot as an address\""
+addressArg typeParameter none
+addressArg input shape machine.Address copied
+addressArg input args machine.Address copied
+addressArg input parameter Int64 copied
+addressArg output machine.Address
+addressArg outputOwnedBy none
+addressArg raises none
+addressArg effect use machine.memory
+addressArg uses memoryAccess
+addressArg memoryHeap false
+addressArg async false
+addressArg maxRecursion none
+addressArg label begin loopKind none
+addressArg label begin within none
+addressArg let none
+addressArg at begin do findSlot
+addressArg at begin do readSlot
+addressArg at begin return ok value
+
+findSlot is call
+findSlot in addressArg
+findSlot invokes slotOf
+findSlot argument shape machine.Address shape copy
+findSlot argument args machine.Address args copy
+findSlot argument parameter Int64 parameter copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readSlot is call
+readSlot in addressArg
+readSlot invokes machine.loadAddress
+readSlot argument address machine.Address slot copy
+readSlot result value machine.Address
+readSlot ownedBy none
+readSlot cleanedBy none
+readSlot borrows none
+readSlot catch none
+readSlot suppresses none
+
+countOf is operation
+countOf purpose "How many slots a parameter takes"
+countOf invariant countsSlots "\"Gives how many slots the shape gives the parameter\""
+countOf typeParameter none
+countOf input shape machine.Address copied
+countOf input parameter Int64 copied
+countOf output Int64
+countOf outputOwnedBy none
+countOf raises none
+countOf effect use machine.memory
+countOf uses memoryAccess
+countOf memoryHeap false
+countOf async false
+countOf maxRecursion none
+countOf label begin loopKind none
+countOf label begin within none
+countOf let eight Int64 8 immutable
+countOf let forty Int64 40 immutable
+countOf at begin do parameterOffset
+countOf at begin do countOffset
+countOf at begin do findCount
+countOf at begin do readCount
+countOf at begin return ok count
+
+parameterOffset is call
+parameterOffset in countOf
+parameterOffset invokes math.multiplyInt64
+parameterOffset argument left Int64 parameter copy
+parameterOffset argument right Int64 eight copy
+parameterOffset result place Int64
+parameterOffset ownedBy none
+parameterOffset cleanedBy none
+parameterOffset borrows none
+parameterOffset catch none
+parameterOffset suppresses none
+
+countOffset is call
+countOffset in countOf
+countOffset invokes math.addInt64
+countOffset argument left Int64 place copy
+countOffset argument right Int64 forty copy
+countOffset result countSlotOffset Int64
+countOffset ownedBy none
+countOffset cleanedBy none
+countOffset borrows none
+countOffset catch none
+countOffset suppresses none
+
+findCount is call
+findCount in countOf
+findCount invokes machine.offset
+findCount argument address machine.Address shape copy
+findCount argument bytes Int64 countSlotOffset copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readCount is call
+readCount in countOf
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countSlot copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+shapeField is operation
+shapeField purpose "A whole number of a shape at an offset: 16 its target, 24 its parameters, 32 its result slots"
+shapeField invariant readsShape "\"Gives the shape's whole number at the offset\""
+shapeField typeParameter none
+shapeField input shape machine.Address copied
+shapeField input offset Int64 copied
+shapeField output Int64
+shapeField outputOwnedBy none
+shapeField raises none
+shapeField effect use machine.memory
+shapeField uses memoryAccess
+shapeField memoryHeap false
+shapeField async false
+shapeField maxRecursion none
+shapeField label begin loopKind none
+shapeField label begin within none
+shapeField let none
+shapeField at begin do findField
+shapeField at begin do readField
+shapeField at begin return ok value
+
+findField is call
+findField in shapeField
+findField invokes machine.offset
+findField argument address machine.Address shape copy
+findField argument bytes Int64 offset copy
+findField result field machine.Address
+findField ownedBy none
+findField cleanedBy none
+findField borrows none
+findField catch none
+findField suppresses none
+
+readField is call
+readField in shapeField
+readField invokes machine.loadInt64
+readField argument address machine.Address field copy
+readField result value Int64
+readField ownedBy none
+readField cleanedBy none
+readField borrows none
+readField catch none
+readField suppresses none
+
+flagArg is operation
+flagArg purpose "Whether a call has a parameter at a position and its slot is not 0 (the flags the compiler adds to `new`)"
+flagArg invariant readsFlag "\"Gives 1 when the parameter exists and its slot is not 0, otherwise 0\""
+flagArg typeParameter none
+flagArg input shape machine.Address copied
+flagArg input args machine.Address copied
+flagArg input parameter Int64 copied
+flagArg output Int64
+flagArg outputOwnedBy none
+flagArg raises none
+flagArg effect use machine.memory
+flagArg uses memoryAccess
+flagArg memoryHeap false
+flagArg async false
+flagArg maxRecursion none
+flagArg label begin loopKind none
+flagArg label begin within none
+flagArg label absent loopKind none
+flagArg label absent within none
+flagArg label readFlag loopKind none
+flagArg label readFlag within none
+flagArg label giveYes loopKind none
+flagArg label giveYes within none
+flagArg let no Int64 0 immutable
+flagArg let yes Int64 1 immutable
+flagArg let twentyFour Int64 24 immutable
+flagArg at begin do readParams
+flagArg at begin do presentCheck
+flagArg at begin branch if present goto readFlag else goto absent
+flagArg at absent return ok no
+flagArg at readFlag do readValue
+flagArg at readFlag do setCheck
+flagArg at readFlag branch if flagged goto giveYes else goto absent
+flagArg at giveYes return ok yes
+
+readParams is call
+readParams in flagArg
+readParams invokes shapeField
+readParams argument shape machine.Address shape copy
+readParams argument offset Int64 twentyFour copy
+readParams result params Int64
+readParams ownedBy none
+readParams cleanedBy none
+readParams borrows none
+readParams catch none
+readParams suppresses none
+
+presentCheck is call
+presentCheck in flagArg
+presentCheck invokes compare.lessThanInt64
+presentCheck argument left Int64 parameter copy
+presentCheck argument right Int64 params copy
+presentCheck result present Bool
+presentCheck ownedBy none
+presentCheck cleanedBy none
+presentCheck borrows none
+presentCheck catch none
+presentCheck suppresses none
+
+readValue is call
+readValue in flagArg
+readValue invokes argOf
+readValue argument shape machine.Address shape copy
+readValue argument args machine.Address args copy
+readValue argument parameter Int64 parameter copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+setCheck is call
+setCheck in flagArg
+setCheck invokes compare.notEqualInt64
+setCheck argument left Int64 value copy
+setCheck argument right Int64 no copy
+setCheck result flagged Bool
+setCheck ownedBy none
+setCheck cleanedBy none
+setCheck borrows none
+setCheck catch none
+setCheck suppresses none
+
+putText is operation
+putText purpose "Copy bytes into a region and store the copy's address and length in two slots"
+putText invariant copiesText "\"The two slots hold the address of a copy of the bytes in the region, and their length\""
+putText typeParameter none
+putText input region machine.Address copied
+putText input data machine.Address copied
+putText input bytes Int64 copied
+putText input out machine.Address copied
+putText output none
+putText outputOwnedBy none
+putText raises none
+putText effect use machine.memory
+putText effect use system.calls
+putText uses memoryAccess
+putText uses systemCalls
+putText memoryHeap false
+putText async false
+putText maxRecursion none
+putText label begin loopKind none
+putText label begin within none
+putText let eight Int64 8 immutable
+putText at begin do take
+putText at begin do copyIn
+putText at begin do storeAddress
+putText at begin do findLength
+putText at begin do storeLength
+putText at begin return ok none
+
+take is call
+take in putText
+take invokes regions.allocate
+take argument region machine.Address region copy
+take argument size Int64 bytes copy
+take result block machine.Address
+take ownedBy none
+take cleanedBy none
+take borrows none
+take catch none
+take suppresses none
+
+copyIn is call
+copyIn in putText
+copyIn invokes machine.copy
+copyIn argument target machine.Address block copy
+copyIn argument source machine.Address data copy
+copyIn argument bytes Int64 bytes copy
+copyIn result none
+copyIn ownedBy none
+copyIn cleanedBy none
+copyIn borrows none
+copyIn catch none
+copyIn suppresses none
+
+storeAddress is call
+storeAddress in putText
+storeAddress invokes machine.storeAddress
+storeAddress argument address machine.Address out copy
+storeAddress argument value machine.Address block copy
+storeAddress result none
+storeAddress ownedBy none
+storeAddress cleanedBy none
+storeAddress borrows none
+storeAddress catch none
+storeAddress suppresses none
+
+findLength is call
+findLength in putText
+findLength invokes machine.offset
+findLength argument address machine.Address out copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in putText
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 bytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+failWith is operation
+failWith purpose "Store an error's payload and give its variant's number"
+failWith invariant storesPayload "\"The payload slot holds the value and the variant's number is given back\""
+failWith typeParameter none
+failWith input payload machine.Address copied
+failWith input status Int32 copied
+failWith input value Int64 copied
+failWith output Int32
+failWith outputOwnedBy none
+failWith raises none
+failWith effect use machine.memory
+failWith uses memoryAccess
+failWith memoryHeap false
+failWith async false
+failWith maxRecursion none
+failWith label begin loopKind none
+failWith label begin within none
+failWith let none
+failWith at begin do storePayload
+failWith at begin return ok status
+
+storePayload is call
+storePayload in failWith
+storePayload invokes machine.storeInt64
+storePayload argument address machine.Address payload copy
+storePayload argument value Int64 value copy
+storePayload result none
+storePayload ownedBy none
+storePayload cleanedBy none
+storePayload borrows none
+storePayload catch none
+storePayload suppresses none

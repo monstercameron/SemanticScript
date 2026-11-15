@@ -2482,6 +2482,107 @@ the host library's buffers, maps, sets, `string.fromBytes`, and log lines into
   invisible to both runtimes' checks). Channels are not in the C runtime's
   table either; the programs that use them also need tasks (stage 4).
 
+## The runtime in SemanticScript, stages 3 and 4 (2026-11-14)
+
+Stages 3 and 4 of `docs/runtime-in-semanticscript.md` moved the rest of the C
+runtime into `semanticscript/runtime`: files, directories, claims, scopes,
+the environment, arguments, standard input, child processes and pipes, time,
+tasks, groups, cancellation, channels, and the test callbacks, as five new
+modules (`slots`, `wide`, `tasks`, `files`, `processes`) and additions to
+`frames` and `handles`. Decided by delegation:
+
+- **D-131** `machine.taskEntry()` is the address of the runtime's operation
+  exported as `refined_task_entry`, and nothing else: the one place the
+  language hands out the address of an operation. A task's fiber needs a
+  start routine that never returns (when a fiber's routine returns, its
+  thread ends), and the compiler's task thunk returns, so the runtime starts
+  every fiber in its own entry, which calls the thunk through
+  `machine.callWithAddress` and then runs the next task. D-126's reason for
+  keeping operation addresses out stands: the target is fixed by name, the
+  checker sees the operation whole, and a program that does not define it
+  cannot compile the target. Only the runtime has it.
+- **D-132** The `system` rows for files, paths, the environment, child
+  processes and pipes, time, and fibers are kernel32's own (`CreateFileW`,
+  `GetFinalPathNameByHandleW`, `FindFirstFileW`, `LockFile`,
+  `GetEnvironmentVariableW`, `CreateProcessW`, `CreatePipe`, `PeekNamedPipe`,
+  `WaitForMultipleObjects`, `GetTickCount64`, `CreateFiberEx`,
+  `SwitchToFiber`, and the like), so an executable still imports
+  KERNEL32.dll alone. What lives outside kernel32 is written in
+  SemanticScript: the command line is split into words as
+  `CommandLineToArgvW` (shell32) splits it, and child command lines are
+  quoted as `subprocess.list2cmdline` quotes them. Text crosses to the
+  system through `MultiByteToWideChar` and `WideCharToMultiByte`, and a path
+  is lower-cased by `LCMapStringEx` with the invariant locale, which is what
+  Python's `os.path.normcase` itself calls on Windows (the C runtime used
+  user32's `CharLowerBuffW`). Windows errors become errnos as Python's
+  `winerror_to_errno` makes them, then the library's error variants as
+  host.py classifies them.
+- **D-133** Tasks in an executable linked with the runtime in SemanticScript
+  run on fibers, one thread, one task at a time. `start` makes the task's
+  fiber (64 MiB of stack reserved, as a task's thread has under the JIT) and
+  switches to it at once, so a task that never waits runs to its end before
+  `start` returns, exactly as the C runtime runs it (D-37, D-83). A task that
+  waits (a `join`, an `awaitSlot`, a channel, a sleep, a child process, a
+  lock, standard input with a deadline) notes what it waits for and the
+  generation it saw, and the next task in start order that can go on runs:
+  one that is ready, or a waiting one when the generation moved (every send,
+  receive, close, cancel, start, and end counts one), its deadline passed, it
+  was cancelled in a cancellable wait, or the system handle it waits on is
+  signalled. When none can, the program sleeps until the nearest deadline or
+  handle; with neither, it traps with the JIT's message, `deadlock: every task
+  is waiting on another:` and every wait once, in order. Cancellation is the
+  JIT's (D-44): a cancelled task's next cancellable wait ends with
+  `cancelled`, so the conformance check `group-first-failure`, which D-83 left
+  to the JIT, holds in these executables too. Each task has its own call stack
+  for traps, depth counters, and stack floor (56 MiB below its fiber's first
+  frame), which the switch saves and restores in `machine.state`; the C
+  runtime's semantics are kept for standard input with no deadline, which a
+  blocking read serves (every task waits on it).
+- **D-134** The runtime defines the test callbacks (`refined_assert_int`,
+  `refined_assert_true`, `refined_assert_str`, `refined_fail`) as the C
+  runtime does, trapping with `an assertion failed (tests run with `refined
+  test`)` or the failure's message, and `refined_block`, which does nothing
+  (an executable keeps no trace). Under `refined test` the runtime project's
+  own tests keep reporting through the test runner's callbacks: those
+  operations take their C names only in the object built for an executable.
+- **D-135** An executable is one LLVM module: the runtime, kept as bitcode in
+  the temporary directory once per runtime and compiler source, and the
+  program linked into it; every function but `refined_entry` and `memcpy`,
+  `memmove`, `memset`, and `memcmp` (which LLVM's code may call) is made
+  internal, and global dead-code elimination drops whatever the entry never
+  reaches. The runtime's own functions are internal before the program is
+  linked in, so a program operation named like one of them is a different
+  function. Linking adds `--gc-sections` and `-s`. `hello` is 23 KB (145 KB
+  when the whole runtime object was linked); the warehouse example 272 KB.
+  Separate function sections were tried first and dropped nothing: the
+  linker keeps every function its unwind data names.
+- **D-136** Channels are host targets of the runtime in SemanticScript
+  (`channel.Channel.new`, `send`, `receive`, `close`), as host.py has them: a
+  capacity of at least 1 (else a trap naming it), text items copied into the
+  channel's region (D-107), a send that waits for room and a receive that
+  waits for an item, with `closed`, `timedOut`, and `cancelled`. The C
+  runtime still refuses them (R901). Child processes join the resources a
+  trap releases (D-51), stopped and closed with the open files; a captured
+  child's three pipes are pumped a piece at a time between other tasks (each
+  pipe holds 64 KiB; the room left in the child's input is read from a copy
+  of its end), so no helper thread is needed.
+- **D-137** The runtime in SemanticScript also implements `secret` (a copy of
+  the bytes, `matches` comparing in time that depends on the lengths only, as
+  `hmac.compare_digest` does), `crypto` (SHA-256 as FIPS 180-4 gives it,
+  HMAC-SHA-256 with a 64-byte block, lower-case hex, constant-time equality,
+  each what hashlib and hmac give), and `ffi` (`ffi.open` loads a library with
+  `LoadLibraryW`, `c` naming ucrtbase and then msvcrt as ctypes does;
+  `ffi.Function.bind` is `GetProcAddress`; the library stays loaded at `close`,
+  as under the C runtime), all of which D-81 left to the JIT; a library loaded
+  this way is not in the import table, which still names KERNEL32.dll alone.
+  What stays refused (R901): `net` (Winsock is ws2_32.dll, not kernel32), `http`
+  and `json` (not written yet; `json` must reproduce Python's error offsets and
+  `dumps` layout), `random` (`int64Between` needs the system's secure generator,
+  which is outside kernel32 and takes two arguments, more than
+  `machine.callWithAddress` passes; seeded generators promise Python's
+  Mersenne Twister), and `signal` (an interrupt arrives on a thread of its own
+  through a handler whose address the language does not give out).
+
 ## Data structures for self-hosting (2026-11-14)
 
 A compiler written in the language needs tokens and AST nodes (records and
@@ -2975,6 +3076,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-114 to D-118 | stage0 compiles itself: projects of several modules, `string.Position` as a declared record, maps through the host, standard errors passed on, operation references and scoped host targets in C (by delegation) |
 | 2026-11-14 | D-120 to D-124 | The runtime in SemanticScript, stage 1: the `use` effect for `machine.memory` and `system.calls`, the `machine` and `system` modules, `abi c` exports, executables linked with no C library (by delegation) |
 | 2026-11-14 | D-126 to D-130 | The runtime in SemanticScript, stage 2: host dispatch by target number, Float64 bit conversions, the process heap, floating-point text as `refined run` writes it (C runtime fixed), host objects and R901 for host targets (by delegation) |
+| 2026-11-14 | D-131 to D-137 | The runtime in SemanticScript, stages 3 and 4: `machine.taskEntry`, kernel32 rows for files, processes, time, and fibers, tasks on fibers with deadlock detection and cancellation, test callbacks, one-module executables, channels, secrets, crypto, foreign libraries (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

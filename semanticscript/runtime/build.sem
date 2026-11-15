@@ -23,8 +23,14 @@ runtime includesModule heap
 runtime includesModule tables
 runtime includesModule handles
 runtime includesModule regions
+runtime includesModule slots
 runtime includesModule bignum
 runtime includesModule floats
+runtime includesModule wide
+runtime includesModule tasks
+runtime includesModule files
+runtime includesModule processes
+runtime includesModule hashes
 runtime includesModule host
 runtime includesModule start
 runtime entry none

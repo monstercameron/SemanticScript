@@ -13,6 +13,7 @@ handles imports standard.system
 handles imports standard.string
 handles imports standard.math
 handles imports standard.compare
+handles imports standard.convert
 handles imports standard.logic
 handles imports standard.test
 handles imports frames
@@ -24,6 +25,9 @@ handles exports kindOf
 handles exports regionOf
 handles exports drop
 handles exports dropRegion
+handles exports addName
+handles exports nameAt
+handles exports nameCount
 
 memoryAccess is capability
 memoryAccess purpose "Authority to keep the table of handles and each region's list of them in memory"
@@ -43,7 +47,10 @@ systemCalls grants use system.calls none
 # The objects (heap blocks): a Buffer, at 0 its bytes, 8 how many, 16 how many the block holds, 24 a list of the
 # copies `toBytes` handed out, 32 how many, 40 how many the list holds; a Map, at 0 its region, 8 whether its
 # values are text, 16 its table of keys and values, 104 its table of the text keys copied into its region; a Set,
-# its table at 0.
+# its table at 0; a Listing or an Arguments list, a list of names: at 0 how many, 8 how many its block holds, 16 the
+# block, two slots a name (the address of a heap block holding its bytes, and how many); a Channel, at 56 the block
+# of its items (the rest is the tasks module's); a Secret, at 0 its bytes (a heap block) and 8 how many; a
+# Generator, a heap block of its own; a Library, nothing to give back (the library stays loaded).
 tableAt is constant
 tableAt purpose "Where the address of the table of handles is kept, in machine.state"
 tableAt type Int64
@@ -78,6 +85,36 @@ kindSet is constant
 kindSet purpose "The kind of a set"
 kindSet type Int64
 kindSet value 5
+
+kindListing is constant
+kindListing purpose "The kind of a directory's listing"
+kindListing type Int64
+kindListing value 2
+
+kindArguments is constant
+kindArguments purpose "The kind of a child process's list of arguments"
+kindArguments type Int64
+kindArguments value 6
+
+kindChannel is constant
+kindChannel purpose "The kind of a channel"
+kindChannel type Int64
+kindChannel value 7
+
+kindSecret is constant
+kindSecret purpose "The kind of a secret"
+kindSecret type Int64
+kindSecret value 8
+
+kindGenerator is constant
+kindGenerator purpose "The kind of a random number generator"
+kindGenerator type Int64
+kindGenerator value 9
+
+kindLibrary is constant
+kindLibrary purpose "The kind of a foreign library"
+kindLibrary type Int64
+kindLibrary value 10
 
 # ---------------------------------------------------------------- the table
 nextHandle is operation
@@ -412,6 +449,22 @@ failStale label argumentsCheck loopKind none
 failStale label argumentsCheck within none
 failStale label staleArguments loopKind none
 failStale label staleArguments within none
+failStale label channelCheck loopKind none
+failStale label channelCheck within none
+failStale label staleChannel loopKind none
+failStale label staleChannel within none
+failStale label secretCheck loopKind none
+failStale label secretCheck within none
+failStale label staleSecret loopKind none
+failStale label staleSecret within none
+failStale label generatorCheck loopKind none
+failStale label generatorCheck within none
+failStale label staleGenerator loopKind none
+failStale label staleGenerator within none
+failStale label libraryCheck loopKind none
+failStale label libraryCheck within none
+failStale label staleLibrary loopKind none
+failStale label staleLibrary within none
 failStale label staleOther loopKind none
 failStale label staleOther within none
 failStale let one Int64 1 immutable
@@ -423,6 +476,10 @@ failStale let mapText String "a Map handle was used after it was closed or its r
 failStale let setText String "a Set handle was used after it was closed or its region was released" immutable
 failStale let six Int64 6 immutable
 failStale let argumentsText String "a Arguments handle was used after it was closed or its region was released" immutable
+failStale let channelText String "a Channel handle was used after it was closed or its region was released" immutable
+failStale let secretText String "a Secret handle was used after it was closed or its region was released" immutable
+failStale let generatorText String "a Generator handle was used after it was closed or its region was released" immutable
+failStale let libraryText String "a Library handle was used after it was closed or its region was released" immutable
 failStale let otherText String "a  handle was used after it was closed or its region was released" immutable
 failStale at begin do fileCheck
 failStale at begin branch if isFile goto staleFile else goto listingCheck
@@ -445,9 +502,25 @@ failStale at setCheck branch if isSet goto staleSet else goto argumentsCheck
 failStale at staleSet do failSet
 failStale at staleSet return ok none
 failStale at argumentsCheck do checkArguments
-failStale at argumentsCheck branch if isArguments goto staleArguments else goto staleOther
+failStale at argumentsCheck branch if isArguments goto staleArguments else goto channelCheck
 failStale at staleArguments do failArguments
 failStale at staleArguments return ok none
+failStale at channelCheck do checkChannel
+failStale at channelCheck branch if isChannel goto staleChannel else goto secretCheck
+failStale at staleChannel do failChannel
+failStale at staleChannel return ok none
+failStale at secretCheck do checkSecret
+failStale at secretCheck branch if isSecret goto staleSecret else goto generatorCheck
+failStale at staleSecret do failSecret
+failStale at staleSecret return ok none
+failStale at generatorCheck do checkGenerator
+failStale at generatorCheck branch if isGenerator goto staleGenerator else goto libraryCheck
+failStale at staleGenerator do failGenerator
+failStale at staleGenerator return ok none
+failStale at libraryCheck do checkLibrary
+failStale at libraryCheck branch if isLibrary goto staleLibrary else goto staleOther
+failStale at staleLibrary do failLibrary
+failStale at staleLibrary return ok none
 failStale at staleOther do failOther
 failStale at staleOther return ok none
 
@@ -588,6 +661,98 @@ failArguments cleanedBy none
 failArguments borrows none
 failArguments catch none
 failArguments suppresses none
+
+checkChannel is call
+checkChannel in failStale
+checkChannel invokes compare.equalInt64
+checkChannel argument left Int64 kind copy
+checkChannel argument right Int64 kindChannel copy
+checkChannel result isChannel Bool
+checkChannel ownedBy none
+checkChannel cleanedBy none
+checkChannel borrows none
+checkChannel catch none
+checkChannel suppresses none
+
+failChannel is call
+failChannel in failStale
+failChannel invokes failText
+failChannel argument text String channelText lend
+failChannel result none
+failChannel ownedBy none
+failChannel cleanedBy none
+failChannel borrows none
+failChannel catch none
+failChannel suppresses none
+
+checkSecret is call
+checkSecret in failStale
+checkSecret invokes compare.equalInt64
+checkSecret argument left Int64 kind copy
+checkSecret argument right Int64 kindSecret copy
+checkSecret result isSecret Bool
+checkSecret ownedBy none
+checkSecret cleanedBy none
+checkSecret borrows none
+checkSecret catch none
+checkSecret suppresses none
+
+failSecret is call
+failSecret in failStale
+failSecret invokes failText
+failSecret argument text String secretText lend
+failSecret result none
+failSecret ownedBy none
+failSecret cleanedBy none
+failSecret borrows none
+failSecret catch none
+failSecret suppresses none
+
+checkGenerator is call
+checkGenerator in failStale
+checkGenerator invokes compare.equalInt64
+checkGenerator argument left Int64 kind copy
+checkGenerator argument right Int64 kindGenerator copy
+checkGenerator result isGenerator Bool
+checkGenerator ownedBy none
+checkGenerator cleanedBy none
+checkGenerator borrows none
+checkGenerator catch none
+checkGenerator suppresses none
+
+failGenerator is call
+failGenerator in failStale
+failGenerator invokes failText
+failGenerator argument text String generatorText lend
+failGenerator result none
+failGenerator ownedBy none
+failGenerator cleanedBy none
+failGenerator borrows none
+failGenerator catch none
+failGenerator suppresses none
+
+checkLibrary is call
+checkLibrary in failStale
+checkLibrary invokes compare.equalInt64
+checkLibrary argument left Int64 kind copy
+checkLibrary argument right Int64 kindLibrary copy
+checkLibrary result isLibrary Bool
+checkLibrary ownedBy none
+checkLibrary cleanedBy none
+checkLibrary borrows none
+checkLibrary catch none
+checkLibrary suppresses none
+
+failLibrary is call
+failLibrary in failStale
+failLibrary invokes failText
+failLibrary argument text String libraryText lend
+failLibrary result none
+failLibrary ownedBy none
+failLibrary cleanedBy none
+failLibrary borrows none
+failLibrary catch none
+failLibrary suppresses none
 
 failOther is call
 failOther in failStale
@@ -1805,6 +1970,592 @@ giveObject borrows none
 giveObject catch none
 giveObject suppresses none
 
+dropNames is operation
+dropNames purpose "Give back a list of names: each name's bytes, the block of names, and the list itself"
+dropNames invariant none
+dropNames typeParameter none
+dropNames input object machine.Address copied
+dropNames output none
+dropNames outputOwnedBy none
+dropNames raises none
+dropNames effect use machine.memory
+dropNames effect use system.calls
+dropNames uses memoryAccess
+dropNames uses systemCalls
+dropNames memoryHeap false
+dropNames async false
+dropNames maxRecursion none
+dropNames label begin loopKind none
+dropNames label begin within none
+dropNames label eachName loopKind while
+dropNames label eachName within none
+dropNames label eachName maxIterations count
+dropNames label giveName loopKind none
+dropNames label giveName within eachName
+dropNames label finish loopKind none
+dropNames label finish within none
+dropNames let at Int64 0 mutable
+dropNames let sixteen Int64 16 immutable
+dropNames let one Int64 1 immutable
+dropNames at begin do readCount
+dropNames at begin do findBlock
+dropNames at begin do readBlock
+dropNames at begin goto eachName
+dropNames at eachName do namesDone
+dropNames at eachName branch if done goto finish else goto giveName
+dropNames at giveName do nameOffset
+dropNames at giveName do findName
+dropNames at giveName do readName
+dropNames at giveName do giveIt
+dropNames at giveName do nextName
+dropNames at giveName set at after
+dropNames at giveName goto eachName
+dropNames at finish do giveBlock
+dropNames at finish do giveObject
+dropNames at finish return ok none
+
+readCount is call
+readCount in dropNames
+readCount invokes machine.loadInt64
+readCount argument address machine.Address object copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findBlock is call
+findBlock in dropNames
+findBlock invokes machine.offset
+findBlock argument address machine.Address object copy
+findBlock argument bytes Int64 sixteen copy
+findBlock result blockSlot machine.Address
+findBlock ownedBy none
+findBlock cleanedBy none
+findBlock borrows none
+findBlock catch none
+findBlock suppresses none
+
+readBlock is call
+readBlock in dropNames
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address blockSlot copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+namesDone is call
+namesDone in dropNames
+namesDone invokes compare.greaterOrEqualInt64
+namesDone argument left Int64 at copy
+namesDone argument right Int64 count copy
+namesDone result done Bool
+namesDone ownedBy none
+namesDone cleanedBy none
+namesDone borrows none
+namesDone catch none
+namesDone suppresses none
+
+nameOffset is call
+nameOffset in dropNames
+nameOffset invokes math.multiplyInt64
+nameOffset argument left Int64 at copy
+nameOffset argument right Int64 sixteen copy
+nameOffset result offset Int64
+nameOffset ownedBy none
+nameOffset cleanedBy none
+nameOffset borrows none
+nameOffset catch none
+nameOffset suppresses none
+
+findName is call
+findName in dropNames
+findName invokes machine.offset
+findName argument address machine.Address block copy
+findName argument bytes Int64 offset copy
+findName result nameSlot machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+readName is call
+readName in dropNames
+readName invokes machine.loadAddress
+readName argument address machine.Address nameSlot copy
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+giveIt is call
+giveIt in dropNames
+giveIt invokes heap.give
+giveIt argument block machine.Address name copy
+giveIt result none
+giveIt ownedBy none
+giveIt cleanedBy none
+giveIt borrows none
+giveIt catch none
+giveIt suppresses none
+
+nextName is call
+nextName in dropNames
+nextName invokes math.addInt64
+nextName argument left Int64 at copy
+nextName argument right Int64 one copy
+nextName result after Int64
+nextName ownedBy none
+nextName cleanedBy none
+nextName borrows none
+nextName catch none
+nextName suppresses none
+
+giveBlock is call
+giveBlock in dropNames
+giveBlock invokes heap.give
+giveBlock argument block machine.Address block copy
+giveBlock result none
+giveBlock ownedBy none
+giveBlock cleanedBy none
+giveBlock borrows none
+giveBlock catch none
+giveBlock suppresses none
+
+giveObject is call
+giveObject in dropNames
+giveObject invokes heap.give
+giveObject argument block machine.Address object copy
+giveObject result none
+giveObject ownedBy none
+giveObject cleanedBy none
+giveObject borrows none
+giveObject catch none
+giveObject suppresses none
+
+# ---------------------------------------------------------------- lists of names (listings, arguments)
+addName is operation
+addName purpose "Add a copy of some bytes to the end of a list of names, doubling its block (from 8 names) when it is full"
+addName invariant addsName "\"The list holds one name more, the last a copy of the bytes\""
+addName typeParameter none
+addName input names machine.Address copied
+addName input data machine.Address copied
+addName input bytes Int64 copied
+addName output none
+addName outputOwnedBy none
+addName raises none
+addName effect use machine.memory
+addName effect use system.calls
+addName uses memoryAccess
+addName uses systemCalls
+addName memoryHeap false
+addName async false
+addName maxRecursion none
+addName label begin loopKind none
+addName label begin within none
+addName label grow loopKind none
+addName label grow within none
+addName label append loopKind none
+addName label append within none
+addName let capacity Int64 0 mutable
+addName let eight Int64 8 immutable
+addName let sixteen Int64 16 immutable
+addName let two Int64 2 immutable
+addName let one Int64 1 immutable
+addName at begin do readCount
+addName at begin do findCapacity
+addName at begin do readCapacity
+addName at begin do findBlock
+addName at begin do roomCheck
+addName at begin branch if room goto append else goto grow
+addName at grow do twice
+addName at grow do more
+addName at grow set capacity grown
+addName at grow do readOld
+addName at grow do sizeOf
+addName at grow do resizeBlock
+addName at grow do storeBlock
+addName at grow do storeCapacity
+addName at grow goto append
+addName at append do takeCopy
+addName at append do copyIn
+addName at append do readBlockNow
+addName at append do nameOffset
+addName at append do findName
+addName at append do storeName
+addName at append do findLength
+addName at append do storeLength
+addName at append do addOne
+addName at append do storeCount
+addName at append return ok none
+
+readCount is call
+readCount in addName
+readCount invokes machine.loadInt64
+readCount argument address machine.Address names copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCapacity is call
+findCapacity in addName
+findCapacity invokes machine.offset
+findCapacity argument address machine.Address names copy
+findCapacity argument bytes Int64 eight copy
+findCapacity result capacitySlot machine.Address
+findCapacity ownedBy none
+findCapacity cleanedBy none
+findCapacity borrows none
+findCapacity catch none
+findCapacity suppresses none
+
+readCapacity is call
+readCapacity in addName
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address capacitySlot copy
+readCapacity result held Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+findBlock is call
+findBlock in addName
+findBlock invokes machine.offset
+findBlock argument address machine.Address names copy
+findBlock argument bytes Int64 sixteen copy
+findBlock result blockSlot machine.Address
+findBlock ownedBy none
+findBlock cleanedBy none
+findBlock borrows none
+findBlock catch none
+findBlock suppresses none
+
+roomCheck is call
+roomCheck in addName
+roomCheck invokes compare.lessThanInt64
+roomCheck argument left Int64 count copy
+roomCheck argument right Int64 held copy
+roomCheck result room Bool
+roomCheck ownedBy none
+roomCheck cleanedBy none
+roomCheck borrows none
+roomCheck catch none
+roomCheck suppresses none
+
+twice is call
+twice in addName
+twice invokes math.multiplyInt64
+twice argument left Int64 held copy
+twice argument right Int64 two copy
+twice result doubled Int64
+twice ownedBy none
+twice cleanedBy none
+twice borrows none
+twice catch none
+twice suppresses none
+
+more is call
+more in addName
+more invokes math.addInt64
+more argument left Int64 doubled copy
+more argument right Int64 eight copy
+more result grown Int64
+more ownedBy none
+more cleanedBy none
+more borrows none
+more catch none
+more suppresses none
+
+readOld is call
+readOld in addName
+readOld invokes machine.loadAddress
+readOld argument address machine.Address blockSlot copy
+readOld result old machine.Address
+readOld ownedBy none
+readOld cleanedBy none
+readOld borrows none
+readOld catch none
+readOld suppresses none
+
+sizeOf is call
+sizeOf in addName
+sizeOf invokes math.multiplyInt64
+sizeOf argument left Int64 capacity copy
+sizeOf argument right Int64 sixteen copy
+sizeOf result size Int64
+sizeOf ownedBy none
+sizeOf cleanedBy none
+sizeOf borrows none
+sizeOf catch none
+sizeOf suppresses none
+
+resizeBlock is call
+resizeBlock in addName
+resizeBlock invokes heap.resize
+resizeBlock argument block machine.Address old copy
+resizeBlock argument bytes Int64 size copy
+resizeBlock result block machine.Address
+resizeBlock ownedBy none
+resizeBlock cleanedBy none
+resizeBlock borrows none
+resizeBlock catch none
+resizeBlock suppresses none
+
+storeBlock is call
+storeBlock in addName
+storeBlock invokes machine.storeAddress
+storeBlock argument address machine.Address blockSlot copy
+storeBlock argument value machine.Address block copy
+storeBlock result none
+storeBlock ownedBy none
+storeBlock cleanedBy none
+storeBlock borrows none
+storeBlock catch none
+storeBlock suppresses none
+
+storeCapacity is call
+storeCapacity in addName
+storeCapacity invokes machine.storeInt64
+storeCapacity argument address machine.Address capacitySlot copy
+storeCapacity argument value Int64 capacity copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+takeCopy is call
+takeCopy in addName
+takeCopy invokes heap.take
+takeCopy argument bytes Int64 bytes copy
+takeCopy result copy machine.Address
+takeCopy ownedBy none
+takeCopy cleanedBy none
+takeCopy borrows none
+takeCopy catch none
+takeCopy suppresses none
+
+copyIn is call
+copyIn in addName
+copyIn invokes machine.copy
+copyIn argument target machine.Address copy copy
+copyIn argument source machine.Address data copy
+copyIn argument bytes Int64 bytes copy
+copyIn result none
+copyIn ownedBy none
+copyIn cleanedBy none
+copyIn borrows none
+copyIn catch none
+copyIn suppresses none
+
+readBlockNow is call
+readBlockNow in addName
+readBlockNow invokes machine.loadAddress
+readBlockNow argument address machine.Address blockSlot copy
+readBlockNow result blockNow machine.Address
+readBlockNow ownedBy none
+readBlockNow cleanedBy none
+readBlockNow borrows none
+readBlockNow catch none
+readBlockNow suppresses none
+
+nameOffset is call
+nameOffset in addName
+nameOffset invokes math.multiplyInt64
+nameOffset argument left Int64 count copy
+nameOffset argument right Int64 sixteen copy
+nameOffset result offset Int64
+nameOffset ownedBy none
+nameOffset cleanedBy none
+nameOffset borrows none
+nameOffset catch none
+nameOffset suppresses none
+
+findName is call
+findName in addName
+findName invokes machine.offset
+findName argument address machine.Address blockNow copy
+findName argument bytes Int64 offset copy
+findName result nameSlot machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+storeName is call
+storeName in addName
+storeName invokes machine.storeAddress
+storeName argument address machine.Address nameSlot copy
+storeName argument value machine.Address copy copy
+storeName result none
+storeName ownedBy none
+storeName cleanedBy none
+storeName borrows none
+storeName catch none
+storeName suppresses none
+
+findLength is call
+findLength in addName
+findLength invokes machine.offset
+findLength argument address machine.Address nameSlot copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in addName
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 bytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+addOne is call
+addOne in addName
+addOne invokes math.addInt64
+addOne argument left Int64 count copy
+addOne argument right Int64 one copy
+addOne result nextCount Int64
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+addOne suppresses none
+
+storeCount is call
+storeCount in addName
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address names copy
+storeCount argument value Int64 nextCount copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+nameCount is operation
+nameCount purpose "How many names a list holds"
+nameCount invariant countsNames "\"Gives how many names were added to the list\""
+nameCount typeParameter none
+nameCount input names machine.Address copied
+nameCount output Int64
+nameCount outputOwnedBy none
+nameCount raises none
+nameCount effect use machine.memory
+nameCount uses memoryAccess
+nameCount memoryHeap false
+nameCount async false
+nameCount maxRecursion none
+nameCount label begin loopKind none
+nameCount label begin within none
+nameCount let none
+nameCount at begin do readCount
+nameCount at begin return ok count
+
+readCount is call
+readCount in nameCount
+readCount invokes machine.loadInt64
+readCount argument address machine.Address names copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+nameAt is operation
+nameAt purpose "The address of a name of a list by its position: two slots, the address of its bytes and how many"
+nameAt invariant findsName "\"Gives the slots of the name added at that position\""
+nameAt typeParameter none
+nameAt input names machine.Address copied
+nameAt input position Int64 copied
+nameAt output machine.Address
+nameAt outputOwnedBy none
+nameAt raises none
+nameAt effect use machine.memory
+nameAt uses memoryAccess
+nameAt memoryHeap false
+nameAt async false
+nameAt maxRecursion none
+nameAt label begin loopKind none
+nameAt label begin within none
+nameAt let sixteen Int64 16 immutable
+nameAt at begin do findBlock
+nameAt at begin do readBlock
+nameAt at begin do nameOffset
+nameAt at begin do findName
+nameAt at begin return ok nameSlot
+
+findBlock is call
+findBlock in nameAt
+findBlock invokes machine.offset
+findBlock argument address machine.Address names copy
+findBlock argument bytes Int64 sixteen copy
+findBlock result blockSlot machine.Address
+findBlock ownedBy none
+findBlock cleanedBy none
+findBlock borrows none
+findBlock catch none
+findBlock suppresses none
+
+readBlock is call
+readBlock in nameAt
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address blockSlot copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+nameOffset is call
+nameOffset in nameAt
+nameOffset invokes math.multiplyInt64
+nameOffset argument left Int64 position copy
+nameOffset argument right Int64 sixteen copy
+nameOffset result offset Int64
+nameOffset ownedBy none
+nameOffset cleanedBy none
+nameOffset borrows none
+nameOffset catch none
+nameOffset suppresses none
+
+findName is call
+findName in nameAt
+findName invokes machine.offset
+findName argument address machine.Address block copy
+findName argument bytes Int64 offset copy
+findName result nameSlot machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
 drop is operation
 drop purpose "Give back the object a handle names and mark the handle closed; a closed handle or another number is left as it is"
 drop invariant closesHandle "\"After a drop the handle's kind is 0 and its object has been given back\""
@@ -1834,6 +2585,22 @@ drop label setCheck loopKind none
 drop label setCheck within none
 drop label giveSet loopKind none
 drop label giveSet within none
+drop label listingCheck loopKind none
+drop label listingCheck within none
+drop label giveNames loopKind none
+drop label giveNames within none
+drop label channelCheck loopKind none
+drop label channelCheck within none
+drop label giveChannel loopKind none
+drop label giveChannel within none
+drop label secretCheck loopKind none
+drop label secretCheck within none
+drop label giveSecret loopKind none
+drop label giveSecret within none
+drop label generatorCheck loopKind none
+drop label generatorCheck within none
+drop label giveGenerator loopKind none
+drop label giveGenerator within none
 drop label close loopKind none
 drop label close within none
 drop label done loopKind none
@@ -1842,6 +2609,7 @@ drop let zero Int64 0 immutable
 drop let eight Int64 8 immutable
 drop let sixteen Int64 16 immutable
 drop let hundredFour Int64 104 immutable
+drop let fiftySix Int64 56 immutable
 drop at begin do readKind
 drop at begin do closedCheck
 drop at begin branch if closed goto done else goto readObject
@@ -1861,10 +2629,33 @@ drop at giveMap do releaseCopies
 drop at giveMap do giveMapObject
 drop at giveMap goto close
 drop at setCheck do checkSet
-drop at setCheck branch if isSet goto giveSet else goto close
+drop at setCheck branch if isSet goto giveSet else goto listingCheck
 drop at giveSet do releaseSet
 drop at giveSet do giveSetObject
 drop at giveSet goto close
+drop at listingCheck do checkListing
+drop at listingCheck do checkArguments
+drop at listingCheck do namesCheck
+drop at listingCheck branch if isNames goto giveNames else goto channelCheck
+drop at giveNames do dropNamesIt
+drop at giveNames goto close
+drop at channelCheck do checkChannel
+drop at channelCheck branch if isChannel goto giveChannel else goto secretCheck
+drop at giveChannel do findItems
+drop at giveChannel do readItems
+drop at giveChannel do giveItems
+drop at giveChannel do giveChannelObject
+drop at giveChannel goto close
+drop at secretCheck do checkSecret
+drop at secretCheck branch if isSecret goto giveSecret else goto generatorCheck
+drop at giveSecret do readSecretBytes
+drop at giveSecret do giveSecretBytes
+drop at giveSecret do giveSecretObject
+drop at giveSecret goto close
+drop at generatorCheck do checkGenerator
+drop at generatorCheck branch if isGenerator goto giveGenerator else goto close
+drop at giveGenerator do giveGeneratorObject
+drop at giveGenerator goto close
 drop at close do clearKind
 drop at close do nowhere
 drop at close do clearObject
@@ -2053,6 +2844,178 @@ giveSetObject cleanedBy none
 giveSetObject borrows none
 giveSetObject catch none
 giveSetObject suppresses none
+
+checkListing is call
+checkListing in drop
+checkListing invokes compare.equalInt64
+checkListing argument left Int64 kind copy
+checkListing argument right Int64 kindListing copy
+checkListing result isListing Bool
+checkListing ownedBy none
+checkListing cleanedBy none
+checkListing borrows none
+checkListing catch none
+checkListing suppresses none
+
+checkArguments is call
+checkArguments in drop
+checkArguments invokes compare.equalInt64
+checkArguments argument left Int64 kind copy
+checkArguments argument right Int64 kindArguments copy
+checkArguments result isArguments Bool
+checkArguments ownedBy none
+checkArguments cleanedBy none
+checkArguments borrows none
+checkArguments catch none
+checkArguments suppresses none
+
+namesCheck is call
+namesCheck in drop
+namesCheck invokes logic.or
+namesCheck argument left Bool isListing copy
+namesCheck argument right Bool isArguments copy
+namesCheck result isNames Bool
+namesCheck ownedBy none
+namesCheck cleanedBy none
+namesCheck borrows none
+namesCheck catch none
+namesCheck suppresses none
+
+dropNamesIt is call
+dropNamesIt in drop
+dropNamesIt invokes dropNames
+dropNamesIt argument object machine.Address object copy
+dropNamesIt result none
+dropNamesIt ownedBy none
+dropNamesIt cleanedBy none
+dropNamesIt borrows none
+dropNamesIt catch none
+dropNamesIt suppresses none
+
+checkChannel is call
+checkChannel in drop
+checkChannel invokes compare.equalInt64
+checkChannel argument left Int64 kind copy
+checkChannel argument right Int64 kindChannel copy
+checkChannel result isChannel Bool
+checkChannel ownedBy none
+checkChannel cleanedBy none
+checkChannel borrows none
+checkChannel catch none
+checkChannel suppresses none
+
+findItems is call
+findItems in drop
+findItems invokes machine.offset
+findItems argument address machine.Address object copy
+findItems argument bytes Int64 fiftySix copy
+findItems result itemsSlot machine.Address
+findItems ownedBy none
+findItems cleanedBy none
+findItems borrows none
+findItems catch none
+findItems suppresses none
+
+readItems is call
+readItems in drop
+readItems invokes machine.loadAddress
+readItems argument address machine.Address itemsSlot copy
+readItems result items machine.Address
+readItems ownedBy none
+readItems cleanedBy none
+readItems borrows none
+readItems catch none
+readItems suppresses none
+
+giveItems is call
+giveItems in drop
+giveItems invokes heap.give
+giveItems argument block machine.Address items copy
+giveItems result none
+giveItems ownedBy none
+giveItems cleanedBy none
+giveItems borrows none
+giveItems catch none
+giveItems suppresses none
+
+giveChannelObject is call
+giveChannelObject in drop
+giveChannelObject invokes heap.give
+giveChannelObject argument block machine.Address object copy
+giveChannelObject result none
+giveChannelObject ownedBy none
+giveChannelObject cleanedBy none
+giveChannelObject borrows none
+giveChannelObject catch none
+giveChannelObject suppresses none
+
+checkSecret is call
+checkSecret in drop
+checkSecret invokes compare.equalInt64
+checkSecret argument left Int64 kind copy
+checkSecret argument right Int64 kindSecret copy
+checkSecret result isSecret Bool
+checkSecret ownedBy none
+checkSecret cleanedBy none
+checkSecret borrows none
+checkSecret catch none
+checkSecret suppresses none
+
+readSecretBytes is call
+readSecretBytes in drop
+readSecretBytes invokes machine.loadAddress
+readSecretBytes argument address machine.Address object copy
+readSecretBytes result secretBytes machine.Address
+readSecretBytes ownedBy none
+readSecretBytes cleanedBy none
+readSecretBytes borrows none
+readSecretBytes catch none
+readSecretBytes suppresses none
+
+giveSecretBytes is call
+giveSecretBytes in drop
+giveSecretBytes invokes heap.give
+giveSecretBytes argument block machine.Address secretBytes copy
+giveSecretBytes result none
+giveSecretBytes ownedBy none
+giveSecretBytes cleanedBy none
+giveSecretBytes borrows none
+giveSecretBytes catch none
+giveSecretBytes suppresses none
+
+giveSecretObject is call
+giveSecretObject in drop
+giveSecretObject invokes heap.give
+giveSecretObject argument block machine.Address object copy
+giveSecretObject result none
+giveSecretObject ownedBy none
+giveSecretObject cleanedBy none
+giveSecretObject borrows none
+giveSecretObject catch none
+giveSecretObject suppresses none
+
+checkGenerator is call
+checkGenerator in drop
+checkGenerator invokes compare.equalInt64
+checkGenerator argument left Int64 kind copy
+checkGenerator argument right Int64 kindGenerator copy
+checkGenerator result isGenerator Bool
+checkGenerator ownedBy none
+checkGenerator cleanedBy none
+checkGenerator borrows none
+checkGenerator catch none
+checkGenerator suppresses none
+
+giveGeneratorObject is call
+giveGeneratorObject in drop
+giveGeneratorObject invokes heap.give
+giveGeneratorObject argument block machine.Address object copy
+giveGeneratorObject result none
+giveGeneratorObject ownedBy none
+giveGeneratorObject cleanedBy none
+giveGeneratorObject borrows none
+giveGeneratorObject catch none
+giveGeneratorObject suppresses none
 
 clearKind is call
 clearKind in drop

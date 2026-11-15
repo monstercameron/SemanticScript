@@ -1,0 +1,1614 @@
+# Tests of the `tasks` module; generated from tools/tasks.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests build a call's shape and slots in the last 4 KiB of machine.state: the shape from byte 61440, the
+# arguments from 61952, the results from 62016, the payload at 62080. They run on the main program's task: nothing
+# here starts a fiber.
+prepareShape is operation
+prepareShape purpose "Make the tests' shape: a number of parameters, each of one slot but the one at a position, which has two"
+prepareShape invariant none
+prepareShape typeParameter none
+prepareShape input params Int64 copied
+prepareShape input wide Int64 copied
+prepareShape output machine.Address
+prepareShape outputOwnedBy none
+prepareShape raises none
+prepareShape effect use machine.memory
+prepareShape uses memoryAccess
+prepareShape memoryHeap false
+prepareShape async false
+prepareShape maxRecursion none
+prepareShape label begin loopKind none
+prepareShape label begin within none
+prepareShape label eachParam loopKind while
+prepareShape label eachParam within none
+prepareShape label eachParam maxIterations params
+prepareShape label setParam loopKind none
+prepareShape label setParam within eachParam
+prepareShape label twoSlots loopKind none
+prepareShape label twoSlots within eachParam
+prepareShape label oneSlot loopKind none
+prepareShape label oneSlot within eachParam
+prepareShape label advance loopKind none
+prepareShape label advance within eachParam
+prepareShape label finish loopKind none
+prepareShape label finish within none
+prepareShape let at Int64 0 mutable
+prepareShape let start Int64 0 mutable
+prepareShape let shapeAt Int64 61440 immutable
+prepareShape let twentyFour Int64 24 immutable
+prepareShape let two Int64 2 immutable
+prepareShape let one Int64 1 immutable
+prepareShape at begin do findState
+prepareShape at begin do findShape
+prepareShape at begin do storeParams
+prepareShape at begin goto eachParam
+prepareShape at eachParam do doneCheck
+prepareShape at eachParam branch if done goto finish else goto setParam
+prepareShape at setParam do wideCheck
+prepareShape at setParam branch if isWide goto twoSlots else goto oneSlot
+prepareShape at twoSlots do storeTwo
+prepareShape at twoSlots goto advance
+prepareShape at oneSlot do storeOne
+prepareShape at oneSlot goto advance
+prepareShape at advance do readCount
+prepareShape at advance do moveStart
+prepareShape at advance set start nextStart
+prepareShape at advance do nextParam
+prepareShape at advance set at after
+prepareShape at advance goto eachParam
+prepareShape at finish return ok shape
+
+findState is call
+findState in prepareShape
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findShape is call
+findShape in prepareShape
+findShape invokes machine.offset
+findShape argument address machine.Address state copy
+findShape argument bytes Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+storeParams is call
+storeParams in prepareShape
+storeParams invokes setField
+storeParams argument block machine.Address shape copy
+storeParams argument offset Int64 twentyFour copy
+storeParams argument value Int64 params copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+doneCheck is call
+doneCheck in prepareShape
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 params copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+wideCheck is call
+wideCheck in prepareShape
+wideCheck invokes compare.equalInt64
+wideCheck argument left Int64 at copy
+wideCheck argument right Int64 wide copy
+wideCheck result isWide Bool
+wideCheck ownedBy none
+wideCheck cleanedBy none
+wideCheck borrows none
+wideCheck catch none
+wideCheck suppresses none
+
+storeTwo is call
+storeTwo in prepareShape
+storeTwo invokes storeParamSlots
+storeTwo argument shape machine.Address shape copy
+storeTwo argument parameter Int64 at copy
+storeTwo argument first Int64 start copy
+storeTwo argument count Int64 two copy
+storeTwo result none
+storeTwo ownedBy none
+storeTwo cleanedBy none
+storeTwo borrows none
+storeTwo catch none
+storeTwo suppresses none
+
+storeOne is call
+storeOne in prepareShape
+storeOne invokes storeParamSlots
+storeOne argument shape machine.Address shape copy
+storeOne argument parameter Int64 at copy
+storeOne argument first Int64 start copy
+storeOne argument count Int64 one copy
+storeOne result none
+storeOne ownedBy none
+storeOne cleanedBy none
+storeOne borrows none
+storeOne catch none
+storeOne suppresses none
+
+readCount is call
+readCount in prepareShape
+readCount invokes slots.countOf
+readCount argument shape machine.Address shape copy
+readCount argument parameter Int64 at copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+moveStart is call
+moveStart in prepareShape
+moveStart invokes math.addInt64
+moveStart argument left Int64 start copy
+moveStart argument right Int64 count copy
+moveStart result nextStart Int64
+moveStart ownedBy none
+moveStart cleanedBy none
+moveStart borrows none
+moveStart catch none
+moveStart suppresses none
+
+nextParam is call
+nextParam in prepareShape
+nextParam invokes math.addInt64
+nextParam argument left Int64 at copy
+nextParam argument right Int64 one copy
+nextParam result after Int64
+nextParam ownedBy none
+nextParam cleanedBy none
+nextParam borrows none
+nextParam catch none
+nextParam suppresses none
+
+storeParamSlots is operation
+storeParamSlots purpose "Store a parameter's slot count and first slot in the tests' shape"
+storeParamSlots invariant none
+storeParamSlots typeParameter none
+storeParamSlots input shape machine.Address copied
+storeParamSlots input parameter Int64 copied
+storeParamSlots input first Int64 copied
+storeParamSlots input count Int64 copied
+storeParamSlots output none
+storeParamSlots outputOwnedBy none
+storeParamSlots raises none
+storeParamSlots effect use machine.memory
+storeParamSlots uses memoryAccess
+storeParamSlots memoryHeap false
+storeParamSlots async false
+storeParamSlots maxRecursion none
+storeParamSlots label begin loopKind none
+storeParamSlots label begin within none
+storeParamSlots let eight Int64 8 immutable
+storeParamSlots let forty Int64 40 immutable
+storeParamSlots let twoThirtyTwo Int64 232 immutable
+storeParamSlots at begin do parameterOffset
+storeParamSlots at begin do countOffset
+storeParamSlots at begin do storeSlots
+storeParamSlots at begin do startOffset
+storeParamSlots at begin do storeStart
+storeParamSlots at begin return ok none
+
+parameterOffset is call
+parameterOffset in storeParamSlots
+parameterOffset invokes math.multiplyInt64
+parameterOffset argument left Int64 parameter copy
+parameterOffset argument right Int64 eight copy
+parameterOffset result place Int64
+parameterOffset ownedBy none
+parameterOffset cleanedBy none
+parameterOffset borrows none
+parameterOffset catch none
+parameterOffset suppresses none
+
+countOffset is call
+countOffset in storeParamSlots
+countOffset invokes math.addInt64
+countOffset argument left Int64 place copy
+countOffset argument right Int64 forty copy
+countOffset result countPlace Int64
+countOffset ownedBy none
+countOffset cleanedBy none
+countOffset borrows none
+countOffset catch none
+countOffset suppresses none
+
+storeSlots is call
+storeSlots in storeParamSlots
+storeSlots invokes setField
+storeSlots argument block machine.Address shape copy
+storeSlots argument offset Int64 countPlace copy
+storeSlots argument value Int64 count copy
+storeSlots result none
+storeSlots ownedBy none
+storeSlots cleanedBy none
+storeSlots borrows none
+storeSlots catch none
+storeSlots suppresses none
+
+startOffset is call
+startOffset in storeParamSlots
+startOffset invokes math.addInt64
+startOffset argument left Int64 place copy
+startOffset argument right Int64 twoThirtyTwo copy
+startOffset result startPlace Int64
+startOffset ownedBy none
+startOffset cleanedBy none
+startOffset borrows none
+startOffset catch none
+startOffset suppresses none
+
+storeStart is call
+storeStart in storeParamSlots
+storeStart invokes setField
+storeStart argument block machine.Address shape copy
+storeStart argument offset Int64 startPlace copy
+storeStart argument value Int64 first copy
+storeStart result none
+storeStart ownedBy none
+storeStart cleanedBy none
+storeStart borrows none
+storeStart catch none
+storeStart suppresses none
+
+testSlot is operation
+testSlot purpose "The address of the tests' scratch at an offset from byte 61952 (arguments from 0, results from 64, the payload at 128)"
+testSlot invariant none
+testSlot typeParameter none
+testSlot input offset Int64 copied
+testSlot output machine.Address
+testSlot outputOwnedBy none
+testSlot raises none
+testSlot effect use machine.memory
+testSlot uses memoryAccess
+testSlot memoryHeap false
+testSlot async false
+testSlot maxRecursion none
+testSlot label begin loopKind none
+testSlot label begin within none
+testSlot let argsAt Int64 61952 immutable
+testSlot at begin do findState
+testSlot at begin do findArgs
+testSlot at begin do findSlot
+testSlot at begin return ok slot
+
+findState is call
+findState in testSlot
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findArgs is call
+findArgs in testSlot
+findArgs invokes machine.offset
+findArgs argument address machine.Address state copy
+findArgs argument bytes Int64 argsAt copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findSlot is call
+findSlot in testSlot
+findSlot invokes machine.offset
+findSlot argument address machine.Address args copy
+findSlot argument bytes Int64 offset copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+clockTest is test
+clockTest purpose "Deadlines are the clock plus a duration, never is -1, the clocks read the time, and the generation counts changes"
+clockTest verifies now readsClock
+clockTest verifies deadlineNever givesNever
+clockTest verifies deadlineAfter addsDuration
+clockTest verifies clockNow readsWallClock
+clockTest verifies clockMonotonic readsMonotonic
+clockTest verifies notify countsChange
+clockTest verifies cancelled readsCancelled
+clockTest typeParameter none
+clockTest input none
+clockTest output none
+clockTest outputOwnedBy none
+clockTest raises none
+clockTest effect use machine.memory
+clockTest effect use system.calls
+clockTest uses memoryAccess
+clockTest uses systemCalls
+clockTest memoryHeap false
+clockTest async false
+clockTest maxRecursion none
+clockTest label begin loopKind none
+clockTest label begin within none
+clockTest let zero Int64 0 immutable
+clockTest let sixtyFour Int64 64 immutable
+clockTest let one Int64 1 immutable
+clockTest let minusOne Int64 -1 immutable
+clockTest let thousand Int64 1000 immutable
+clockTest let year2020 Int64 1577836800000 immutable
+clockTest at begin do readBefore
+clockTest at begin do findArgs
+clockTest at begin do findResults
+clockTest at begin do shapeOf
+clockTest at begin do storeDuration
+clockTest at begin do after
+clockTest at begin do readDeadline
+clockTest at begin do readAfter
+clockTest at begin do lowest
+clockTest at begin do highest
+clockTest at begin do lowCheck
+clockTest at begin do expectLow
+clockTest at begin do highCheck
+clockTest at begin do expectHigh
+clockTest at begin do neverIt
+clockTest at begin do readNever
+clockTest at begin do expectNever
+clockTest at begin do wall
+clockTest at begin do readWall
+clockTest at begin do wallCheck
+clockTest at begin do expectWall
+clockTest at begin do monotonic
+clockTest at begin do readMonotonic
+clockTest at begin do monotonicCheck
+clockTest at begin do expectMonotonic
+clockTest at begin do readGeneration
+clockTest at begin do change
+clockTest at begin do readGenerationAfter
+clockTest at begin do wantGeneration
+clockTest at begin do expectGeneration
+clockTest at begin do readCancelled
+clockTest at begin do notCancelled
+clockTest at begin do expectNotCancelled
+clockTest at begin return ok none
+
+readBefore is call
+readBefore in clockTest
+readBefore invokes now
+readBefore argument none
+readBefore result before Int64
+readBefore ownedBy none
+readBefore cleanedBy none
+readBefore borrows none
+readBefore catch none
+readBefore suppresses none
+
+findArgs is call
+findArgs in clockTest
+findArgs invokes testSlot
+findArgs argument offset Int64 zero copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in clockTest
+findResults invokes testSlot
+findResults argument offset Int64 sixtyFour copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+shapeOf is call
+shapeOf in clockTest
+shapeOf invokes prepareShape
+shapeOf argument params Int64 one copy
+shapeOf argument wide Int64 minusOne copy
+shapeOf result shape machine.Address
+shapeOf ownedBy none
+shapeOf cleanedBy none
+shapeOf borrows none
+shapeOf catch none
+shapeOf suppresses none
+
+storeDuration is call
+storeDuration in clockTest
+storeDuration invokes machine.storeInt64
+storeDuration argument address machine.Address args copy
+storeDuration argument value Int64 thousand copy
+storeDuration result none
+storeDuration ownedBy none
+storeDuration cleanedBy none
+storeDuration borrows none
+storeDuration catch none
+storeDuration suppresses none
+
+after is call
+after in clockTest
+after invokes deadlineAfter
+after argument shape machine.Address shape copy
+after argument args machine.Address args copy
+after argument results machine.Address results copy
+after result none
+after ownedBy none
+after cleanedBy none
+after borrows none
+after catch none
+after suppresses none
+
+readDeadline is call
+readDeadline in clockTest
+readDeadline invokes machine.loadInt64
+readDeadline argument address machine.Address results copy
+readDeadline result deadline Int64
+readDeadline ownedBy none
+readDeadline cleanedBy none
+readDeadline borrows none
+readDeadline catch none
+readDeadline suppresses none
+
+readAfter is call
+readAfter in clockTest
+readAfter invokes now
+readAfter argument none
+readAfter result later Int64
+readAfter ownedBy none
+readAfter cleanedBy none
+readAfter borrows none
+readAfter catch none
+readAfter suppresses none
+
+lowest is call
+lowest in clockTest
+lowest invokes math.addInt64
+lowest argument left Int64 before copy
+lowest argument right Int64 thousand copy
+lowest result low Int64
+lowest ownedBy none
+lowest cleanedBy none
+lowest borrows none
+lowest catch none
+lowest suppresses none
+
+highest is call
+highest in clockTest
+highest invokes math.addInt64
+highest argument left Int64 later copy
+highest argument right Int64 thousand copy
+highest result high Int64
+highest ownedBy none
+highest cleanedBy none
+highest borrows none
+highest catch none
+highest suppresses none
+
+lowCheck is call
+lowCheck in clockTest
+lowCheck invokes compare.greaterOrEqualInt64
+lowCheck argument left Int64 deadline copy
+lowCheck argument right Int64 low copy
+lowCheck result aboveLow Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+expectLow is call
+expectLow in clockTest
+expectLow invokes test.assertTrue
+expectLow argument value Bool aboveLow copy
+expectLow result none
+expectLow ownedBy none
+expectLow cleanedBy none
+expectLow borrows none
+expectLow catch none
+expectLow suppresses none
+
+highCheck is call
+highCheck in clockTest
+highCheck invokes compare.lessOrEqualInt64
+highCheck argument left Int64 deadline copy
+highCheck argument right Int64 high copy
+highCheck result belowHigh Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+expectHigh is call
+expectHigh in clockTest
+expectHigh invokes test.assertTrue
+expectHigh argument value Bool belowHigh copy
+expectHigh result none
+expectHigh ownedBy none
+expectHigh cleanedBy none
+expectHigh borrows none
+expectHigh catch none
+expectHigh suppresses none
+
+neverIt is call
+neverIt in clockTest
+neverIt invokes deadlineNever
+neverIt argument results machine.Address results copy
+neverIt result none
+neverIt ownedBy none
+neverIt cleanedBy none
+neverIt borrows none
+neverIt catch none
+neverIt suppresses none
+
+readNever is call
+readNever in clockTest
+readNever invokes machine.loadInt64
+readNever argument address machine.Address results copy
+readNever result neverValue Int64
+readNever ownedBy none
+readNever cleanedBy none
+readNever borrows none
+readNever catch none
+readNever suppresses none
+
+expectNever is call
+expectNever in clockTest
+expectNever invokes test.assertEqualInt64
+expectNever argument expected Int64 minusOne copy
+expectNever argument actual Int64 neverValue copy
+expectNever result none
+expectNever ownedBy none
+expectNever cleanedBy none
+expectNever borrows none
+expectNever catch none
+expectNever suppresses none
+
+wall is call
+wall in clockTest
+wall invokes clockNow
+wall argument results machine.Address results copy
+wall result none
+wall ownedBy none
+wall cleanedBy none
+wall borrows none
+wall catch none
+wall suppresses none
+
+readWall is call
+readWall in clockTest
+readWall invokes machine.loadInt64
+readWall argument address machine.Address results copy
+readWall result wallTime Int64
+readWall ownedBy none
+readWall cleanedBy none
+readWall borrows none
+readWall catch none
+readWall suppresses none
+
+wallCheck is call
+wallCheck in clockTest
+wallCheck invokes compare.greaterThanInt64
+wallCheck argument left Int64 wallTime copy
+wallCheck argument right Int64 year2020 copy
+wallCheck result after2020 Bool
+wallCheck ownedBy none
+wallCheck cleanedBy none
+wallCheck borrows none
+wallCheck catch none
+wallCheck suppresses none
+
+expectWall is call
+expectWall in clockTest
+expectWall invokes test.assertTrue
+expectWall argument value Bool after2020 copy
+expectWall result none
+expectWall ownedBy none
+expectWall cleanedBy none
+expectWall borrows none
+expectWall catch none
+expectWall suppresses none
+
+monotonic is call
+monotonic in clockTest
+monotonic invokes clockMonotonic
+monotonic argument results machine.Address results copy
+monotonic result none
+monotonic ownedBy none
+monotonic cleanedBy none
+monotonic borrows none
+monotonic catch none
+monotonic suppresses none
+
+readMonotonic is call
+readMonotonic in clockTest
+readMonotonic invokes machine.loadInt64
+readMonotonic argument address machine.Address results copy
+readMonotonic result monotonicTime Int64
+readMonotonic ownedBy none
+readMonotonic cleanedBy none
+readMonotonic borrows none
+readMonotonic catch none
+readMonotonic suppresses none
+
+monotonicCheck is call
+monotonicCheck in clockTest
+monotonicCheck invokes compare.greaterOrEqualInt64
+monotonicCheck argument left Int64 monotonicTime copy
+monotonicCheck argument right Int64 before copy
+monotonicCheck result notBefore Bool
+monotonicCheck ownedBy none
+monotonicCheck cleanedBy none
+monotonicCheck borrows none
+monotonicCheck catch none
+monotonicCheck suppresses none
+
+expectMonotonic is call
+expectMonotonic in clockTest
+expectMonotonic invokes test.assertTrue
+expectMonotonic argument value Bool notBefore copy
+expectMonotonic result none
+expectMonotonic ownedBy none
+expectMonotonic cleanedBy none
+expectMonotonic borrows none
+expectMonotonic catch none
+expectMonotonic suppresses none
+
+readGeneration is call
+readGeneration in clockTest
+readGeneration invokes generation
+readGeneration argument none
+readGeneration result generationBefore Int64
+readGeneration ownedBy none
+readGeneration cleanedBy none
+readGeneration borrows none
+readGeneration catch none
+readGeneration suppresses none
+
+change is call
+change in clockTest
+change invokes notify
+change argument none
+change result none
+change ownedBy none
+change cleanedBy none
+change borrows none
+change catch none
+change suppresses none
+
+readGenerationAfter is call
+readGenerationAfter in clockTest
+readGenerationAfter invokes generation
+readGenerationAfter argument none
+readGenerationAfter result generationAfter Int64
+readGenerationAfter ownedBy none
+readGenerationAfter cleanedBy none
+readGenerationAfter borrows none
+readGenerationAfter catch none
+readGenerationAfter suppresses none
+
+wantGeneration is call
+wantGeneration in clockTest
+wantGeneration invokes math.addInt64
+wantGeneration argument left Int64 generationBefore copy
+wantGeneration argument right Int64 one copy
+wantGeneration result wanted Int64
+wantGeneration ownedBy none
+wantGeneration cleanedBy none
+wantGeneration borrows none
+wantGeneration catch none
+wantGeneration suppresses none
+
+expectGeneration is call
+expectGeneration in clockTest
+expectGeneration invokes test.assertEqualInt64
+expectGeneration argument expected Int64 wanted copy
+expectGeneration argument actual Int64 generationAfter copy
+expectGeneration result none
+expectGeneration ownedBy none
+expectGeneration cleanedBy none
+expectGeneration borrows none
+expectGeneration catch none
+expectGeneration suppresses none
+
+readCancelled is call
+readCancelled in clockTest
+readCancelled invokes cancelled
+readCancelled argument none
+readCancelled result isCancelled Bool
+readCancelled ownedBy none
+readCancelled cleanedBy none
+readCancelled borrows none
+readCancelled catch none
+readCancelled suppresses none
+
+notCancelled is call
+notCancelled in clockTest
+notCancelled invokes logic.not
+notCancelled argument value Bool isCancelled copy
+notCancelled result notIt Bool
+notCancelled ownedBy none
+notCancelled cleanedBy none
+notCancelled borrows none
+notCancelled catch none
+notCancelled suppresses none
+
+expectNotCancelled is call
+expectNotCancelled in clockTest
+expectNotCancelled invokes test.assertTrue
+expectNotCancelled argument value Bool notIt copy
+expectNotCancelled result none
+expectNotCancelled ownedBy none
+expectNotCancelled cleanedBy none
+expectNotCancelled borrows none
+expectNotCancelled catch none
+expectNotCancelled suppresses none
+
+sleepTest is test
+sleepTest purpose "A sleep with no other task waits out its duration, and a wait past its deadline gives 1"
+sleepTest verifies sleepFor sleeps
+sleepTest verifies wait waitsOnce
+sleepTest typeParameter none
+sleepTest input none
+sleepTest output none
+sleepTest outputOwnedBy none
+sleepTest raises none
+sleepTest effect use machine.memory
+sleepTest effect use system.calls
+sleepTest uses memoryAccess
+sleepTest uses systemCalls
+sleepTest memoryHeap false
+sleepTest async false
+sleepTest maxRecursion none
+sleepTest label begin loopKind none
+sleepTest label begin within none
+sleepTest let zero Int64 0 immutable
+sleepTest let one Int64 1 immutable
+sleepTest let minusOne Int64 -1 immutable
+sleepTest let thirty Int64 30 immutable
+sleepTest let twenty Int64 20 immutable
+sleepTest let what String "a test's wait" immutable
+sleepTest at begin do readBefore
+sleepTest at begin do findArgs
+sleepTest at begin do shapeOf
+sleepTest at begin do storeDuration
+sleepTest at begin do sleepIt
+sleepTest at begin do readAfter
+sleepTest at begin do elapsedOf
+sleepTest at begin do longEnough
+sleepTest at begin do expectWaited
+sleepTest at begin do nowhere
+sleepTest at begin do waitPast
+sleepTest at begin do expectPast
+sleepTest at begin return ok none
+
+readBefore is call
+readBefore in sleepTest
+readBefore invokes now
+readBefore argument none
+readBefore result before Int64
+readBefore ownedBy none
+readBefore cleanedBy none
+readBefore borrows none
+readBefore catch none
+readBefore suppresses none
+
+findArgs is call
+findArgs in sleepTest
+findArgs invokes testSlot
+findArgs argument offset Int64 zero copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+shapeOf is call
+shapeOf in sleepTest
+shapeOf invokes prepareShape
+shapeOf argument params Int64 one copy
+shapeOf argument wide Int64 minusOne copy
+shapeOf result shape machine.Address
+shapeOf ownedBy none
+shapeOf cleanedBy none
+shapeOf borrows none
+shapeOf catch none
+shapeOf suppresses none
+
+storeDuration is call
+storeDuration in sleepTest
+storeDuration invokes machine.storeInt64
+storeDuration argument address machine.Address args copy
+storeDuration argument value Int64 thirty copy
+storeDuration result none
+storeDuration ownedBy none
+storeDuration cleanedBy none
+storeDuration borrows none
+storeDuration catch none
+storeDuration suppresses none
+
+sleepIt is call
+sleepIt in sleepTest
+sleepIt invokes sleepFor
+sleepIt argument shape machine.Address shape copy
+sleepIt argument args machine.Address args copy
+sleepIt result none
+sleepIt ownedBy none
+sleepIt cleanedBy none
+sleepIt borrows none
+sleepIt catch none
+sleepIt suppresses none
+
+readAfter is call
+readAfter in sleepTest
+readAfter invokes now
+readAfter argument none
+readAfter result after Int64
+readAfter ownedBy none
+readAfter cleanedBy none
+readAfter borrows none
+readAfter catch none
+readAfter suppresses none
+
+elapsedOf is call
+elapsedOf in sleepTest
+elapsedOf invokes math.subtractInt64
+elapsedOf argument left Int64 after copy
+elapsedOf argument right Int64 before copy
+elapsedOf result elapsed Int64
+elapsedOf ownedBy none
+elapsedOf cleanedBy none
+elapsedOf borrows none
+elapsedOf catch none
+elapsedOf suppresses none
+
+longEnough is call
+longEnough in sleepTest
+longEnough invokes compare.greaterOrEqualInt64
+longEnough argument left Int64 elapsed copy
+longEnough argument right Int64 twenty copy
+longEnough result waited Bool
+longEnough ownedBy none
+longEnough cleanedBy none
+longEnough borrows none
+longEnough catch none
+longEnough suppresses none
+
+expectWaited is call
+expectWaited in sleepTest
+expectWaited invokes test.assertTrue
+expectWaited argument value Bool waited copy
+expectWaited result none
+expectWaited ownedBy none
+expectWaited cleanedBy none
+expectWaited borrows none
+expectWaited catch none
+expectWaited suppresses none
+
+nowhere is call
+nowhere in sleepTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+waitPast is call
+waitPast in sleepTest
+waitPast invokes wait
+waitPast argument what String what lend
+waitPast argument deadline Int64 before copy
+waitPast argument cancellable Int64 one copy
+waitPast argument external machine.Address anywhere copy
+waitPast result outcome Int64
+waitPast ownedBy none
+waitPast cleanedBy none
+waitPast borrows none
+waitPast catch none
+waitPast suppresses none
+
+expectPast is call
+expectPast in sleepTest
+expectPast invokes test.assertEqualInt64
+expectPast argument expected Int64 one copy
+expectPast argument actual Int64 outcome copy
+expectPast result none
+expectPast ownedBy none
+expectPast cleanedBy none
+expectPast borrows none
+expectPast catch none
+expectPast suppresses none
+
+channelTest is test
+channelTest purpose "A channel gives its items back in order, keeps text in its region, refuses to send once closed, and still gives what it holds"
+channelTest verifies channelNew makesChannel
+channelTest verifies channelSend sendsItem
+channelTest verifies channelReceive receivesItem
+channelTest verifies channelClose closesChannel
+channelTest typeParameter none
+channelTest input none
+channelTest output none
+channelTest outputOwnedBy none
+channelTest raises none
+channelTest effect use machine.memory
+channelTest effect use system.calls
+channelTest uses memoryAccess
+channelTest uses systemCalls
+channelTest memoryHeap false
+channelTest async false
+channelTest maxRecursion none
+channelTest label begin loopKind none
+channelTest label begin within none
+channelTest let label String "channel test" immutable
+channelTest let word String "word" immutable
+channelTest let capacity Int64 4096 immutable
+channelTest let zero Int64 0 immutable
+channelTest let sixtyFour Int64 64 immutable
+channelTest let oneTwentyEight Int64 128 immutable
+channelTest let three Int64 3 immutable
+channelTest let minusOne Int64 -1 immutable
+channelTest let two Int64 2 immutable
+channelTest let eight Int64 8 immutable
+channelTest let sixteen Int64 16 immutable
+channelTest let one Int64 1 immutable
+channelTest let four Int64 4 immutable
+channelTest let twentyFour Int64 24 immutable
+channelTest at begin do findLabel
+channelTest at begin do labelLength
+channelTest at begin do make
+channelTest at begin do findArgs
+channelTest at begin do findResults
+channelTest at begin do findPayload
+channelTest at begin do newShape
+channelTest at begin do storeCapacity
+channelTest at begin do findRegionSlot
+channelTest at begin do storeRegion
+channelTest at begin do findTextSlot
+channelTest at begin do storeText
+channelTest at begin do newIt
+channelTest at begin do readHandle
+channelTest at begin do sendShape
+channelTest at begin do storeHandle
+channelTest at begin do findWord
+channelTest at begin do storeWord
+channelTest at begin do storeLength
+channelTest at begin do findDeadlineSlot
+channelTest at begin do storeDeadline
+channelTest at begin do sendIt
+channelTest at begin do sentWide
+channelTest at begin do expectSent
+channelTest at begin do closeShape
+channelTest at begin do closeIt
+channelTest at begin do sendAgain
+channelTest at begin do refusedWide
+channelTest at begin do expectRefused
+channelTest at begin do receiveShape
+channelTest at begin do findReceiveDeadline
+channelTest at begin do storeReceiveDeadline
+channelTest at begin do receiveIt
+channelTest at begin do receivedWide
+channelTest at begin do expectReceived
+channelTest at begin do readItem
+channelTest at begin do findItemLength
+channelTest at begin do readItemLength
+channelTest at begin do expectItemLength
+channelTest at begin do compareItem
+channelTest at begin do orderWide
+channelTest at begin do expectItem
+channelTest at begin do copiedCheck
+channelTest at begin do notSame
+channelTest at begin do expectCopied
+channelTest at begin do receiveEmpty
+channelTest at begin do emptiedWide
+channelTest at begin do expectClosed
+channelTest at begin do free
+channelTest at begin return ok none
+
+findLabel is call
+findLabel in channelTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in channelTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in channelTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+findArgs is call
+findArgs in channelTest
+findArgs invokes testSlot
+findArgs argument offset Int64 zero copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in channelTest
+findResults invokes testSlot
+findResults argument offset Int64 sixtyFour copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in channelTest
+findPayload invokes testSlot
+findPayload argument offset Int64 oneTwentyEight copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+newShape is call
+newShape in channelTest
+newShape invokes prepareShape
+newShape argument params Int64 three copy
+newShape argument wide Int64 minusOne copy
+newShape result shapeNew machine.Address
+newShape ownedBy none
+newShape cleanedBy none
+newShape borrows none
+newShape catch none
+newShape suppresses none
+
+storeCapacity is call
+storeCapacity in channelTest
+storeCapacity invokes machine.storeInt64
+storeCapacity argument address machine.Address args copy
+storeCapacity argument value Int64 two copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+findRegionSlot is call
+findRegionSlot in channelTest
+findRegionSlot invokes machine.offset
+findRegionSlot argument address machine.Address args copy
+findRegionSlot argument bytes Int64 eight copy
+findRegionSlot result regionSlot machine.Address
+findRegionSlot ownedBy none
+findRegionSlot cleanedBy none
+findRegionSlot borrows none
+findRegionSlot catch none
+findRegionSlot suppresses none
+
+storeRegion is call
+storeRegion in channelTest
+storeRegion invokes machine.storeAddress
+storeRegion argument address machine.Address regionSlot copy
+storeRegion argument value machine.Address region copy
+storeRegion result none
+storeRegion ownedBy none
+storeRegion cleanedBy none
+storeRegion borrows none
+storeRegion catch none
+storeRegion suppresses none
+
+findTextSlot is call
+findTextSlot in channelTest
+findTextSlot invokes machine.offset
+findTextSlot argument address machine.Address args copy
+findTextSlot argument bytes Int64 sixteen copy
+findTextSlot result textSlot machine.Address
+findTextSlot ownedBy none
+findTextSlot cleanedBy none
+findTextSlot borrows none
+findTextSlot catch none
+findTextSlot suppresses none
+
+storeText is call
+storeText in channelTest
+storeText invokes machine.storeInt64
+storeText argument address machine.Address textSlot copy
+storeText argument value Int64 one copy
+storeText result none
+storeText ownedBy none
+storeText cleanedBy none
+storeText borrows none
+storeText catch none
+storeText suppresses none
+
+newIt is call
+newIt in channelTest
+newIt invokes channelNew
+newIt argument shape machine.Address shapeNew copy
+newIt argument args machine.Address args copy
+newIt argument results machine.Address results copy
+newIt result none
+newIt ownedBy none
+newIt cleanedBy none
+newIt borrows none
+newIt catch none
+newIt suppresses none
+
+readHandle is call
+readHandle in channelTest
+readHandle invokes machine.loadInt64
+readHandle argument address machine.Address results copy
+readHandle result handle Int64
+readHandle ownedBy none
+readHandle cleanedBy none
+readHandle borrows none
+readHandle catch none
+readHandle suppresses none
+
+sendShape is call
+sendShape in channelTest
+sendShape invokes prepareShape
+sendShape argument params Int64 three copy
+sendShape argument wide Int64 one copy
+sendShape result shapeSend machine.Address
+sendShape ownedBy none
+sendShape cleanedBy none
+sendShape borrows none
+sendShape catch none
+sendShape suppresses none
+
+storeHandle is call
+storeHandle in channelTest
+storeHandle invokes machine.storeInt64
+storeHandle argument address machine.Address args copy
+storeHandle argument value Int64 handle copy
+storeHandle result none
+storeHandle ownedBy none
+storeHandle cleanedBy none
+storeHandle borrows none
+storeHandle catch none
+storeHandle suppresses none
+
+findWord is call
+findWord in channelTest
+findWord invokes machine.addressOfString
+findWord argument text String word lend
+findWord result wordAt machine.Address
+findWord ownedBy none
+findWord cleanedBy none
+findWord borrows none
+findWord catch none
+findWord suppresses none
+
+storeWord is call
+storeWord in channelTest
+storeWord invokes machine.storeAddress
+storeWord argument address machine.Address regionSlot copy
+storeWord argument value machine.Address wordAt copy
+storeWord result none
+storeWord ownedBy none
+storeWord cleanedBy none
+storeWord borrows none
+storeWord catch none
+storeWord suppresses none
+
+storeLength is call
+storeLength in channelTest
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address textSlot copy
+storeLength argument value Int64 four copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+findDeadlineSlot is call
+findDeadlineSlot in channelTest
+findDeadlineSlot invokes machine.offset
+findDeadlineSlot argument address machine.Address args copy
+findDeadlineSlot argument bytes Int64 twentyFour copy
+findDeadlineSlot result deadlineSlot machine.Address
+findDeadlineSlot ownedBy none
+findDeadlineSlot cleanedBy none
+findDeadlineSlot borrows none
+findDeadlineSlot catch none
+findDeadlineSlot suppresses none
+
+storeDeadline is call
+storeDeadline in channelTest
+storeDeadline invokes machine.storeInt64
+storeDeadline argument address machine.Address deadlineSlot copy
+storeDeadline argument value Int64 minusOne copy
+storeDeadline result none
+storeDeadline ownedBy none
+storeDeadline cleanedBy none
+storeDeadline borrows none
+storeDeadline catch none
+storeDeadline suppresses none
+
+sendIt is call
+sendIt in channelTest
+sendIt invokes channelSend
+sendIt argument shape machine.Address shapeSend copy
+sendIt argument args machine.Address args copy
+sendIt argument payload machine.Address payload copy
+sendIt result sent Int32
+sendIt ownedBy none
+sendIt cleanedBy none
+sendIt borrows none
+sendIt catch none
+sendIt suppresses none
+
+sentWide is call
+sentWide in channelTest
+sentWide invokes convert.int32ToInt64
+sentWide argument value Int32 sent copy
+sentWide result sentValue Int64
+sentWide ownedBy none
+sentWide cleanedBy none
+sentWide borrows none
+sentWide catch none
+sentWide suppresses none
+
+expectSent is call
+expectSent in channelTest
+expectSent invokes test.assertEqualInt64
+expectSent argument expected Int64 zero copy
+expectSent argument actual Int64 sentValue copy
+expectSent result none
+expectSent ownedBy none
+expectSent cleanedBy none
+expectSent borrows none
+expectSent catch none
+expectSent suppresses none
+
+closeShape is call
+closeShape in channelTest
+closeShape invokes prepareShape
+closeShape argument params Int64 one copy
+closeShape argument wide Int64 minusOne copy
+closeShape result shapeClose machine.Address
+closeShape ownedBy none
+closeShape cleanedBy none
+closeShape borrows none
+closeShape catch none
+closeShape suppresses none
+
+closeIt is call
+closeIt in channelTest
+closeIt invokes channelClose
+closeIt argument shape machine.Address shapeClose copy
+closeIt argument args machine.Address args copy
+closeIt result none
+closeIt ownedBy none
+closeIt cleanedBy none
+closeIt borrows none
+closeIt catch none
+closeIt suppresses none
+
+sendAgain is call
+sendAgain in channelTest
+sendAgain invokes channelSend
+sendAgain argument shape machine.Address shapeSend copy
+sendAgain argument args machine.Address args copy
+sendAgain argument payload machine.Address payload copy
+sendAgain result refused Int32
+sendAgain ownedBy none
+sendAgain cleanedBy none
+sendAgain borrows none
+sendAgain catch none
+sendAgain suppresses none
+
+refusedWide is call
+refusedWide in channelTest
+refusedWide invokes convert.int32ToInt64
+refusedWide argument value Int32 refused copy
+refusedWide result refusedValue Int64
+refusedWide ownedBy none
+refusedWide cleanedBy none
+refusedWide borrows none
+refusedWide catch none
+refusedWide suppresses none
+
+expectRefused is call
+expectRefused in channelTest
+expectRefused invokes test.assertEqualInt64
+expectRefused argument expected Int64 one copy
+expectRefused argument actual Int64 refusedValue copy
+expectRefused result none
+expectRefused ownedBy none
+expectRefused cleanedBy none
+expectRefused borrows none
+expectRefused catch none
+expectRefused suppresses none
+
+receiveShape is call
+receiveShape in channelTest
+receiveShape invokes prepareShape
+receiveShape argument params Int64 two copy
+receiveShape argument wide Int64 minusOne copy
+receiveShape result shapeReceive machine.Address
+receiveShape ownedBy none
+receiveShape cleanedBy none
+receiveShape borrows none
+receiveShape catch none
+receiveShape suppresses none
+
+findReceiveDeadline is call
+findReceiveDeadline in channelTest
+findReceiveDeadline invokes machine.offset
+findReceiveDeadline argument address machine.Address args copy
+findReceiveDeadline argument bytes Int64 eight copy
+findReceiveDeadline result receiveDeadline machine.Address
+findReceiveDeadline ownedBy none
+findReceiveDeadline cleanedBy none
+findReceiveDeadline borrows none
+findReceiveDeadline catch none
+findReceiveDeadline suppresses none
+
+storeReceiveDeadline is call
+storeReceiveDeadline in channelTest
+storeReceiveDeadline invokes machine.storeInt64
+storeReceiveDeadline argument address machine.Address receiveDeadline copy
+storeReceiveDeadline argument value Int64 minusOne copy
+storeReceiveDeadline result none
+storeReceiveDeadline ownedBy none
+storeReceiveDeadline cleanedBy none
+storeReceiveDeadline borrows none
+storeReceiveDeadline catch none
+storeReceiveDeadline suppresses none
+
+receiveIt is call
+receiveIt in channelTest
+receiveIt invokes channelReceive
+receiveIt argument shape machine.Address shapeReceive copy
+receiveIt argument args machine.Address args copy
+receiveIt argument results machine.Address results copy
+receiveIt argument payload machine.Address payload copy
+receiveIt result received Int32
+receiveIt ownedBy none
+receiveIt cleanedBy none
+receiveIt borrows none
+receiveIt catch none
+receiveIt suppresses none
+
+receivedWide is call
+receivedWide in channelTest
+receivedWide invokes convert.int32ToInt64
+receivedWide argument value Int32 received copy
+receivedWide result receivedValue Int64
+receivedWide ownedBy none
+receivedWide cleanedBy none
+receivedWide borrows none
+receivedWide catch none
+receivedWide suppresses none
+
+expectReceived is call
+expectReceived in channelTest
+expectReceived invokes test.assertEqualInt64
+expectReceived argument expected Int64 zero copy
+expectReceived argument actual Int64 receivedValue copy
+expectReceived result none
+expectReceived ownedBy none
+expectReceived cleanedBy none
+expectReceived borrows none
+expectReceived catch none
+expectReceived suppresses none
+
+readItem is call
+readItem in channelTest
+readItem invokes machine.loadAddress
+readItem argument address machine.Address results copy
+readItem result item machine.Address
+readItem ownedBy none
+readItem cleanedBy none
+readItem borrows none
+readItem catch none
+readItem suppresses none
+
+findItemLength is call
+findItemLength in channelTest
+findItemLength invokes machine.offset
+findItemLength argument address machine.Address results copy
+findItemLength argument bytes Int64 eight copy
+findItemLength result itemLengthSlot machine.Address
+findItemLength ownedBy none
+findItemLength cleanedBy none
+findItemLength borrows none
+findItemLength catch none
+findItemLength suppresses none
+
+readItemLength is call
+readItemLength in channelTest
+readItemLength invokes machine.loadInt64
+readItemLength argument address machine.Address itemLengthSlot copy
+readItemLength result itemLength Int64
+readItemLength ownedBy none
+readItemLength cleanedBy none
+readItemLength borrows none
+readItemLength catch none
+readItemLength suppresses none
+
+expectItemLength is call
+expectItemLength in channelTest
+expectItemLength invokes test.assertEqualInt64
+expectItemLength argument expected Int64 four copy
+expectItemLength argument actual Int64 itemLength copy
+expectItemLength result none
+expectItemLength ownedBy none
+expectItemLength cleanedBy none
+expectItemLength borrows none
+expectItemLength catch none
+expectItemLength suppresses none
+
+compareItem is call
+compareItem in channelTest
+compareItem invokes machine.compare
+compareItem argument left machine.Address item copy
+compareItem argument right machine.Address wordAt copy
+compareItem argument bytes Int64 four copy
+compareItem result order Int32
+compareItem ownedBy none
+compareItem cleanedBy none
+compareItem borrows none
+compareItem catch none
+compareItem suppresses none
+
+orderWide is call
+orderWide in channelTest
+orderWide invokes convert.int32ToInt64
+orderWide argument value Int32 order copy
+orderWide result orderValue Int64
+orderWide ownedBy none
+orderWide cleanedBy none
+orderWide borrows none
+orderWide catch none
+orderWide suppresses none
+
+expectItem is call
+expectItem in channelTest
+expectItem invokes test.assertEqualInt64
+expectItem argument expected Int64 zero copy
+expectItem argument actual Int64 orderValue copy
+expectItem result none
+expectItem ownedBy none
+expectItem cleanedBy none
+expectItem borrows none
+expectItem catch none
+expectItem suppresses none
+
+copiedCheck is call
+copiedCheck in channelTest
+copiedCheck invokes machine.equal
+copiedCheck argument left machine.Address item copy
+copiedCheck argument right machine.Address wordAt copy
+copiedCheck result same Bool
+copiedCheck ownedBy none
+copiedCheck cleanedBy none
+copiedCheck borrows none
+copiedCheck catch none
+copiedCheck suppresses none
+
+notSame is call
+notSame in channelTest
+notSame invokes logic.not
+notSame argument value Bool same copy
+notSame result copied Bool
+notSame ownedBy none
+notSame cleanedBy none
+notSame borrows none
+notSame catch none
+notSame suppresses none
+
+expectCopied is call
+expectCopied in channelTest
+expectCopied invokes test.assertTrue
+expectCopied argument value Bool copied copy
+expectCopied result none
+expectCopied ownedBy none
+expectCopied cleanedBy none
+expectCopied borrows none
+expectCopied catch none
+expectCopied suppresses none
+
+receiveEmpty is call
+receiveEmpty in channelTest
+receiveEmpty invokes channelReceive
+receiveEmpty argument shape machine.Address shapeReceive copy
+receiveEmpty argument args machine.Address args copy
+receiveEmpty argument results machine.Address results copy
+receiveEmpty argument payload machine.Address payload copy
+receiveEmpty result emptied Int32
+receiveEmpty ownedBy none
+receiveEmpty cleanedBy none
+receiveEmpty borrows none
+receiveEmpty catch none
+receiveEmpty suppresses none
+
+emptiedWide is call
+emptiedWide in channelTest
+emptiedWide invokes convert.int32ToInt64
+emptiedWide argument value Int32 emptied copy
+emptiedWide result emptiedValue Int64
+emptiedWide ownedBy none
+emptiedWide cleanedBy none
+emptiedWide borrows none
+emptiedWide catch none
+emptiedWide suppresses none
+
+expectClosed is call
+expectClosed in channelTest
+expectClosed invokes test.assertEqualInt64
+expectClosed argument expected Int64 one copy
+expectClosed argument actual Int64 emptiedValue copy
+expectClosed result none
+expectClosed ownedBy none
+expectClosed cleanedBy none
+expectClosed borrows none
+expectClosed catch none
+expectClosed suppresses none
+
+free is call
+free in channelTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none

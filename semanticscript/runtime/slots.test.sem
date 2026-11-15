@@ -1,0 +1,751 @@
+# Tests of the `slots` module; generated from tools/slots.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests build a shape and a call's slots in the last 4 KiB of machine.state: the shape from byte 61440, the
+# arguments from 61952, the results from 62016, the payload at 62080.
+slotsTest is test
+slotsTest purpose "A shape places each parameter's slots, which read back as numbers, addresses, and flags; text goes into a region; an error stores its payload"
+slotsTest verifies slotOf findsSlot
+slotsTest verifies argOf readsNumber
+slotsTest verifies addressArg readsAddress
+slotsTest verifies countOf countsSlots
+slotsTest verifies shapeField readsShape
+slotsTest verifies flagArg readsFlag
+slotsTest verifies putText copiesText
+slotsTest verifies failWith storesPayload
+slotsTest typeParameter none
+slotsTest input none
+slotsTest output none
+slotsTest outputOwnedBy none
+slotsTest raises none
+slotsTest effect use machine.memory
+slotsTest effect use system.calls
+slotsTest uses memoryAccess
+slotsTest uses systemCalls
+slotsTest memoryHeap false
+slotsTest async false
+slotsTest maxRecursion none
+slotsTest label begin loopKind none
+slotsTest label begin within none
+slotsTest let label String "slots test" immutable
+slotsTest let word String "word" immutable
+slotsTest let shapeAt Int64 61440 immutable
+slotsTest let argsAt Int64 61952 immutable
+slotsTest let resultsAt Int64 62016 immutable
+slotsTest let payloadAt Int64 62080 immutable
+slotsTest let twentyFour Int64 24 immutable
+slotsTest let two Int64 2 immutable
+slotsTest let forty Int64 40 immutable
+slotsTest let fortyEight Int64 48 immutable
+slotsTest let one Int64 1 immutable
+slotsTest let twoThirtyTwo Int64 232 immutable
+slotsTest let zero Int64 0 immutable
+slotsTest let twoForty Int64 240 immutable
+slotsTest let eight Int64 8 immutable
+slotsTest let four Int64 4 immutable
+slotsTest let sixteen Int64 16 immutable
+slotsTest let seven Int64 7 immutable
+slotsTest let capacity Int64 4096 immutable
+slotsTest let three32 Int32 3 immutable
+slotsTest let three Int64 3 immutable
+slotsTest at begin do findState
+slotsTest at begin do findShape
+slotsTest at begin do findArgs
+slotsTest at begin do findResults
+slotsTest at begin do findPayload
+slotsTest at begin do findParams
+slotsTest at begin do storeParams
+slotsTest at begin do findFirstCount
+slotsTest at begin do storeFirstCount
+slotsTest at begin do findSecondCount
+slotsTest at begin do storeSecondCount
+slotsTest at begin do findFirstStart
+slotsTest at begin do storeFirstStart
+slotsTest at begin do findSecondStart
+slotsTest at begin do storeSecondStart
+slotsTest at begin do findWord
+slotsTest at begin do storeWord
+slotsTest at begin do findLength
+slotsTest at begin do storeLength
+slotsTest at begin do findValue
+slotsTest at begin do storeValue
+slotsTest at begin do readCount
+slotsTest at begin do expectCount
+slotsTest at begin do readParamCount
+slotsTest at begin do expectParams
+slotsTest at begin do readSlot
+slotsTest at begin do sameSlot
+slotsTest at begin do expectSlot
+slotsTest at begin do readValue
+slotsTest at begin do expectValue
+slotsTest at begin do readAddress
+slotsTest at begin do sameText
+slotsTest at begin do expectText
+slotsTest at begin do readFlag
+slotsTest at begin do expectFlag
+slotsTest at begin do readMissing
+slotsTest at begin do expectMissing
+slotsTest at begin do findLabel
+slotsTest at begin do labelLength
+slotsTest at begin do make
+slotsTest at begin do copy
+slotsTest at begin do readCopy
+slotsTest at begin do findCopyLength
+slotsTest at begin do readCopyLength
+slotsTest at begin do expectCopyLength
+slotsTest at begin do compareCopy
+slotsTest at begin do sameWide
+slotsTest at begin do expectCopy
+slotsTest at begin do free
+slotsTest at begin do failIt
+slotsTest at begin do statusWide
+slotsTest at begin do expectStatus
+slotsTest at begin do readPayload
+slotsTest at begin do expectPayload
+slotsTest at begin return ok none
+
+findState is call
+findState in slotsTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findShape is call
+findShape in slotsTest
+findShape invokes machine.offset
+findShape argument address machine.Address state copy
+findShape argument bytes Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findArgs is call
+findArgs in slotsTest
+findArgs invokes machine.offset
+findArgs argument address machine.Address state copy
+findArgs argument bytes Int64 argsAt copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in slotsTest
+findResults invokes machine.offset
+findResults argument address machine.Address state copy
+findResults argument bytes Int64 resultsAt copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in slotsTest
+findPayload invokes machine.offset
+findPayload argument address machine.Address state copy
+findPayload argument bytes Int64 payloadAt copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+findParams is call
+findParams in slotsTest
+findParams invokes machine.offset
+findParams argument address machine.Address shape copy
+findParams argument bytes Int64 twentyFour copy
+findParams result paramsSlot machine.Address
+findParams ownedBy none
+findParams cleanedBy none
+findParams borrows none
+findParams catch none
+findParams suppresses none
+
+storeParams is call
+storeParams in slotsTest
+storeParams invokes machine.storeInt64
+storeParams argument address machine.Address paramsSlot copy
+storeParams argument value Int64 two copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+findFirstCount is call
+findFirstCount in slotsTest
+findFirstCount invokes machine.offset
+findFirstCount argument address machine.Address shape copy
+findFirstCount argument bytes Int64 forty copy
+findFirstCount result firstCount machine.Address
+findFirstCount ownedBy none
+findFirstCount cleanedBy none
+findFirstCount borrows none
+findFirstCount catch none
+findFirstCount suppresses none
+
+storeFirstCount is call
+storeFirstCount in slotsTest
+storeFirstCount invokes machine.storeInt64
+storeFirstCount argument address machine.Address firstCount copy
+storeFirstCount argument value Int64 two copy
+storeFirstCount result none
+storeFirstCount ownedBy none
+storeFirstCount cleanedBy none
+storeFirstCount borrows none
+storeFirstCount catch none
+storeFirstCount suppresses none
+
+findSecondCount is call
+findSecondCount in slotsTest
+findSecondCount invokes machine.offset
+findSecondCount argument address machine.Address shape copy
+findSecondCount argument bytes Int64 fortyEight copy
+findSecondCount result secondCount machine.Address
+findSecondCount ownedBy none
+findSecondCount cleanedBy none
+findSecondCount borrows none
+findSecondCount catch none
+findSecondCount suppresses none
+
+storeSecondCount is call
+storeSecondCount in slotsTest
+storeSecondCount invokes machine.storeInt64
+storeSecondCount argument address machine.Address secondCount copy
+storeSecondCount argument value Int64 one copy
+storeSecondCount result none
+storeSecondCount ownedBy none
+storeSecondCount cleanedBy none
+storeSecondCount borrows none
+storeSecondCount catch none
+storeSecondCount suppresses none
+
+findFirstStart is call
+findFirstStart in slotsTest
+findFirstStart invokes machine.offset
+findFirstStart argument address machine.Address shape copy
+findFirstStart argument bytes Int64 twoThirtyTwo copy
+findFirstStart result firstStart machine.Address
+findFirstStart ownedBy none
+findFirstStart cleanedBy none
+findFirstStart borrows none
+findFirstStart catch none
+findFirstStart suppresses none
+
+storeFirstStart is call
+storeFirstStart in slotsTest
+storeFirstStart invokes machine.storeInt64
+storeFirstStart argument address machine.Address firstStart copy
+storeFirstStart argument value Int64 zero copy
+storeFirstStart result none
+storeFirstStart ownedBy none
+storeFirstStart cleanedBy none
+storeFirstStart borrows none
+storeFirstStart catch none
+storeFirstStart suppresses none
+
+findSecondStart is call
+findSecondStart in slotsTest
+findSecondStart invokes machine.offset
+findSecondStart argument address machine.Address shape copy
+findSecondStart argument bytes Int64 twoForty copy
+findSecondStart result secondStart machine.Address
+findSecondStart ownedBy none
+findSecondStart cleanedBy none
+findSecondStart borrows none
+findSecondStart catch none
+findSecondStart suppresses none
+
+storeSecondStart is call
+storeSecondStart in slotsTest
+storeSecondStart invokes machine.storeInt64
+storeSecondStart argument address machine.Address secondStart copy
+storeSecondStart argument value Int64 two copy
+storeSecondStart result none
+storeSecondStart ownedBy none
+storeSecondStart cleanedBy none
+storeSecondStart borrows none
+storeSecondStart catch none
+storeSecondStart suppresses none
+
+findWord is call
+findWord in slotsTest
+findWord invokes machine.addressOfString
+findWord argument text String word lend
+findWord result wordAt machine.Address
+findWord ownedBy none
+findWord cleanedBy none
+findWord borrows none
+findWord catch none
+findWord suppresses none
+
+storeWord is call
+storeWord in slotsTest
+storeWord invokes machine.storeAddress
+storeWord argument address machine.Address args copy
+storeWord argument value machine.Address wordAt copy
+storeWord result none
+storeWord ownedBy none
+storeWord cleanedBy none
+storeWord borrows none
+storeWord catch none
+storeWord suppresses none
+
+findLength is call
+findLength in slotsTest
+findLength invokes machine.offset
+findLength argument address machine.Address args copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in slotsTest
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 four copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+findValue is call
+findValue in slotsTest
+findValue invokes machine.offset
+findValue argument address machine.Address args copy
+findValue argument bytes Int64 sixteen copy
+findValue result valueSlot machine.Address
+findValue ownedBy none
+findValue cleanedBy none
+findValue borrows none
+findValue catch none
+findValue suppresses none
+
+storeValue is call
+storeValue in slotsTest
+storeValue invokes machine.storeInt64
+storeValue argument address machine.Address valueSlot copy
+storeValue argument value Int64 seven copy
+storeValue result none
+storeValue ownedBy none
+storeValue cleanedBy none
+storeValue borrows none
+storeValue catch none
+storeValue suppresses none
+
+readCount is call
+readCount in slotsTest
+readCount invokes countOf
+readCount argument shape machine.Address shape copy
+readCount argument parameter Int64 zero copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+expectCount is call
+expectCount in slotsTest
+expectCount invokes test.assertEqualInt64
+expectCount argument expected Int64 two copy
+expectCount argument actual Int64 count copy
+expectCount result none
+expectCount ownedBy none
+expectCount cleanedBy none
+expectCount borrows none
+expectCount catch none
+expectCount suppresses none
+
+readParamCount is call
+readParamCount in slotsTest
+readParamCount invokes shapeField
+readParamCount argument shape machine.Address shape copy
+readParamCount argument offset Int64 twentyFour copy
+readParamCount result params Int64
+readParamCount ownedBy none
+readParamCount cleanedBy none
+readParamCount borrows none
+readParamCount catch none
+readParamCount suppresses none
+
+expectParams is call
+expectParams in slotsTest
+expectParams invokes test.assertEqualInt64
+expectParams argument expected Int64 two copy
+expectParams argument actual Int64 params copy
+expectParams result none
+expectParams ownedBy none
+expectParams cleanedBy none
+expectParams borrows none
+expectParams catch none
+expectParams suppresses none
+
+readSlot is call
+readSlot in slotsTest
+readSlot invokes slotOf
+readSlot argument shape machine.Address shape copy
+readSlot argument args machine.Address args copy
+readSlot argument parameter Int64 one copy
+readSlot result second machine.Address
+readSlot ownedBy none
+readSlot cleanedBy none
+readSlot borrows none
+readSlot catch none
+readSlot suppresses none
+
+sameSlot is call
+sameSlot in slotsTest
+sameSlot invokes machine.equal
+sameSlot argument left machine.Address second copy
+sameSlot argument right machine.Address valueSlot copy
+sameSlot result sameAddress Bool
+sameSlot ownedBy none
+sameSlot cleanedBy none
+sameSlot borrows none
+sameSlot catch none
+sameSlot suppresses none
+
+expectSlot is call
+expectSlot in slotsTest
+expectSlot invokes test.assertTrue
+expectSlot argument value Bool sameAddress copy
+expectSlot result none
+expectSlot ownedBy none
+expectSlot cleanedBy none
+expectSlot borrows none
+expectSlot catch none
+expectSlot suppresses none
+
+readValue is call
+readValue in slotsTest
+readValue invokes argOf
+readValue argument shape machine.Address shape copy
+readValue argument args machine.Address args copy
+readValue argument parameter Int64 one copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+expectValue is call
+expectValue in slotsTest
+expectValue invokes test.assertEqualInt64
+expectValue argument expected Int64 seven copy
+expectValue argument actual Int64 value copy
+expectValue result none
+expectValue ownedBy none
+expectValue cleanedBy none
+expectValue borrows none
+expectValue catch none
+expectValue suppresses none
+
+readAddress is call
+readAddress in slotsTest
+readAddress invokes addressArg
+readAddress argument shape machine.Address shape copy
+readAddress argument args machine.Address args copy
+readAddress argument parameter Int64 zero copy
+readAddress result textAt machine.Address
+readAddress ownedBy none
+readAddress cleanedBy none
+readAddress borrows none
+readAddress catch none
+readAddress suppresses none
+
+sameText is call
+sameText in slotsTest
+sameText invokes machine.equal
+sameText argument left machine.Address textAt copy
+sameText argument right machine.Address wordAt copy
+sameText result sameWord Bool
+sameText ownedBy none
+sameText cleanedBy none
+sameText borrows none
+sameText catch none
+sameText suppresses none
+
+expectText is call
+expectText in slotsTest
+expectText invokes test.assertTrue
+expectText argument value Bool sameWord copy
+expectText result none
+expectText ownedBy none
+expectText cleanedBy none
+expectText borrows none
+expectText catch none
+expectText suppresses none
+
+readFlag is call
+readFlag in slotsTest
+readFlag invokes flagArg
+readFlag argument shape machine.Address shape copy
+readFlag argument args machine.Address args copy
+readFlag argument parameter Int64 one copy
+readFlag result flag Int64
+readFlag ownedBy none
+readFlag cleanedBy none
+readFlag borrows none
+readFlag catch none
+readFlag suppresses none
+
+expectFlag is call
+expectFlag in slotsTest
+expectFlag invokes test.assertEqualInt64
+expectFlag argument expected Int64 one copy
+expectFlag argument actual Int64 flag copy
+expectFlag result none
+expectFlag ownedBy none
+expectFlag cleanedBy none
+expectFlag borrows none
+expectFlag catch none
+expectFlag suppresses none
+
+readMissing is call
+readMissing in slotsTest
+readMissing invokes flagArg
+readMissing argument shape machine.Address shape copy
+readMissing argument args machine.Address args copy
+readMissing argument parameter Int64 two copy
+readMissing result missing Int64
+readMissing ownedBy none
+readMissing cleanedBy none
+readMissing borrows none
+readMissing catch none
+readMissing suppresses none
+
+expectMissing is call
+expectMissing in slotsTest
+expectMissing invokes test.assertEqualInt64
+expectMissing argument expected Int64 zero copy
+expectMissing argument actual Int64 missing copy
+expectMissing result none
+expectMissing ownedBy none
+expectMissing cleanedBy none
+expectMissing borrows none
+expectMissing catch none
+expectMissing suppresses none
+
+findLabel is call
+findLabel in slotsTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in slotsTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in slotsTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+copy is call
+copy in slotsTest
+copy invokes putText
+copy argument region machine.Address region copy
+copy argument data machine.Address wordAt copy
+copy argument bytes Int64 four copy
+copy argument out machine.Address results copy
+copy result none
+copy ownedBy none
+copy cleanedBy none
+copy borrows none
+copy catch none
+copy suppresses none
+
+readCopy is call
+readCopy in slotsTest
+readCopy invokes machine.loadAddress
+readCopy argument address machine.Address results copy
+readCopy result copied machine.Address
+readCopy ownedBy none
+readCopy cleanedBy none
+readCopy borrows none
+readCopy catch none
+readCopy suppresses none
+
+findCopyLength is call
+findCopyLength in slotsTest
+findCopyLength invokes machine.offset
+findCopyLength argument address machine.Address results copy
+findCopyLength argument bytes Int64 eight copy
+findCopyLength result copyLengthSlot machine.Address
+findCopyLength ownedBy none
+findCopyLength cleanedBy none
+findCopyLength borrows none
+findCopyLength catch none
+findCopyLength suppresses none
+
+readCopyLength is call
+readCopyLength in slotsTest
+readCopyLength invokes machine.loadInt64
+readCopyLength argument address machine.Address copyLengthSlot copy
+readCopyLength result copyLength Int64
+readCopyLength ownedBy none
+readCopyLength cleanedBy none
+readCopyLength borrows none
+readCopyLength catch none
+readCopyLength suppresses none
+
+expectCopyLength is call
+expectCopyLength in slotsTest
+expectCopyLength invokes test.assertEqualInt64
+expectCopyLength argument expected Int64 four copy
+expectCopyLength argument actual Int64 copyLength copy
+expectCopyLength result none
+expectCopyLength ownedBy none
+expectCopyLength cleanedBy none
+expectCopyLength borrows none
+expectCopyLength catch none
+expectCopyLength suppresses none
+
+compareCopy is call
+compareCopy in slotsTest
+compareCopy invokes machine.compare
+compareCopy argument left machine.Address copied copy
+compareCopy argument right machine.Address wordAt copy
+compareCopy argument bytes Int64 four copy
+compareCopy result same Int32
+compareCopy ownedBy none
+compareCopy cleanedBy none
+compareCopy borrows none
+compareCopy catch none
+compareCopy suppresses none
+
+sameWide is call
+sameWide in slotsTest
+sameWide invokes convert.int32ToInt64
+sameWide argument value Int32 same copy
+sameWide result sameValue Int64
+sameWide ownedBy none
+sameWide cleanedBy none
+sameWide borrows none
+sameWide catch none
+sameWide suppresses none
+
+expectCopy is call
+expectCopy in slotsTest
+expectCopy invokes test.assertEqualInt64
+expectCopy argument expected Int64 zero copy
+expectCopy argument actual Int64 sameValue copy
+expectCopy result none
+expectCopy ownedBy none
+expectCopy cleanedBy none
+expectCopy borrows none
+expectCopy catch none
+expectCopy suppresses none
+
+free is call
+free in slotsTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none
+
+failIt is call
+failIt in slotsTest
+failIt invokes failWith
+failIt argument payload machine.Address payload copy
+failIt argument status Int32 three32 copy
+failIt argument value Int64 value copy
+failIt result status Int32
+failIt ownedBy none
+failIt cleanedBy none
+failIt borrows none
+failIt catch none
+failIt suppresses none
+
+statusWide is call
+statusWide in slotsTest
+statusWide invokes convert.int32ToInt64
+statusWide argument value Int32 status copy
+statusWide result statusValue Int64
+statusWide ownedBy none
+statusWide cleanedBy none
+statusWide borrows none
+statusWide catch none
+statusWide suppresses none
+
+expectStatus is call
+expectStatus in slotsTest
+expectStatus invokes test.assertEqualInt64
+expectStatus argument expected Int64 three copy
+expectStatus argument actual Int64 statusValue copy
+expectStatus result none
+expectStatus ownedBy none
+expectStatus cleanedBy none
+expectStatus borrows none
+expectStatus catch none
+expectStatus suppresses none
+
+readPayload is call
+readPayload in slotsTest
+readPayload invokes machine.loadInt64
+readPayload argument address machine.Address payload copy
+readPayload result stored Int64
+readPayload ownedBy none
+readPayload cleanedBy none
+readPayload borrows none
+readPayload catch none
+readPayload suppresses none
+
+expectPayload is call
+expectPayload in slotsTest
+expectPayload invokes test.assertEqualInt64
+expectPayload argument expected Int64 seven copy
+expectPayload argument actual Int64 stored copy
+expectPayload result none
+expectPayload ownedBy none
+expectPayload cleanedBy none
+expectPayload borrows none
+expectPayload catch none
+expectPayload suppresses none

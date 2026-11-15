@@ -46,6 +46,32 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   writes what `refined run` writes. Host targets whose names hold digits
   (`buffer.appendInt64`) are now seen by the executable's R901 check.
 
+### The runtime in SemanticScript, stages 3 and 4
+
+- Files, directories, claims, and scopes (D-132): every `fs` target, paths
+  resolved as Python's `normcase(realpath())` resolves them, one writer per file
+  by path and by file identity, and the D-38 scope check inside `refined_host`;
+  the environment, the program's arguments (split as `CommandLineToArgvW` splits
+  them, written in SemanticScript), `console.readLine`, child processes with
+  `process.run` and `runCaptured`, deadlines, the clocks, and sleep.
+- Tasks on fibers (D-131, D-133): a task runs when started until it waits or
+  ends, then the next; groups, `awaitSlot`, a group's first error, cancellation
+  that cuts a waiting task short, and deadlocks that trap with `refined run`'s
+  message. Channels are host targets of this runtime (D-136). The test
+  callbacks and `refined_block` are there too (D-134). `machine.taskEntry` and
+  40 kernel32 `system` rows are new in the compiler.
+- An executable is one LLVM module, the runtime and the program, with what the
+  entry never reaches dropped (D-135): `hello` is 23 KB (145 KB before).
+- Secrets, SHA-256 and HMAC-SHA-256, and foreign libraries (`ffi`), which the C
+  runtime refuses, in SemanticScript too (D-137).
+- 71 of the suite's 76 running programs, every conformance program that runs,
+  every stage0 sample, the warehouse example on all its paths, and stage0
+  itself build with `--runtime semanticscript`, import KERNEL32.dll alone, and
+  behave exactly as under `refined run`; the other five need `net`, `http`,
+  `json`, `random`, or `signal` (D-137).
+- New runtime modules `slots`, `wide`, `tasks`, `files`, `processes`, and
+  `hashes`; a trap now also stops child processes the program started (D-51).
+
 ## 1.0.0 (2026-11-14)
 
 ### The language compiles its own compiler

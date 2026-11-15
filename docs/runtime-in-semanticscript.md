@@ -73,8 +73,8 @@ layout, which was wrong for values like `100.0`; D-129 corrects both.)
 | --- | --- | --- |
 | 1 | The primitive layer in the compiler; a runtime slice (entry, write, trap, exit, regions) that links `hello` with no libc | Done |
 | 2 | Text, numbers, bytes, buffers; maps, sets; the host dispatch | Done |
-| 3 | Files, identity and claims, directories, processes and pipes, environment, arguments, time | Planned |
-| 4 | Tasks, groups, channels, test assertions | Planned |
+| 3 | Files, identity and claims, directories, processes and pipes, environment, arguments, time | Done |
+| 4 | Tasks, groups, channels, test assertions | Done |
 | 5 | Switch every executable to the new runtime; delete `native_runtime.c`; stage0 links it | Planned |
 
 ## Stage 1 (done)
@@ -165,3 +165,72 @@ counters, which live in `machine.state` and must be saved and restored or
 moved per task), a group's first error copied out at `join`, channels as
 host targets, and the test assertions (`refined_assert_*`, `refined_fail`)
 and `refined_block` for instrumented builds.
+
+## Stages 3 and 4 (done)
+
+Six more modules (D-131 to D-137), generated from their DSL like the rest,
+and additions to `frames` (the resources a trap releases, D-51; each task's
+call stack and depth counters; the test callbacks) and `handles` (listings,
+argument lists, channels, and lists of names):
+
+| Module | Provides |
+| --- | --- |
+| `slots` | a host call's slots: where each parameter's slots are, reading them, putting text into a region and an error's payload |
+| `wide` | UTF-8 to UTF-16 and back, lower case as Python's `normcase` gives it (`LCMapStringEx`), builders, text order |
+| `tasks` | tasks on fibers and the scheduler (waits, generations, deadlines, deadlocks, cancellation), groups and their first error, `refined_task_*` and `refined_group_*`, deadlines, clocks, sleep, channels |
+| `files` | paths resolved as `normcase(realpath())`, the scope check of D-38 that `refined_host` runs for scoped targets, claims (D-52, D-109), every `fs` target |
+| `processes` | the command line split as `CommandLineToArgvW` splits it, the environment, `console.readLine`, argument lists, `process.run` and `runCaptured` (list2cmdline quoting, pipes pumped between tasks), secrets, foreign libraries (`LoadLibraryW`, `GetProcAddress`) |
+| `hashes` | SHA-256, HMAC-SHA-256, hex text, constant-time equality: the `crypto` targets |
+
+A task runs on a fiber of its own, started when the task starts and run until
+it waits or ends (D-133): what the C runtime ran to its end when started still
+runs that way, and a task that waits lets the others run, so channels, groups
+that wait for room, a sibling's failure cutting a sleep short, and deadlock
+traps all behave as under `refined run`. The compiler gained
+`machine.taskEntry` (D-131), where a fiber starts, and 40 `system` rows, all
+kernel32 (D-132).
+
+An executable is now one LLVM module, the runtime's bitcode (kept in the
+temporary directory) with the program linked in, every function internal but
+the entry, and what the entry never reaches dropped (D-135): `hello` is 23 KB
+(145 KB at stage 2, 344 KB had the whole runtime of stage 4 been linked), the
+warehouse example 272 KB, and stage0 (the compiler in SemanticScript) 6.4 MB.
+
+What links with no C library and behaves exactly as under `refined run`
+(tests/test_runtime_nolibc.py): 71 of the suite's 76 running programs; every
+conformance program that runs (`group-first-failure` included, which the C
+runtime cannot run); every stage0 sample; the warehouse example on its good
+path and its four failure paths; and stage0 itself, which compiles samples to
+the same C as stage0 built with the C runtime. `secret`, `crypto`, and `ffi`,
+which the C runtime refuses, are there too (D-137). The five programs still
+refused need what this runtime does not have (D-137): `net`
+(12-io/network-connect: Winsock is not kernel32), `http` (19-stdlib/library-tour)
+and `json` (not written yet), `random` (the system's secure generator is
+outside kernel32), and `signal` (an interrupt handler's address). The
+runtime's own tests number 57.
+
+What stage 5 needs:
+
+- `--runtime semanticscript` the default for `--kind executable`, and the C
+  path (`native.executable`, `native_targets`, `_runtime_object`) removed with
+  `native_runtime.c`. Tests that read the C runtime (test_native.py's
+  error-number and target checks, test_tooling's ERR_ constants,
+  `test_runtime_host_targets_are_the_c_runtimes`) move to the `hostTargets`
+  table and the runtime's variant constants; test_conformance's executable
+  test drops `SEQUENTIAL_TASKS`.
+- Executables are Windows-only with this runtime (D-122): Linux and macOS need
+  the `system` layer as raw system calls, or stay on the C runtime until they
+  have it.
+- stage0's C links the runtime built from SemanticScript instead of
+  `native_runtime.c`: `refined` writes the runtime as a standalone object (every
+  `abi c` operation external, not the one-module build of D-135), stage0's
+  `emitc` writes `refined_program_main` where it writes `main(argc, argv)` and
+  `refined_start` today (the runtime's `refined_entry` reads the command line
+  itself), and stage0 links with `-nostdlib -nostartfiles -Wl,-e,refined_entry
+  -lkernel32 -lgcc`, which needs the emitted C to call no C library function
+  (it must use the runtime's `memcpy` and the like only). tests/test_stage0.py,
+  test_bootstrap.py, and test_selfhost_suite.py's `LINK` change with it.
+- D-80 to D-85 are superseded where they describe the C runtime (tasks run when
+  started without waiting, D-83's thread pumps); the safety-guarantees text
+  generated by tests/suite/conformance.py says channels are refused in
+  executables, which stays true only for the C runtime.
