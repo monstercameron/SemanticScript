@@ -2826,6 +2826,17 @@ with glibc. Decided by delegation:
   found by taking blocks until one is aligned, so a large aligned request there can fail. errno is set through
   clibrary's setErrno (per thread, D-166). machine.state 26880 to 27903.
 
+- **D-184** wchar.h, wctype.h, uchar.h, and stdlib.h's multibyte functions (`cwide`), as glibc has them in the C
+  locale, with wchar_t 32 bits on every system (Windows too, so the library's ABI is glibc's): the wide classifiers
+  and case mappings (ASCII only, as glibc's C locale), wctype, iswctype, wctrans, towctrans; the wcs and wmem string
+  functions, wcstok, wcsdup; wcstol and its kin and wcstod through clibrary's readers on the narrowed text; wcstof
+  correctly rounded, as strtof is (D-183); wcscoll and wcsxfrm in the C locale's order; btowc, wctob, mbsinit,
+  mbrlen, mbrtowc, wcrtomb, mbsrtowcs, wcsrtombs, mblen, mbtowc, wctomb, mbstowcs, wcstombs, mbrtoc16, c16rtomb,
+  mbrtoc32, c32rtomb. The C locale's multibyte encoding is one byte per character, every byte 0 to 255 its own wide
+  character, and a wide character above 255 is EILSEQ; MB_CUR_MAX is 1 and the conversion state is ignored. The
+  Linux comparison with glibc decides each of these: the tour prints whether a classifier's result is nonzero, not
+  its value, and every high byte's conversion both ways.
+
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3578,6 +3589,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
 | 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |
 | 2026-11-15 | D-183 | The runtime in SemanticScript, the whole C library: the rest of string.h and stdlib.h (strtok, strtof correctly rounded, glibc's rand), locale.h, assert.h, inttypes.h (by delegation) |
+| 2026-11-15 | D-184 | The runtime in SemanticScript, the whole C library: wchar.h, wctype.h, uchar.h, and the multibyte functions in the C locale, wchar_t 32 bits everywhere (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

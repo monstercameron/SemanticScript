@@ -1,0 +1,3 @@
+# The C wide-character and multibyte functions, written in SemanticScript (D-153): wctype.h, the parts of wchar.h that need no formatted I/O, stdlib.h's multibyte functions, and uchar.h's, as glibc behaves in the C locale.
+#
+# This module is generated from tools/cwide.dsl by tools/build.py.

@@ -370,9 +370,17 @@ C_LIBRARY = {
     "strtok", "strtok_r", "strsep", "strcoll", "strxfrm", "mempcpy", "stpcpy", "stpncpy", "memccpy", "strchrnul",
     "memrchr", "setlocale", "localeconv", "rand", "srand", "rand_r", "imaxabs", "strtoimax", "strtoumax",
     "wcstoimax", "wcstoumax", "aligned_alloc", "posix_memalign", "__assert_fail", "strtof",
+    # D-184: wchar.h, wctype.h, uchar.h, and the multibyte functions (cwide)
+    "iswalnum", "iswalpha", "iswblank", "iswcntrl", "iswdigit", "iswgraph", "iswlower", "iswprint", "iswpunct",
+    "iswspace", "iswupper", "iswxdigit", "towupper", "towlower", "wctype", "iswctype", "wctrans", "towctrans",
+    "wcslen", "wcsnlen", "wcscpy", "wcsncpy", "wcscat", "wcsncat", "wcscmp", "wcsncmp", "wcscoll", "wcsxfrm",
+    "wcschr", "wcsrchr", "wcsstr", "wcsspn", "wcscspn", "wcspbrk", "wcstok", "wcsdup", "wmemchr", "wmemcmp",
+    "wmemcpy", "wmemmove", "wmemset", "wcstol", "wcstoll", "wcstoul", "wcstoull", "wcstod", "wcstof", "mbrlen",
+    "mbrtowc", "mblen", "mbtowc", "wcrtomb", "wctomb", "mbsinit", "btowc", "wctob", "mbstowcs", "wcstombs",
+    "mbsrtowcs", "wcsrtombs", "mbrtoc16", "mbrtoc32", "c16rtomb", "c32rtomb",
 }
 # the modules whose `abi library` operations make up the C library (D-153, D-159, D-160, D-164, D-180)
-C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem", "cthreads.sem", "cextra.sem")
+C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem", "cthreads.sem", "cextra.sem", "cwide.sem")
 
 
 @pytest.mark.skipif(WINDOWS or not PLATFORM, reason="the runtime's loader maps ELF shared libraries on Linux")
@@ -747,9 +755,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 109 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 119 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "109 of 109 tests passed" in tested.stdout
+    assert "119 of 119 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

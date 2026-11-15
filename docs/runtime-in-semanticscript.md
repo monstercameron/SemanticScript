@@ -371,6 +371,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | math.h | exp, exp2, expm1, log, log2, log10, log1p, pow, cbrt, hypot and their `f` forms, within 1 ulp (D-182) | Done |
 | string.h, stdlib.h | strtok, strtok_r, strsep, strcoll, strxfrm, memccpy, mempcpy, stpcpy, stpncpy, strchrnul, memrchr; strtof, rand, srand, rand_r, aligned_alloc, posix_memalign (D-183) | Done |
 | locale.h, assert.h, inttypes.h | setlocale, localeconv (the C locale); `__assert_fail`; imaxabs, strtoimax, strtoumax, wcstoimax, wcstoumax (D-183) | Done |
+| wchar.h, wctype.h, uchar.h | the wide string, number, and classification functions, and the multibyte conversions, in the C locale (D-184) | Done |
 | threads.h | thrd_*, mtx_*, cnd_*, tss_*, call_once on Linux threads and futexes; the heap and streams locked, errno per thread (D-166) | Done |
 | string.h | strerror: `Unknown error N` for every number (glibc's messages are a known gap) | Gap |
 
