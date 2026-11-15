@@ -30,9 +30,14 @@ int main(int argc, char **argv) {
     printf("fread %zu\n", fread(line, 1, 4, in));
     fclose(in);
     fflush(stdout);
+#ifdef __OPTIMIZE__
+    /* only an optimized build is fortified: there the copy is checked and aborts before it writes anything */
     char *name = argv[0];
     char tiny[4];
     strcpy(tiny, name + strlen(name) - (size_t) n - 2);
     puts(tiny);
+#else
+    puts("not fortified without optimization");
+#endif
     return 0;
 }

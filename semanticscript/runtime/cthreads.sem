@@ -183,6 +183,99 @@ doSleep borrows none
 doSleep catch none
 doSleep suppresses none
 
+futexWaitShared is operation
+futexWaitShared purpose "Wait while a 32-bit cell holds a value, or until woken, with FUTEX_WAIT not private: the wake the kernel gives a thread's cleared tid (CLONE_CHILD_CLEARTID) is not private, and a private wait never hears it; on Windows a short sleep"
+futexWaitShared invariant none
+futexWaitShared typeParameter none
+futexWaitShared input cell machine.Address copied
+futexWaitShared input value Int32 copied
+futexWaitShared output none
+futexWaitShared outputOwnedBy none
+futexWaitShared raises none
+futexWaitShared effect use machine.memory
+futexWaitShared effect use system.calls
+futexWaitShared uses memoryAccess
+futexWaitShared uses systemCalls
+futexWaitShared memoryHeap false
+futexWaitShared async false
+futexWaitShared maxRecursion none
+futexWaitShared label begin loopKind none
+futexWaitShared label begin within none
+futexWaitShared label linux loopKind none
+futexWaitShared label linux within none
+futexWaitShared label windows loopKind none
+futexWaitShared label windows within none
+futexWaitShared let zero Int64 0 immutable
+futexWaitShared let int321 Int32 1 immutable
+futexWaitShared at begin do readOnLinux
+futexWaitShared at begin branch if onLinux goto linux else goto windows
+futexWaitShared at linux do readNowhere
+futexWaitShared at linux do findWideValue1
+futexWaitShared at linux do readUnusedFutex
+futexWaitShared at linux return ok none
+futexWaitShared at windows do doSleep
+futexWaitShared at windows return ok none
+
+readOnLinux is call
+readOnLinux in futexWaitShared
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readNowhere is call
+readNowhere in futexWaitShared
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findWideValue1 is call
+findWideValue1 in futexWaitShared
+findWideValue1 invokes convert.int32ToInt64
+findWideValue1 argument value Int32 value copy
+findWideValue1 result wideValue Int64
+findWideValue1 ownedBy none
+findWideValue1 cleanedBy none
+findWideValue1 borrows none
+findWideValue1 catch none
+findWideValue1 suppresses none
+
+readUnusedFutex is call
+readUnusedFutex in futexWaitShared
+readUnusedFutex invokes system.futex
+readUnusedFutex argument address machine.Address cell copy
+readUnusedFutex argument operation Int64 zero copy
+readUnusedFutex argument value Int64 wideValue copy
+readUnusedFutex argument timeout machine.Address nowhere copy
+readUnusedFutex argument address2 machine.Address nowhere copy
+readUnusedFutex argument value3 Int64 zero copy
+readUnusedFutex result unusedFutex Int64
+readUnusedFutex ownedBy none
+readUnusedFutex cleanedBy none
+readUnusedFutex borrows none
+readUnusedFutex catch none
+readUnusedFutex suppresses none
+
+doSleep is call
+doSleep in futexWaitShared
+doSleep invokes system.sleep
+doSleep argument milliseconds Int32 int321 copy
+doSleep result none
+doSleep ownedBy none
+doSleep cleanedBy none
+doSleep borrows none
+doSleep catch none
+doSleep suppresses none
+
 futexWake is operation
 futexWake purpose "Wake up to a count of threads waiting on a cell (FUTEX_WAKE, private) on Linux; on Windows the waiters look again on their own"
 futexWake invariant none
@@ -1491,7 +1584,7 @@ joinThread at windows goto ended
 joinThread at waiting do readTid
 joinThread at waiting do findCheck11
 joinThread at waiting branch if check1 goto linuxEnded else goto wait
-joinThread at wait do doFutexWait
+joinThread at wait do doFutexWaitShared
 joinThread at wait goto waiting
 joinThread at linuxEnded do findStackAt1
 joinThread at linuxEnded do readStack
@@ -1590,17 +1683,17 @@ findCheck11 borrows none
 findCheck11 catch none
 findCheck11 suppresses none
 
-doFutexWait is call
-doFutexWait in joinThread
-doFutexWait invokes futexWait
-doFutexWait argument cell machine.Address thread copy
-doFutexWait argument value Int32 tid copy
-doFutexWait result none
-doFutexWait ownedBy none
-doFutexWait cleanedBy none
-doFutexWait borrows none
-doFutexWait catch none
-doFutexWait suppresses none
+doFutexWaitShared is call
+doFutexWaitShared in joinThread
+doFutexWaitShared invokes futexWaitShared
+doFutexWaitShared argument cell machine.Address thread copy
+doFutexWaitShared argument value Int32 tid copy
+doFutexWaitShared result none
+doFutexWaitShared ownedBy none
+doFutexWaitShared cleanedBy none
+doFutexWaitShared borrows none
+doFutexWaitShared catch none
+doFutexWaitShared suppresses none
 
 findStackAt1 is call
 findStackAt1 in joinThread

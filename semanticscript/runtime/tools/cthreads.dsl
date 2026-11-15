@@ -59,6 +59,25 @@ op futexWait "Wait while a 32-bit cell holds a value, or until woken (FUTEX_WAIT
   system.sleep(1)
   return
 
+op futexWaitShared "Wait while a 32-bit cell holds a value, or until woken, with FUTEX_WAIT not private: the wake the kernel gives a thread's cleared tid (CLONE_CHILD_CLEARTID) is not private, and a private wait never hears it; on Windows a short sleep"
+  input cell machine.Address copied
+  input value Int32 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  onLinux = system.linux()
+  if onLinux linux windows
+:linux
+  nowhere = machine.zero()
+  calc wideValue = convert.int32ToInt64(value)
+  system.futex(cell, 0, wideValue, nowhere, nowhere, 0)
+  return
+:windows
+  system.sleep(1)
+  return
+
 op futexWake "Wake up to a count of threads waiting on a cell (FUTEX_WAKE, private) on Linux; on Windows the waiters look again on their own"
   input cell machine.Address copied
   input count Int64 copied
@@ -253,7 +272,7 @@ op joinThread "thrd_join: wait for a thread to end (its id cleared on Linux, its
   tid = machine.loadInt32(thread)
   when tid == 0 linuxEnded wait
 :wait in=waiting
-  futexWait(thread, tid)
+  futexWaitShared(thread, tid)
   goto waiting
 :linuxEnded
   calc stackAt = thread + 16
