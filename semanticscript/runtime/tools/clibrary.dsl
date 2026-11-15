@@ -1,7 +1,7 @@
 module clibrary "The C standard library written in SemanticScript: what ffi.open of c binds, and what a library the loader maps finds for its C imports (D-153)"
   path clibrary
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.list standard.test kernel memory output heap floats wide
-  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal runHandlers checkFits errnoCell windowsErrno
+  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseWholeBinary parseReal runHandlers checkFits errnoCell windowsErrno
 
 capability memoryAccess "Authority to read and write the memory C callers hand the library" use machine.memory none
 
@@ -1491,12 +1491,38 @@ op divideC "div, as the C library names it: the quotient and remainder of two in
   divideIt: packed = divide(numerator, denominator)
   return packed
 
-op parseWhole "strtol and its kin, as glibc reads them: white space, a sign, `0x` in base 16 or 0 and `0` for base 8 in base 0, then digits below the base; the value's bits, LONG_MIN or LONG_MAX (ULONG_MAX unsigned) with ERANGE past the range, EINVAL for a base that is neither 0 nor 2 to 36; the end of what was read is stored at `endAt` unless it is the address 0"
+op parseWhole "strtol and its kin, as glibc reads them (C17: no 0b prefix)"
   invariant readsLikeStrtol "Reads the longest prefix strtol reads, with its value, errno, and end"
   input text machine.Address copied
   input endAt machine.Address copied
   input base Int32 copied
   input unsigned Bool copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  value = parseWholeIn(text, endAt, base, unsigned, false)
+  return value
+
+op parseWholeBinary "strtol and its kin as glibc's C23 names (__isoc23_strtol) read them: also `0b` in base 2 or 0 (D-173)"
+  invariant readsBinary "Reads 0b101 as 5 in base 0 and base 2, and as 0 ending at the b where no binary digit follows"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  input unsigned Bool copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  value = parseWholeIn(text, endAt, base, unsigned, true)
+  return value
+
+op parseWholeIn "strtol and its kin, as glibc reads them: white space, a sign, `0x` in base 16 or 0, `0b` in base 2 or 0 when binary (C23), and `0` for base 8 in base 0, then digits below the base; the value's bits, LONG_MIN or LONG_MAX (ULONG_MAX unsigned) with ERANGE past the range, EINVAL for a base that is neither 0 nor 2 to 36; the end of what was read is stored at `endAt` unless it is the address 0"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  input unsigned Bool copied
+  input binary Bool copied
   output Int64
   effect use machine.memory
   uses memoryAccess
@@ -1561,7 +1587,15 @@ op parseWhole "strtol and its kin, as glibc reads them: white space, a sign, `0x
   baseSixteen: hexBase = compare.equalInt32(base, base16=16)
   hexAllowed: allowsX = logic.or(autoBase, hexBase)
   hexPrefix: takesX = logic.and(isX, allowsX)
-  if takesX skipX octalCheck
+  if takesX skipX binaryCheck
+:binaryCheck
+  calc takesB = binary && secondLower == 98 && (autoBase || base == 2)
+  if takesB skipB octalCheck
+:skipB
+  calc afterB = at + 2
+  set at afterB
+  calc radix := 2
+  goto digits
 :skipX
   stepX: afterX = math.addInt64(at, two=2)
   set at afterX
@@ -1626,7 +1660,7 @@ op parseWhole "strtol and its kin, as glibc reads them: white space, a sign, `0x
   beforeOf: beforeAt = math.subtractInt64(start, one)
   readBefore: before = byteAt(text, beforeAt)
   lowerBefore: beforeLower = lowerByte(before)
-  xBeforeCheck: wasX = compare.equalByte(beforeLower, smallX)
+  calc wasX = beforeLower == 120 || (binary && beforeLower == 98)
   zeroBeforeOf: zeroBeforeAt = math.subtractInt64(start, two)
   readZeroBefore: zeroBefore = byteAt(text, zeroBeforeAt)
   zeroBeforeCheck: wasZero = compare.equalByte(zeroBefore, digitZero)
@@ -2596,8 +2630,8 @@ op errnoLocation "__errno_location: the address of errno, which strtol, strtod, 
   cell = errnoCell()
   return cell
 
-op errorText "strerror: the text for an error number, in a block of machine.state the next call replaces; for now every number is `Unknown error N` (D-160: glibc's messages are a known gap)"
-  invariant namesErrors "Gives `Unknown error N` with N the number in decimal, negative ones with their sign"
+op errorText "strerror: glibc's message for an error number, from the table the compiler builds (D-172: glibc's own messages, when the compiler runs where glibc is the C library); for a number the table has none for, `Unknown error N` in a block of machine.state the next call replaces"
+  invariant namesErrors "Gives the table's message for a number it has, else `Unknown error N` with N the number in decimal, negative ones with their sign"
   input code Int32 copied
   output machine.Address
   effect use machine.memory
@@ -2607,6 +2641,18 @@ op errorText "strerror: the text for an error number, in a block of machine.stat
   let place Int64 31 mut
   let rest Int64 0 mut
 :begin
+  table = machine.errorMessages()
+  known = machine.loadInt64(table)
+  calc wideNumber = convert.int32ToInt64(code)
+  when wideNumber >= 0 && wideNumber < known lookUp unknown
+:lookUp
+  calc entryAt = table + 8 + wideNumber * 8
+  message = machine.loadAddress(entryAt)
+  nowhere = machine.zero()
+  when message == nowhere unknown give
+:give
+  return message
+:unknown
   buffer = kernel.stateAt(errorTextAt)
   prefixAt = machine.addressOfString(prefix)
   machine.copy(buffer, prefixAt, 14)
@@ -3591,6 +3637,54 @@ op windowsErrno "The errno for a Windows error code, by the table of windowsErro
 :unknown
   return invalidError
 
+op toLongC23 "__isoc23_strtol: strtol as C23 reads it, `0b` binary included (the name glibc's headers give strtol in C23)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  abi library "__isoc23_strtol"
+:begin
+  value = parseWholeBinary(text, endAt, base, false)
+  return value
+
+op toLongLongC23 "__isoc23_strtoll: strtoll as C23 reads it, `0b` binary included (the name glibc's headers give strtoll in C23)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  abi library "__isoc23_strtoll"
+:begin
+  value = parseWholeBinary(text, endAt, base, false)
+  return value
+
+op toUnsignedLongC23 "__isoc23_strtoul: strtoul as C23 reads it, `0b` binary included (the name glibc's headers give strtoul in C23)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  abi library "__isoc23_strtoul"
+:begin
+  value = parseWholeBinary(text, endAt, base, true)
+  return value
+
+op toUnsignedLongLongC23 "__isoc23_strtoull: strtoull as C23 reads it, `0b` binary included (the name glibc's headers give strtoull in C23)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  abi library "__isoc23_strtoull"
+:begin
+  value = parseWholeBinary(text, endAt, base, true)
+  return value
+
 @tests
 
 ## Tests write C strings in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state never
@@ -4093,6 +4187,7 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   verifies runHandlers runsInReverse
   verifies checkFits passesWhatFits
   verifies errnoCell firstThreadsCell
+  verifies parseWholeBinary readsBinary
   verifies windowsErrno mapsWindowsErrors
   verifies divideWhole dividesTowardZero
   verifies prepare pointsAtStreams
@@ -4104,6 +4199,7 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   uses systemCalls
   let sample String "hello"
   let absText String "abs"
+  let binaryWord String "0b101"
 :begin
   place = firstScratch(sample)
   second = byteAt(place, 1)
@@ -4148,6 +4244,11 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   left = machine.loadInt64(quickCell)
   test.assertEqualInt64(0, left)
   checkFits(4, 4)
+  binaryText = firstScratch(binaryWord)
+  binaryValue = parseWholeBinary(binaryText, binaryText, 0, false)
+  test.assertEqualInt64(5, binaryValue)
+  plainValue = parseWhole(binaryText, binaryText, 0, false)
+  test.assertEqualInt64(0, plainValue)
   notFound = windowsErrno(2)
   test.assertTrue(notFound == 2)
   brokenPipe = windowsErrno(109)

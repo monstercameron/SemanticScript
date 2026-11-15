@@ -167,7 +167,7 @@ def _write_text(name: str, offset: int, text: str) -> list[str]:
 
 def dsl_parts():
     caps = [f'capability {n}Symbol "Authority to bind the C function {n}" load ffi.symbols "{n}"'
-            for n in ("printf", "fflush", "sscanf", "memcmp", "puts")]
+            for n in ("printf", "fflush", "sscanf", "memcmp", "puts", "strerror")]
     optypes = '''optype PrintDoubleFunction "int printf(const char *, double)"
   input format Int64 copied
   input value Float64 copied
@@ -213,6 +213,12 @@ instance ScanBinding "Binds sscanf for four pointers" ffi.Function ScanFunction
 instance CompareBinding "Binds memcmp" ffi.Function CompareFunction
 
 instance PutsBinding "Binds puts" ffi.Function PutsFunction
+
+optype ErrorTextFunction "char *strerror(int), the address as a whole number"
+  input number Int32 copied
+  output Int64
+
+instance ErrorTextBinding "Binds strerror" ffi.Function ErrorTextFunction
 '''
     lets = "\n".join(f"  let double{i}Bits UInt64 {_bits(x)}" for i, x in enumerate(_doubles()))
     reads = "\n".join(f"  read{i}: value{i} = convert.uint64BitsToFloat64(double{i}Bits)\n"
@@ -245,6 +251,28 @@ op everyDoubleFormat "printf one format with each of the tour's doubles, flushin
 {reads}
   return
 
+op everyError "puts strerror's message for each number from -1 to 135, flushing after each"
+  input errorFn ErrorTextFunction copied
+  input putsFn PutsFunction copied
+  input flushFn FlushFunction copied
+  let number Int32 -1 mut
+  let last Int32 135
+  let count Int64 137
+:begin
+  goto eachNumber
+:eachNumber loop=while max=count
+  doneCheck: done = compare.greaterThanInt32(number, last)
+  if done finish show
+:show in=eachNumber
+  textOf: text = *errorFn(number)
+  putIt: written = *putsFn(text)
+  flushIt: flushed = *flushFn(nothing=0)
+  stepIt: next = math.addInt32(number, one32=1)
+  set number next
+  goto eachNumber
+:finish
+  return
+
 op everyLongPair "printf one format with each of the tour's pairs of longs, flushing after each, and write how many bytes each wrote"
   input printFn PrintLongsFunction copied
   input flushFn FlushFunction copied
@@ -261,6 +289,7 @@ op everyLongPair "printf one format with each of the tour's pairs of longs, flus
             '  bindsscanf: scanFn = ScanBinding.bind(libc, sscanfName="sscanf") ? failed',
             '  bindmemcmp: compareFn = CompareBinding.bind(libc, memcmpName="memcmp") ? failed',
             '  bindputs: putsFn = PutsBinding.bind(libc, putsName="puts") ? failed',
+            '  bindstrerror: errorFn = ErrorTextBinding.bind(libc, strerrorName="strerror") ? failed',
             '  takeArea: area = *callocFn(areaBytes=8192, one=1)']
     offset = 0
     for k, fmt in enumerate(DOUBLE_FORMATS):
@@ -295,12 +324,23 @@ op everyLongPair "printf one format with each of the tour's pairs of longs, flus
     body.append("  putWord: wordCount = *putsFn(cell3)")
     body.append("  flushWord: wordFlushed = *flushFn(nothing=0)")
     body.append("  freeArea: areaFreed = *freeFn(area)")
+    body.append("  runErrors: everyError(errorFn, putsFn, flushFn)")
     return caps, optypes, helpers, body
 
 
 def _doubles():
     import ctour
     return ctour.DOUBLE_INPUTS
+
+
+def error_text(number: int) -> str:
+    """D-172: what strerror gives: glibc's message where the compiler ran on glibc (Python's os.strerror is glibc's
+    strerror there, and the executable's table was read from it), `Unknown error N` elsewhere."""
+    import os
+    import platform
+    if platform.libc_ver()[0] == "glibc":
+        return os.strerror(number)
+    return f"Unknown error {number}"
 
 
 def expected() -> list[str]:
@@ -314,4 +354,5 @@ def expected() -> list[str]:
             line = c_format(fmt, [a, b])
             out += [line, str(len(line) + 1)]
     out += ["4", "0", "0", "0", "word"]
+    out += [error_text(n) for n in range(-1, 136)]
     return out

@@ -358,6 +358,7 @@ streamTest let sixtyFour Int64 64 immutable
 streamTest let int3264 Int32 64 immutable
 streamTest let n320 Int64 320 immutable
 streamTest let five Int64 5 immutable
+streamTest let no Bool false immutable
 streamTest let int325 Int32 5 immutable
 streamTest let three Int64 3 immutable
 streamTest let int3242 Int32 42 immutable
@@ -714,6 +715,7 @@ readStored invokes scanAll
 readStored argument stream machine.Address file copy
 readStored argument format machine.Address formatText copy
 readStored argument cursor machine.Address cursor copy
+readStored argument c23 Bool no copy
 readStored result stored Int32
 readStored ownedBy none
 readStored cleanedBy none
@@ -1013,6 +1015,7 @@ readBlankResult invokes scanAll
 readBlankResult argument stream machine.Address blankStream copy
 readBlankResult argument format machine.Address numberFormatText copy
 readBlankResult argument cursor machine.Address blankCursor copy
+readBlankResult argument c23 Bool no copy
 readBlankResult result blankResult Int32
 readBlankResult ownedBy none
 readBlankResult cleanedBy none
@@ -1083,6 +1086,7 @@ readLetterResult invokes scanAll
 readLetterResult argument stream machine.Address letterStream copy
 readLetterResult argument format machine.Address numberFormatText copy
 readLetterResult argument cursor machine.Address letterCursor copy
+readLetterResult argument c23 Bool no copy
 readLetterResult result letterResult Int32
 readLetterResult ownedBy none
 readLetterResult cleanedBy none
@@ -1164,6 +1168,7 @@ readCountResult invokes scanAll
 readCountResult argument stream machine.Address numberStream copy
 readCountResult argument format machine.Address countFormatText copy
 readCountResult argument cursor machine.Address countCursor copy
+readCountResult argument c23 Bool no copy
 readCountResult result countResult Int32
 readCountResult ownedBy none
 readCountResult cleanedBy none

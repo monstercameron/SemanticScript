@@ -14036,6 +14036,7 @@ collectInteger input scanner machine.Address copied
 collectInteger input width Int64 copied
 collectInteger input base Int64 copied
 collectInteger input buffer machine.Address copied
+collectInteger input binary Bool copied
 collectInteger output Int64
 collectInteger outputOwnedBy none
 collectInteger raises none
@@ -14054,6 +14055,10 @@ collectInteger label prefix loopKind none
 collectInteger label prefix within none
 collectInteger label zeroPrefix loopKind none
 collectInteger label zeroPrefix within none
+collectInteger label binaryCheck loopKind none
+collectInteger label binaryCheck within none
+collectInteger label binaryMark loopKind none
+collectInteger label binaryMark within none
 collectInteger label hexMark loopKind none
 collectInteger label hexMark within none
 collectInteger label notHex loopKind none
@@ -14085,8 +14090,10 @@ collectInteger let n45 Int64 45 immutable
 collectInteger let one Int64 1 immutable
 collectInteger let zero Int64 0 immutable
 collectInteger let sixteen Int64 16 immutable
+collectInteger let two Int64 2 immutable
 collectInteger let n48 Int64 48 immutable
 collectInteger let n120 Int64 120 immutable
+collectInteger let n98 Int64 98 immutable
 collectInteger let eight Int64 8 immutable
 collectInteger let ten Int64 10 immutable
 collectInteger let byte0 Byte 0 immutable
@@ -14111,6 +14118,9 @@ collectInteger at prefix do check2Step3
 collectInteger at prefix do check2Step4
 collectInteger at prefix do check2Step5
 collectInteger at prefix do check2Step6
+collectInteger at prefix do check2Step7
+collectInteger at prefix do check2Step8
+collectInteger at prefix do check2Step9
 collectInteger at prefix do findCheck21
 collectInteger at prefix branch if check2 goto zeroPrefix else goto noPrefix
 collectInteger at zeroPrefix do doStoreValue2
@@ -14123,42 +14133,61 @@ collectInteger at zeroPrefix set value valueNext3
 collectInteger at zeroPrefix do check3Step1
 collectInteger at zeroPrefix do check3Step2
 collectInteger at zeroPrefix do check3Step3
+collectInteger at zeroPrefix do check3Step4
+collectInteger at zeroPrefix do check3Step5
 collectInteger at zeroPrefix do findCheck31
-collectInteger at zeroPrefix branch if check3 goto hexMark else goto notHex
-collectInteger at hexMark do doStoreValue3
-collectInteger at hexMark do findCountNext31
-collectInteger at hexMark set count countNext3
+collectInteger at zeroPrefix branch if check3 goto hexMark else goto binaryCheck
+collectInteger at binaryCheck do check4Step1
+collectInteger at binaryCheck do check4Step2
+collectInteger at binaryCheck do check4Step3
+collectInteger at binaryCheck do check4Step4
+collectInteger at binaryCheck do check4Step5
+collectInteger at binaryCheck do check4Step6
+collectInteger at binaryCheck do check4Step7
+collectInteger at binaryCheck do check4Step8
+collectInteger at binaryCheck do findCheck41
+collectInteger at binaryCheck branch if check4 goto binaryMark else goto notHex
+collectInteger at binaryMark do doStoreValue3
+collectInteger at binaryMark do findCountNext31
+collectInteger at binaryMark set count countNext3
+collectInteger at binaryMark set radix two
+collectInteger at binaryMark do findValueNext41
+collectInteger at binaryMark set value valueNext4
+collectInteger at binaryMark goto eachDigit
+collectInteger at hexMark do doStoreValue4
+collectInteger at hexMark do findCountNext41
+collectInteger at hexMark set count countNext4
 collectInteger at hexMark set radix sixteen
-collectInteger at hexMark do findValueNext41
-collectInteger at hexMark set value valueNext4
+collectInteger at hexMark do findValueNext51
+collectInteger at hexMark set value valueNext5
 collectInteger at hexMark goto eachDigit
-collectInteger at notHex do findCheck41
-collectInteger at notHex branch if check4 goto octal else goto eachDigit
+collectInteger at notHex do findCheck51
+collectInteger at notHex branch if check5 goto octal else goto eachDigit
 collectInteger at octal set radix eight
 collectInteger at octal goto eachDigit
-collectInteger at noPrefix do findCheck51
-collectInteger at noPrefix branch if check5 goto decimal else goto eachDigit
+collectInteger at noPrefix do findCheck61
+collectInteger at noPrefix branch if check6 goto decimal else goto eachDigit
 collectInteger at decimal set radix ten
 collectInteger at decimal goto eachDigit
 collectInteger at eachDigit do findDigit1
-collectInteger at eachDigit do check6Step1
-collectInteger at eachDigit do check6Step2
-collectInteger at eachDigit do check6Step3
-collectInteger at eachDigit do findCheck61
-collectInteger at eachDigit branch if check6 goto keep else goto finish
-collectInteger at keep do doStoreValue4
-collectInteger at keep do findCountNext41
-collectInteger at keep set count countNext4
+collectInteger at eachDigit do check7Step1
+collectInteger at eachDigit do check7Step2
+collectInteger at eachDigit do check7Step3
+collectInteger at eachDigit do findCheck71
+collectInteger at eachDigit branch if check7 goto keep else goto finish
+collectInteger at keep do doStoreValue5
+collectInteger at keep do findCountNext51
+collectInteger at keep set count countNext5
 collectInteger at keep do findDigitsNext21
 collectInteger at keep set digits digitsNext2
-collectInteger at keep do findValueNext51
-collectInteger at keep set value valueNext5
+collectInteger at keep do findValueNext61
+collectInteger at keep set value valueNext6
 collectInteger at keep goto eachDigit
 collectInteger at finish do doScanUnget
 collectInteger at finish do findEndAt1
 collectInteger at finish do doStoreByte
-collectInteger at finish do findCheck71
-collectInteger at finish branch if check7 goto refuse else goto done
+collectInteger at finish do findCheck81
+collectInteger at finish branch if check8 goto refuse else goto done
 collectInteger at done return ok count
 collectInteger at refuse return ok failure
 
@@ -14308,8 +14337,8 @@ check2Step3 suppresses none
 check2Step4 is call
 check2Step4 in collectInteger
 check2Step4 invokes compare.equalInt64
-check2Step4 argument left Int64 value copy
-check2Step4 argument right Int64 n48 copy
+check2Step4 argument left Int64 base copy
+check2Step4 argument right Int64 two copy
 check2Step4 result check2Part4 Bool
 check2Step4 ownedBy none
 check2Step4 cleanedBy none
@@ -14320,7 +14349,7 @@ check2Step4 suppresses none
 check2Step5 is call
 check2Step5 in collectInteger
 check2Step5 invokes logic.and
-check2Step5 argument left Bool check2Part3 copy
+check2Step5 argument left Bool binary copy
 check2Step5 argument right Bool check2Part4 copy
 check2Step5 result check2Part5 Bool
 check2Step5 ownedBy none
@@ -14331,9 +14360,9 @@ check2Step5 suppresses none
 
 check2Step6 is call
 check2Step6 in collectInteger
-check2Step6 invokes compare.lessThanInt64
-check2Step6 argument left Int64 count copy
-check2Step6 argument right Int64 width copy
+check2Step6 invokes logic.or
+check2Step6 argument left Bool check2Part3 copy
+check2Step6 argument right Bool check2Part5 copy
 check2Step6 result check2Part6 Bool
 check2Step6 ownedBy none
 check2Step6 cleanedBy none
@@ -14341,11 +14370,47 @@ check2Step6 borrows none
 check2Step6 catch none
 check2Step6 suppresses none
 
+check2Step7 is call
+check2Step7 in collectInteger
+check2Step7 invokes compare.equalInt64
+check2Step7 argument left Int64 value copy
+check2Step7 argument right Int64 n48 copy
+check2Step7 result check2Part7 Bool
+check2Step7 ownedBy none
+check2Step7 cleanedBy none
+check2Step7 borrows none
+check2Step7 catch none
+check2Step7 suppresses none
+
+check2Step8 is call
+check2Step8 in collectInteger
+check2Step8 invokes logic.and
+check2Step8 argument left Bool check2Part6 copy
+check2Step8 argument right Bool check2Part7 copy
+check2Step8 result check2Part8 Bool
+check2Step8 ownedBy none
+check2Step8 cleanedBy none
+check2Step8 borrows none
+check2Step8 catch none
+check2Step8 suppresses none
+
+check2Step9 is call
+check2Step9 in collectInteger
+check2Step9 invokes compare.lessThanInt64
+check2Step9 argument left Int64 count copy
+check2Step9 argument right Int64 width copy
+check2Step9 result check2Part9 Bool
+check2Step9 ownedBy none
+check2Step9 cleanedBy none
+check2Step9 borrows none
+check2Step9 catch none
+check2Step9 suppresses none
+
 findCheck21 is call
 findCheck21 in collectInteger
 findCheck21 invokes logic.and
-findCheck21 argument left Bool check2Part5 copy
-findCheck21 argument right Bool check2Part6 copy
+findCheck21 argument left Bool check2Part8 copy
+findCheck21 argument right Bool check2Part9 copy
 findCheck21 result check2 Bool
 findCheck21 ownedBy none
 findCheck21 cleanedBy none
@@ -14436,17 +14501,148 @@ check3Step3 borrows none
 check3Step3 catch none
 check3Step3 suppresses none
 
+check3Step4 is call
+check3Step4 in collectInteger
+check3Step4 invokes logic.and
+check3Step4 argument left Bool check3Part2 copy
+check3Step4 argument right Bool check3Part3 copy
+check3Step4 result check3Part4 Bool
+check3Step4 ownedBy none
+check3Step4 cleanedBy none
+check3Step4 borrows none
+check3Step4 catch none
+check3Step4 suppresses none
+
+check3Step5 is call
+check3Step5 in collectInteger
+check3Step5 invokes compare.notEqualInt64
+check3Step5 argument left Int64 base copy
+check3Step5 argument right Int64 two copy
+check3Step5 result check3Part5 Bool
+check3Step5 ownedBy none
+check3Step5 cleanedBy none
+check3Step5 borrows none
+check3Step5 catch none
+check3Step5 suppresses none
+
 findCheck31 is call
 findCheck31 in collectInteger
 findCheck31 invokes logic.and
-findCheck31 argument left Bool check3Part2 copy
-findCheck31 argument right Bool check3Part3 copy
+findCheck31 argument left Bool check3Part4 copy
+findCheck31 argument right Bool check3Part5 copy
 findCheck31 result check3 Bool
 findCheck31 ownedBy none
 findCheck31 cleanedBy none
 findCheck31 borrows none
 findCheck31 catch none
 findCheck31 suppresses none
+
+check4Step1 is call
+check4Step1 in collectInteger
+check4Step1 invokes lowerValue
+check4Step1 argument value Int64 value copy
+check4Step1 result check4Part1 Int64
+check4Step1 ownedBy none
+check4Step1 cleanedBy none
+check4Step1 borrows none
+check4Step1 catch none
+check4Step1 suppresses none
+
+check4Step2 is call
+check4Step2 in collectInteger
+check4Step2 invokes compare.equalInt64
+check4Step2 argument left Int64 check4Part1 copy
+check4Step2 argument right Int64 n98 copy
+check4Step2 result check4Part2 Bool
+check4Step2 ownedBy none
+check4Step2 cleanedBy none
+check4Step2 borrows none
+check4Step2 catch none
+check4Step2 suppresses none
+
+check4Step3 is call
+check4Step3 in collectInteger
+check4Step3 invokes logic.and
+check4Step3 argument left Bool binary copy
+check4Step3 argument right Bool check4Part2 copy
+check4Step3 result check4Part3 Bool
+check4Step3 ownedBy none
+check4Step3 cleanedBy none
+check4Step3 borrows none
+check4Step3 catch none
+check4Step3 suppresses none
+
+check4Step4 is call
+check4Step4 in collectInteger
+check4Step4 invokes compare.lessThanInt64
+check4Step4 argument left Int64 count copy
+check4Step4 argument right Int64 width copy
+check4Step4 result check4Part4 Bool
+check4Step4 ownedBy none
+check4Step4 cleanedBy none
+check4Step4 borrows none
+check4Step4 catch none
+check4Step4 suppresses none
+
+check4Step5 is call
+check4Step5 in collectInteger
+check4Step5 invokes logic.and
+check4Step5 argument left Bool check4Part3 copy
+check4Step5 argument right Bool check4Part4 copy
+check4Step5 result check4Part5 Bool
+check4Step5 ownedBy none
+check4Step5 cleanedBy none
+check4Step5 borrows none
+check4Step5 catch none
+check4Step5 suppresses none
+
+check4Step6 is call
+check4Step6 in collectInteger
+check4Step6 invokes compare.equalInt64
+check4Step6 argument left Int64 base copy
+check4Step6 argument right Int64 zero copy
+check4Step6 result check4Part6 Bool
+check4Step6 ownedBy none
+check4Step6 cleanedBy none
+check4Step6 borrows none
+check4Step6 catch none
+check4Step6 suppresses none
+
+check4Step7 is call
+check4Step7 in collectInteger
+check4Step7 invokes compare.equalInt64
+check4Step7 argument left Int64 base copy
+check4Step7 argument right Int64 two copy
+check4Step7 result check4Part7 Bool
+check4Step7 ownedBy none
+check4Step7 cleanedBy none
+check4Step7 borrows none
+check4Step7 catch none
+check4Step7 suppresses none
+
+check4Step8 is call
+check4Step8 in collectInteger
+check4Step8 invokes logic.or
+check4Step8 argument left Bool check4Part6 copy
+check4Step8 argument right Bool check4Part7 copy
+check4Step8 result check4Part8 Bool
+check4Step8 ownedBy none
+check4Step8 cleanedBy none
+check4Step8 borrows none
+check4Step8 catch none
+check4Step8 suppresses none
+
+findCheck41 is call
+findCheck41 in collectInteger
+findCheck41 invokes logic.and
+findCheck41 argument left Bool check4Part5 copy
+findCheck41 argument right Bool check4Part8 copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
 
 doStoreValue3 is call
 doStoreValue3 in collectInteger
@@ -14484,88 +14680,6 @@ findValueNext41 borrows none
 findValueNext41 catch none
 findValueNext41 suppresses none
 
-findCheck41 is call
-findCheck41 in collectInteger
-findCheck41 invokes compare.equalInt64
-findCheck41 argument left Int64 base copy
-findCheck41 argument right Int64 zero copy
-findCheck41 result check4 Bool
-findCheck41 ownedBy none
-findCheck41 cleanedBy none
-findCheck41 borrows none
-findCheck41 catch none
-findCheck41 suppresses none
-
-findCheck51 is call
-findCheck51 in collectInteger
-findCheck51 invokes compare.equalInt64
-findCheck51 argument left Int64 base copy
-findCheck51 argument right Int64 zero copy
-findCheck51 result check5 Bool
-findCheck51 ownedBy none
-findCheck51 cleanedBy none
-findCheck51 borrows none
-findCheck51 catch none
-findCheck51 suppresses none
-
-findDigit1 is call
-findDigit1 in collectInteger
-findDigit1 invokes digitValue
-findDigit1 argument value Int64 value copy
-findDigit1 result digit UInt64
-findDigit1 ownedBy none
-findDigit1 cleanedBy none
-findDigit1 borrows none
-findDigit1 catch none
-findDigit1 suppresses none
-
-check6Step1 is call
-check6Step1 in collectInteger
-check6Step1 invokes compare.lessThanInt64
-check6Step1 argument left Int64 count copy
-check6Step1 argument right Int64 width copy
-check6Step1 result check6Part1 Bool
-check6Step1 ownedBy none
-check6Step1 cleanedBy none
-check6Step1 borrows none
-check6Step1 catch none
-check6Step1 suppresses none
-
-check6Step2 is call
-check6Step2 in collectInteger
-check6Step2 invokes convert.uint64ToInt64
-check6Step2 argument value UInt64 digit copy
-check6Step2 result check6Part2 Int64
-check6Step2 ownedBy none
-check6Step2 cleanedBy none
-check6Step2 borrows none
-check6Step2 catch none
-check6Step2 suppresses none
-
-check6Step3 is call
-check6Step3 in collectInteger
-check6Step3 invokes compare.lessThanInt64
-check6Step3 argument left Int64 check6Part2 copy
-check6Step3 argument right Int64 radix copy
-check6Step3 result check6Part3 Bool
-check6Step3 ownedBy none
-check6Step3 cleanedBy none
-check6Step3 borrows none
-check6Step3 catch none
-check6Step3 suppresses none
-
-findCheck61 is call
-findCheck61 in collectInteger
-findCheck61 invokes logic.and
-findCheck61 argument left Bool check6Part1 copy
-findCheck61 argument right Bool check6Part3 copy
-findCheck61 result check6 Bool
-findCheck61 ownedBy none
-findCheck61 cleanedBy none
-findCheck61 borrows none
-findCheck61 catch none
-findCheck61 suppresses none
-
 doStoreValue4 is call
 doStoreValue4 in collectInteger
 doStoreValue4 invokes storeValue
@@ -14591,6 +14705,124 @@ findCountNext41 borrows none
 findCountNext41 catch none
 findCountNext41 suppresses none
 
+findValueNext51 is call
+findValueNext51 in collectInteger
+findValueNext51 invokes scanGet
+findValueNext51 argument scanner machine.Address scanner copy
+findValueNext51 result valueNext5 Int64
+findValueNext51 ownedBy none
+findValueNext51 cleanedBy none
+findValueNext51 borrows none
+findValueNext51 catch none
+findValueNext51 suppresses none
+
+findCheck51 is call
+findCheck51 in collectInteger
+findCheck51 invokes compare.equalInt64
+findCheck51 argument left Int64 base copy
+findCheck51 argument right Int64 zero copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+findCheck61 is call
+findCheck61 in collectInteger
+findCheck61 invokes compare.equalInt64
+findCheck61 argument left Int64 base copy
+findCheck61 argument right Int64 zero copy
+findCheck61 result check6 Bool
+findCheck61 ownedBy none
+findCheck61 cleanedBy none
+findCheck61 borrows none
+findCheck61 catch none
+findCheck61 suppresses none
+
+findDigit1 is call
+findDigit1 in collectInteger
+findDigit1 invokes digitValue
+findDigit1 argument value Int64 value copy
+findDigit1 result digit UInt64
+findDigit1 ownedBy none
+findDigit1 cleanedBy none
+findDigit1 borrows none
+findDigit1 catch none
+findDigit1 suppresses none
+
+check7Step1 is call
+check7Step1 in collectInteger
+check7Step1 invokes compare.lessThanInt64
+check7Step1 argument left Int64 count copy
+check7Step1 argument right Int64 width copy
+check7Step1 result check7Part1 Bool
+check7Step1 ownedBy none
+check7Step1 cleanedBy none
+check7Step1 borrows none
+check7Step1 catch none
+check7Step1 suppresses none
+
+check7Step2 is call
+check7Step2 in collectInteger
+check7Step2 invokes convert.uint64ToInt64
+check7Step2 argument value UInt64 digit copy
+check7Step2 result check7Part2 Int64
+check7Step2 ownedBy none
+check7Step2 cleanedBy none
+check7Step2 borrows none
+check7Step2 catch none
+check7Step2 suppresses none
+
+check7Step3 is call
+check7Step3 in collectInteger
+check7Step3 invokes compare.lessThanInt64
+check7Step3 argument left Int64 check7Part2 copy
+check7Step3 argument right Int64 radix copy
+check7Step3 result check7Part3 Bool
+check7Step3 ownedBy none
+check7Step3 cleanedBy none
+check7Step3 borrows none
+check7Step3 catch none
+check7Step3 suppresses none
+
+findCheck71 is call
+findCheck71 in collectInteger
+findCheck71 invokes logic.and
+findCheck71 argument left Bool check7Part1 copy
+findCheck71 argument right Bool check7Part3 copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
+
+doStoreValue5 is call
+doStoreValue5 in collectInteger
+doStoreValue5 invokes storeValue
+doStoreValue5 argument buffer machine.Address buffer copy
+doStoreValue5 argument at Int64 count copy
+doStoreValue5 argument value Int64 value copy
+doStoreValue5 result none
+doStoreValue5 ownedBy none
+doStoreValue5 cleanedBy none
+doStoreValue5 borrows none
+doStoreValue5 catch none
+doStoreValue5 suppresses none
+
+findCountNext51 is call
+findCountNext51 in collectInteger
+findCountNext51 invokes math.addInt64
+findCountNext51 argument left Int64 count copy
+findCountNext51 argument right Int64 one copy
+findCountNext51 result countNext5 Int64
+findCountNext51 ownedBy none
+findCountNext51 cleanedBy none
+findCountNext51 borrows none
+findCountNext51 catch none
+findCountNext51 suppresses none
+
 findDigitsNext21 is call
 findDigitsNext21 in collectInteger
 findDigitsNext21 invokes math.addInt64
@@ -14603,16 +14835,16 @@ findDigitsNext21 borrows none
 findDigitsNext21 catch none
 findDigitsNext21 suppresses none
 
-findValueNext51 is call
-findValueNext51 in collectInteger
-findValueNext51 invokes scanGet
-findValueNext51 argument scanner machine.Address scanner copy
-findValueNext51 result valueNext5 Int64
-findValueNext51 ownedBy none
-findValueNext51 cleanedBy none
-findValueNext51 borrows none
-findValueNext51 catch none
-findValueNext51 suppresses none
+findValueNext61 is call
+findValueNext61 in collectInteger
+findValueNext61 invokes scanGet
+findValueNext61 argument scanner machine.Address scanner copy
+findValueNext61 result valueNext6 Int64
+findValueNext61 ownedBy none
+findValueNext61 cleanedBy none
+findValueNext61 borrows none
+findValueNext61 catch none
+findValueNext61 suppresses none
 
 doScanUnget is call
 doScanUnget in collectInteger
@@ -14650,17 +14882,17 @@ doStoreByte borrows none
 doStoreByte catch none
 doStoreByte suppresses none
 
-findCheck71 is call
-findCheck71 in collectInteger
-findCheck71 invokes compare.equalInt64
-findCheck71 argument left Int64 digits copy
-findCheck71 argument right Int64 zero copy
-findCheck71 result check7 Bool
-findCheck71 ownedBy none
-findCheck71 cleanedBy none
-findCheck71 borrows none
-findCheck71 catch none
-findCheck71 suppresses none
+findCheck81 is call
+findCheck81 in collectInteger
+findCheck81 invokes compare.equalInt64
+findCheck81 argument left Int64 digits copy
+findCheck81 argument right Int64 zero copy
+findCheck81 result check8 Bool
+findCheck81 ownedBy none
+findCheck81 cleanedBy none
+findCheck81 borrows none
+findCheck81 catch none
+findCheck81 suppresses none
 
 storeValue is operation
 storeValue purpose "Put a byte read at a position of a buffer"
@@ -14980,7 +15212,7 @@ doStoreInt64 catch none
 doStoreInt64 suppresses none
 
 collectReal is operation
-collectReal purpose "Gather the text of a floating number into a buffer, at most `width` bytes: a sign, then inf or infinity, nan with an optional (chars), or a hexadecimal or decimal number with its point and exponent; gives how many bytes, or -1 when what came cannot be a number"
+collectReal purpose "Gather the text of a floating number into a buffer, at most `width` bytes: a sign, then inf or infinity, nan (glibc's scanf reads no (chars) after it), or a hexadecimal or decimal number with its point and exponent; gives how many bytes, or -1 when what came cannot be a number"
 collectReal invariant none
 collectReal typeParameter none
 collectReal input scanner machine.Address copied
@@ -15010,21 +15242,8 @@ collectReal label notInfinity loopKind none
 collectReal label notInfinity within none
 collectReal label notNumber loopKind none
 collectReal label notNumber within none
-collectReal label nanPayload loopKind none
-collectReal label nanPayload within none
-collectReal label payloadOpen loopKind none
-collectReal label payloadOpen within none
-collectReal label payload loopKind while
-collectReal label payload within none
-collectReal label payload maxIterations forever
-collectReal label payloadChar loopKind none
-collectReal label payloadChar within payload
-collectReal label payloadEnd loopKind none
-collectReal label payloadEnd within none
-collectReal label payloadClose loopKind none
-collectReal label payloadClose within none
-collectReal label wordValue loopKind none
-collectReal label wordValue within none
+collectReal label nanDone loopKind none
+collectReal label nanDone within none
 collectReal label wordDone loopKind none
 collectReal label wordDone within none
 collectReal label wordFailed loopKind none
@@ -15082,10 +15301,6 @@ collectReal let one Int64 1 immutable
 collectReal let n105 Int64 105 immutable
 collectReal let three Int64 3 immutable
 collectReal let n110 Int64 110 immutable
-collectReal let n40 Int64 40 immutable
-collectReal let uInt6436 UInt64 36 immutable
-collectReal let n95 Int64 95 immutable
-collectReal let n41 Int64 41 immutable
 collectReal let zero Int64 0 immutable
 collectReal let n48 Int64 48 immutable
 collectReal let n120 Int64 120 immutable
@@ -15131,155 +15346,120 @@ collectReal at notNumber do readNanMatched
 collectReal at notNumber do findCountNext41
 collectReal at notNumber set count countNext4
 collectReal at notNumber do findCheck51
-collectReal at notNumber branch if check5 goto nanPayload else goto wordFailed
-collectReal at nanPayload set digits one
-collectReal at nanPayload do findValueNext31
-collectReal at nanPayload set value valueNext3
-collectReal at nanPayload do check6Step1
-collectReal at nanPayload do check6Step2
-collectReal at nanPayload do findCheck61
-collectReal at nanPayload branch if check6 goto payloadOpen else goto wordValue
-collectReal at payloadOpen do doStoreValue2
-collectReal at payloadOpen do findCountNext51
-collectReal at payloadOpen set count countNext5
-collectReal at payloadOpen do findValueNext41
-collectReal at payloadOpen set value valueNext4
-collectReal at payloadOpen goto payload
-collectReal at payload do check7Step1
-collectReal at payload do check7Step2
-collectReal at payload do check7Step3
-collectReal at payload do check7Step4
-collectReal at payload do check7Step5
-collectReal at payload do findCheck71
-collectReal at payload branch if check7 goto payloadChar else goto payloadEnd
-collectReal at payloadChar do doStoreValue3
-collectReal at payloadChar do findCountNext61
-collectReal at payloadChar set count countNext6
-collectReal at payloadChar do findValueNext51
-collectReal at payloadChar set value valueNext5
-collectReal at payloadChar goto payload
-collectReal at payloadEnd do check8Step1
-collectReal at payloadEnd do check8Step2
-collectReal at payloadEnd do findCheck81
-collectReal at payloadEnd branch if check8 goto payloadClose else goto finish
-collectReal at payloadClose do doStoreValue4
-collectReal at payloadClose do findCountNext71
-collectReal at payloadClose set count countNext7
-collectReal at payloadClose do findValueNext61
-collectReal at payloadClose set value valueNext6
-collectReal at payloadClose goto finish
-collectReal at wordValue goto finish
-collectReal at wordDone do findValueNext71
-collectReal at wordDone set value valueNext7
+collectReal at notNumber branch if check5 goto nanDone else goto wordFailed
+collectReal at nanDone set digits one
+collectReal at nanDone goto wordDone
+collectReal at wordDone do findValueNext31
+collectReal at wordDone set value valueNext3
 collectReal at wordDone goto finish
-collectReal at wordFailed do findValueNext81
-collectReal at wordFailed set value valueNext8
+collectReal at wordFailed do findValueNext41
+collectReal at wordFailed set value valueNext4
 collectReal at wordFailed set digits zero
 collectReal at wordFailed goto finish
-collectReal at number do check9Step1
-collectReal at number do check9Step2
-collectReal at number do findCheck91
-collectReal at number branch if check9 goto leadingZero else goto whole
-collectReal at leadingZero do doStoreValue5
-collectReal at leadingZero do findCountNext81
-collectReal at leadingZero set count countNext8
+collectReal at number do check6Step1
+collectReal at number do check6Step2
+collectReal at number do findCheck61
+collectReal at number branch if check6 goto leadingZero else goto whole
+collectReal at leadingZero do doStoreValue2
+collectReal at leadingZero do findCountNext51
+collectReal at leadingZero set count countNext5
 collectReal at leadingZero set digits one
-collectReal at leadingZero do findValueNext91
-collectReal at leadingZero set value valueNext9
-collectReal at leadingZero do check10Step1
-collectReal at leadingZero do check10Step2
-collectReal at leadingZero do check10Step3
-collectReal at leadingZero do findCheck101
-collectReal at leadingZero branch if check10 goto hexMark else goto whole
-collectReal at hexMark do doStoreValue6
-collectReal at hexMark do findCountNext91
-collectReal at hexMark set count countNext9
+collectReal at leadingZero do findValueNext51
+collectReal at leadingZero set value valueNext5
+collectReal at leadingZero do check7Step1
+collectReal at leadingZero do check7Step2
+collectReal at leadingZero do check7Step3
+collectReal at leadingZero do findCheck71
+collectReal at leadingZero branch if check7 goto hexMark else goto whole
+collectReal at hexMark do doStoreValue3
+collectReal at hexMark do findCountNext61
+collectReal at hexMark set count countNext6
 collectReal at hexMark set radix sixteen
 collectReal at hexMark set marker n112
 collectReal at hexMark set digits zero
-collectReal at hexMark do findValueNext101
-collectReal at hexMark set value valueNext10
+collectReal at hexMark do findValueNext61
+collectReal at hexMark set value valueNext6
 collectReal at hexMark goto whole
-collectReal at whole do check11Step1
-collectReal at whole do check11Step2
-collectReal at whole do check11Step3
-collectReal at whole do check11Step4
-collectReal at whole do findCheck111
-collectReal at whole branch if check11 goto wholeDigit else goto point
-collectReal at wholeDigit do doStoreValue7
-collectReal at wholeDigit do findCountNext101
-collectReal at wholeDigit set count countNext10
+collectReal at whole do check8Step1
+collectReal at whole do check8Step2
+collectReal at whole do check8Step3
+collectReal at whole do check8Step4
+collectReal at whole do findCheck81
+collectReal at whole branch if check8 goto wholeDigit else goto point
+collectReal at wholeDigit do doStoreValue4
+collectReal at wholeDigit do findCountNext71
+collectReal at wholeDigit set count countNext7
 collectReal at wholeDigit do findDigitsNext11
 collectReal at wholeDigit set digits digitsNext1
-collectReal at wholeDigit do findValueNext111
-collectReal at wholeDigit set value valueNext11
+collectReal at wholeDigit do findValueNext71
+collectReal at wholeDigit set value valueNext7
 collectReal at wholeDigit goto whole
-collectReal at point do check12Step1
-collectReal at point do check12Step2
-collectReal at point do findCheck121
-collectReal at point branch if check12 goto takePoint else goto exponent
-collectReal at takePoint do doStoreValue8
-collectReal at takePoint do findCountNext111
-collectReal at takePoint set count countNext11
-collectReal at takePoint do findValueNext121
-collectReal at takePoint set value valueNext12
+collectReal at point do check9Step1
+collectReal at point do check9Step2
+collectReal at point do findCheck91
+collectReal at point branch if check9 goto takePoint else goto exponent
+collectReal at takePoint do doStoreValue5
+collectReal at takePoint do findCountNext81
+collectReal at takePoint set count countNext8
+collectReal at takePoint do findValueNext81
+collectReal at takePoint set value valueNext8
 collectReal at takePoint goto fraction
-collectReal at fraction do check13Step1
-collectReal at fraction do check13Step2
-collectReal at fraction do check13Step3
-collectReal at fraction do check13Step4
-collectReal at fraction do findCheck131
-collectReal at fraction branch if check13 goto fractionDigit else goto exponent
-collectReal at fractionDigit do doStoreValue9
-collectReal at fractionDigit do findCountNext121
-collectReal at fractionDigit set count countNext12
+collectReal at fraction do check10Step1
+collectReal at fraction do check10Step2
+collectReal at fraction do check10Step3
+collectReal at fraction do check10Step4
+collectReal at fraction do findCheck101
+collectReal at fraction branch if check10 goto fractionDigit else goto exponent
+collectReal at fractionDigit do doStoreValue6
+collectReal at fractionDigit do findCountNext91
+collectReal at fractionDigit set count countNext9
 collectReal at fractionDigit do findDigitsNext21
 collectReal at fractionDigit set digits digitsNext2
-collectReal at fractionDigit do findValueNext131
-collectReal at fractionDigit set value valueNext13
+collectReal at fractionDigit do findValueNext91
+collectReal at fractionDigit set value valueNext9
 collectReal at fractionDigit goto fraction
-collectReal at exponent do check14Step1
-collectReal at exponent do check14Step2
-collectReal at exponent do check14Step3
-collectReal at exponent do check14Step4
-collectReal at exponent do check14Step5
-collectReal at exponent do findCheck141
-collectReal at exponent branch if check14 goto takeMarker else goto finish
-collectReal at takeMarker do doStoreValue10
-collectReal at takeMarker do findCountNext131
-collectReal at takeMarker set count countNext13
-collectReal at takeMarker do findValueNext141
-collectReal at takeMarker set value valueNext14
-collectReal at takeMarker do check15Step1
-collectReal at takeMarker do check15Step2
-collectReal at takeMarker do check15Step3
-collectReal at takeMarker do check15Step4
-collectReal at takeMarker do findCheck151
-collectReal at takeMarker branch if check15 goto exponentSign else goto power
-collectReal at exponentSign do doStoreValue11
-collectReal at exponentSign do findCountNext141
-collectReal at exponentSign set count countNext14
-collectReal at exponentSign do findValueNext151
-collectReal at exponentSign set value valueNext15
+collectReal at exponent do check11Step1
+collectReal at exponent do check11Step2
+collectReal at exponent do check11Step3
+collectReal at exponent do check11Step4
+collectReal at exponent do check11Step5
+collectReal at exponent do findCheck111
+collectReal at exponent branch if check11 goto takeMarker else goto finish
+collectReal at takeMarker do doStoreValue7
+collectReal at takeMarker do findCountNext101
+collectReal at takeMarker set count countNext10
+collectReal at takeMarker do findValueNext101
+collectReal at takeMarker set value valueNext10
+collectReal at takeMarker do check12Step1
+collectReal at takeMarker do check12Step2
+collectReal at takeMarker do check12Step3
+collectReal at takeMarker do check12Step4
+collectReal at takeMarker do findCheck121
+collectReal at takeMarker branch if check12 goto exponentSign else goto power
+collectReal at exponentSign do doStoreValue8
+collectReal at exponentSign do findCountNext111
+collectReal at exponentSign set count countNext11
+collectReal at exponentSign do findValueNext111
+collectReal at exponentSign set value valueNext11
 collectReal at exponentSign goto power
-collectReal at power do check16Step1
-collectReal at power do check16Step2
-collectReal at power do check16Step3
-collectReal at power do check16Step4
-collectReal at power do findCheck161
-collectReal at power branch if check16 goto powerDigit else goto finish
-collectReal at powerDigit do doStoreValue12
-collectReal at powerDigit do findCountNext151
-collectReal at powerDigit set count countNext15
-collectReal at powerDigit do findValueNext161
-collectReal at powerDigit set value valueNext16
+collectReal at power do check13Step1
+collectReal at power do check13Step2
+collectReal at power do check13Step3
+collectReal at power do check13Step4
+collectReal at power do findCheck131
+collectReal at power branch if check13 goto powerDigit else goto finish
+collectReal at powerDigit do doStoreValue9
+collectReal at powerDigit do findCountNext121
+collectReal at powerDigit set count countNext12
+collectReal at powerDigit do findValueNext121
+collectReal at powerDigit set value valueNext12
 collectReal at powerDigit goto power
 collectReal at finish do doGive
 collectReal at finish do doScanUnget
 collectReal at finish do findEndAt1
 collectReal at finish do doStoreByte
-collectReal at finish do findCheck171
-collectReal at finish branch if check17 goto refuse else goto done
+collectReal at finish do findCheck141
+collectReal at finish branch if check14 goto refuse else goto done
 collectReal at done return ok count
 collectReal at refuse return ok failure
 
@@ -15590,11 +15770,22 @@ findValueNext31 borrows none
 findValueNext31 catch none
 findValueNext31 suppresses none
 
+findValueNext41 is call
+findValueNext41 in collectReal
+findValueNext41 invokes machine.loadInt64
+findValueNext41 argument address machine.Address pending copy
+findValueNext41 result valueNext4 Int64
+findValueNext41 ownedBy none
+findValueNext41 cleanedBy none
+findValueNext41 borrows none
+findValueNext41 catch none
+findValueNext41 suppresses none
+
 check6Step1 is call
 check6Step1 in collectReal
 check6Step1 invokes compare.equalInt64
 check6Step1 argument left Int64 value copy
-check6Step1 argument right Int64 n40 copy
+check6Step1 argument right Int64 n48 copy
 check6Step1 result check6Part1 Bool
 check6Step1 ownedBy none
 check6Step1 cleanedBy none
@@ -15651,23 +15842,22 @@ findCountNext51 borrows none
 findCountNext51 catch none
 findCountNext51 suppresses none
 
-findValueNext41 is call
-findValueNext41 in collectReal
-findValueNext41 invokes scanGet
-findValueNext41 argument scanner machine.Address scanner copy
-findValueNext41 result valueNext4 Int64
-findValueNext41 ownedBy none
-findValueNext41 cleanedBy none
-findValueNext41 borrows none
-findValueNext41 catch none
-findValueNext41 suppresses none
+findValueNext51 is call
+findValueNext51 in collectReal
+findValueNext51 invokes scanGet
+findValueNext51 argument scanner machine.Address scanner copy
+findValueNext51 result valueNext5 Int64
+findValueNext51 ownedBy none
+findValueNext51 cleanedBy none
+findValueNext51 borrows none
+findValueNext51 catch none
+findValueNext51 suppresses none
 
 check7Step1 is call
 check7Step1 in collectReal
-check7Step1 invokes compare.lessThanInt64
-check7Step1 argument left Int64 count copy
-check7Step1 argument right Int64 width copy
-check7Step1 result check7Part1 Bool
+check7Step1 invokes lowerValue
+check7Step1 argument value Int64 value copy
+check7Step1 result check7Part1 Int64
 check7Step1 ownedBy none
 check7Step1 cleanedBy none
 check7Step1 borrows none
@@ -15676,9 +15866,10 @@ check7Step1 suppresses none
 
 check7Step2 is call
 check7Step2 in collectReal
-check7Step2 invokes digitValue
-check7Step2 argument value Int64 value copy
-check7Step2 result check7Part2 UInt64
+check7Step2 invokes compare.equalInt64
+check7Step2 argument left Int64 check7Part1 copy
+check7Step2 argument right Int64 n120 copy
+check7Step2 result check7Part2 Bool
 check7Step2 ownedBy none
 check7Step2 cleanedBy none
 check7Step2 borrows none
@@ -15687,9 +15878,9 @@ check7Step2 suppresses none
 
 check7Step3 is call
 check7Step3 in collectReal
-check7Step3 invokes compare.lessThanUInt64
-check7Step3 argument left UInt64 check7Part2 copy
-check7Step3 argument right UInt64 uInt6436 copy
+check7Step3 invokes compare.lessThanInt64
+check7Step3 argument left Int64 count copy
+check7Step3 argument right Int64 width copy
 check7Step3 result check7Part3 Bool
 check7Step3 ownedBy none
 check7Step3 cleanedBy none
@@ -15697,35 +15888,11 @@ check7Step3 borrows none
 check7Step3 catch none
 check7Step3 suppresses none
 
-check7Step4 is call
-check7Step4 in collectReal
-check7Step4 invokes compare.equalInt64
-check7Step4 argument left Int64 value copy
-check7Step4 argument right Int64 n95 copy
-check7Step4 result check7Part4 Bool
-check7Step4 ownedBy none
-check7Step4 cleanedBy none
-check7Step4 borrows none
-check7Step4 catch none
-check7Step4 suppresses none
-
-check7Step5 is call
-check7Step5 in collectReal
-check7Step5 invokes logic.or
-check7Step5 argument left Bool check7Part3 copy
-check7Step5 argument right Bool check7Part4 copy
-check7Step5 result check7Part5 Bool
-check7Step5 ownedBy none
-check7Step5 cleanedBy none
-check7Step5 borrows none
-check7Step5 catch none
-check7Step5 suppresses none
-
 findCheck71 is call
 findCheck71 in collectReal
 findCheck71 invokes logic.and
-findCheck71 argument left Bool check7Part1 copy
-findCheck71 argument right Bool check7Part5 copy
+findCheck71 argument left Bool check7Part2 copy
+findCheck71 argument right Bool check7Part3 copy
 findCheck71 result check7 Bool
 findCheck71 ownedBy none
 findCheck71 cleanedBy none
@@ -15758,22 +15925,22 @@ findCountNext61 borrows none
 findCountNext61 catch none
 findCountNext61 suppresses none
 
-findValueNext51 is call
-findValueNext51 in collectReal
-findValueNext51 invokes scanGet
-findValueNext51 argument scanner machine.Address scanner copy
-findValueNext51 result valueNext5 Int64
-findValueNext51 ownedBy none
-findValueNext51 cleanedBy none
-findValueNext51 borrows none
-findValueNext51 catch none
-findValueNext51 suppresses none
+findValueNext61 is call
+findValueNext61 in collectReal
+findValueNext61 invokes scanGet
+findValueNext61 argument scanner machine.Address scanner copy
+findValueNext61 result valueNext6 Int64
+findValueNext61 ownedBy none
+findValueNext61 cleanedBy none
+findValueNext61 borrows none
+findValueNext61 catch none
+findValueNext61 suppresses none
 
 check8Step1 is call
 check8Step1 in collectReal
-check8Step1 invokes compare.equalInt64
-check8Step1 argument left Int64 value copy
-check8Step1 argument right Int64 n41 copy
+check8Step1 invokes compare.lessThanInt64
+check8Step1 argument left Int64 count copy
+check8Step1 argument right Int64 width copy
 check8Step1 result check8Part1 Bool
 check8Step1 ownedBy none
 check8Step1 cleanedBy none
@@ -15783,21 +15950,43 @@ check8Step1 suppresses none
 
 check8Step2 is call
 check8Step2 in collectReal
-check8Step2 invokes compare.lessThanInt64
-check8Step2 argument left Int64 count copy
-check8Step2 argument right Int64 width copy
-check8Step2 result check8Part2 Bool
+check8Step2 invokes digitValue
+check8Step2 argument value Int64 value copy
+check8Step2 result check8Part2 UInt64
 check8Step2 ownedBy none
 check8Step2 cleanedBy none
 check8Step2 borrows none
 check8Step2 catch none
 check8Step2 suppresses none
 
+check8Step3 is call
+check8Step3 in collectReal
+check8Step3 invokes convert.uint64ToInt64
+check8Step3 argument value UInt64 check8Part2 copy
+check8Step3 result check8Part3 Int64
+check8Step3 ownedBy none
+check8Step3 cleanedBy none
+check8Step3 borrows none
+check8Step3 catch none
+check8Step3 suppresses none
+
+check8Step4 is call
+check8Step4 in collectReal
+check8Step4 invokes compare.lessThanInt64
+check8Step4 argument left Int64 check8Part3 copy
+check8Step4 argument right Int64 radix copy
+check8Step4 result check8Part4 Bool
+check8Step4 ownedBy none
+check8Step4 cleanedBy none
+check8Step4 borrows none
+check8Step4 catch none
+check8Step4 suppresses none
+
 findCheck81 is call
 findCheck81 in collectReal
 findCheck81 invokes logic.and
 findCheck81 argument left Bool check8Part1 copy
-findCheck81 argument right Bool check8Part2 copy
+findCheck81 argument right Bool check8Part4 copy
 findCheck81 result check8 Bool
 findCheck81 ownedBy none
 findCheck81 cleanedBy none
@@ -15830,21 +16019,22 @@ findCountNext71 borrows none
 findCountNext71 catch none
 findCountNext71 suppresses none
 
-findValueNext61 is call
-findValueNext61 in collectReal
-findValueNext61 invokes scanGet
-findValueNext61 argument scanner machine.Address scanner copy
-findValueNext61 result valueNext6 Int64
-findValueNext61 ownedBy none
-findValueNext61 cleanedBy none
-findValueNext61 borrows none
-findValueNext61 catch none
-findValueNext61 suppresses none
+findDigitsNext11 is call
+findDigitsNext11 in collectReal
+findDigitsNext11 invokes math.addInt64
+findDigitsNext11 argument left Int64 digits copy
+findDigitsNext11 argument right Int64 one copy
+findDigitsNext11 result digitsNext1 Int64
+findDigitsNext11 ownedBy none
+findDigitsNext11 cleanedBy none
+findDigitsNext11 borrows none
+findDigitsNext11 catch none
+findDigitsNext11 suppresses none
 
 findValueNext71 is call
 findValueNext71 in collectReal
-findValueNext71 invokes machine.loadInt64
-findValueNext71 argument address machine.Address pending copy
+findValueNext71 invokes scanGet
+findValueNext71 argument scanner machine.Address scanner copy
 findValueNext71 result valueNext7 Int64
 findValueNext71 ownedBy none
 findValueNext71 cleanedBy none
@@ -15852,22 +16042,11 @@ findValueNext71 borrows none
 findValueNext71 catch none
 findValueNext71 suppresses none
 
-findValueNext81 is call
-findValueNext81 in collectReal
-findValueNext81 invokes machine.loadInt64
-findValueNext81 argument address machine.Address pending copy
-findValueNext81 result valueNext8 Int64
-findValueNext81 ownedBy none
-findValueNext81 cleanedBy none
-findValueNext81 borrows none
-findValueNext81 catch none
-findValueNext81 suppresses none
-
 check9Step1 is call
 check9Step1 in collectReal
 check9Step1 invokes compare.equalInt64
 check9Step1 argument left Int64 value copy
-check9Step1 argument right Int64 n48 copy
+check9Step1 argument right Int64 n46 copy
 check9Step1 result check9Part1 Bool
 check9Step1 ownedBy none
 check9Step1 cleanedBy none
@@ -15924,22 +16103,23 @@ findCountNext81 borrows none
 findCountNext81 catch none
 findCountNext81 suppresses none
 
-findValueNext91 is call
-findValueNext91 in collectReal
-findValueNext91 invokes scanGet
-findValueNext91 argument scanner machine.Address scanner copy
-findValueNext91 result valueNext9 Int64
-findValueNext91 ownedBy none
-findValueNext91 cleanedBy none
-findValueNext91 borrows none
-findValueNext91 catch none
-findValueNext91 suppresses none
+findValueNext81 is call
+findValueNext81 in collectReal
+findValueNext81 invokes scanGet
+findValueNext81 argument scanner machine.Address scanner copy
+findValueNext81 result valueNext8 Int64
+findValueNext81 ownedBy none
+findValueNext81 cleanedBy none
+findValueNext81 borrows none
+findValueNext81 catch none
+findValueNext81 suppresses none
 
 check10Step1 is call
 check10Step1 in collectReal
-check10Step1 invokes lowerValue
-check10Step1 argument value Int64 value copy
-check10Step1 result check10Part1 Int64
+check10Step1 invokes compare.lessThanInt64
+check10Step1 argument left Int64 count copy
+check10Step1 argument right Int64 width copy
+check10Step1 result check10Part1 Bool
 check10Step1 ownedBy none
 check10Step1 cleanedBy none
 check10Step1 borrows none
@@ -15948,10 +16128,9 @@ check10Step1 suppresses none
 
 check10Step2 is call
 check10Step2 in collectReal
-check10Step2 invokes compare.equalInt64
-check10Step2 argument left Int64 check10Part1 copy
-check10Step2 argument right Int64 n120 copy
-check10Step2 result check10Part2 Bool
+check10Step2 invokes digitValue
+check10Step2 argument value Int64 value copy
+check10Step2 result check10Part2 UInt64
 check10Step2 ownedBy none
 check10Step2 cleanedBy none
 check10Step2 borrows none
@@ -15960,21 +16139,32 @@ check10Step2 suppresses none
 
 check10Step3 is call
 check10Step3 in collectReal
-check10Step3 invokes compare.lessThanInt64
-check10Step3 argument left Int64 count copy
-check10Step3 argument right Int64 width copy
-check10Step3 result check10Part3 Bool
+check10Step3 invokes convert.uint64ToInt64
+check10Step3 argument value UInt64 check10Part2 copy
+check10Step3 result check10Part3 Int64
 check10Step3 ownedBy none
 check10Step3 cleanedBy none
 check10Step3 borrows none
 check10Step3 catch none
 check10Step3 suppresses none
 
+check10Step4 is call
+check10Step4 in collectReal
+check10Step4 invokes compare.lessThanInt64
+check10Step4 argument left Int64 check10Part3 copy
+check10Step4 argument right Int64 radix copy
+check10Step4 result check10Part4 Bool
+check10Step4 ownedBy none
+check10Step4 cleanedBy none
+check10Step4 borrows none
+check10Step4 catch none
+check10Step4 suppresses none
+
 findCheck101 is call
 findCheck101 in collectReal
 findCheck101 invokes logic.and
-findCheck101 argument left Bool check10Part2 copy
-findCheck101 argument right Bool check10Part3 copy
+findCheck101 argument left Bool check10Part1 copy
+findCheck101 argument right Bool check10Part4 copy
 findCheck101 result check10 Bool
 findCheck101 ownedBy none
 findCheck101 cleanedBy none
@@ -16007,22 +16197,34 @@ findCountNext91 borrows none
 findCountNext91 catch none
 findCountNext91 suppresses none
 
-findValueNext101 is call
-findValueNext101 in collectReal
-findValueNext101 invokes scanGet
-findValueNext101 argument scanner machine.Address scanner copy
-findValueNext101 result valueNext10 Int64
-findValueNext101 ownedBy none
-findValueNext101 cleanedBy none
-findValueNext101 borrows none
-findValueNext101 catch none
-findValueNext101 suppresses none
+findDigitsNext21 is call
+findDigitsNext21 in collectReal
+findDigitsNext21 invokes math.addInt64
+findDigitsNext21 argument left Int64 digits copy
+findDigitsNext21 argument right Int64 one copy
+findDigitsNext21 result digitsNext2 Int64
+findDigitsNext21 ownedBy none
+findDigitsNext21 cleanedBy none
+findDigitsNext21 borrows none
+findDigitsNext21 catch none
+findDigitsNext21 suppresses none
+
+findValueNext91 is call
+findValueNext91 in collectReal
+findValueNext91 invokes scanGet
+findValueNext91 argument scanner machine.Address scanner copy
+findValueNext91 result valueNext9 Int64
+findValueNext91 ownedBy none
+findValueNext91 cleanedBy none
+findValueNext91 borrows none
+findValueNext91 catch none
+findValueNext91 suppresses none
 
 check11Step1 is call
 check11Step1 in collectReal
-check11Step1 invokes compare.lessThanInt64
-check11Step1 argument left Int64 count copy
-check11Step1 argument right Int64 width copy
+check11Step1 invokes compare.greaterThanInt64
+check11Step1 argument left Int64 digits copy
+check11Step1 argument right Int64 zero copy
 check11Step1 result check11Part1 Bool
 check11Step1 ownedBy none
 check11Step1 cleanedBy none
@@ -16032,9 +16234,9 @@ check11Step1 suppresses none
 
 check11Step2 is call
 check11Step2 in collectReal
-check11Step2 invokes digitValue
+check11Step2 invokes lowerValue
 check11Step2 argument value Int64 value copy
-check11Step2 result check11Part2 UInt64
+check11Step2 result check11Part2 Int64
 check11Step2 ownedBy none
 check11Step2 cleanedBy none
 check11Step2 borrows none
@@ -16043,9 +16245,10 @@ check11Step2 suppresses none
 
 check11Step3 is call
 check11Step3 in collectReal
-check11Step3 invokes convert.uint64ToInt64
-check11Step3 argument value UInt64 check11Part2 copy
-check11Step3 result check11Part3 Int64
+check11Step3 invokes compare.equalInt64
+check11Step3 argument left Int64 check11Part2 copy
+check11Step3 argument right Int64 marker copy
+check11Step3 result check11Part3 Bool
 check11Step3 ownedBy none
 check11Step3 cleanedBy none
 check11Step3 borrows none
@@ -16054,9 +16257,9 @@ check11Step3 suppresses none
 
 check11Step4 is call
 check11Step4 in collectReal
-check11Step4 invokes compare.lessThanInt64
-check11Step4 argument left Int64 check11Part3 copy
-check11Step4 argument right Int64 radix copy
+check11Step4 invokes logic.and
+check11Step4 argument left Bool check11Part1 copy
+check11Step4 argument right Bool check11Part3 copy
 check11Step4 result check11Part4 Bool
 check11Step4 ownedBy none
 check11Step4 cleanedBy none
@@ -16064,11 +16267,23 @@ check11Step4 borrows none
 check11Step4 catch none
 check11Step4 suppresses none
 
+check11Step5 is call
+check11Step5 in collectReal
+check11Step5 invokes compare.lessThanInt64
+check11Step5 argument left Int64 count copy
+check11Step5 argument right Int64 width copy
+check11Step5 result check11Part5 Bool
+check11Step5 ownedBy none
+check11Step5 cleanedBy none
+check11Step5 borrows none
+check11Step5 catch none
+check11Step5 suppresses none
+
 findCheck111 is call
 findCheck111 in collectReal
 findCheck111 invokes logic.and
-findCheck111 argument left Bool check11Part1 copy
-findCheck111 argument right Bool check11Part4 copy
+findCheck111 argument left Bool check11Part4 copy
+findCheck111 argument right Bool check11Part5 copy
 findCheck111 result check11 Bool
 findCheck111 ownedBy none
 findCheck111 cleanedBy none
@@ -16101,34 +16316,22 @@ findCountNext101 borrows none
 findCountNext101 catch none
 findCountNext101 suppresses none
 
-findDigitsNext11 is call
-findDigitsNext11 in collectReal
-findDigitsNext11 invokes math.addInt64
-findDigitsNext11 argument left Int64 digits copy
-findDigitsNext11 argument right Int64 one copy
-findDigitsNext11 result digitsNext1 Int64
-findDigitsNext11 ownedBy none
-findDigitsNext11 cleanedBy none
-findDigitsNext11 borrows none
-findDigitsNext11 catch none
-findDigitsNext11 suppresses none
-
-findValueNext111 is call
-findValueNext111 in collectReal
-findValueNext111 invokes scanGet
-findValueNext111 argument scanner machine.Address scanner copy
-findValueNext111 result valueNext11 Int64
-findValueNext111 ownedBy none
-findValueNext111 cleanedBy none
-findValueNext111 borrows none
-findValueNext111 catch none
-findValueNext111 suppresses none
+findValueNext101 is call
+findValueNext101 in collectReal
+findValueNext101 invokes scanGet
+findValueNext101 argument scanner machine.Address scanner copy
+findValueNext101 result valueNext10 Int64
+findValueNext101 ownedBy none
+findValueNext101 cleanedBy none
+findValueNext101 borrows none
+findValueNext101 catch none
+findValueNext101 suppresses none
 
 check12Step1 is call
 check12Step1 in collectReal
 check12Step1 invokes compare.equalInt64
 check12Step1 argument left Int64 value copy
-check12Step1 argument right Int64 n46 copy
+check12Step1 argument right Int64 n43 copy
 check12Step1 result check12Part1 Bool
 check12Step1 ownedBy none
 check12Step1 cleanedBy none
@@ -16138,9 +16341,9 @@ check12Step1 suppresses none
 
 check12Step2 is call
 check12Step2 in collectReal
-check12Step2 invokes compare.lessThanInt64
-check12Step2 argument left Int64 count copy
-check12Step2 argument right Int64 width copy
+check12Step2 invokes compare.equalInt64
+check12Step2 argument left Int64 value copy
+check12Step2 argument right Int64 n45 copy
 check12Step2 result check12Part2 Bool
 check12Step2 ownedBy none
 check12Step2 cleanedBy none
@@ -16148,11 +16351,35 @@ check12Step2 borrows none
 check12Step2 catch none
 check12Step2 suppresses none
 
+check12Step3 is call
+check12Step3 in collectReal
+check12Step3 invokes logic.or
+check12Step3 argument left Bool check12Part1 copy
+check12Step3 argument right Bool check12Part2 copy
+check12Step3 result check12Part3 Bool
+check12Step3 ownedBy none
+check12Step3 cleanedBy none
+check12Step3 borrows none
+check12Step3 catch none
+check12Step3 suppresses none
+
+check12Step4 is call
+check12Step4 in collectReal
+check12Step4 invokes compare.lessThanInt64
+check12Step4 argument left Int64 count copy
+check12Step4 argument right Int64 width copy
+check12Step4 result check12Part4 Bool
+check12Step4 ownedBy none
+check12Step4 cleanedBy none
+check12Step4 borrows none
+check12Step4 catch none
+check12Step4 suppresses none
+
 findCheck121 is call
 findCheck121 in collectReal
 findCheck121 invokes logic.and
-findCheck121 argument left Bool check12Part1 copy
-findCheck121 argument right Bool check12Part2 copy
+findCheck121 argument left Bool check12Part3 copy
+findCheck121 argument right Bool check12Part4 copy
 findCheck121 result check12 Bool
 findCheck121 ownedBy none
 findCheck121 cleanedBy none
@@ -16185,16 +16412,16 @@ findCountNext111 borrows none
 findCountNext111 catch none
 findCountNext111 suppresses none
 
-findValueNext121 is call
-findValueNext121 in collectReal
-findValueNext121 invokes scanGet
-findValueNext121 argument scanner machine.Address scanner copy
-findValueNext121 result valueNext12 Int64
-findValueNext121 ownedBy none
-findValueNext121 cleanedBy none
-findValueNext121 borrows none
-findValueNext121 catch none
-findValueNext121 suppresses none
+findValueNext111 is call
+findValueNext111 in collectReal
+findValueNext111 invokes scanGet
+findValueNext111 argument scanner machine.Address scanner copy
+findValueNext111 result valueNext11 Int64
+findValueNext111 ownedBy none
+findValueNext111 cleanedBy none
+findValueNext111 borrows none
+findValueNext111 catch none
+findValueNext111 suppresses none
 
 check13Step1 is call
 check13Step1 in collectReal
@@ -16234,7 +16461,7 @@ check13Step4 is call
 check13Step4 in collectReal
 check13Step4 invokes compare.lessThanInt64
 check13Step4 argument left Int64 check13Part3 copy
-check13Step4 argument right Int64 radix copy
+check13Step4 argument right Int64 ten copy
 check13Step4 result check13Part4 Bool
 check13Step4 ownedBy none
 check13Step4 cleanedBy none
@@ -16279,325 +16506,16 @@ findCountNext121 borrows none
 findCountNext121 catch none
 findCountNext121 suppresses none
 
-findDigitsNext21 is call
-findDigitsNext21 in collectReal
-findDigitsNext21 invokes math.addInt64
-findDigitsNext21 argument left Int64 digits copy
-findDigitsNext21 argument right Int64 one copy
-findDigitsNext21 result digitsNext2 Int64
-findDigitsNext21 ownedBy none
-findDigitsNext21 cleanedBy none
-findDigitsNext21 borrows none
-findDigitsNext21 catch none
-findDigitsNext21 suppresses none
-
-findValueNext131 is call
-findValueNext131 in collectReal
-findValueNext131 invokes scanGet
-findValueNext131 argument scanner machine.Address scanner copy
-findValueNext131 result valueNext13 Int64
-findValueNext131 ownedBy none
-findValueNext131 cleanedBy none
-findValueNext131 borrows none
-findValueNext131 catch none
-findValueNext131 suppresses none
-
-check14Step1 is call
-check14Step1 in collectReal
-check14Step1 invokes compare.greaterThanInt64
-check14Step1 argument left Int64 digits copy
-check14Step1 argument right Int64 zero copy
-check14Step1 result check14Part1 Bool
-check14Step1 ownedBy none
-check14Step1 cleanedBy none
-check14Step1 borrows none
-check14Step1 catch none
-check14Step1 suppresses none
-
-check14Step2 is call
-check14Step2 in collectReal
-check14Step2 invokes lowerValue
-check14Step2 argument value Int64 value copy
-check14Step2 result check14Part2 Int64
-check14Step2 ownedBy none
-check14Step2 cleanedBy none
-check14Step2 borrows none
-check14Step2 catch none
-check14Step2 suppresses none
-
-check14Step3 is call
-check14Step3 in collectReal
-check14Step3 invokes compare.equalInt64
-check14Step3 argument left Int64 check14Part2 copy
-check14Step3 argument right Int64 marker copy
-check14Step3 result check14Part3 Bool
-check14Step3 ownedBy none
-check14Step3 cleanedBy none
-check14Step3 borrows none
-check14Step3 catch none
-check14Step3 suppresses none
-
-check14Step4 is call
-check14Step4 in collectReal
-check14Step4 invokes logic.and
-check14Step4 argument left Bool check14Part1 copy
-check14Step4 argument right Bool check14Part3 copy
-check14Step4 result check14Part4 Bool
-check14Step4 ownedBy none
-check14Step4 cleanedBy none
-check14Step4 borrows none
-check14Step4 catch none
-check14Step4 suppresses none
-
-check14Step5 is call
-check14Step5 in collectReal
-check14Step5 invokes compare.lessThanInt64
-check14Step5 argument left Int64 count copy
-check14Step5 argument right Int64 width copy
-check14Step5 result check14Part5 Bool
-check14Step5 ownedBy none
-check14Step5 cleanedBy none
-check14Step5 borrows none
-check14Step5 catch none
-check14Step5 suppresses none
-
-findCheck141 is call
-findCheck141 in collectReal
-findCheck141 invokes logic.and
-findCheck141 argument left Bool check14Part4 copy
-findCheck141 argument right Bool check14Part5 copy
-findCheck141 result check14 Bool
-findCheck141 ownedBy none
-findCheck141 cleanedBy none
-findCheck141 borrows none
-findCheck141 catch none
-findCheck141 suppresses none
-
-doStoreValue10 is call
-doStoreValue10 in collectReal
-doStoreValue10 invokes storeValue
-doStoreValue10 argument buffer machine.Address buffer copy
-doStoreValue10 argument at Int64 count copy
-doStoreValue10 argument value Int64 value copy
-doStoreValue10 result none
-doStoreValue10 ownedBy none
-doStoreValue10 cleanedBy none
-doStoreValue10 borrows none
-doStoreValue10 catch none
-doStoreValue10 suppresses none
-
-findCountNext131 is call
-findCountNext131 in collectReal
-findCountNext131 invokes math.addInt64
-findCountNext131 argument left Int64 count copy
-findCountNext131 argument right Int64 one copy
-findCountNext131 result countNext13 Int64
-findCountNext131 ownedBy none
-findCountNext131 cleanedBy none
-findCountNext131 borrows none
-findCountNext131 catch none
-findCountNext131 suppresses none
-
-findValueNext141 is call
-findValueNext141 in collectReal
-findValueNext141 invokes scanGet
-findValueNext141 argument scanner machine.Address scanner copy
-findValueNext141 result valueNext14 Int64
-findValueNext141 ownedBy none
-findValueNext141 cleanedBy none
-findValueNext141 borrows none
-findValueNext141 catch none
-findValueNext141 suppresses none
-
-check15Step1 is call
-check15Step1 in collectReal
-check15Step1 invokes compare.equalInt64
-check15Step1 argument left Int64 value copy
-check15Step1 argument right Int64 n43 copy
-check15Step1 result check15Part1 Bool
-check15Step1 ownedBy none
-check15Step1 cleanedBy none
-check15Step1 borrows none
-check15Step1 catch none
-check15Step1 suppresses none
-
-check15Step2 is call
-check15Step2 in collectReal
-check15Step2 invokes compare.equalInt64
-check15Step2 argument left Int64 value copy
-check15Step2 argument right Int64 n45 copy
-check15Step2 result check15Part2 Bool
-check15Step2 ownedBy none
-check15Step2 cleanedBy none
-check15Step2 borrows none
-check15Step2 catch none
-check15Step2 suppresses none
-
-check15Step3 is call
-check15Step3 in collectReal
-check15Step3 invokes logic.or
-check15Step3 argument left Bool check15Part1 copy
-check15Step3 argument right Bool check15Part2 copy
-check15Step3 result check15Part3 Bool
-check15Step3 ownedBy none
-check15Step3 cleanedBy none
-check15Step3 borrows none
-check15Step3 catch none
-check15Step3 suppresses none
-
-check15Step4 is call
-check15Step4 in collectReal
-check15Step4 invokes compare.lessThanInt64
-check15Step4 argument left Int64 count copy
-check15Step4 argument right Int64 width copy
-check15Step4 result check15Part4 Bool
-check15Step4 ownedBy none
-check15Step4 cleanedBy none
-check15Step4 borrows none
-check15Step4 catch none
-check15Step4 suppresses none
-
-findCheck151 is call
-findCheck151 in collectReal
-findCheck151 invokes logic.and
-findCheck151 argument left Bool check15Part3 copy
-findCheck151 argument right Bool check15Part4 copy
-findCheck151 result check15 Bool
-findCheck151 ownedBy none
-findCheck151 cleanedBy none
-findCheck151 borrows none
-findCheck151 catch none
-findCheck151 suppresses none
-
-doStoreValue11 is call
-doStoreValue11 in collectReal
-doStoreValue11 invokes storeValue
-doStoreValue11 argument buffer machine.Address buffer copy
-doStoreValue11 argument at Int64 count copy
-doStoreValue11 argument value Int64 value copy
-doStoreValue11 result none
-doStoreValue11 ownedBy none
-doStoreValue11 cleanedBy none
-doStoreValue11 borrows none
-doStoreValue11 catch none
-doStoreValue11 suppresses none
-
-findCountNext141 is call
-findCountNext141 in collectReal
-findCountNext141 invokes math.addInt64
-findCountNext141 argument left Int64 count copy
-findCountNext141 argument right Int64 one copy
-findCountNext141 result countNext14 Int64
-findCountNext141 ownedBy none
-findCountNext141 cleanedBy none
-findCountNext141 borrows none
-findCountNext141 catch none
-findCountNext141 suppresses none
-
-findValueNext151 is call
-findValueNext151 in collectReal
-findValueNext151 invokes scanGet
-findValueNext151 argument scanner machine.Address scanner copy
-findValueNext151 result valueNext15 Int64
-findValueNext151 ownedBy none
-findValueNext151 cleanedBy none
-findValueNext151 borrows none
-findValueNext151 catch none
-findValueNext151 suppresses none
-
-check16Step1 is call
-check16Step1 in collectReal
-check16Step1 invokes compare.lessThanInt64
-check16Step1 argument left Int64 count copy
-check16Step1 argument right Int64 width copy
-check16Step1 result check16Part1 Bool
-check16Step1 ownedBy none
-check16Step1 cleanedBy none
-check16Step1 borrows none
-check16Step1 catch none
-check16Step1 suppresses none
-
-check16Step2 is call
-check16Step2 in collectReal
-check16Step2 invokes digitValue
-check16Step2 argument value Int64 value copy
-check16Step2 result check16Part2 UInt64
-check16Step2 ownedBy none
-check16Step2 cleanedBy none
-check16Step2 borrows none
-check16Step2 catch none
-check16Step2 suppresses none
-
-check16Step3 is call
-check16Step3 in collectReal
-check16Step3 invokes convert.uint64ToInt64
-check16Step3 argument value UInt64 check16Part2 copy
-check16Step3 result check16Part3 Int64
-check16Step3 ownedBy none
-check16Step3 cleanedBy none
-check16Step3 borrows none
-check16Step3 catch none
-check16Step3 suppresses none
-
-check16Step4 is call
-check16Step4 in collectReal
-check16Step4 invokes compare.lessThanInt64
-check16Step4 argument left Int64 check16Part3 copy
-check16Step4 argument right Int64 ten copy
-check16Step4 result check16Part4 Bool
-check16Step4 ownedBy none
-check16Step4 cleanedBy none
-check16Step4 borrows none
-check16Step4 catch none
-check16Step4 suppresses none
-
-findCheck161 is call
-findCheck161 in collectReal
-findCheck161 invokes logic.and
-findCheck161 argument left Bool check16Part1 copy
-findCheck161 argument right Bool check16Part4 copy
-findCheck161 result check16 Bool
-findCheck161 ownedBy none
-findCheck161 cleanedBy none
-findCheck161 borrows none
-findCheck161 catch none
-findCheck161 suppresses none
-
-doStoreValue12 is call
-doStoreValue12 in collectReal
-doStoreValue12 invokes storeValue
-doStoreValue12 argument buffer machine.Address buffer copy
-doStoreValue12 argument at Int64 count copy
-doStoreValue12 argument value Int64 value copy
-doStoreValue12 result none
-doStoreValue12 ownedBy none
-doStoreValue12 cleanedBy none
-doStoreValue12 borrows none
-doStoreValue12 catch none
-doStoreValue12 suppresses none
-
-findCountNext151 is call
-findCountNext151 in collectReal
-findCountNext151 invokes math.addInt64
-findCountNext151 argument left Int64 count copy
-findCountNext151 argument right Int64 one copy
-findCountNext151 result countNext15 Int64
-findCountNext151 ownedBy none
-findCountNext151 cleanedBy none
-findCountNext151 borrows none
-findCountNext151 catch none
-findCountNext151 suppresses none
-
-findValueNext161 is call
-findValueNext161 in collectReal
-findValueNext161 invokes scanGet
-findValueNext161 argument scanner machine.Address scanner copy
-findValueNext161 result valueNext16 Int64
-findValueNext161 ownedBy none
-findValueNext161 cleanedBy none
-findValueNext161 borrows none
-findValueNext161 catch none
-findValueNext161 suppresses none
+findValueNext121 is call
+findValueNext121 in collectReal
+findValueNext121 invokes scanGet
+findValueNext121 argument scanner machine.Address scanner copy
+findValueNext121 result valueNext12 Int64
+findValueNext121 ownedBy none
+findValueNext121 cleanedBy none
+findValueNext121 borrows none
+findValueNext121 catch none
+findValueNext121 suppresses none
 
 doGive is call
 doGive in collectReal
@@ -16646,17 +16564,17 @@ doStoreByte borrows none
 doStoreByte catch none
 doStoreByte suppresses none
 
-findCheck171 is call
-findCheck171 in collectReal
-findCheck171 invokes compare.equalInt64
-findCheck171 argument left Int64 digits copy
-findCheck171 argument right Int64 zero copy
-findCheck171 result check17 Bool
-findCheck171 ownedBy none
-findCheck171 cleanedBy none
-findCheck171 borrows none
-findCheck171 catch none
-findCheck171 suppresses none
+findCheck141 is call
+findCheck141 in collectReal
+findCheck141 invokes compare.equalInt64
+findCheck141 argument left Int64 digits copy
+findCheck141 argument right Int64 zero copy
+findCheck141 result check14 Bool
+findCheck141 ownedBy none
+findCheck141 cleanedBy none
+findCheck141 borrows none
+findCheck141 catch none
+findCheck141 suppresses none
 
 scanSet is operation
 scanSet purpose "Read a %[ scanset that starts at a position of a format (after the `[`) into a table of 256 bytes, 1 for each byte it takes (`^` first takes the others; `]` first is a member; `a-z` is a range); gives the position after its `]`"
@@ -18568,6 +18486,7 @@ scanAll typeParameter none
 scanAll input stream machine.Address copied
 scanAll input format machine.Address copied
 scanAll input cursor machine.Address copied
+scanAll input c23 Bool copied
 scanAll output Int32
 scanAll outputOwnedBy none
 scanAll raises none
@@ -18680,6 +18599,10 @@ scanAll label realWrite loopKind none
 scanAll label realWrite within eachDirective
 scanAll label whole loopKind none
 scanAll label whole within eachDirective
+scanAll label binaryConversion loopKind none
+scanAll label binaryConversion within eachDirective
+scanAll label baseKnown loopKind none
+scanAll label baseKnown within eachDirective
 scanAll label wholeRead loopKind none
 scanAll label wholeRead within eachDirective
 scanAll label wholeStore loopKind none
@@ -18722,6 +18645,8 @@ scanAll let three Int64 3 immutable
 scanAll let four Int64 4 immutable
 scanAll let n9223372036854775807 Int64 9223372036854775807 immutable
 scanAll let n4000 Int64 4000 immutable
+scanAll let byte98 Byte 98 immutable
+scanAll let two Int64 2 immutable
 scanAll let byte100 Byte 100 immutable
 scanAll let byte105 Byte 105 immutable
 scanAll let byte112 Byte 112 immutable
@@ -18897,11 +18822,16 @@ scanAll at realWrite do doStoreReal
 scanAll at realWrite goto addAssigned
 scanAll at whole do findBaseNext11
 scanAll at whole set base baseNext1
+scanAll at whole do check25Step1
 scanAll at whole do findCheck251
-scanAll at whole branch if check25 goto finish else goto wholeRead
+scanAll at whole branch if check25 goto binaryConversion else goto baseKnown
+scanAll at binaryConversion set base two
+scanAll at binaryConversion goto baseKnown
+scanAll at baseKnown do findCheck261
+scanAll at baseKnown branch if check26 goto finish else goto wholeRead
 scanAll at wholeRead do readWholeBytes
-scanAll at wholeRead do findCheck261
-scanAll at wholeRead branch if check26 goto finish else goto wholeStore
+scanAll at wholeRead do findCheck271
+scanAll at wholeRead branch if check27 goto finish else goto wholeStore
 scanAll at wholeStore do unsignedStep1
 scanAll at wholeStore do unsignedStep2
 scanAll at wholeStore do findUnsigned1
@@ -18916,8 +18846,8 @@ scanAll at wholeWrite do wholeLengthStep2
 scanAll at wholeWrite do findWholeLength1
 scanAll at wholeWrite do doStoreWhole2
 scanAll at wholeWrite goto addAssigned
-scanAll at inputFailure do findCheck271
-scanAll at inputFailure branch if check27 goto giveEnd else goto finish
+scanAll at inputFailure do findCheck281
+scanAll at inputFailure branch if check28 goto giveEnd else goto finish
 scanAll at giveEnd do doReleaseScan
 scanAll at giveEnd return ok ended
 scanAll at finish do doReleaseScan2
@@ -20102,17 +20032,41 @@ findBaseNext11 borrows none
 findBaseNext11 catch none
 findBaseNext11 suppresses none
 
+check25Step1 is call
+check25Step1 in scanAll
+check25Step1 invokes compare.equalByte
+check25Step1 argument left Byte conversion copy
+check25Step1 argument right Byte byte98 copy
+check25Step1 result check25Part1 Bool
+check25Step1 ownedBy none
+check25Step1 cleanedBy none
+check25Step1 borrows none
+check25Step1 catch none
+check25Step1 suppresses none
+
 findCheck251 is call
 findCheck251 in scanAll
-findCheck251 invokes compare.lessThanInt64
-findCheck251 argument left Int64 base copy
-findCheck251 argument right Int64 zero copy
+findCheck251 invokes logic.and
+findCheck251 argument left Bool c23 copy
+findCheck251 argument right Bool check25Part1 copy
 findCheck251 result check25 Bool
 findCheck251 ownedBy none
 findCheck251 cleanedBy none
 findCheck251 borrows none
 findCheck251 catch none
 findCheck251 suppresses none
+
+findCheck261 is call
+findCheck261 in scanAll
+findCheck261 invokes compare.lessThanInt64
+findCheck261 argument left Int64 base copy
+findCheck261 argument right Int64 zero copy
+findCheck261 result check26 Bool
+findCheck261 ownedBy none
+findCheck261 cleanedBy none
+findCheck261 borrows none
+findCheck261 catch none
+findCheck261 suppresses none
 
 readWholeBytes is call
 readWholeBytes in scanAll
@@ -20121,6 +20075,7 @@ readWholeBytes argument scanner machine.Address scanner copy
 readWholeBytes argument width Int64 limit copy
 readWholeBytes argument base Int64 base copy
 readWholeBytes argument buffer machine.Address buffer copy
+readWholeBytes argument binary Bool c23 copy
 readWholeBytes result wholeBytes Int64
 readWholeBytes ownedBy none
 readWholeBytes cleanedBy none
@@ -20128,17 +20083,17 @@ readWholeBytes borrows none
 readWholeBytes catch none
 readWholeBytes suppresses none
 
-findCheck261 is call
-findCheck261 in scanAll
-findCheck261 invokes compare.lessThanInt64
-findCheck261 argument left Int64 wholeBytes copy
-findCheck261 argument right Int64 zero copy
-findCheck261 result check26 Bool
-findCheck261 ownedBy none
-findCheck261 cleanedBy none
-findCheck261 borrows none
-findCheck261 catch none
-findCheck261 suppresses none
+findCheck271 is call
+findCheck271 in scanAll
+findCheck271 invokes compare.lessThanInt64
+findCheck271 argument left Int64 wholeBytes copy
+findCheck271 argument right Int64 zero copy
+findCheck271 result check27 Bool
+findCheck271 ownedBy none
+findCheck271 cleanedBy none
+findCheck271 borrows none
+findCheck271 catch none
+findCheck271 suppresses none
 
 unsignedStep1 is call
 unsignedStep1 in scanAll
@@ -20200,11 +20155,12 @@ wholeValueStep1 suppresses none
 
 readWholeValue is call
 readWholeValue in scanAll
-readWholeValue invokes clibrary.parseWhole
+readWholeValue invokes readWhole
 readWholeValue argument text machine.Address buffer copy
 readWholeValue argument endAt machine.Address nowhereWhole copy
 readWholeValue argument base Int32 wholeValuePart1 copy
 readWholeValue argument unsigned Bool unsigned copy
+readWholeValue argument binary Bool c23 copy
 readWholeValue result wholeValue Int64
 readWholeValue ownedBy none
 readWholeValue cleanedBy none
@@ -20283,17 +20239,17 @@ doStoreWhole2 borrows none
 doStoreWhole2 catch none
 doStoreWhole2 suppresses none
 
-findCheck271 is call
-findCheck271 in scanAll
-findCheck271 invokes compare.equalInt64
-findCheck271 argument left Int64 assigned copy
-findCheck271 argument right Int64 zero copy
-findCheck271 result check27 Bool
-findCheck271 ownedBy none
-findCheck271 cleanedBy none
-findCheck271 borrows none
-findCheck271 catch none
-findCheck271 suppresses none
+findCheck281 is call
+findCheck281 in scanAll
+findCheck281 invokes compare.equalInt64
+findCheck281 argument left Int64 assigned copy
+findCheck281 argument right Int64 zero copy
+findCheck281 result check28 Bool
+findCheck281 ownedBy none
+findCheck281 cleanedBy none
+findCheck281 borrows none
+findCheck281 catch none
+findCheck281 suppresses none
 
 doReleaseScan is call
 doReleaseScan in scanAll
@@ -20333,6 +20289,64 @@ findResult1 cleanedBy none
 findResult1 borrows none
 findResult1 catch none
 findResult1 suppresses none
+
+readWhole is operation
+readWhole purpose "strtol's reading of the text a conversion gathered: C23's (0b too) for the __isoc23_ forms"
+readWhole invariant none
+readWhole typeParameter none
+readWhole input text machine.Address copied
+readWhole input endAt machine.Address copied
+readWhole input base Int32 copied
+readWhole input unsigned Bool copied
+readWhole input binary Bool copied
+readWhole output Int64
+readWhole outputOwnedBy none
+readWhole raises none
+readWhole effect use machine.memory
+readWhole uses memoryAccess
+readWhole memoryHeap false
+readWhole async false
+readWhole maxRecursion none
+readWhole label begin loopKind none
+readWhole label begin within none
+readWhole label c23 loopKind none
+readWhole label c23 within none
+readWhole label c17 loopKind none
+readWhole label c17 within none
+readWhole let none
+readWhole at begin branch if binary goto c23 else goto c17
+readWhole at c23 do readNewer
+readWhole at c23 return ok newer
+readWhole at c17 do readOlder
+readWhole at c17 return ok older
+
+readNewer is call
+readNewer in readWhole
+readNewer invokes clibrary.parseWholeBinary
+readNewer argument text machine.Address text copy
+readNewer argument endAt machine.Address endAt copy
+readNewer argument base Int32 base copy
+readNewer argument unsigned Bool unsigned copy
+readNewer result newer Int64
+readNewer ownedBy none
+readNewer cleanedBy none
+readNewer borrows none
+readNewer catch none
+readNewer suppresses none
+
+readOlder is call
+readOlder in readWhole
+readOlder invokes clibrary.parseWhole
+readOlder argument text machine.Address text copy
+readOlder argument endAt machine.Address endAt copy
+readOlder argument base Int32 base copy
+readOlder argument unsigned Bool unsigned copy
+readOlder result older Int64
+readOlder ownedBy none
+readOlder cleanedBy none
+readOlder borrows none
+readOlder catch none
+readOlder suppresses none
 
 releaseScan is operation
 releaseScan purpose "Give back a scan's blocks"
@@ -21443,12 +21457,13 @@ doStoreInt64 suppresses none
 
 # ---------------------------------------------------------------- the scanf family
 scanWith is operation
-scanWith purpose "scanf's engine over the arguments a va_list holds"
+scanWith purpose "scanf's engine over the arguments a va_list holds (C23's %b and 0b for the __isoc23_ forms)"
 scanWith invariant none
 scanWith typeParameter none
 scanWith input stream machine.Address copied
 scanWith input format machine.Address copied
 scanWith input list machine.Address copied
+scanWith input c23 Bool copied
 scanWith output Int32
 scanWith outputOwnedBy none
 scanWith raises none
@@ -21484,6 +21499,7 @@ readResult invokes scanAll
 readResult argument stream machine.Address stream copy
 readResult argument format machine.Address format copy
 readResult argument cursor machine.Address cursor copy
+readResult argument c23 Bool c23 copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -21663,7 +21679,7 @@ scanStandard maxRecursion none
 scanStandard abi library "scanf" variadic
 scanStandard label begin loopKind none
 scanStandard label begin within none
-scanStandard let none
+scanStandard let no Bool false immutable
 scanStandard at begin do readList
 scanStandard at begin do readInStream
 scanStandard at begin do readResult
@@ -21697,6 +21713,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address inStream copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -21723,7 +21740,7 @@ scanStream maxRecursion none
 scanStream abi library "fscanf" variadic
 scanStream label begin loopKind none
 scanStream label begin within none
-scanStream let none
+scanStream let no Bool false immutable
 scanStream at begin do readList
 scanStream at begin do doEnsureStandard
 scanStream at begin do readResult
@@ -21757,6 +21774,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address stream copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -21783,7 +21801,7 @@ scanText maxRecursion none
 scanText abi library "sscanf" variadic
 scanText label begin loopKind none
 scanText label begin within none
-scanText let none
+scanText let no Bool false immutable
 scanText at begin do readList
 scanText at begin do readSource
 scanText at begin do readResult
@@ -21818,6 +21836,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address source copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -21855,7 +21874,7 @@ scanStandardList maxRecursion none
 scanStandardList abi library "vscanf"
 scanStandardList label begin loopKind none
 scanStandardList label begin within none
-scanStandardList let none
+scanStandardList let no Bool false immutable
 scanStandardList at begin do readList
 scanStandardList at begin do readInStream
 scanStandardList at begin do readResult
@@ -21890,6 +21909,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address inStream copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -21928,7 +21948,7 @@ scanStreamList maxRecursion none
 scanStreamList abi library "vfscanf"
 scanStreamList label begin loopKind none
 scanStreamList label begin within none
-scanStreamList let none
+scanStreamList let no Bool false immutable
 scanStreamList at begin do readList
 scanStreamList at begin do doEnsureStandard
 scanStreamList at begin do readResult
@@ -21963,6 +21983,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address stream copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -22001,7 +22022,7 @@ scanTextList maxRecursion none
 scanTextList abi library "vsscanf"
 scanTextList label begin loopKind none
 scanTextList label begin within none
-scanTextList let none
+scanTextList let no Bool false immutable
 scanTextList at begin do readList
 scanTextList at begin do readSource
 scanTextList at begin do readResult
@@ -22037,6 +22058,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address source copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -22084,7 +22106,7 @@ scanStandardGlibc maxRecursion none
 scanStandardGlibc abi library "__isoc99_scanf" variadic
 scanStandardGlibc label begin loopKind none
 scanStandardGlibc label begin within none
-scanStandardGlibc let none
+scanStandardGlibc let no Bool false immutable
 scanStandardGlibc at begin do readList
 scanStandardGlibc at begin do readInStream
 scanStandardGlibc at begin do readResult
@@ -22118,6 +22140,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address inStream copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -22144,7 +22167,7 @@ scanStreamGlibc maxRecursion none
 scanStreamGlibc abi library "__isoc99_fscanf" variadic
 scanStreamGlibc label begin loopKind none
 scanStreamGlibc label begin within none
-scanStreamGlibc let none
+scanStreamGlibc let no Bool false immutable
 scanStreamGlibc at begin do readList
 scanStreamGlibc at begin do doEnsureStandard
 scanStreamGlibc at begin do readResult
@@ -22178,6 +22201,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address stream copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -22204,7 +22228,7 @@ scanTextGlibc maxRecursion none
 scanTextGlibc abi library "__isoc99_sscanf" variadic
 scanTextGlibc label begin loopKind none
 scanTextGlibc label begin within none
-scanTextGlibc let none
+scanTextGlibc let no Bool false immutable
 scanTextGlibc at begin do readList
 scanTextGlibc at begin do readSource
 scanTextGlibc at begin do readResult
@@ -22239,6 +22263,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address source copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -22276,7 +22301,7 @@ scanStandardListGlibc maxRecursion none
 scanStandardListGlibc abi library "__isoc99_vscanf"
 scanStandardListGlibc label begin loopKind none
 scanStandardListGlibc label begin within none
-scanStandardListGlibc let none
+scanStandardListGlibc let no Bool false immutable
 scanStandardListGlibc at begin do readList
 scanStandardListGlibc at begin do readInStream
 scanStandardListGlibc at begin do readResult
@@ -22311,6 +22336,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address inStream copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -22349,7 +22375,7 @@ scanStreamListGlibc maxRecursion none
 scanStreamListGlibc abi library "__isoc99_vfscanf"
 scanStreamListGlibc label begin loopKind none
 scanStreamListGlibc label begin within none
-scanStreamListGlibc let none
+scanStreamListGlibc let no Bool false immutable
 scanStreamListGlibc at begin do readList
 scanStreamListGlibc at begin do doEnsureStandard
 scanStreamListGlibc at begin do readResult
@@ -22384,6 +22410,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address stream copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -22422,7 +22449,7 @@ scanTextListGlibc maxRecursion none
 scanTextListGlibc abi library "__isoc99_vsscanf"
 scanTextListGlibc label begin loopKind none
 scanTextListGlibc label begin within none
-scanTextListGlibc let none
+scanTextListGlibc let no Bool false immutable
 scanTextListGlibc at begin do readList
 scanTextListGlibc at begin do readSource
 scanTextListGlibc at begin do readResult
@@ -22458,6 +22485,7 @@ readResult invokes scanWith
 readResult argument stream machine.Address source copy
 readResult argument format machine.Address format copy
 readResult argument list machine.Address list copy
+readResult argument c23 Bool no copy
 readResult result result Int32
 readResult ownedBy none
 readResult cleanedBy none
@@ -24414,3 +24442,430 @@ doUnlockStreams cleanedBy none
 doUnlockStreams borrows none
 doUnlockStreams catch none
 doUnlockStreams suppresses none
+
+scanStandardC23 is operation
+scanStandardC23 purpose "__isoc23_scanf: scanf (glibc's C23 name: %b and 0b read binary)"
+scanStandardC23 invariant none
+scanStandardC23 typeParameter none
+scanStandardC23 input format machine.Address copied
+scanStandardC23 output Int32
+scanStandardC23 outputOwnedBy none
+scanStandardC23 raises none
+scanStandardC23 effect use machine.memory
+scanStandardC23 effect use system.calls
+scanStandardC23 uses memoryAccess
+scanStandardC23 uses systemCalls
+scanStandardC23 memoryHeap false
+scanStandardC23 async false
+scanStandardC23 maxRecursion none
+scanStandardC23 abi library "__isoc23_scanf" variadic
+scanStandardC23 label begin loopKind none
+scanStandardC23 label begin within none
+scanStandardC23 let yes Bool true immutable
+scanStandardC23 at begin do readList
+scanStandardC23 at begin do readInStream
+scanStandardC23 at begin do readResult
+scanStandardC23 at begin return ok result
+
+readList is call
+readList in scanStandardC23
+readList invokes machine.variadicStart
+readList argument none
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readInStream is call
+readInStream in scanStandardC23
+readInStream invokes stdinStream
+readInStream argument none
+readInStream result inStream machine.Address
+readInStream ownedBy none
+readInStream cleanedBy none
+readInStream borrows none
+readInStream catch none
+readInStream suppresses none
+
+readResult is call
+readResult in scanStandardC23
+readResult invokes scanWith
+readResult argument stream machine.Address inStream copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult argument c23 Bool yes copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+scanStreamC23 is operation
+scanStreamC23 purpose "__isoc23_fscanf: fscanf (glibc's C23 name: %b and 0b read binary)"
+scanStreamC23 invariant none
+scanStreamC23 typeParameter none
+scanStreamC23 input stream machine.Address copied
+scanStreamC23 input format machine.Address copied
+scanStreamC23 output Int32
+scanStreamC23 outputOwnedBy none
+scanStreamC23 raises none
+scanStreamC23 effect use machine.memory
+scanStreamC23 effect use system.calls
+scanStreamC23 uses memoryAccess
+scanStreamC23 uses systemCalls
+scanStreamC23 memoryHeap false
+scanStreamC23 async false
+scanStreamC23 maxRecursion none
+scanStreamC23 abi library "__isoc23_fscanf" variadic
+scanStreamC23 label begin loopKind none
+scanStreamC23 label begin within none
+scanStreamC23 let yes Bool true immutable
+scanStreamC23 at begin do readList
+scanStreamC23 at begin do doEnsureStandard
+scanStreamC23 at begin do readResult
+scanStreamC23 at begin return ok result
+
+readList is call
+readList in scanStreamC23
+readList invokes machine.variadicStart
+readList argument none
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+doEnsureStandard is call
+doEnsureStandard in scanStreamC23
+doEnsureStandard invokes ensureStandard
+doEnsureStandard argument none
+doEnsureStandard result none
+doEnsureStandard ownedBy none
+doEnsureStandard cleanedBy none
+doEnsureStandard borrows none
+doEnsureStandard catch none
+doEnsureStandard suppresses none
+
+readResult is call
+readResult in scanStreamC23
+readResult invokes scanWith
+readResult argument stream machine.Address stream copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult argument c23 Bool yes copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+scanTextC23 is operation
+scanTextC23 purpose "__isoc23_sscanf: sscanf (glibc's C23 name: %b and 0b read binary)"
+scanTextC23 invariant none
+scanTextC23 typeParameter none
+scanTextC23 input text machine.Address copied
+scanTextC23 input format machine.Address copied
+scanTextC23 output Int32
+scanTextC23 outputOwnedBy none
+scanTextC23 raises none
+scanTextC23 effect use machine.memory
+scanTextC23 effect use system.calls
+scanTextC23 uses memoryAccess
+scanTextC23 uses systemCalls
+scanTextC23 memoryHeap false
+scanTextC23 async false
+scanTextC23 maxRecursion none
+scanTextC23 abi library "__isoc23_sscanf" variadic
+scanTextC23 label begin loopKind none
+scanTextC23 label begin within none
+scanTextC23 let yes Bool true immutable
+scanTextC23 at begin do readList
+scanTextC23 at begin do readSource
+scanTextC23 at begin do readResult
+scanTextC23 at begin do doGive
+scanTextC23 at begin return ok result
+
+readList is call
+readList in scanTextC23
+readList invokes machine.variadicStart
+readList argument none
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readSource is call
+readSource in scanTextC23
+readSource invokes textStream
+readSource argument text machine.Address text copy
+readSource result source machine.Address
+readSource ownedBy none
+readSource cleanedBy none
+readSource borrows none
+readSource catch none
+readSource suppresses none
+
+readResult is call
+readResult in scanTextC23
+readResult invokes scanWith
+readResult argument stream machine.Address source copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult argument c23 Bool yes copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doGive is call
+doGive in scanTextC23
+doGive invokes heap.give
+doGive argument block machine.Address source copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+scanStandardListC23 is operation
+scanStandardListC23 purpose "__isoc23_vscanf: vscanf (glibc's C23 name: %b and 0b read binary)"
+scanStandardListC23 invariant none
+scanStandardListC23 typeParameter none
+scanStandardListC23 input format machine.Address copied
+scanStandardListC23 input arguments machine.Address copied
+scanStandardListC23 output Int32
+scanStandardListC23 outputOwnedBy none
+scanStandardListC23 raises none
+scanStandardListC23 effect use machine.memory
+scanStandardListC23 effect use system.calls
+scanStandardListC23 uses memoryAccess
+scanStandardListC23 uses systemCalls
+scanStandardListC23 memoryHeap false
+scanStandardListC23 async false
+scanStandardListC23 maxRecursion none
+scanStandardListC23 abi library "__isoc23_vscanf"
+scanStandardListC23 label begin loopKind none
+scanStandardListC23 label begin within none
+scanStandardListC23 let yes Bool true immutable
+scanStandardListC23 at begin do readList
+scanStandardListC23 at begin do readInStream
+scanStandardListC23 at begin do readResult
+scanStandardListC23 at begin do doReleaseList
+scanStandardListC23 at begin return ok result
+
+readList is call
+readList in scanStandardListC23
+readList invokes listFor
+readList argument list machine.Address arguments copy
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readInStream is call
+readInStream in scanStandardListC23
+readInStream invokes stdinStream
+readInStream argument none
+readInStream result inStream machine.Address
+readInStream ownedBy none
+readInStream cleanedBy none
+readInStream borrows none
+readInStream catch none
+readInStream suppresses none
+
+readResult is call
+readResult in scanStandardListC23
+readResult invokes scanWith
+readResult argument stream machine.Address inStream copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult argument c23 Bool yes copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doReleaseList is call
+doReleaseList in scanStandardListC23
+doReleaseList invokes releaseList
+doReleaseList argument cell machine.Address list copy
+doReleaseList result none
+doReleaseList ownedBy none
+doReleaseList cleanedBy none
+doReleaseList borrows none
+doReleaseList catch none
+doReleaseList suppresses none
+
+scanStreamListC23 is operation
+scanStreamListC23 purpose "__isoc23_vfscanf: vfscanf (glibc's C23 name: %b and 0b read binary)"
+scanStreamListC23 invariant none
+scanStreamListC23 typeParameter none
+scanStreamListC23 input stream machine.Address copied
+scanStreamListC23 input format machine.Address copied
+scanStreamListC23 input arguments machine.Address copied
+scanStreamListC23 output Int32
+scanStreamListC23 outputOwnedBy none
+scanStreamListC23 raises none
+scanStreamListC23 effect use machine.memory
+scanStreamListC23 effect use system.calls
+scanStreamListC23 uses memoryAccess
+scanStreamListC23 uses systemCalls
+scanStreamListC23 memoryHeap false
+scanStreamListC23 async false
+scanStreamListC23 maxRecursion none
+scanStreamListC23 abi library "__isoc23_vfscanf"
+scanStreamListC23 label begin loopKind none
+scanStreamListC23 label begin within none
+scanStreamListC23 let yes Bool true immutable
+scanStreamListC23 at begin do readList
+scanStreamListC23 at begin do doEnsureStandard
+scanStreamListC23 at begin do readResult
+scanStreamListC23 at begin do doReleaseList
+scanStreamListC23 at begin return ok result
+
+readList is call
+readList in scanStreamListC23
+readList invokes listFor
+readList argument list machine.Address arguments copy
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+doEnsureStandard is call
+doEnsureStandard in scanStreamListC23
+doEnsureStandard invokes ensureStandard
+doEnsureStandard argument none
+doEnsureStandard result none
+doEnsureStandard ownedBy none
+doEnsureStandard cleanedBy none
+doEnsureStandard borrows none
+doEnsureStandard catch none
+doEnsureStandard suppresses none
+
+readResult is call
+readResult in scanStreamListC23
+readResult invokes scanWith
+readResult argument stream machine.Address stream copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult argument c23 Bool yes copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doReleaseList is call
+doReleaseList in scanStreamListC23
+doReleaseList invokes releaseList
+doReleaseList argument cell machine.Address list copy
+doReleaseList result none
+doReleaseList ownedBy none
+doReleaseList cleanedBy none
+doReleaseList borrows none
+doReleaseList catch none
+doReleaseList suppresses none
+
+scanTextListC23 is operation
+scanTextListC23 purpose "__isoc23_vsscanf: vsscanf (glibc's C23 name: %b and 0b read binary)"
+scanTextListC23 invariant none
+scanTextListC23 typeParameter none
+scanTextListC23 input text machine.Address copied
+scanTextListC23 input format machine.Address copied
+scanTextListC23 input arguments machine.Address copied
+scanTextListC23 output Int32
+scanTextListC23 outputOwnedBy none
+scanTextListC23 raises none
+scanTextListC23 effect use machine.memory
+scanTextListC23 effect use system.calls
+scanTextListC23 uses memoryAccess
+scanTextListC23 uses systemCalls
+scanTextListC23 memoryHeap false
+scanTextListC23 async false
+scanTextListC23 maxRecursion none
+scanTextListC23 abi library "__isoc23_vsscanf"
+scanTextListC23 label begin loopKind none
+scanTextListC23 label begin within none
+scanTextListC23 let yes Bool true immutable
+scanTextListC23 at begin do readList
+scanTextListC23 at begin do readSource
+scanTextListC23 at begin do readResult
+scanTextListC23 at begin do doGive
+scanTextListC23 at begin do doReleaseList
+scanTextListC23 at begin return ok result
+
+readList is call
+readList in scanTextListC23
+readList invokes listFor
+readList argument list machine.Address arguments copy
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readSource is call
+readSource in scanTextListC23
+readSource invokes textStream
+readSource argument text machine.Address text copy
+readSource result source machine.Address
+readSource ownedBy none
+readSource cleanedBy none
+readSource borrows none
+readSource catch none
+readSource suppresses none
+
+readResult is call
+readResult in scanTextListC23
+readResult invokes scanWith
+readResult argument stream machine.Address source copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult argument c23 Bool yes copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doGive is call
+doGive in scanTextListC23
+doGive invokes heap.give
+doGive argument block machine.Address source copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doReleaseList is call
+doReleaseList in scanTextListC23
+doReleaseList invokes releaseList
+doReleaseList argument cell machine.Address list copy
+doReleaseList result none
+doReleaseList ownedBy none
+doReleaseList cleanedBy none
+doReleaseList borrows none
+doReleaseList catch none
+doReleaseList suppresses none

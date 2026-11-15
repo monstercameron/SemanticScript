@@ -3549,7 +3549,7 @@ lengthTest at begin do readLength
 lengthTest at begin do doAssertEqualInt64
 lengthTest at begin do readBounded
 lengthTest at begin do doAssertEqualInt642
-lengthTest at begin do readWhole
+lengthTest at begin do readWhole2
 lengthTest at begin do doAssertEqualInt643
 lengthTest at begin do readEmpty
 lengthTest at begin do readEmptyLength
@@ -3693,17 +3693,17 @@ doAssertEqualInt642 borrows none
 doAssertEqualInt642 catch none
 doAssertEqualInt642 suppresses none
 
-readWhole is call
-readWhole in lengthTest
-readWhole invokes wcsnlen
-readWhole argument text machine.Address hello copy
-readWhole argument most Int64 ten copy
-readWhole result whole Int64
-readWhole ownedBy none
-readWhole cleanedBy none
-readWhole borrows none
-readWhole catch none
-readWhole suppresses none
+readWhole2 is call
+readWhole2 in lengthTest
+readWhole2 invokes wcsnlen
+readWhole2 argument text machine.Address hello copy
+readWhole2 argument most Int64 ten copy
+readWhole2 result whole Int64
+readWhole2 ownedBy none
+readWhole2 cleanedBy none
+readWhole2 borrows none
+readWhole2 catch none
+readWhole2 suppresses none
 
 doAssertEqualInt643 is call
 doAssertEqualInt643 in lengthTest
@@ -7235,7 +7235,7 @@ tokenTest at begin do readNothing
 tokenTest at begin do doAssertTrueStep7
 tokenTest at begin do doAssertTrue10
 tokenTest at begin do readPlain
-tokenTest at begin do readWhole
+tokenTest at begin do readWhole2
 tokenTest at begin do doAssertTrueStep8
 tokenTest at begin do doAssertTrue11
 tokenTest at begin do readCheck14
@@ -7679,18 +7679,18 @@ readPlain borrows none
 readPlain catch none
 readPlain suppresses none
 
-readWhole is call
-readWhole in tokenTest
-readWhole invokes wcstok
-readWhole argument text machine.Address plain copy
-readWhole argument delim machine.Address delimiters copy
-readWhole argument saveAt machine.Address save copy
-readWhole result whole machine.Address
-readWhole ownedBy none
-readWhole cleanedBy none
-readWhole borrows none
-readWhole catch none
-readWhole suppresses none
+readWhole2 is call
+readWhole2 in tokenTest
+readWhole2 invokes wcstok
+readWhole2 argument text machine.Address plain copy
+readWhole2 argument delim machine.Address delimiters copy
+readWhole2 argument saveAt machine.Address save copy
+readWhole2 result whole machine.Address
+readWhole2 ownedBy none
+readWhole2 cleanedBy none
+readWhole2 borrows none
+readWhole2 catch none
+readWhole2 suppresses none
 
 doAssertTrueStep8 is call
 doAssertTrueStep8 in tokenTest

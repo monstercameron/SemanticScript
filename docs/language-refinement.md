@@ -3021,6 +3021,28 @@ does in the C locale. Step one is stdio, which needs variadic functions. Decided
   WSAE codes to their errno, and so on (109 codes); any other is EINVAL. tests/cprograms/errno_values.c compares
   errno after 21 failing calls with glibc's.
 
+- **D-172** strerror's messages are glibc's own, taken from glibc rather than written into the runtime: the compiler
+  builds the table (`machine.errorMessages`: how many numbers, then each one's message as a C string, or none) by
+  asking the machine it runs on, when that machine's C library is glibc (Python's os.strerror is glibc's strerror
+  there), for every number from 0 to 4095 that has a message. An executable or C library object built on a glibc
+  system (CI's Linux runners, and any Linux machine that builds for Linux) therefore says exactly what that glibc says,
+  in every message, and a number without one is `Unknown error N`, as glibc writes it. Built anywhere else (on
+  Windows, where Python's strerror is the Microsoft runtime's and differs), the table is empty and every number is
+  `Unknown error N`: recorded as the remaining gap, since nothing on such a machine holds glibc's messages and the
+  runtime writes none of its own. perror and printf's `%m` use strerror. tests/ctour.py prints strerror for -1 to 135
+  through `ffi` and expects os.strerror's text where Python's C library is glibc (and `Unknown error N` elsewhere);
+  tests/cprograms/strerror_text.c compares every message, perror, and `%m` with glibc's.
+
+- **D-173** glibc 2.38 and later give C23's names to programs compiled as C23 (and, on newer systems, by default):
+  `__isoc23_strtol`, `__isoc23_strtoll`, `__isoc23_strtoul`, `__isoc23_strtoull`, `__isoc23_strtoimax`,
+  `__isoc23_strtoumax`, `__isoc23_wcstol`, `__isoc23_wcstoll`, `__isoc23_wcstoul`, `__isoc23_wcstoull`,
+  `__isoc23_wcstoimax`, `__isoc23_wcstoumax`, and the scanf family's `__isoc23_scanf`, `__isoc23_fscanf`,
+  `__isoc23_sscanf`, `__isoc23_vscanf`, `__isoc23_vfscanf`, `__isoc23_vsscanf`. They read as the C17 names do, and
+  also C23's binary numbers: `0b` (or `0B`) in base 2 and base 0, and scanf's `%b` and `0b` under `%i`; a `0b` with no
+  binary digit after it reads as 0 ending at the `b`, as `0x` does. The C17 names never take `0b`. Two fixes found by
+  CI on Linux against glibc: printf's `%5%` writes a bare `%` (the width is ignored), and scanf's `%f` reads `nan`
+  but not the `(chars)` strtod takes after it, stopping before the `(` as glibc's scanf does.
+
 ## The runtime in SemanticScript, the C library and a loader (2026-11-15)
 
 `ffi` was the one module an executable on Linux refused (D-145): `ffi.open("c")` asked for glibc, which a static
@@ -3627,6 +3649,8 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-166 to D-167 | The runtime in SemanticScript, the whole C library: C11 threads on Linux's threads with futexes, a locked heap and locked streams, errno per thread; the floating-point control and fused multiply-add primitives (by delegation) |
 | 2026-11-15 | D-168 to D-170 | The runtime in SemanticScript, the whole C library: threads.h on Windows (CreateThread, a thread-local slot), deadlines for timed waits, setjmp and longjmp on Windows (by delegation) |
 | 2026-11-15 | D-171 | The runtime in SemanticScript, the whole C library: errno as glibc's numbers, Windows errors mapped by one table (by delegation) |
+| 2026-11-15 | D-172 | The runtime in SemanticScript, the whole C library: strerror's messages taken from glibc by the compiler on a glibc machine (by delegation) |
+| 2026-11-15 | D-173 | The runtime in SemanticScript, the whole C library: glibc's `__isoc23_` names with C23's binary numbers; `%5%` and scanf's `nan` as glibc (by delegation) |
 | 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
 | 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
 | 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |

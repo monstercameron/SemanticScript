@@ -387,6 +387,11 @@ C_LIBRARY = {
     "fmax", "fmaxf", "fmin", "fminf", "fma", "fmaf", "nextafter", "nextafterf", "nan", "nanf", "feclearexcept",
     "feraiseexcept", "fetestexcept", "fegetround", "fesetround", "fegetexceptflag", "fesetexceptflag", "fegetenv",
     "fesetenv", "feholdexcept", "feupdateenv",
+    # D-173: the names glibc 2.38's headers give the C23 forms (0b read by strtol and %i)
+    "__isoc23_strtol", "__isoc23_strtoll", "__isoc23_strtoul", "__isoc23_strtoull", "__isoc23_strtoimax",
+    "__isoc23_strtoumax", "__isoc23_wcstol", "__isoc23_wcstoll", "__isoc23_wcstoul", "__isoc23_wcstoull",
+    "__isoc23_wcstoimax", "__isoc23_wcstoumax", "__isoc23_scanf", "__isoc23_fscanf", "__isoc23_sscanf",
+    "__isoc23_vscanf", "__isoc23_vfscanf", "__isoc23_vsscanf",
 }
 # the modules whose `abi library` operations make up the C library (D-153, D-159, D-160, D-164, D-180)
 C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem", "cthreads.sem", "cextra.sem", "cwide.sem", "cmathbits.sem")

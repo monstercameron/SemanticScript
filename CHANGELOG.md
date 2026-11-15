@@ -106,7 +106,6 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   scanf family with glibc's `__isoc99_` names. `abi library` rows may be
   `variadic`; on x86_64 calls through references are made as variadic calls, so
   printf works through `ffi` with doubles. The runtime's DSL takes expressions.
-  Known gap: strerror gives `Unknown error N` for every number for now.
 - Exit handlers (atexit, at_quick_exit, quick_exit, `_Exit`), ldiv and its kin returning a pair, setjmp and
   longjmp (routines the compiler emits), signal and raise, abort through SIGABRT, and system (D-162 to D-164).
 - The `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call, with glibc's overflow report (D-165).
@@ -114,6 +113,9 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   fused multiply-add primitives (D-166, D-167); threads on Windows, deadlines for timed waits, and setjmp and
   longjmp on Windows (D-168 to D-170).
 - errno as glibc's numbers, Windows error codes mapped by one table (D-171).
+- strerror, perror, and `%m` give glibc's messages, which the compiler reads from glibc on a glibc machine (D-172).
+- glibc's `__isoc23_` names for strtol, the scanf family, and their wide and intmax kin, reading C23's binary
+  numbers (D-173).
 
 ### The runtime in SemanticScript: `ffi` everywhere
 

@@ -266,6 +266,10 @@ def _machine() -> dict:
         # hands qsort and bsearch. `squareRoot` is the correctly rounded square root, one instruction on x86_64 and
         # AArch64 (llvm.sqrt, which needs no libm there)
         "cLibrary": Sig((), _A, effects=_MEM),
+        # D-172: strerror's messages: how many numbers the table has, then for each the address of its message (a C
+        # string), or 0 for a number with none; built from the C library of the machine that compiles, when it is
+        # glibc (Python's os.strerror is glibc's strerror there), and empty anywhere else
+        "errorMessages": Sig((), _A, effects=_MEM),
         "callComparison": Sig((_at("function"), _at("left"), _at("right")), "Int32", effects=_MEM),
         "squareRoot": Sig((P("value", "Float64", "copied"),), "Float64", effects=_MEM),
         # D-157: in an `abi library "<name>" variadic` operation, the address of its `va_list`, started

@@ -498,8 +498,8 @@ formatTest let format5 String "%-10.4a|%lld %hhd %hu" immutable
 formatTest let expected5 String "0x1.5555p-2|-1 44 4464" immutable
 formatTest let format6 String "[%*d] [%.*f] %lu" immutable
 formatTest let expected6 String "[     7] [1.00] 18446744073709551615" immutable
-formatTest let format7 String "%2$d %1$d %%|%y" immutable
-formatTest let expected7 String "2 1 %|%y" immutable
+formatTest let format7 String "%2$d %1$d %%|%5%|%y" immutable
+formatTest let expected7 String "2 1 %|%|%y" immutable
 formatTest let format8 String "%f %F %e %+g" immutable
 formatTest let expected8 String "inf -INF nan -nan" immutable
 formatTest let format9 String "%08.3f|%-8.2e|%+.3g" immutable

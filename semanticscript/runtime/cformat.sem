@@ -15668,6 +15668,10 @@ convertOne label wideString loopKind none
 convertOne label wideString within none
 convertOne label unknown loopKind none
 convertOne label unknown within none
+convertOne label percent loopKind none
+convertOne label percent within none
+convertOne label notPercent loopKind none
+convertOne label notPercent within none
 convertOne let nilWord String "(nil)" immutable
 convertOne let n100 Int64 100 immutable
 convertOne let n105 Int64 105 immutable
@@ -15688,6 +15692,8 @@ convertOne let n110 Int64 110 immutable
 convertOne let n109 Int64 109 immutable
 convertOne let n67 Int64 67 immutable
 convertOne let n83 Int64 83 immutable
+convertOne let n37 Int64 37 immutable
+convertOne let byte37 Byte 37 immutable
 convertOne let one Int64 1 immutable
 convertOne at begin do readWord2
 convertOne at begin do check1Step1
@@ -15760,13 +15766,17 @@ convertOne at notWideCharacter branch if check10 goto wideString else goto unkno
 convertOne at wideString do findWideText1
 convertOne at wideString do doFormatWideString
 convertOne at wideString return ok none
-convertOne at unknown do percentAtStep1
-convertOne at unknown do percentAtStep2
-convertOne at unknown do findPercentAt1
-convertOne at unknown do unknownBytesStep1
-convertOne at unknown do findUnknownBytes1
-convertOne at unknown do doBuilderAdd
-convertOne at unknown return ok none
+convertOne at unknown do findCheck111
+convertOne at unknown branch if check11 goto percent else goto notPercent
+convertOne at percent do doBuilderAddByte
+convertOne at percent return ok none
+convertOne at notPercent do percentAtStep1
+convertOne at notPercent do percentAtStep2
+convertOne at notPercent do findPercentAt1
+convertOne at notPercent do unknownBytesStep1
+convertOne at notPercent do findUnknownBytes1
+convertOne at notPercent do doBuilderAdd
+convertOne at notPercent return ok none
 
 readWord2 is call
 readWord2 in convertOne
@@ -16390,6 +16400,30 @@ doFormatWideString cleanedBy none
 doFormatWideString borrows none
 doFormatWideString catch none
 doFormatWideString suppresses none
+
+findCheck111 is call
+findCheck111 in convertOne
+findCheck111 invokes compare.equalInt64
+findCheck111 argument left Int64 conversion copy
+findCheck111 argument right Int64 n37 copy
+findCheck111 result check11 Bool
+findCheck111 ownedBy none
+findCheck111 cleanedBy none
+findCheck111 borrows none
+findCheck111 catch none
+findCheck111 suppresses none
+
+doBuilderAddByte is call
+doBuilderAddByte in convertOne
+doBuilderAddByte invokes wide.builderAddByte
+doBuilderAddByte argument builder machine.Address builder copy
+doBuilderAddByte argument byte Byte byte37 copy
+doBuilderAddByte result none
+doBuilderAddByte ownedBy none
+doBuilderAddByte cleanedBy none
+doBuilderAddByte borrows none
+doBuilderAddByte catch none
+doBuilderAddByte suppresses none
 
 percentAtStep1 is call
 percentAtStep1 in convertOne

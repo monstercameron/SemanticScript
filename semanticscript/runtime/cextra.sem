@@ -3876,13 +3876,14 @@ readValue catch none
 readValue suppresses none
 
 parseWide is operation
-parseWide purpose "wcstol and its kin over wide characters (32-bit wchar_t): the leading characters from 1 to 127 are read as the bytes strtol reads, and the end is moved on by four bytes for each"
+parseWide purpose "wcstol and its kin over wide characters (32-bit wchar_t): the leading characters from 1 to 127 are read as the bytes strtol reads (with C23's 0b when binary, D-173), and the end is moved on by four bytes for each"
 parseWide invariant none
 parseWide typeParameter none
 parseWide input text machine.Address copied
 parseWide input endAt machine.Address copied
 parseWide input base Int32 copied
 parseWide input unsigned Bool copied
+parseWide input binary Bool copied
 parseWide output Int64
 parseWide outputOwnedBy none
 parseWide raises none
@@ -4186,11 +4187,12 @@ doStoreAddress suppresses none
 
 readValue is call
 readValue in parseWide
-readValue invokes clibrary.parseWhole
+readValue invokes parseNarrow
 readValue argument text machine.Address buffer copy
 readValue argument endAt machine.Address cell copy
 readValue argument base Int32 base copy
 readValue argument unsigned Bool unsigned copy
+readValue argument binary Bool binary copy
 readValue result value Int64
 readValue ownedBy none
 readValue cleanedBy none
@@ -4322,6 +4324,7 @@ readValue argument text machine.Address text copy
 readValue argument endAt machine.Address endAt copy
 readValue argument base Int32 base copy
 readValue argument unsigned Bool no copy
+readValue argument binary Bool no copy
 readValue result value Int64
 readValue ownedBy none
 readValue cleanedBy none
@@ -4350,6 +4353,7 @@ wideToUnsignedMax abi library "wcstoumax"
 wideToUnsignedMax label begin loopKind none
 wideToUnsignedMax label begin within none
 wideToUnsignedMax let yes Bool true immutable
+wideToUnsignedMax let no Bool false immutable
 wideToUnsignedMax at begin do readValue
 wideToUnsignedMax at begin return ok value
 
@@ -4360,12 +4364,71 @@ readValue argument text machine.Address text copy
 readValue argument endAt machine.Address endAt copy
 readValue argument base Int32 base copy
 readValue argument unsigned Bool yes copy
+readValue argument binary Bool no copy
 readValue result value Int64
 readValue ownedBy none
 readValue cleanedBy none
 readValue borrows none
 readValue catch none
 readValue suppresses none
+
+parseNarrow is operation
+parseNarrow purpose "strtol's reading of bytes, as C17 reads them or (binary) as C23 does"
+parseNarrow invariant none
+parseNarrow typeParameter none
+parseNarrow input text machine.Address copied
+parseNarrow input endAt machine.Address copied
+parseNarrow input base Int32 copied
+parseNarrow input unsigned Bool copied
+parseNarrow input binary Bool copied
+parseNarrow output Int64
+parseNarrow outputOwnedBy none
+parseNarrow raises none
+parseNarrow effect use machine.memory
+parseNarrow uses memoryAccess
+parseNarrow memoryHeap false
+parseNarrow async false
+parseNarrow maxRecursion none
+parseNarrow label begin loopKind none
+parseNarrow label begin within none
+parseNarrow label c23 loopKind none
+parseNarrow label c23 within none
+parseNarrow label c17 loopKind none
+parseNarrow label c17 within none
+parseNarrow let none
+parseNarrow at begin branch if binary goto c23 else goto c17
+parseNarrow at c23 do readNewer
+parseNarrow at c23 return ok newer
+parseNarrow at c17 do readOlder
+parseNarrow at c17 return ok older
+
+readNewer is call
+readNewer in parseNarrow
+readNewer invokes clibrary.parseWholeBinary
+readNewer argument text machine.Address text copy
+readNewer argument endAt machine.Address endAt copy
+readNewer argument base Int32 base copy
+readNewer argument unsigned Bool unsigned copy
+readNewer result newer Int64
+readNewer ownedBy none
+readNewer cleanedBy none
+readNewer borrows none
+readNewer catch none
+readNewer suppresses none
+
+readOlder is call
+readOlder in parseNarrow
+readOlder invokes clibrary.parseWhole
+readOlder argument text machine.Address text copy
+readOlder argument endAt machine.Address endAt copy
+readOlder argument base Int32 base copy
+readOlder argument unsigned Bool unsigned copy
+readOlder result older Int64
+readOlder ownedBy none
+readOlder cleanedBy none
+readOlder borrows none
+readOlder catch none
+readOlder suppresses none
 
 # ---------------------------------------------------------------- stdlib.h: aligned allocation
 alignedBlock is operation
@@ -10033,3 +10096,154 @@ readAnswer cleanedBy none
 readAnswer borrows none
 readAnswer catch none
 readAnswer suppresses none
+
+toMaxC23 is operation
+toMaxC23 purpose "__isoc23_strtoimax: strtoimax as C23 reads it, `0b` binary included (D-173)"
+toMaxC23 invariant none
+toMaxC23 typeParameter none
+toMaxC23 input text machine.Address copied
+toMaxC23 input endAt machine.Address copied
+toMaxC23 input base Int32 copied
+toMaxC23 output Int64
+toMaxC23 outputOwnedBy none
+toMaxC23 raises none
+toMaxC23 effect use machine.memory
+toMaxC23 uses memoryAccess
+toMaxC23 memoryHeap false
+toMaxC23 async false
+toMaxC23 maxRecursion none
+toMaxC23 abi library "__isoc23_strtoimax"
+toMaxC23 label begin loopKind none
+toMaxC23 label begin within none
+toMaxC23 let no Bool false immutable
+toMaxC23 at begin do readValue
+toMaxC23 at begin return ok value
+
+readValue is call
+readValue in toMaxC23
+readValue invokes clibrary.parseWholeBinary
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool no copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+toUnsignedMaxC23 is operation
+toUnsignedMaxC23 purpose "__isoc23_strtoumax: strtoumax as C23 reads it, `0b` binary included (D-173)"
+toUnsignedMaxC23 invariant none
+toUnsignedMaxC23 typeParameter none
+toUnsignedMaxC23 input text machine.Address copied
+toUnsignedMaxC23 input endAt machine.Address copied
+toUnsignedMaxC23 input base Int32 copied
+toUnsignedMaxC23 output Int64
+toUnsignedMaxC23 outputOwnedBy none
+toUnsignedMaxC23 raises none
+toUnsignedMaxC23 effect use machine.memory
+toUnsignedMaxC23 uses memoryAccess
+toUnsignedMaxC23 memoryHeap false
+toUnsignedMaxC23 async false
+toUnsignedMaxC23 maxRecursion none
+toUnsignedMaxC23 abi library "__isoc23_strtoumax"
+toUnsignedMaxC23 label begin loopKind none
+toUnsignedMaxC23 label begin within none
+toUnsignedMaxC23 let yes Bool true immutable
+toUnsignedMaxC23 at begin do readValue
+toUnsignedMaxC23 at begin return ok value
+
+readValue is call
+readValue in toUnsignedMaxC23
+readValue invokes clibrary.parseWholeBinary
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+wideToMaxC23 is operation
+wideToMaxC23 purpose "__isoc23_wcstoimax: wcstoimax as C23 reads it, `0b` binary included (D-173)"
+wideToMaxC23 invariant none
+wideToMaxC23 typeParameter none
+wideToMaxC23 input text machine.Address copied
+wideToMaxC23 input endAt machine.Address copied
+wideToMaxC23 input base Int32 copied
+wideToMaxC23 output Int64
+wideToMaxC23 outputOwnedBy none
+wideToMaxC23 raises none
+wideToMaxC23 effect use machine.memory
+wideToMaxC23 effect use system.calls
+wideToMaxC23 uses memoryAccess
+wideToMaxC23 uses systemCalls
+wideToMaxC23 memoryHeap false
+wideToMaxC23 async false
+wideToMaxC23 maxRecursion none
+wideToMaxC23 abi library "__isoc23_wcstoimax"
+wideToMaxC23 label begin loopKind none
+wideToMaxC23 label begin within none
+wideToMaxC23 let no Bool false immutable
+wideToMaxC23 let yes Bool true immutable
+wideToMaxC23 at begin do readValue
+wideToMaxC23 at begin return ok value
+
+readValue is call
+readValue in wideToMaxC23
+readValue invokes parseWide
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool no copy
+readValue argument binary Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+wideToUnsignedMaxC23 is operation
+wideToUnsignedMaxC23 purpose "__isoc23_wcstoumax: wcstoumax as C23 reads it, `0b` binary included (D-173)"
+wideToUnsignedMaxC23 invariant none
+wideToUnsignedMaxC23 typeParameter none
+wideToUnsignedMaxC23 input text machine.Address copied
+wideToUnsignedMaxC23 input endAt machine.Address copied
+wideToUnsignedMaxC23 input base Int32 copied
+wideToUnsignedMaxC23 output Int64
+wideToUnsignedMaxC23 outputOwnedBy none
+wideToUnsignedMaxC23 raises none
+wideToUnsignedMaxC23 effect use machine.memory
+wideToUnsignedMaxC23 effect use system.calls
+wideToUnsignedMaxC23 uses memoryAccess
+wideToUnsignedMaxC23 uses systemCalls
+wideToUnsignedMaxC23 memoryHeap false
+wideToUnsignedMaxC23 async false
+wideToUnsignedMaxC23 maxRecursion none
+wideToUnsignedMaxC23 abi library "__isoc23_wcstoumax"
+wideToUnsignedMaxC23 label begin loopKind none
+wideToUnsignedMaxC23 label begin within none
+wideToUnsignedMaxC23 let yes Bool true immutable
+wideToUnsignedMaxC23 at begin do readValue
+wideToUnsignedMaxC23 at begin return ok value
+
+readValue is call
+readValue in wideToUnsignedMaxC23
+readValue invokes parseWide
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool yes copy
+readValue argument binary Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none

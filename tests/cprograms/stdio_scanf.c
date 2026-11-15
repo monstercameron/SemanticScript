@@ -1,5 +1,6 @@
 /* The scanf family: sscanf over many conversions, then scanf and getchar over standard input. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <wchar.h>
 
 int main(void) {
@@ -43,6 +44,12 @@ int main(void) {
     wchar_t wide[8] = {0};
     printf("%d\n", sscanf("wide", "%ls", wide));
     printf("%d %d %d\n", (int) wide[0], (int) wide[3], (int) wide[4]);
+
+    char *after = NULL;
+    printf("0b: %d", sscanf("0b101 0B11", "%i %i", &a, &b));
+    printf(" %d %d", a, b);
+    printf(" | strtol %ld", strtol("0b101", &after, 0));
+    printf(" [%s] %ld\n", after, strtoul("0b11", NULL, 2));
 
     int first = getchar();
     printf("getchar %c\n", first);

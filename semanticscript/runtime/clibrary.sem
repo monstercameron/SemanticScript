@@ -40,6 +40,7 @@ clibrary exports charOf
 clibrary exports isSpaceByte
 clibrary exports digitOf
 clibrary exports parseWhole
+clibrary exports parseWholeBinary
 clibrary exports parseReal
 clibrary exports runHandlers
 clibrary exports checkFits
@@ -6595,7 +6596,7 @@ divideIt catch none
 divideIt suppresses none
 
 parseWhole is operation
-parseWhole purpose "strtol and its kin, as glibc reads them: white space, a sign, `0x` in base 16 or 0 and `0` for base 8 in base 0, then digits below the base; the value's bits, LONG_MIN or LONG_MAX (ULONG_MAX unsigned) with ERANGE past the range, EINVAL for a base that is neither 0 nor 2 to 36; the end of what was read is stored at `endAt` unless it is the address 0"
+parseWhole purpose "strtol and its kin, as glibc reads them (C17: no 0b prefix)"
 parseWhole invariant readsLikeStrtol "\"Reads the longest prefix strtol reads, with its value, errno, and end\""
 parseWhole typeParameter none
 parseWhole input text machine.Address copied
@@ -6612,260 +6613,356 @@ parseWhole async false
 parseWhole maxRecursion none
 parseWhole label begin loopKind none
 parseWhole label begin within none
-parseWhole label invalid loopKind none
-parseWhole label invalid within none
-parseWhole label spaces loopKind none
-parseWhole label spaces within none
-parseWhole label eachSpace loopKind while
-parseWhole label eachSpace within none
-parseWhole label eachSpace maxIterations forever
-parseWhole label skipSpace loopKind none
-parseWhole label skipSpace within eachSpace
-parseWhole label sign loopKind none
-parseWhole label sign within none
-parseWhole label takeMinus loopKind none
-parseWhole label takeMinus within none
-parseWhole label plusCheck loopKind none
-parseWhole label plusCheck within none
-parseWhole label takePlus loopKind none
-parseWhole label takePlus within none
-parseWhole label prefix loopKind none
-parseWhole label prefix within none
-parseWhole label zeroPrefix loopKind none
-parseWhole label zeroPrefix within none
-parseWhole label skipX loopKind none
-parseWhole label skipX within none
-parseWhole label octalCheck loopKind none
-parseWhole label octalCheck within none
-parseWhole label octal loopKind none
-parseWhole label octal within none
-parseWhole label plainBase loopKind none
-parseWhole label plainBase within none
-parseWhole label givenBase loopKind none
-parseWhole label givenBase within none
-parseWhole label digits loopKind none
-parseWhole label digits within none
-parseWhole label eachDigit loopKind while
-parseWhole label eachDigit within none
-parseWhole label eachDigit maxIterations forever
-parseWhole label consider loopKind none
-parseWhole label consider within eachDigit
-parseWhole label limitCheck loopKind none
-parseWhole label limitCheck within eachDigit
-parseWhole label atCutoff loopKind none
-parseWhole label atCutoff within eachDigit
-parseWhole label overflowed loopKind none
-parseWhole label overflowed within eachDigit
-parseWhole label accumulate loopKind none
-parseWhole label accumulate within eachDigit
-parseWhole label advance loopKind none
-parseWhole label advance within eachDigit
-parseWhole label finish loopKind none
-parseWhole label finish within none
-parseWhole label noConversion loopKind none
-parseWhole label noConversion within none
-parseWhole label xEnd loopKind none
-parseWhole label xEnd within none
-parseWhole label xBefore loopKind none
-parseWhole label xBefore within none
-parseWhole label endAtX loopKind none
-parseWhole label endAtX within none
-parseWhole label textEnd loopKind none
-parseWhole label textEnd within none
-parseWhole label giveNone loopKind none
-parseWhole label giveNone within none
-parseWhole label storeEnd loopKind none
-parseWhole label storeEnd within none
-parseWhole label storeIt loopKind none
-parseWhole label storeIt within none
-parseWhole label result loopKind none
-parseWhole label result within none
-parseWhole label unsignedResult loopKind none
-parseWhole label unsignedResult within none
-parseWhole label unsignedRange loopKind none
-parseWhole label unsignedRange within none
-parseWhole label unsignedValue loopKind none
-parseWhole label unsignedValue within none
-parseWhole label negateUnsigned loopKind none
-parseWhole label negateUnsigned within none
-parseWhole label plainUnsigned loopKind none
-parseWhole label plainUnsigned within none
-parseWhole label signedResult loopKind none
-parseWhole label signedResult within none
-parseWhole label signedLimit loopKind none
-parseWhole label signedLimit within none
-parseWhole label negativeLimit loopKind none
-parseWhole label negativeLimit within none
-parseWhole label positiveLimit loopKind none
-parseWhole label positiveLimit within none
-parseWhole label negateSigned loopKind none
-parseWhole label negateSigned within none
-parseWhole label plainSigned loopKind none
-parseWhole label plainSigned within none
-parseWhole label signedRange loopKind none
-parseWhole label signedRange within none
-parseWhole label giveLeast loopKind none
-parseWhole label giveLeast within none
-parseWhole label giveMost loopKind none
-parseWhole label giveMost within none
-parseWhole let at Int64 0 mutable
-parseWhole let start Int64 0 mutable
-parseWhole let negative Bool false mutable
-parseWhole let overflow Bool false mutable
-parseWhole let radix UInt64 10 mutable
-parseWhole let value UInt64 0 mutable
-parseWhole let yes Bool true immutable
-parseWhole let noValue Int64 0 immutable
-parseWhole let allOnes UInt64 18446744073709551615 immutable
-parseWhole let mostSigned UInt64 9223372036854775807 immutable
-parseWhole let sixteen UInt64 16 immutable
-parseWhole let eightWide UInt64 8 immutable
-parseWhole let leastSigned UInt64 9223372036854775808 immutable
-parseWhole let zero32 Int32 0 immutable
-parseWhole let one32 Int32 1 immutable
-parseWhole let base36 Int32 36 immutable
-parseWhole let one Int64 1 immutable
-parseWhole let minusSign Byte 45 immutable
-parseWhole let plusSign Byte 43 immutable
-parseWhole let digitZero Byte 48 immutable
-parseWhole let smallX Byte 120 immutable
-parseWhole let base16 Int32 16 immutable
-parseWhole let two Int64 2 immutable
-parseWhole let zeroWide UInt64 0 immutable
-parseWhole at begin do lowBase
-parseWhole at begin do oneBase
-parseWhole at begin do highBase
-parseWhole at begin do eitherBad
-parseWhole at begin do anyBad
-parseWhole at begin branch if bad goto invalid else goto spaces
-parseWhole at invalid do errnoInvalid
-parseWhole at invalid return ok noValue
-parseWhole at spaces goto eachSpace
-parseWhole at eachSpace do readSpace
-parseWhole at eachSpace do spaceCheck
-parseWhole at eachSpace branch if white goto skipSpace else goto sign
-parseWhole at skipSpace do stepSpace
-parseWhole at skipSpace set at afterSpace
-parseWhole at skipSpace goto eachSpace
-parseWhole at sign do minusCheck
-parseWhole at sign branch if minus goto takeMinus else goto plusCheck
-parseWhole at takeMinus set negative yes
-parseWhole at takeMinus do stepMinus
-parseWhole at takeMinus set at afterMinus
-parseWhole at takeMinus goto prefix
-parseWhole at plusCheck do plusSame
-parseWhole at plusCheck branch if plus goto takePlus else goto prefix
-parseWhole at takePlus do stepPlus
-parseWhole at takePlus set at afterPlus
-parseWhole at takePlus goto prefix
-parseWhole at prefix do readFirst
-parseWhole at prefix do zeroCheck
-parseWhole at prefix branch if leadingZero goto zeroPrefix else goto plainBase
-parseWhole at zeroPrefix do nextOf
-parseWhole at zeroPrefix do readSecond
-parseWhole at zeroPrefix do lowerSecond
-parseWhole at zeroPrefix do xCheck
-parseWhole at zeroPrefix do baseZero
-parseWhole at zeroPrefix do baseSixteen
-parseWhole at zeroPrefix do hexAllowed
-parseWhole at zeroPrefix do hexPrefix
-parseWhole at zeroPrefix branch if takesX goto skipX else goto octalCheck
-parseWhole at skipX do stepX
-parseWhole at skipX set at afterX
-parseWhole at skipX set radix sixteen
-parseWhole at skipX goto digits
-parseWhole at octalCheck branch if autoBase goto octal else goto plainBase
-parseWhole at octal set radix eightWide
-parseWhole at octal goto digits
-parseWhole at plainBase do zeroBase
-parseWhole at plainBase branch if givenZero goto digits else goto givenBase
-parseWhole at givenBase do widenBase
-parseWhole at givenBase do unsignedBase
-parseWhole at givenBase set radix baseBits
-parseWhole at givenBase goto digits
-parseWhole at digits set start at
-parseWhole at digits do cutoffOf
-parseWhole at digits do cutlimOf
-parseWhole at digits goto eachDigit
-parseWhole at eachDigit do readDigit
-parseWhole at eachDigit do digitOfIt
-parseWhole at eachDigit do belowRadix
-parseWhole at eachDigit branch if isDigit goto consider else goto finish
-parseWhole at consider branch if overflow goto advance else goto limitCheck
-parseWhole at limitCheck do overCutoff
-parseWhole at limitCheck branch if over goto overflowed else goto atCutoff
-parseWhole at atCutoff do sameCutoff
-parseWhole at atCutoff do pastLimit
-parseWhole at atCutoff do bothOver
-parseWhole at atCutoff branch if overAtLimit goto overflowed else goto accumulate
-parseWhole at overflowed set overflow yes
-parseWhole at overflowed goto advance
-parseWhole at accumulate do shiftUp
-parseWhole at accumulate do addOn
-parseWhole at accumulate set value added
-parseWhole at accumulate goto advance
-parseWhole at advance do stepDigit
-parseWhole at advance set at afterDigit
-parseWhole at advance goto eachDigit
-parseWhole at finish do noneRead
-parseWhole at finish branch if empty goto noConversion else goto storeEnd
-parseWhole at noConversion do nowhere
-parseWhole at noConversion do noEndCheck
-parseWhole at noConversion branch if noEnd goto giveNone else goto xEnd
-parseWhole at xEnd do farEnough
-parseWhole at xEnd branch if twoBefore goto xBefore else goto textEnd
-parseWhole at xBefore do beforeOf
-parseWhole at xBefore do readBefore
-parseWhole at xBefore do lowerBefore
-parseWhole at xBefore do xBeforeCheck
-parseWhole at xBefore do zeroBeforeOf
-parseWhole at xBefore do readZeroBefore
-parseWhole at xBefore do zeroBeforeCheck
-parseWhole at xBefore do bothBefore
-parseWhole at xBefore branch if wasPrefix goto endAtX else goto textEnd
-parseWhole at endAtX do findX
-parseWhole at endAtX do storeX
-parseWhole at endAtX return ok noValue
-parseWhole at textEnd do storeText
-parseWhole at textEnd goto giveNone
-parseWhole at giveNone return ok noValue
-parseWhole at storeEnd do nowhereEnd
-parseWhole at storeEnd do endCheck
-parseWhole at storeEnd branch if noEndAddress goto result else goto storeIt
-parseWhole at storeIt do findEnd
-parseWhole at storeIt do storeEndPlace
-parseWhole at storeIt goto result
-parseWhole at result branch if unsigned goto unsignedResult else goto signedResult
-parseWhole at unsignedResult branch if overflow goto unsignedRange else goto unsignedValue
-parseWhole at unsignedRange do errnoUnsigned
-parseWhole at unsignedRange do allBits
-parseWhole at unsignedRange return ok allOnesValue
-parseWhole at unsignedValue branch if negative goto negateUnsigned else goto plainUnsigned
-parseWhole at negateUnsigned do negateIt
-parseWhole at negateUnsigned do negatedValue
-parseWhole at negateUnsigned return ok negatedResult
-parseWhole at plainUnsigned do plainValue
-parseWhole at plainUnsigned return ok plainResult
-parseWhole at signedResult branch if overflow goto signedRange else goto signedLimit
-parseWhole at signedLimit branch if negative goto negativeLimit else goto positiveLimit
-parseWhole at negativeLimit do belowLeast
-parseWhole at negativeLimit branch if tooNegative goto signedRange else goto negateSigned
-parseWhole at positiveLimit do aboveMost
-parseWhole at positiveLimit branch if tooPositive goto signedRange else goto plainSigned
-parseWhole at negateSigned do negateSignedIt
-parseWhole at negateSigned do negatedSignedValue
-parseWhole at negateSigned return ok negatedSigned
-parseWhole at plainSigned do plainSignedValue
-parseWhole at plainSigned return ok plainSignedResult
-parseWhole at signedRange do errnoSigned
-parseWhole at signedRange branch if negative goto giveLeast else goto giveMost
-parseWhole at giveLeast do leastValue
-parseWhole at giveLeast return ok leastResult
-parseWhole at giveMost do mostValue
-parseWhole at giveMost return ok mostResult
+parseWhole let no Bool false immutable
+parseWhole at begin do readValue
+parseWhole at begin return ok value
+
+readValue is call
+readValue in parseWhole
+readValue invokes parseWholeIn
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool unsigned copy
+readValue argument binary Bool no copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+parseWholeBinary is operation
+parseWholeBinary purpose "strtol and its kin as glibc's C23 names (__isoc23_strtol) read them: also `0b` in base 2 or 0 (D-173)"
+parseWholeBinary invariant readsBinary "\"Reads 0b101 as 5 in base 0 and base 2, and as 0 ending at the b where no binary digit follows\""
+parseWholeBinary typeParameter none
+parseWholeBinary input text machine.Address copied
+parseWholeBinary input endAt machine.Address copied
+parseWholeBinary input base Int32 copied
+parseWholeBinary input unsigned Bool copied
+parseWholeBinary output Int64
+parseWholeBinary outputOwnedBy none
+parseWholeBinary raises none
+parseWholeBinary effect use machine.memory
+parseWholeBinary uses memoryAccess
+parseWholeBinary memoryHeap false
+parseWholeBinary async false
+parseWholeBinary maxRecursion none
+parseWholeBinary label begin loopKind none
+parseWholeBinary label begin within none
+parseWholeBinary let yes Bool true immutable
+parseWholeBinary at begin do readValue
+parseWholeBinary at begin return ok value
+
+readValue is call
+readValue in parseWholeBinary
+readValue invokes parseWholeIn
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool unsigned copy
+readValue argument binary Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+parseWholeIn is operation
+parseWholeIn purpose "strtol and its kin, as glibc reads them: white space, a sign, `0x` in base 16 or 0, `0b` in base 2 or 0 when binary (C23), and `0` for base 8 in base 0, then digits below the base; the value's bits, LONG_MIN or LONG_MAX (ULONG_MAX unsigned) with ERANGE past the range, EINVAL for a base that is neither 0 nor 2 to 36; the end of what was read is stored at `endAt` unless it is the address 0"
+parseWholeIn invariant none
+parseWholeIn typeParameter none
+parseWholeIn input text machine.Address copied
+parseWholeIn input endAt machine.Address copied
+parseWholeIn input base Int32 copied
+parseWholeIn input unsigned Bool copied
+parseWholeIn input binary Bool copied
+parseWholeIn output Int64
+parseWholeIn outputOwnedBy none
+parseWholeIn raises none
+parseWholeIn effect use machine.memory
+parseWholeIn uses memoryAccess
+parseWholeIn memoryHeap false
+parseWholeIn async false
+parseWholeIn maxRecursion none
+parseWholeIn label begin loopKind none
+parseWholeIn label begin within none
+parseWholeIn label invalid loopKind none
+parseWholeIn label invalid within none
+parseWholeIn label spaces loopKind none
+parseWholeIn label spaces within none
+parseWholeIn label eachSpace loopKind while
+parseWholeIn label eachSpace within none
+parseWholeIn label eachSpace maxIterations forever
+parseWholeIn label skipSpace loopKind none
+parseWholeIn label skipSpace within eachSpace
+parseWholeIn label sign loopKind none
+parseWholeIn label sign within none
+parseWholeIn label takeMinus loopKind none
+parseWholeIn label takeMinus within none
+parseWholeIn label plusCheck loopKind none
+parseWholeIn label plusCheck within none
+parseWholeIn label takePlus loopKind none
+parseWholeIn label takePlus within none
+parseWholeIn label prefix loopKind none
+parseWholeIn label prefix within none
+parseWholeIn label zeroPrefix loopKind none
+parseWholeIn label zeroPrefix within none
+parseWholeIn label binaryCheck loopKind none
+parseWholeIn label binaryCheck within none
+parseWholeIn label skipB loopKind none
+parseWholeIn label skipB within none
+parseWholeIn label skipX loopKind none
+parseWholeIn label skipX within none
+parseWholeIn label octalCheck loopKind none
+parseWholeIn label octalCheck within none
+parseWholeIn label octal loopKind none
+parseWholeIn label octal within none
+parseWholeIn label plainBase loopKind none
+parseWholeIn label plainBase within none
+parseWholeIn label givenBase loopKind none
+parseWholeIn label givenBase within none
+parseWholeIn label digits loopKind none
+parseWholeIn label digits within none
+parseWholeIn label eachDigit loopKind while
+parseWholeIn label eachDigit within none
+parseWholeIn label eachDigit maxIterations forever
+parseWholeIn label consider loopKind none
+parseWholeIn label consider within eachDigit
+parseWholeIn label limitCheck loopKind none
+parseWholeIn label limitCheck within eachDigit
+parseWholeIn label atCutoff loopKind none
+parseWholeIn label atCutoff within eachDigit
+parseWholeIn label overflowed loopKind none
+parseWholeIn label overflowed within eachDigit
+parseWholeIn label accumulate loopKind none
+parseWholeIn label accumulate within eachDigit
+parseWholeIn label advance loopKind none
+parseWholeIn label advance within eachDigit
+parseWholeIn label finish loopKind none
+parseWholeIn label finish within none
+parseWholeIn label noConversion loopKind none
+parseWholeIn label noConversion within none
+parseWholeIn label xEnd loopKind none
+parseWholeIn label xEnd within none
+parseWholeIn label xBefore loopKind none
+parseWholeIn label xBefore within none
+parseWholeIn label endAtX loopKind none
+parseWholeIn label endAtX within none
+parseWholeIn label textEnd loopKind none
+parseWholeIn label textEnd within none
+parseWholeIn label giveNone loopKind none
+parseWholeIn label giveNone within none
+parseWholeIn label storeEnd loopKind none
+parseWholeIn label storeEnd within none
+parseWholeIn label storeIt loopKind none
+parseWholeIn label storeIt within none
+parseWholeIn label result loopKind none
+parseWholeIn label result within none
+parseWholeIn label unsignedResult loopKind none
+parseWholeIn label unsignedResult within none
+parseWholeIn label unsignedRange loopKind none
+parseWholeIn label unsignedRange within none
+parseWholeIn label unsignedValue loopKind none
+parseWholeIn label unsignedValue within none
+parseWholeIn label negateUnsigned loopKind none
+parseWholeIn label negateUnsigned within none
+parseWholeIn label plainUnsigned loopKind none
+parseWholeIn label plainUnsigned within none
+parseWholeIn label signedResult loopKind none
+parseWholeIn label signedResult within none
+parseWholeIn label signedLimit loopKind none
+parseWholeIn label signedLimit within none
+parseWholeIn label negativeLimit loopKind none
+parseWholeIn label negativeLimit within none
+parseWholeIn label positiveLimit loopKind none
+parseWholeIn label positiveLimit within none
+parseWholeIn label negateSigned loopKind none
+parseWholeIn label negateSigned within none
+parseWholeIn label plainSigned loopKind none
+parseWholeIn label plainSigned within none
+parseWholeIn label signedRange loopKind none
+parseWholeIn label signedRange within none
+parseWholeIn label giveLeast loopKind none
+parseWholeIn label giveLeast within none
+parseWholeIn label giveMost loopKind none
+parseWholeIn label giveMost within none
+parseWholeIn let at Int64 0 mutable
+parseWholeIn let start Int64 0 mutable
+parseWholeIn let negative Bool false mutable
+parseWholeIn let overflow Bool false mutable
+parseWholeIn let radix UInt64 10 mutable
+parseWholeIn let value UInt64 0 mutable
+parseWholeIn let yes Bool true immutable
+parseWholeIn let noValue Int64 0 immutable
+parseWholeIn let allOnes UInt64 18446744073709551615 immutable
+parseWholeIn let mostSigned UInt64 9223372036854775807 immutable
+parseWholeIn let sixteen UInt64 16 immutable
+parseWholeIn let eightWide UInt64 8 immutable
+parseWholeIn let leastSigned UInt64 9223372036854775808 immutable
+parseWholeIn let zero32 Int32 0 immutable
+parseWholeIn let one32 Int32 1 immutable
+parseWholeIn let base36 Int32 36 immutable
+parseWholeIn let one Int64 1 immutable
+parseWholeIn let minusSign Byte 45 immutable
+parseWholeIn let plusSign Byte 43 immutable
+parseWholeIn let digitZero Byte 48 immutable
+parseWholeIn let smallX Byte 120 immutable
+parseWholeIn let base16 Int32 16 immutable
+parseWholeIn let byte98 Byte 98 immutable
+parseWholeIn let int322 Int32 2 immutable
+parseWholeIn let two Int64 2 immutable
+parseWholeIn let uInt642 UInt64 2 immutable
+parseWholeIn let byte120 Byte 120 immutable
+parseWholeIn let zeroWide UInt64 0 immutable
+parseWholeIn at begin do lowBase
+parseWholeIn at begin do oneBase
+parseWholeIn at begin do highBase
+parseWholeIn at begin do eitherBad
+parseWholeIn at begin do anyBad
+parseWholeIn at begin branch if bad goto invalid else goto spaces
+parseWholeIn at invalid do errnoInvalid
+parseWholeIn at invalid return ok noValue
+parseWholeIn at spaces goto eachSpace
+parseWholeIn at eachSpace do readSpace
+parseWholeIn at eachSpace do spaceCheck
+parseWholeIn at eachSpace branch if white goto skipSpace else goto sign
+parseWholeIn at skipSpace do stepSpace
+parseWholeIn at skipSpace set at afterSpace
+parseWholeIn at skipSpace goto eachSpace
+parseWholeIn at sign do minusCheck
+parseWholeIn at sign branch if minus goto takeMinus else goto plusCheck
+parseWholeIn at takeMinus set negative yes
+parseWholeIn at takeMinus do stepMinus
+parseWholeIn at takeMinus set at afterMinus
+parseWholeIn at takeMinus goto prefix
+parseWholeIn at plusCheck do plusSame
+parseWholeIn at plusCheck branch if plus goto takePlus else goto prefix
+parseWholeIn at takePlus do stepPlus
+parseWholeIn at takePlus set at afterPlus
+parseWholeIn at takePlus goto prefix
+parseWholeIn at prefix do readFirst
+parseWholeIn at prefix do zeroCheck
+parseWholeIn at prefix branch if leadingZero goto zeroPrefix else goto plainBase
+parseWholeIn at zeroPrefix do nextOf
+parseWholeIn at zeroPrefix do readSecond
+parseWholeIn at zeroPrefix do lowerSecond
+parseWholeIn at zeroPrefix do xCheck
+parseWholeIn at zeroPrefix do baseZero
+parseWholeIn at zeroPrefix do baseSixteen
+parseWholeIn at zeroPrefix do hexAllowed
+parseWholeIn at zeroPrefix do hexPrefix
+parseWholeIn at zeroPrefix branch if takesX goto skipX else goto binaryCheck
+parseWholeIn at binaryCheck do takesBStep1
+parseWholeIn at binaryCheck do takesBStep2
+parseWholeIn at binaryCheck do takesBStep3
+parseWholeIn at binaryCheck do takesBStep4
+parseWholeIn at binaryCheck do findTakesB1
+parseWholeIn at binaryCheck branch if takesB goto skipB else goto octalCheck
+parseWholeIn at skipB do findAfterB1
+parseWholeIn at skipB set at afterB
+parseWholeIn at skipB set radix uInt642
+parseWholeIn at skipB goto digits
+parseWholeIn at skipX do stepX
+parseWholeIn at skipX set at afterX
+parseWholeIn at skipX set radix sixteen
+parseWholeIn at skipX goto digits
+parseWholeIn at octalCheck branch if autoBase goto octal else goto plainBase
+parseWholeIn at octal set radix eightWide
+parseWholeIn at octal goto digits
+parseWholeIn at plainBase do zeroBase
+parseWholeIn at plainBase branch if givenZero goto digits else goto givenBase
+parseWholeIn at givenBase do widenBase
+parseWholeIn at givenBase do unsignedBase
+parseWholeIn at givenBase set radix baseBits
+parseWholeIn at givenBase goto digits
+parseWholeIn at digits set start at
+parseWholeIn at digits do cutoffOf
+parseWholeIn at digits do cutlimOf
+parseWholeIn at digits goto eachDigit
+parseWholeIn at eachDigit do readDigit
+parseWholeIn at eachDigit do digitOfIt
+parseWholeIn at eachDigit do belowRadix
+parseWholeIn at eachDigit branch if isDigit goto consider else goto finish
+parseWholeIn at consider branch if overflow goto advance else goto limitCheck
+parseWholeIn at limitCheck do overCutoff
+parseWholeIn at limitCheck branch if over goto overflowed else goto atCutoff
+parseWholeIn at atCutoff do sameCutoff
+parseWholeIn at atCutoff do pastLimit
+parseWholeIn at atCutoff do bothOver
+parseWholeIn at atCutoff branch if overAtLimit goto overflowed else goto accumulate
+parseWholeIn at overflowed set overflow yes
+parseWholeIn at overflowed goto advance
+parseWholeIn at accumulate do shiftUp
+parseWholeIn at accumulate do addOn
+parseWholeIn at accumulate set value added
+parseWholeIn at accumulate goto advance
+parseWholeIn at advance do stepDigit
+parseWholeIn at advance set at afterDigit
+parseWholeIn at advance goto eachDigit
+parseWholeIn at finish do noneRead
+parseWholeIn at finish branch if empty goto noConversion else goto storeEnd
+parseWholeIn at noConversion do nowhere
+parseWholeIn at noConversion do noEndCheck
+parseWholeIn at noConversion branch if noEnd goto giveNone else goto xEnd
+parseWholeIn at xEnd do farEnough
+parseWholeIn at xEnd branch if twoBefore goto xBefore else goto textEnd
+parseWholeIn at xBefore do beforeOf
+parseWholeIn at xBefore do readBefore
+parseWholeIn at xBefore do lowerBefore
+parseWholeIn at xBefore do wasXStep1
+parseWholeIn at xBefore do wasXStep2
+parseWholeIn at xBefore do wasXStep3
+parseWholeIn at xBefore do findWasX1
+parseWholeIn at xBefore do zeroBeforeOf
+parseWholeIn at xBefore do readZeroBefore
+parseWholeIn at xBefore do zeroBeforeCheck
+parseWholeIn at xBefore do bothBefore
+parseWholeIn at xBefore branch if wasPrefix goto endAtX else goto textEnd
+parseWholeIn at endAtX do findX
+parseWholeIn at endAtX do storeX
+parseWholeIn at endAtX return ok noValue
+parseWholeIn at textEnd do storeText
+parseWholeIn at textEnd goto giveNone
+parseWholeIn at giveNone return ok noValue
+parseWholeIn at storeEnd do nowhereEnd
+parseWholeIn at storeEnd do endCheck
+parseWholeIn at storeEnd branch if noEndAddress goto result else goto storeIt
+parseWholeIn at storeIt do findEnd
+parseWholeIn at storeIt do storeEndPlace
+parseWholeIn at storeIt goto result
+parseWholeIn at result branch if unsigned goto unsignedResult else goto signedResult
+parseWholeIn at unsignedResult branch if overflow goto unsignedRange else goto unsignedValue
+parseWholeIn at unsignedRange do errnoUnsigned
+parseWholeIn at unsignedRange do allBits
+parseWholeIn at unsignedRange return ok allOnesValue
+parseWholeIn at unsignedValue branch if negative goto negateUnsigned else goto plainUnsigned
+parseWholeIn at negateUnsigned do negateIt
+parseWholeIn at negateUnsigned do negatedValue
+parseWholeIn at negateUnsigned return ok negatedResult
+parseWholeIn at plainUnsigned do plainValue
+parseWholeIn at plainUnsigned return ok plainResult
+parseWholeIn at signedResult branch if overflow goto signedRange else goto signedLimit
+parseWholeIn at signedLimit branch if negative goto negativeLimit else goto positiveLimit
+parseWholeIn at negativeLimit do belowLeast
+parseWholeIn at negativeLimit branch if tooNegative goto signedRange else goto negateSigned
+parseWholeIn at positiveLimit do aboveMost
+parseWholeIn at positiveLimit branch if tooPositive goto signedRange else goto plainSigned
+parseWholeIn at negateSigned do negateSignedIt
+parseWholeIn at negateSigned do negatedSignedValue
+parseWholeIn at negateSigned return ok negatedSigned
+parseWholeIn at plainSigned do plainSignedValue
+parseWholeIn at plainSigned return ok plainSignedResult
+parseWholeIn at signedRange do errnoSigned
+parseWholeIn at signedRange branch if negative goto giveLeast else goto giveMost
+parseWholeIn at giveLeast do leastValue
+parseWholeIn at giveLeast return ok leastResult
+parseWholeIn at giveMost do mostValue
+parseWholeIn at giveMost return ok mostResult
 
 lowBase is call
-lowBase in parseWhole
+lowBase in parseWholeIn
 lowBase invokes compare.lessThanInt32
 lowBase argument left Int32 base copy
 lowBase argument right Int32 zero32 copy
@@ -6877,7 +6974,7 @@ lowBase catch none
 lowBase suppresses none
 
 oneBase is call
-oneBase in parseWhole
+oneBase in parseWholeIn
 oneBase invokes compare.equalInt32
 oneBase argument left Int32 base copy
 oneBase argument right Int32 one32 copy
@@ -6889,7 +6986,7 @@ oneBase catch none
 oneBase suppresses none
 
 highBase is call
-highBase in parseWhole
+highBase in parseWholeIn
 highBase invokes compare.greaterThanInt32
 highBase argument left Int32 base copy
 highBase argument right Int32 base36 copy
@@ -6901,7 +6998,7 @@ highBase catch none
 highBase suppresses none
 
 eitherBad is call
-eitherBad in parseWhole
+eitherBad in parseWholeIn
 eitherBad invokes logic.or
 eitherBad argument left Bool badLow copy
 eitherBad argument right Bool baseOne copy
@@ -6913,7 +7010,7 @@ eitherBad catch none
 eitherBad suppresses none
 
 anyBad is call
-anyBad in parseWhole
+anyBad in parseWholeIn
 anyBad invokes logic.or
 anyBad argument left Bool bad1 copy
 anyBad argument right Bool badHigh copy
@@ -6925,7 +7022,7 @@ anyBad catch none
 anyBad suppresses none
 
 errnoInvalid is call
-errnoInvalid in parseWhole
+errnoInvalid in parseWholeIn
 errnoInvalid invokes setErrno
 errnoInvalid argument value Int32 invalidError copy
 errnoInvalid result none
@@ -6936,7 +7033,7 @@ errnoInvalid catch none
 errnoInvalid suppresses none
 
 readSpace is call
-readSpace in parseWhole
+readSpace in parseWholeIn
 readSpace invokes byteAt
 readSpace argument base machine.Address text copy
 readSpace argument at Int64 at copy
@@ -6948,7 +7045,7 @@ readSpace catch none
 readSpace suppresses none
 
 spaceCheck is call
-spaceCheck in parseWhole
+spaceCheck in parseWholeIn
 spaceCheck invokes isSpaceByte
 spaceCheck argument value Byte leading copy
 spaceCheck result white Bool
@@ -6959,7 +7056,7 @@ spaceCheck catch none
 spaceCheck suppresses none
 
 stepSpace is call
-stepSpace in parseWhole
+stepSpace in parseWholeIn
 stepSpace invokes math.addInt64
 stepSpace argument left Int64 at copy
 stepSpace argument right Int64 one copy
@@ -6971,7 +7068,7 @@ stepSpace catch none
 stepSpace suppresses none
 
 minusCheck is call
-minusCheck in parseWhole
+minusCheck in parseWholeIn
 minusCheck invokes compare.equalByte
 minusCheck argument left Byte leading copy
 minusCheck argument right Byte minusSign copy
@@ -6983,7 +7080,7 @@ minusCheck catch none
 minusCheck suppresses none
 
 stepMinus is call
-stepMinus in parseWhole
+stepMinus in parseWholeIn
 stepMinus invokes math.addInt64
 stepMinus argument left Int64 at copy
 stepMinus argument right Int64 one copy
@@ -6995,7 +7092,7 @@ stepMinus catch none
 stepMinus suppresses none
 
 plusSame is call
-plusSame in parseWhole
+plusSame in parseWholeIn
 plusSame invokes compare.equalByte
 plusSame argument left Byte leading copy
 plusSame argument right Byte plusSign copy
@@ -7007,7 +7104,7 @@ plusSame catch none
 plusSame suppresses none
 
 stepPlus is call
-stepPlus in parseWhole
+stepPlus in parseWholeIn
 stepPlus invokes math.addInt64
 stepPlus argument left Int64 at copy
 stepPlus argument right Int64 one copy
@@ -7019,7 +7116,7 @@ stepPlus catch none
 stepPlus suppresses none
 
 readFirst is call
-readFirst in parseWhole
+readFirst in parseWholeIn
 readFirst invokes byteAt
 readFirst argument base machine.Address text copy
 readFirst argument at Int64 at copy
@@ -7031,7 +7128,7 @@ readFirst catch none
 readFirst suppresses none
 
 zeroCheck is call
-zeroCheck in parseWhole
+zeroCheck in parseWholeIn
 zeroCheck invokes compare.equalByte
 zeroCheck argument left Byte first copy
 zeroCheck argument right Byte digitZero copy
@@ -7043,7 +7140,7 @@ zeroCheck catch none
 zeroCheck suppresses none
 
 nextOf is call
-nextOf in parseWhole
+nextOf in parseWholeIn
 nextOf invokes math.addInt64
 nextOf argument left Int64 at copy
 nextOf argument right Int64 one copy
@@ -7055,7 +7152,7 @@ nextOf catch none
 nextOf suppresses none
 
 readSecond is call
-readSecond in parseWhole
+readSecond in parseWholeIn
 readSecond invokes byteAt
 readSecond argument base machine.Address text copy
 readSecond argument at Int64 secondAt copy
@@ -7067,7 +7164,7 @@ readSecond catch none
 readSecond suppresses none
 
 lowerSecond is call
-lowerSecond in parseWhole
+lowerSecond in parseWholeIn
 lowerSecond invokes lowerByte
 lowerSecond argument value Byte second copy
 lowerSecond result secondLower Byte
@@ -7078,7 +7175,7 @@ lowerSecond catch none
 lowerSecond suppresses none
 
 xCheck is call
-xCheck in parseWhole
+xCheck in parseWholeIn
 xCheck invokes compare.equalByte
 xCheck argument left Byte secondLower copy
 xCheck argument right Byte smallX copy
@@ -7090,7 +7187,7 @@ xCheck catch none
 xCheck suppresses none
 
 baseZero is call
-baseZero in parseWhole
+baseZero in parseWholeIn
 baseZero invokes compare.equalInt32
 baseZero argument left Int32 base copy
 baseZero argument right Int32 zero32 copy
@@ -7102,7 +7199,7 @@ baseZero catch none
 baseZero suppresses none
 
 baseSixteen is call
-baseSixteen in parseWhole
+baseSixteen in parseWholeIn
 baseSixteen invokes compare.equalInt32
 baseSixteen argument left Int32 base copy
 baseSixteen argument right Int32 base16 copy
@@ -7114,7 +7211,7 @@ baseSixteen catch none
 baseSixteen suppresses none
 
 hexAllowed is call
-hexAllowed in parseWhole
+hexAllowed in parseWholeIn
 hexAllowed invokes logic.or
 hexAllowed argument left Bool autoBase copy
 hexAllowed argument right Bool hexBase copy
@@ -7126,7 +7223,7 @@ hexAllowed catch none
 hexAllowed suppresses none
 
 hexPrefix is call
-hexPrefix in parseWhole
+hexPrefix in parseWholeIn
 hexPrefix invokes logic.and
 hexPrefix argument left Bool isX copy
 hexPrefix argument right Bool allowsX copy
@@ -7137,8 +7234,80 @@ hexPrefix borrows none
 hexPrefix catch none
 hexPrefix suppresses none
 
+takesBStep1 is call
+takesBStep1 in parseWholeIn
+takesBStep1 invokes compare.equalByte
+takesBStep1 argument left Byte secondLower copy
+takesBStep1 argument right Byte byte98 copy
+takesBStep1 result takesBPart1 Bool
+takesBStep1 ownedBy none
+takesBStep1 cleanedBy none
+takesBStep1 borrows none
+takesBStep1 catch none
+takesBStep1 suppresses none
+
+takesBStep2 is call
+takesBStep2 in parseWholeIn
+takesBStep2 invokes logic.and
+takesBStep2 argument left Bool binary copy
+takesBStep2 argument right Bool takesBPart1 copy
+takesBStep2 result takesBPart2 Bool
+takesBStep2 ownedBy none
+takesBStep2 cleanedBy none
+takesBStep2 borrows none
+takesBStep2 catch none
+takesBStep2 suppresses none
+
+takesBStep3 is call
+takesBStep3 in parseWholeIn
+takesBStep3 invokes compare.equalInt32
+takesBStep3 argument left Int32 base copy
+takesBStep3 argument right Int32 int322 copy
+takesBStep3 result takesBPart3 Bool
+takesBStep3 ownedBy none
+takesBStep3 cleanedBy none
+takesBStep3 borrows none
+takesBStep3 catch none
+takesBStep3 suppresses none
+
+takesBStep4 is call
+takesBStep4 in parseWholeIn
+takesBStep4 invokes logic.or
+takesBStep4 argument left Bool autoBase copy
+takesBStep4 argument right Bool takesBPart3 copy
+takesBStep4 result takesBPart4 Bool
+takesBStep4 ownedBy none
+takesBStep4 cleanedBy none
+takesBStep4 borrows none
+takesBStep4 catch none
+takesBStep4 suppresses none
+
+findTakesB1 is call
+findTakesB1 in parseWholeIn
+findTakesB1 invokes logic.and
+findTakesB1 argument left Bool takesBPart2 copy
+findTakesB1 argument right Bool takesBPart4 copy
+findTakesB1 result takesB Bool
+findTakesB1 ownedBy none
+findTakesB1 cleanedBy none
+findTakesB1 borrows none
+findTakesB1 catch none
+findTakesB1 suppresses none
+
+findAfterB1 is call
+findAfterB1 in parseWholeIn
+findAfterB1 invokes math.addInt64
+findAfterB1 argument left Int64 at copy
+findAfterB1 argument right Int64 two copy
+findAfterB1 result afterB Int64
+findAfterB1 ownedBy none
+findAfterB1 cleanedBy none
+findAfterB1 borrows none
+findAfterB1 catch none
+findAfterB1 suppresses none
+
 stepX is call
-stepX in parseWhole
+stepX in parseWholeIn
 stepX invokes math.addInt64
 stepX argument left Int64 at copy
 stepX argument right Int64 two copy
@@ -7150,7 +7319,7 @@ stepX catch none
 stepX suppresses none
 
 zeroBase is call
-zeroBase in parseWhole
+zeroBase in parseWholeIn
 zeroBase invokes compare.equalInt32
 zeroBase argument left Int32 base copy
 zeroBase argument right Int32 zero32 copy
@@ -7162,7 +7331,7 @@ zeroBase catch none
 zeroBase suppresses none
 
 widenBase is call
-widenBase in parseWhole
+widenBase in parseWholeIn
 widenBase invokes convert.int32ToInt64
 widenBase argument value Int32 base copy
 widenBase result baseWide Int64
@@ -7173,7 +7342,7 @@ widenBase catch none
 widenBase suppresses none
 
 unsignedBase is call
-unsignedBase in parseWhole
+unsignedBase in parseWholeIn
 unsignedBase invokes convert.int64BitsToUInt64
 unsignedBase argument value Int64 baseWide copy
 unsignedBase result baseBits UInt64
@@ -7184,7 +7353,7 @@ unsignedBase catch none
 unsignedBase suppresses none
 
 cutoffOf is call
-cutoffOf in parseWhole
+cutoffOf in parseWholeIn
 cutoffOf invokes math.divideUInt64
 cutoffOf argument left UInt64 allOnes copy
 cutoffOf argument right UInt64 radix copy
@@ -7196,7 +7365,7 @@ cutoffOf catch none
 cutoffOf suppresses none
 
 cutlimOf is call
-cutlimOf in parseWhole
+cutlimOf in parseWholeIn
 cutlimOf invokes math.remainderUInt64
 cutlimOf argument left UInt64 allOnes copy
 cutlimOf argument right UInt64 radix copy
@@ -7208,7 +7377,7 @@ cutlimOf catch none
 cutlimOf suppresses none
 
 readDigit is call
-readDigit in parseWhole
+readDigit in parseWholeIn
 readDigit invokes byteAt
 readDigit argument base machine.Address text copy
 readDigit argument at Int64 at copy
@@ -7220,7 +7389,7 @@ readDigit catch none
 readDigit suppresses none
 
 digitOfIt is call
-digitOfIt in parseWhole
+digitOfIt in parseWholeIn
 digitOfIt invokes digitOf
 digitOfIt argument value Byte character copy
 digitOfIt result digit UInt64
@@ -7231,7 +7400,7 @@ digitOfIt catch none
 digitOfIt suppresses none
 
 belowRadix is call
-belowRadix in parseWhole
+belowRadix in parseWholeIn
 belowRadix invokes compare.lessThanUInt64
 belowRadix argument left UInt64 digit copy
 belowRadix argument right UInt64 radix copy
@@ -7243,7 +7412,7 @@ belowRadix catch none
 belowRadix suppresses none
 
 overCutoff is call
-overCutoff in parseWhole
+overCutoff in parseWholeIn
 overCutoff invokes compare.greaterThanUInt64
 overCutoff argument left UInt64 value copy
 overCutoff argument right UInt64 cutoff copy
@@ -7255,7 +7424,7 @@ overCutoff catch none
 overCutoff suppresses none
 
 sameCutoff is call
-sameCutoff in parseWhole
+sameCutoff in parseWholeIn
 sameCutoff invokes compare.equalUInt64
 sameCutoff argument left UInt64 value copy
 sameCutoff argument right UInt64 cutoff copy
@@ -7267,7 +7436,7 @@ sameCutoff catch none
 sameCutoff suppresses none
 
 pastLimit is call
-pastLimit in parseWhole
+pastLimit in parseWholeIn
 pastLimit invokes compare.greaterThanUInt64
 pastLimit argument left UInt64 digit copy
 pastLimit argument right UInt64 cutlim copy
@@ -7279,7 +7448,7 @@ pastLimit catch none
 pastLimit suppresses none
 
 bothOver is call
-bothOver in parseWhole
+bothOver in parseWholeIn
 bothOver invokes logic.and
 bothOver argument left Bool atLimit copy
 bothOver argument right Bool pastCut copy
@@ -7291,7 +7460,7 @@ bothOver catch none
 bothOver suppresses none
 
 shiftUp is call
-shiftUp in parseWhole
+shiftUp in parseWholeIn
 shiftUp invokes math.multiplyUInt64
 shiftUp argument left UInt64 value copy
 shiftUp argument right UInt64 radix copy
@@ -7303,7 +7472,7 @@ shiftUp catch none
 shiftUp suppresses none
 
 addOn is call
-addOn in parseWhole
+addOn in parseWholeIn
 addOn invokes math.addUInt64
 addOn argument left UInt64 shifted copy
 addOn argument right UInt64 digit copy
@@ -7315,7 +7484,7 @@ addOn catch none
 addOn suppresses none
 
 stepDigit is call
-stepDigit in parseWhole
+stepDigit in parseWholeIn
 stepDigit invokes math.addInt64
 stepDigit argument left Int64 at copy
 stepDigit argument right Int64 one copy
@@ -7327,7 +7496,7 @@ stepDigit catch none
 stepDigit suppresses none
 
 noneRead is call
-noneRead in parseWhole
+noneRead in parseWholeIn
 noneRead invokes compare.equalInt64
 noneRead argument left Int64 at copy
 noneRead argument right Int64 start copy
@@ -7339,7 +7508,7 @@ noneRead catch none
 noneRead suppresses none
 
 nowhere is call
-nowhere in parseWhole
+nowhere in parseWholeIn
 nowhere invokes machine.zero
 nowhere argument none
 nowhere result anywhere machine.Address
@@ -7350,7 +7519,7 @@ nowhere catch none
 nowhere suppresses none
 
 noEndCheck is call
-noEndCheck in parseWhole
+noEndCheck in parseWholeIn
 noEndCheck invokes machine.equal
 noEndCheck argument left machine.Address endAt copy
 noEndCheck argument right machine.Address anywhere copy
@@ -7362,7 +7531,7 @@ noEndCheck catch none
 noEndCheck suppresses none
 
 farEnough is call
-farEnough in parseWhole
+farEnough in parseWholeIn
 farEnough invokes compare.greaterOrEqualInt64
 farEnough argument left Int64 start copy
 farEnough argument right Int64 two copy
@@ -7374,7 +7543,7 @@ farEnough catch none
 farEnough suppresses none
 
 beforeOf is call
-beforeOf in parseWhole
+beforeOf in parseWholeIn
 beforeOf invokes math.subtractInt64
 beforeOf argument left Int64 start copy
 beforeOf argument right Int64 one copy
@@ -7386,7 +7555,7 @@ beforeOf catch none
 beforeOf suppresses none
 
 readBefore is call
-readBefore in parseWhole
+readBefore in parseWholeIn
 readBefore invokes byteAt
 readBefore argument base machine.Address text copy
 readBefore argument at Int64 beforeAt copy
@@ -7398,7 +7567,7 @@ readBefore catch none
 readBefore suppresses none
 
 lowerBefore is call
-lowerBefore in parseWhole
+lowerBefore in parseWholeIn
 lowerBefore invokes lowerByte
 lowerBefore argument value Byte before copy
 lowerBefore result beforeLower Byte
@@ -7408,20 +7577,56 @@ lowerBefore borrows none
 lowerBefore catch none
 lowerBefore suppresses none
 
-xBeforeCheck is call
-xBeforeCheck in parseWhole
-xBeforeCheck invokes compare.equalByte
-xBeforeCheck argument left Byte beforeLower copy
-xBeforeCheck argument right Byte smallX copy
-xBeforeCheck result wasX Bool
-xBeforeCheck ownedBy none
-xBeforeCheck cleanedBy none
-xBeforeCheck borrows none
-xBeforeCheck catch none
-xBeforeCheck suppresses none
+wasXStep1 is call
+wasXStep1 in parseWholeIn
+wasXStep1 invokes compare.equalByte
+wasXStep1 argument left Byte beforeLower copy
+wasXStep1 argument right Byte byte120 copy
+wasXStep1 result wasXPart1 Bool
+wasXStep1 ownedBy none
+wasXStep1 cleanedBy none
+wasXStep1 borrows none
+wasXStep1 catch none
+wasXStep1 suppresses none
+
+wasXStep2 is call
+wasXStep2 in parseWholeIn
+wasXStep2 invokes compare.equalByte
+wasXStep2 argument left Byte beforeLower copy
+wasXStep2 argument right Byte byte98 copy
+wasXStep2 result wasXPart2 Bool
+wasXStep2 ownedBy none
+wasXStep2 cleanedBy none
+wasXStep2 borrows none
+wasXStep2 catch none
+wasXStep2 suppresses none
+
+wasXStep3 is call
+wasXStep3 in parseWholeIn
+wasXStep3 invokes logic.and
+wasXStep3 argument left Bool binary copy
+wasXStep3 argument right Bool wasXPart2 copy
+wasXStep3 result wasXPart3 Bool
+wasXStep3 ownedBy none
+wasXStep3 cleanedBy none
+wasXStep3 borrows none
+wasXStep3 catch none
+wasXStep3 suppresses none
+
+findWasX1 is call
+findWasX1 in parseWholeIn
+findWasX1 invokes logic.or
+findWasX1 argument left Bool wasXPart1 copy
+findWasX1 argument right Bool wasXPart3 copy
+findWasX1 result wasX Bool
+findWasX1 ownedBy none
+findWasX1 cleanedBy none
+findWasX1 borrows none
+findWasX1 catch none
+findWasX1 suppresses none
 
 zeroBeforeOf is call
-zeroBeforeOf in parseWhole
+zeroBeforeOf in parseWholeIn
 zeroBeforeOf invokes math.subtractInt64
 zeroBeforeOf argument left Int64 start copy
 zeroBeforeOf argument right Int64 two copy
@@ -7433,7 +7638,7 @@ zeroBeforeOf catch none
 zeroBeforeOf suppresses none
 
 readZeroBefore is call
-readZeroBefore in parseWhole
+readZeroBefore in parseWholeIn
 readZeroBefore invokes byteAt
 readZeroBefore argument base machine.Address text copy
 readZeroBefore argument at Int64 zeroBeforeAt copy
@@ -7445,7 +7650,7 @@ readZeroBefore catch none
 readZeroBefore suppresses none
 
 zeroBeforeCheck is call
-zeroBeforeCheck in parseWhole
+zeroBeforeCheck in parseWholeIn
 zeroBeforeCheck invokes compare.equalByte
 zeroBeforeCheck argument left Byte zeroBefore copy
 zeroBeforeCheck argument right Byte digitZero copy
@@ -7457,7 +7662,7 @@ zeroBeforeCheck catch none
 zeroBeforeCheck suppresses none
 
 bothBefore is call
-bothBefore in parseWhole
+bothBefore in parseWholeIn
 bothBefore invokes logic.and
 bothBefore argument left Bool wasX copy
 bothBefore argument right Bool wasZero copy
@@ -7469,7 +7674,7 @@ bothBefore catch none
 bothBefore suppresses none
 
 findX is call
-findX in parseWhole
+findX in parseWholeIn
 findX invokes machine.offset
 findX argument address machine.Address text copy
 findX argument bytes Int64 beforeAt copy
@@ -7481,7 +7686,7 @@ findX catch none
 findX suppresses none
 
 storeX is call
-storeX in parseWhole
+storeX in parseWholeIn
 storeX invokes machine.storeAddress
 storeX argument address machine.Address endAt copy
 storeX argument value machine.Address xPlace copy
@@ -7493,7 +7698,7 @@ storeX catch none
 storeX suppresses none
 
 storeText is call
-storeText in parseWhole
+storeText in parseWholeIn
 storeText invokes machine.storeAddress
 storeText argument address machine.Address endAt copy
 storeText argument value machine.Address text copy
@@ -7505,7 +7710,7 @@ storeText catch none
 storeText suppresses none
 
 nowhereEnd is call
-nowhereEnd in parseWhole
+nowhereEnd in parseWholeIn
 nowhereEnd invokes machine.zero
 nowhereEnd argument none
 nowhereEnd result noAddress machine.Address
@@ -7516,7 +7721,7 @@ nowhereEnd catch none
 nowhereEnd suppresses none
 
 endCheck is call
-endCheck in parseWhole
+endCheck in parseWholeIn
 endCheck invokes machine.equal
 endCheck argument left machine.Address endAt copy
 endCheck argument right machine.Address noAddress copy
@@ -7528,7 +7733,7 @@ endCheck catch none
 endCheck suppresses none
 
 findEnd is call
-findEnd in parseWhole
+findEnd in parseWholeIn
 findEnd invokes machine.offset
 findEnd argument address machine.Address text copy
 findEnd argument bytes Int64 at copy
@@ -7540,7 +7745,7 @@ findEnd catch none
 findEnd suppresses none
 
 storeEndPlace is call
-storeEndPlace in parseWhole
+storeEndPlace in parseWholeIn
 storeEndPlace invokes machine.storeAddress
 storeEndPlace argument address machine.Address endAt copy
 storeEndPlace argument value machine.Address endPlace copy
@@ -7552,7 +7757,7 @@ storeEndPlace catch none
 storeEndPlace suppresses none
 
 errnoUnsigned is call
-errnoUnsigned in parseWhole
+errnoUnsigned in parseWholeIn
 errnoUnsigned invokes setErrno
 errnoUnsigned argument value Int32 rangeError copy
 errnoUnsigned result none
@@ -7563,7 +7768,7 @@ errnoUnsigned catch none
 errnoUnsigned suppresses none
 
 allBits is call
-allBits in parseWhole
+allBits in parseWholeIn
 allBits invokes convert.uint64BitsToInt64
 allBits argument value UInt64 allOnes copy
 allBits result allOnesValue Int64
@@ -7574,7 +7779,7 @@ allBits catch none
 allBits suppresses none
 
 negateIt is call
-negateIt in parseWhole
+negateIt in parseWholeIn
 negateIt invokes math.wrappingSubtractUInt64
 negateIt argument left UInt64 zeroWide copy
 negateIt argument right UInt64 value copy
@@ -7586,7 +7791,7 @@ negateIt catch none
 negateIt suppresses none
 
 negatedValue is call
-negatedValue in parseWhole
+negatedValue in parseWholeIn
 negatedValue invokes convert.uint64BitsToInt64
 negatedValue argument value UInt64 negatedBits copy
 negatedValue result negatedResult Int64
@@ -7597,7 +7802,7 @@ negatedValue catch none
 negatedValue suppresses none
 
 plainValue is call
-plainValue in parseWhole
+plainValue in parseWholeIn
 plainValue invokes convert.uint64BitsToInt64
 plainValue argument value UInt64 value copy
 plainValue result plainResult Int64
@@ -7608,7 +7813,7 @@ plainValue catch none
 plainValue suppresses none
 
 belowLeast is call
-belowLeast in parseWhole
+belowLeast in parseWholeIn
 belowLeast invokes compare.greaterThanUInt64
 belowLeast argument left UInt64 value copy
 belowLeast argument right UInt64 leastSigned copy
@@ -7620,7 +7825,7 @@ belowLeast catch none
 belowLeast suppresses none
 
 aboveMost is call
-aboveMost in parseWhole
+aboveMost in parseWholeIn
 aboveMost invokes compare.greaterThanUInt64
 aboveMost argument left UInt64 value copy
 aboveMost argument right UInt64 mostSigned copy
@@ -7632,7 +7837,7 @@ aboveMost catch none
 aboveMost suppresses none
 
 negateSignedIt is call
-negateSignedIt in parseWhole
+negateSignedIt in parseWholeIn
 negateSignedIt invokes math.wrappingSubtractUInt64
 negateSignedIt argument left UInt64 zeroWide copy
 negateSignedIt argument right UInt64 value copy
@@ -7644,7 +7849,7 @@ negateSignedIt catch none
 negateSignedIt suppresses none
 
 negatedSignedValue is call
-negatedSignedValue in parseWhole
+negatedSignedValue in parseWholeIn
 negatedSignedValue invokes convert.uint64BitsToInt64
 negatedSignedValue argument value UInt64 negatedSignedBits copy
 negatedSignedValue result negatedSigned Int64
@@ -7655,7 +7860,7 @@ negatedSignedValue catch none
 negatedSignedValue suppresses none
 
 plainSignedValue is call
-plainSignedValue in parseWhole
+plainSignedValue in parseWholeIn
 plainSignedValue invokes convert.uint64BitsToInt64
 plainSignedValue argument value UInt64 value copy
 plainSignedValue result plainSignedResult Int64
@@ -7666,7 +7871,7 @@ plainSignedValue catch none
 plainSignedValue suppresses none
 
 errnoSigned is call
-errnoSigned in parseWhole
+errnoSigned in parseWholeIn
 errnoSigned invokes setErrno
 errnoSigned argument value Int32 rangeError copy
 errnoSigned result none
@@ -7677,7 +7882,7 @@ errnoSigned catch none
 errnoSigned suppresses none
 
 leastValue is call
-leastValue in parseWhole
+leastValue in parseWholeIn
 leastValue invokes convert.uint64BitsToInt64
 leastValue argument value UInt64 leastSigned copy
 leastValue result leastResult Int64
@@ -7688,7 +7893,7 @@ leastValue catch none
 leastValue suppresses none
 
 mostValue is call
-mostValue in parseWhole
+mostValue in parseWholeIn
 mostValue invokes convert.uint64BitsToInt64
 mostValue argument value UInt64 mostSigned copy
 mostValue result mostResult Int64
@@ -12183,8 +12388,8 @@ readCell catch none
 readCell suppresses none
 
 errorText is operation
-errorText purpose "strerror: the text for an error number, in a block of machine.state the next call replaces; for now every number is `Unknown error N` (D-160: glibc's messages are a known gap)"
-errorText invariant namesErrors "\"Gives `Unknown error N` with N the number in decimal, negative ones with their sign\""
+errorText purpose "strerror: glibc's message for an error number, from the table the compiler builds (D-172: glibc's own messages, when the compiler runs where glibc is the C library); for a number the table has none for, `Unknown error N` in a block of machine.state the next call replaces"
+errorText invariant namesErrors "\"Gives the table's message for a number it has, else `Unknown error N` with N the number in decimal, negative ones with their sign\""
 errorText typeParameter none
 errorText input code Int32 copied
 errorText output machine.Address
@@ -12198,6 +12403,12 @@ errorText maxRecursion none
 errorText abi library "strerror"
 errorText label begin loopKind none
 errorText label begin within none
+errorText label lookUp loopKind none
+errorText label lookUp within none
+errorText label give loopKind none
+errorText label give within none
+errorText label unknown loopKind none
+errorText label unknown within none
 errorText label eachDigit loopKind while
 errorText label eachDigit within none
 errorText label eachDigit maxIterations forever
@@ -12210,23 +12421,39 @@ errorText label copyDigits within none
 errorText let prefix String "Unknown error " immutable
 errorText let place Int64 31 mutable
 errorText let rest Int64 0 mutable
-errorText let n14 Int64 14 immutable
 errorText let zero Int64 0 immutable
+errorText let eight Int64 8 immutable
+errorText let n14 Int64 14 immutable
 errorText let one Int64 1 immutable
 errorText let ten Int64 10 immutable
 errorText let byte48 Byte 48 immutable
 errorText let byte45 Byte 45 immutable
 errorText let n31 Int64 31 immutable
 errorText let byte0 Byte 0 immutable
-errorText at begin do readBuffer
-errorText at begin do readPrefixAt
-errorText at begin do doCopy
-errorText at begin do findWideCode1
-errorText at begin do findNegative1
-errorText at begin do findRestNext11
-errorText at begin set rest restNext1
-errorText at begin do readDigits
-errorText at begin goto eachDigit
+errorText at begin do readTable
+errorText at begin do readKnown
+errorText at begin do findWideNumber1
+errorText at begin do check1Step1
+errorText at begin do check1Step2
+errorText at begin do findCheck11
+errorText at begin branch if check1 goto lookUp else goto unknown
+errorText at lookUp do entryAtStep1
+errorText at lookUp do entryAtStep2
+errorText at lookUp do findEntryAt1
+errorText at lookUp do readMessage
+errorText at lookUp do readNowhere
+errorText at lookUp do findCheck21
+errorText at lookUp branch if check2 goto unknown else goto give
+errorText at give return ok message
+errorText at unknown do readBuffer
+errorText at unknown do readPrefixAt
+errorText at unknown do doCopy
+errorText at unknown do findWideCode1
+errorText at unknown do findNegative1
+errorText at unknown do findRestNext11
+errorText at unknown set rest restNext1
+errorText at unknown do readDigits
+errorText at unknown goto eachDigit
 errorText at eachDigit do findPlaceNext11
 errorText at eachDigit set place placeNext1
 errorText at eachDigit do digitStep1
@@ -12236,8 +12463,8 @@ errorText at eachDigit do findDigitAt1
 errorText at eachDigit do doStoreByte
 errorText at eachDigit do findRestNext21
 errorText at eachDigit set rest restNext2
-errorText at eachDigit do findCheck11
-errorText at eachDigit branch if check1 goto sign else goto eachDigit
+errorText at eachDigit do findCheck31
+errorText at eachDigit branch if check3 goto sign else goto eachDigit
 errorText at sign branch if negative goto minus else goto copyDigits
 errorText at minus do findPlaceNext21
 errorText at minus set place placeNext2
@@ -12252,6 +12479,145 @@ errorText at copyDigits do endAtStep1
 errorText at copyDigits do findEndAt1
 errorText at copyDigits do doStoreByte3
 errorText at copyDigits return ok buffer
+
+readTable is call
+readTable in errorText
+readTable invokes machine.errorMessages
+readTable argument none
+readTable result table machine.Address
+readTable ownedBy none
+readTable cleanedBy none
+readTable borrows none
+readTable catch none
+readTable suppresses none
+
+readKnown is call
+readKnown in errorText
+readKnown invokes machine.loadInt64
+readKnown argument address machine.Address table copy
+readKnown result known Int64
+readKnown ownedBy none
+readKnown cleanedBy none
+readKnown borrows none
+readKnown catch none
+readKnown suppresses none
+
+findWideNumber1 is call
+findWideNumber1 in errorText
+findWideNumber1 invokes convert.int32ToInt64
+findWideNumber1 argument value Int32 code copy
+findWideNumber1 result wideNumber Int64
+findWideNumber1 ownedBy none
+findWideNumber1 cleanedBy none
+findWideNumber1 borrows none
+findWideNumber1 catch none
+findWideNumber1 suppresses none
+
+check1Step1 is call
+check1Step1 in errorText
+check1Step1 invokes compare.greaterOrEqualInt64
+check1Step1 argument left Int64 wideNumber copy
+check1Step1 argument right Int64 zero copy
+check1Step1 result check1Part1 Bool
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in errorText
+check1Step2 invokes compare.lessThanInt64
+check1Step2 argument left Int64 wideNumber copy
+check1Step2 argument right Int64 known copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+findCheck11 is call
+findCheck11 in errorText
+findCheck11 invokes logic.and
+findCheck11 argument left Bool check1Part1 copy
+findCheck11 argument right Bool check1Part2 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+entryAtStep1 is call
+entryAtStep1 in errorText
+entryAtStep1 invokes machine.offset
+entryAtStep1 argument address machine.Address table copy
+entryAtStep1 argument bytes Int64 eight copy
+entryAtStep1 result entryAtPart1 machine.Address
+entryAtStep1 ownedBy none
+entryAtStep1 cleanedBy none
+entryAtStep1 borrows none
+entryAtStep1 catch none
+entryAtStep1 suppresses none
+
+entryAtStep2 is call
+entryAtStep2 in errorText
+entryAtStep2 invokes math.multiplyInt64
+entryAtStep2 argument left Int64 wideNumber copy
+entryAtStep2 argument right Int64 eight copy
+entryAtStep2 result entryAtPart2 Int64
+entryAtStep2 ownedBy none
+entryAtStep2 cleanedBy none
+entryAtStep2 borrows none
+entryAtStep2 catch none
+entryAtStep2 suppresses none
+
+findEntryAt1 is call
+findEntryAt1 in errorText
+findEntryAt1 invokes machine.offset
+findEntryAt1 argument address machine.Address entryAtPart1 copy
+findEntryAt1 argument bytes Int64 entryAtPart2 copy
+findEntryAt1 result entryAt machine.Address
+findEntryAt1 ownedBy none
+findEntryAt1 cleanedBy none
+findEntryAt1 borrows none
+findEntryAt1 catch none
+findEntryAt1 suppresses none
+
+readMessage is call
+readMessage in errorText
+readMessage invokes machine.loadAddress
+readMessage argument address machine.Address entryAt copy
+readMessage result message machine.Address
+readMessage ownedBy none
+readMessage cleanedBy none
+readMessage borrows none
+readMessage catch none
+readMessage suppresses none
+
+readNowhere is call
+readNowhere in errorText
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findCheck21 is call
+findCheck21 in errorText
+findCheck21 invokes machine.equal
+findCheck21 argument left machine.Address message copy
+findCheck21 argument right machine.Address nowhere copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
 
 readBuffer is call
 readBuffer in errorText
@@ -12416,17 +12782,17 @@ findRestNext21 borrows none
 findRestNext21 catch none
 findRestNext21 suppresses none
 
-findCheck11 is call
-findCheck11 in errorText
-findCheck11 invokes compare.equalInt64
-findCheck11 argument left Int64 rest copy
-findCheck11 argument right Int64 zero copy
-findCheck11 result check1 Bool
-findCheck11 ownedBy none
-findCheck11 cleanedBy none
-findCheck11 borrows none
-findCheck11 catch none
-findCheck11 suppresses none
+findCheck31 is call
+findCheck31 in errorText
+findCheck31 invokes compare.equalInt64
+findCheck31 argument left Int64 rest copy
+findCheck31 argument right Int64 zero copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
 
 findPlaceNext21 is call
 findPlaceNext21 in errorText
@@ -17539,3 +17905,147 @@ readMapped cleanedBy none
 readMapped borrows none
 readMapped catch none
 readMapped suppresses none
+
+toLongC23 is operation
+toLongC23 purpose "__isoc23_strtol: strtol as C23 reads it, `0b` binary included (the name glibc's headers give strtol in C23)"
+toLongC23 invariant none
+toLongC23 typeParameter none
+toLongC23 input text machine.Address copied
+toLongC23 input endAt machine.Address copied
+toLongC23 input base Int32 copied
+toLongC23 output Int64
+toLongC23 outputOwnedBy none
+toLongC23 raises none
+toLongC23 effect use machine.memory
+toLongC23 uses memoryAccess
+toLongC23 memoryHeap false
+toLongC23 async false
+toLongC23 maxRecursion none
+toLongC23 abi library "__isoc23_strtol"
+toLongC23 label begin loopKind none
+toLongC23 label begin within none
+toLongC23 let no Bool false immutable
+toLongC23 at begin do readValue
+toLongC23 at begin return ok value
+
+readValue is call
+readValue in toLongC23
+readValue invokes parseWholeBinary
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool no copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+toLongLongC23 is operation
+toLongLongC23 purpose "__isoc23_strtoll: strtoll as C23 reads it, `0b` binary included (the name glibc's headers give strtoll in C23)"
+toLongLongC23 invariant none
+toLongLongC23 typeParameter none
+toLongLongC23 input text machine.Address copied
+toLongLongC23 input endAt machine.Address copied
+toLongLongC23 input base Int32 copied
+toLongLongC23 output Int64
+toLongLongC23 outputOwnedBy none
+toLongLongC23 raises none
+toLongLongC23 effect use machine.memory
+toLongLongC23 uses memoryAccess
+toLongLongC23 memoryHeap false
+toLongLongC23 async false
+toLongLongC23 maxRecursion none
+toLongLongC23 abi library "__isoc23_strtoll"
+toLongLongC23 label begin loopKind none
+toLongLongC23 label begin within none
+toLongLongC23 let no Bool false immutable
+toLongLongC23 at begin do readValue
+toLongLongC23 at begin return ok value
+
+readValue is call
+readValue in toLongLongC23
+readValue invokes parseWholeBinary
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool no copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+toUnsignedLongC23 is operation
+toUnsignedLongC23 purpose "__isoc23_strtoul: strtoul as C23 reads it, `0b` binary included (the name glibc's headers give strtoul in C23)"
+toUnsignedLongC23 invariant none
+toUnsignedLongC23 typeParameter none
+toUnsignedLongC23 input text machine.Address copied
+toUnsignedLongC23 input endAt machine.Address copied
+toUnsignedLongC23 input base Int32 copied
+toUnsignedLongC23 output Int64
+toUnsignedLongC23 outputOwnedBy none
+toUnsignedLongC23 raises none
+toUnsignedLongC23 effect use machine.memory
+toUnsignedLongC23 uses memoryAccess
+toUnsignedLongC23 memoryHeap false
+toUnsignedLongC23 async false
+toUnsignedLongC23 maxRecursion none
+toUnsignedLongC23 abi library "__isoc23_strtoul"
+toUnsignedLongC23 label begin loopKind none
+toUnsignedLongC23 label begin within none
+toUnsignedLongC23 let yes Bool true immutable
+toUnsignedLongC23 at begin do readValue
+toUnsignedLongC23 at begin return ok value
+
+readValue is call
+readValue in toUnsignedLongC23
+readValue invokes parseWholeBinary
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+toUnsignedLongLongC23 is operation
+toUnsignedLongLongC23 purpose "__isoc23_strtoull: strtoull as C23 reads it, `0b` binary included (the name glibc's headers give strtoull in C23)"
+toUnsignedLongLongC23 invariant none
+toUnsignedLongLongC23 typeParameter none
+toUnsignedLongLongC23 input text machine.Address copied
+toUnsignedLongLongC23 input endAt machine.Address copied
+toUnsignedLongLongC23 input base Int32 copied
+toUnsignedLongLongC23 output Int64
+toUnsignedLongLongC23 outputOwnedBy none
+toUnsignedLongLongC23 raises none
+toUnsignedLongLongC23 effect use machine.memory
+toUnsignedLongLongC23 uses memoryAccess
+toUnsignedLongLongC23 memoryHeap false
+toUnsignedLongLongC23 async false
+toUnsignedLongLongC23 maxRecursion none
+toUnsignedLongLongC23 abi library "__isoc23_strtoull"
+toUnsignedLongLongC23 label begin loopKind none
+toUnsignedLongLongC23 label begin within none
+toUnsignedLongLongC23 let yes Bool true immutable
+toUnsignedLongLongC23 at begin do readValue
+toUnsignedLongLongC23 at begin return ok value
+
+readValue is call
+readValue in toUnsignedLongLongC23
+readValue invokes parseWholeBinary
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none

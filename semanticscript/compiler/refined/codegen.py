@@ -296,6 +296,22 @@ _THREAD_START = {
                 "  svc #0", "  cbnz x0, 1f", "  ldr x0, [sp]", "  ldr x9, [sp, #8]", "  mov x29, xzr", "  mov x30, xzr",
                 "  blr x9", "  mov x0, #0", "  mov x8, #93", "  svc #0", "  brk #0", "1:", "  ret"],
 }
+def _glibc_messages() -> list:
+    """D-172: strerror's message for each number from 0 to 4095 that glibc has one for (None for the rest), when this
+    machine's C library is glibc; an empty list anywhere else."""
+    import os as host_os
+    import platform as host
+    if host.libc_ver()[0] != "glibc":
+        return []
+    found = []
+    for number in range(4096):
+        text = host_os.strerror(number)
+        found.append(None if text == f"Unknown error {number}" else text)
+    while found and found[-1] is None:
+        found.pop()
+    return found
+
+
 def _host_assembles_x86() -> bool:
     """Whether this machine's LLVM can assemble x86 instructions: llvmlite registers only the host's own assembler
     parser, so an x86_64 host can and an ARM64 one cannot (D-170)."""
@@ -427,6 +443,33 @@ class Backend:
         g = ir.GlobalVariable(self.module, table, "refined.c.library")
         g.initializer = ir.Constant(table, [I64(len(rows)), ir.Constant(ir.ArrayType(row, len(rows)),
                                                                         [ir.Constant(row, r) for r in rows])])
+        g.global_constant = True
+        g.linkage = "internal"
+        return g
+
+    def error_messages(self) -> ir.GlobalVariable:
+        """D-172: strerror's table: the count, then each number's message (a C string) or null. The messages are
+        glibc's own, read when the compiler runs on a glibc system (os.strerror calls glibc's strerror there);
+        anywhere else the table is empty and strerror says `Unknown error N`."""
+        g = self.module.globals.get("refined.c.errors")
+        if g is not None:
+            return g
+        messages = _glibc_messages()
+        entries = []
+        for number, text in enumerate(messages):
+            if text is None:
+                entries.append(ir.Constant(PTR, None))
+                continue
+            data = bytearray(text.encode("utf-8") + b"\0")
+            arr = ir.ArrayType(I8, len(data))
+            cell = ir.GlobalVariable(self.module, arr, name=f"refined.c.error.{number}")
+            cell.global_constant = True
+            cell.linkage = "private"
+            cell.initializer = ir.Constant(arr, data)
+            entries.append(cell.bitcast(PTR))
+        table = ir.LiteralStructType([I64, ir.ArrayType(PTR, len(entries))])
+        g = ir.GlobalVariable(self.module, table, "refined.c.errors")
+        g.initializer = ir.Constant(table, [I64(len(entries)), ir.Constant(ir.ArrayType(PTR, len(entries)), entries)])
         g.global_constant = True
         g.linkage = "internal"
         return g
@@ -1938,6 +1981,8 @@ class OpGen:
             return b.bitcast(fn, PTR), None, None
         if name == "cLibrary":
             return b.bitcast(self.be.c_library(), PTR), None, None
+        if name == "errorMessages":
+            return b.bitcast(self.be.error_messages(), PTR), None, None
         if name == "callComparison":
             compare = b.bitcast(args["function"], ir.FunctionType(I32, [PTR, PTR]).as_pointer())
             return b.call(compare, [args["left"], args["right"]]), None, None

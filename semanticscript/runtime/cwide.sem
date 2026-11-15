@@ -5346,13 +5346,14 @@ storeIt catch none
 storeIt suppresses none
 
 parseWide is operation
-parseWide purpose "wcstol and its kin: the wide text as bytes, read by parseWhole, the end stored as a wide place"
+parseWide purpose "wcstol and its kin: the wide text as bytes, read by parseWhole (C17) or parseWholeBinary (C23's 0b, D-173), the end stored as a wide place"
 parseWide invariant none
 parseWide typeParameter none
 parseWide input text machine.Address copied
 parseWide input endAt machine.Address copied
 parseWide input base Int32 copied
 parseWide input unsigned Bool copied
+parseWide input binary Bool copied
 parseWide output Int64
 parseWide outputOwnedBy none
 parseWide raises none
@@ -5370,7 +5371,7 @@ parseWide at begin do narrowIt
 parseWide at begin do countIt
 parseWide at begin do cellIndex
 parseWide at begin do cellPlace
-parseWide at begin do parseIt
+parseWide at begin do readValue
 parseWide at begin do endIt
 parseWide at begin do giveIt
 parseWide at begin return ok value
@@ -5421,19 +5422,20 @@ cellPlace borrows none
 cellPlace catch none
 cellPlace suppresses none
 
-parseIt is call
-parseIt in parseWide
-parseIt invokes clibrary.parseWhole
-parseIt argument text machine.Address block copy
-parseIt argument endAt machine.Address cell copy
-parseIt argument base Int32 base copy
-parseIt argument unsigned Bool unsigned copy
-parseIt result value Int64
-parseIt ownedBy none
-parseIt cleanedBy none
-parseIt borrows none
-parseIt catch none
-parseIt suppresses none
+readValue is call
+readValue in parseWide
+readValue invokes readWhole
+readValue argument text machine.Address block copy
+readValue argument endAt machine.Address cell copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool unsigned copy
+readValue argument binary Bool binary copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
 
 endIt is call
 endIt in parseWide
@@ -5592,6 +5594,7 @@ wcstol abi library "wcstol"
 wcstol label begin loopKind none
 wcstol label begin within none
 wcstol let mode Bool false immutable
+wcstol let no Bool false immutable
 wcstol at begin do parseIt
 wcstol at begin return ok value
 
@@ -5602,6 +5605,7 @@ parseIt argument text machine.Address text copy
 parseIt argument endAt machine.Address endAt copy
 parseIt argument base Int32 base copy
 parseIt argument unsigned Bool mode copy
+parseIt argument binary Bool no copy
 parseIt result value Int64
 parseIt ownedBy none
 parseIt cleanedBy none
@@ -5630,6 +5634,7 @@ wcstoll abi library "wcstoll"
 wcstoll label begin loopKind none
 wcstoll label begin within none
 wcstoll let mode Bool false immutable
+wcstoll let no Bool false immutable
 wcstoll at begin do parseIt
 wcstoll at begin return ok value
 
@@ -5640,6 +5645,7 @@ parseIt argument text machine.Address text copy
 parseIt argument endAt machine.Address endAt copy
 parseIt argument base Int32 base copy
 parseIt argument unsigned Bool mode copy
+parseIt argument binary Bool no copy
 parseIt result value Int64
 parseIt ownedBy none
 parseIt cleanedBy none
@@ -5668,6 +5674,7 @@ wcstoul abi library "wcstoul"
 wcstoul label begin loopKind none
 wcstoul label begin within none
 wcstoul let mode Bool true immutable
+wcstoul let no Bool false immutable
 wcstoul at begin do parseIt
 wcstoul at begin return ok value
 
@@ -5678,6 +5685,7 @@ parseIt argument text machine.Address text copy
 parseIt argument endAt machine.Address endAt copy
 parseIt argument base Int32 base copy
 parseIt argument unsigned Bool mode copy
+parseIt argument binary Bool no copy
 parseIt result value Int64
 parseIt ownedBy none
 parseIt cleanedBy none
@@ -5706,6 +5714,7 @@ wcstoull abi library "wcstoull"
 wcstoull label begin loopKind none
 wcstoull label begin within none
 wcstoull let mode Bool true immutable
+wcstoull let no Bool false immutable
 wcstoull at begin do parseIt
 wcstoull at begin return ok value
 
@@ -5716,6 +5725,7 @@ parseIt argument text machine.Address text copy
 parseIt argument endAt machine.Address endAt copy
 parseIt argument base Int32 base copy
 parseIt argument unsigned Bool mode copy
+parseIt argument binary Bool no copy
 parseIt result value Int64
 parseIt ownedBy none
 parseIt cleanedBy none
@@ -10943,3 +10953,219 @@ encodeIt cleanedBy none
 encodeIt borrows none
 encodeIt catch none
 encodeIt suppresses none
+
+wcstolC23 is operation
+wcstolC23 purpose "__isoc23_wcstol: cstol as C23 reads it, `0b` binary included (D-173)"
+wcstolC23 invariant none
+wcstolC23 typeParameter none
+wcstolC23 input text machine.Address copied
+wcstolC23 input endAt machine.Address copied
+wcstolC23 input base Int32 copied
+wcstolC23 output Int64
+wcstolC23 outputOwnedBy none
+wcstolC23 raises none
+wcstolC23 effect use machine.memory
+wcstolC23 effect use system.calls
+wcstolC23 uses memoryAccess
+wcstolC23 uses systemCalls
+wcstolC23 memoryHeap false
+wcstolC23 async false
+wcstolC23 maxRecursion none
+wcstolC23 abi library "__isoc23_wcstol"
+wcstolC23 label begin loopKind none
+wcstolC23 label begin within none
+wcstolC23 let no Bool false immutable
+wcstolC23 let yes Bool true immutable
+wcstolC23 at begin do readValue
+wcstolC23 at begin return ok value
+
+readValue is call
+readValue in wcstolC23
+readValue invokes parseWide
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool no copy
+readValue argument binary Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+wcstollC23 is operation
+wcstollC23 purpose "__isoc23_wcstoll: cstoll as C23 reads it, `0b` binary included (D-173)"
+wcstollC23 invariant none
+wcstollC23 typeParameter none
+wcstollC23 input text machine.Address copied
+wcstollC23 input endAt machine.Address copied
+wcstollC23 input base Int32 copied
+wcstollC23 output Int64
+wcstollC23 outputOwnedBy none
+wcstollC23 raises none
+wcstollC23 effect use machine.memory
+wcstollC23 effect use system.calls
+wcstollC23 uses memoryAccess
+wcstollC23 uses systemCalls
+wcstollC23 memoryHeap false
+wcstollC23 async false
+wcstollC23 maxRecursion none
+wcstollC23 abi library "__isoc23_wcstoll"
+wcstollC23 label begin loopKind none
+wcstollC23 label begin within none
+wcstollC23 let no Bool false immutable
+wcstollC23 let yes Bool true immutable
+wcstollC23 at begin do readValue
+wcstollC23 at begin return ok value
+
+readValue is call
+readValue in wcstollC23
+readValue invokes parseWide
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool no copy
+readValue argument binary Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+wcstoulC23 is operation
+wcstoulC23 purpose "__isoc23_wcstoul: cstoul as C23 reads it, `0b` binary included (D-173)"
+wcstoulC23 invariant none
+wcstoulC23 typeParameter none
+wcstoulC23 input text machine.Address copied
+wcstoulC23 input endAt machine.Address copied
+wcstoulC23 input base Int32 copied
+wcstoulC23 output Int64
+wcstoulC23 outputOwnedBy none
+wcstoulC23 raises none
+wcstoulC23 effect use machine.memory
+wcstoulC23 effect use system.calls
+wcstoulC23 uses memoryAccess
+wcstoulC23 uses systemCalls
+wcstoulC23 memoryHeap false
+wcstoulC23 async false
+wcstoulC23 maxRecursion none
+wcstoulC23 abi library "__isoc23_wcstoul"
+wcstoulC23 label begin loopKind none
+wcstoulC23 label begin within none
+wcstoulC23 let yes Bool true immutable
+wcstoulC23 at begin do readValue
+wcstoulC23 at begin return ok value
+
+readValue is call
+readValue in wcstoulC23
+readValue invokes parseWide
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool yes copy
+readValue argument binary Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+wcstoullC23 is operation
+wcstoullC23 purpose "__isoc23_wcstoull: cstoull as C23 reads it, `0b` binary included (D-173)"
+wcstoullC23 invariant none
+wcstoullC23 typeParameter none
+wcstoullC23 input text machine.Address copied
+wcstoullC23 input endAt machine.Address copied
+wcstoullC23 input base Int32 copied
+wcstoullC23 output Int64
+wcstoullC23 outputOwnedBy none
+wcstoullC23 raises none
+wcstoullC23 effect use machine.memory
+wcstoullC23 effect use system.calls
+wcstoullC23 uses memoryAccess
+wcstoullC23 uses systemCalls
+wcstoullC23 memoryHeap false
+wcstoullC23 async false
+wcstoullC23 maxRecursion none
+wcstoullC23 abi library "__isoc23_wcstoull"
+wcstoullC23 label begin loopKind none
+wcstoullC23 label begin within none
+wcstoullC23 let yes Bool true immutable
+wcstoullC23 at begin do readValue
+wcstoullC23 at begin return ok value
+
+readValue is call
+readValue in wcstoullC23
+readValue invokes parseWide
+readValue argument text machine.Address text copy
+readValue argument endAt machine.Address endAt copy
+readValue argument base Int32 base copy
+readValue argument unsigned Bool yes copy
+readValue argument binary Bool yes copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+readWhole is operation
+readWhole purpose "strtol's reading of bytes, as C17 reads them or (binary) as C23 does"
+readWhole invariant none
+readWhole typeParameter none
+readWhole input text machine.Address copied
+readWhole input endAt machine.Address copied
+readWhole input base Int32 copied
+readWhole input unsigned Bool copied
+readWhole input binary Bool copied
+readWhole output Int64
+readWhole outputOwnedBy none
+readWhole raises none
+readWhole effect use machine.memory
+readWhole uses memoryAccess
+readWhole memoryHeap false
+readWhole async false
+readWhole maxRecursion none
+readWhole label begin loopKind none
+readWhole label begin within none
+readWhole label c23 loopKind none
+readWhole label c23 within none
+readWhole label c17 loopKind none
+readWhole label c17 within none
+readWhole let none
+readWhole at begin branch if binary goto c23 else goto c17
+readWhole at c23 do readNewer
+readWhole at c23 return ok newer
+readWhole at c17 do readOlder
+readWhole at c17 return ok older
+
+readNewer is call
+readNewer in readWhole
+readNewer invokes clibrary.parseWholeBinary
+readNewer argument text machine.Address text copy
+readNewer argument endAt machine.Address endAt copy
+readNewer argument base Int32 base copy
+readNewer argument unsigned Bool unsigned copy
+readNewer result newer Int64
+readNewer ownedBy none
+readNewer cleanedBy none
+readNewer borrows none
+readNewer catch none
+readNewer suppresses none
+
+readOlder is call
+readOlder in readWhole
+readOlder invokes clibrary.parseWhole
+readOlder argument text machine.Address text copy
+readOlder argument endAt machine.Address endAt copy
+readOlder argument base Int32 base copy
+readOlder argument unsigned Bool unsigned copy
+readOlder result older Int64
+readOlder ownedBy none
+readOlder cleanedBy none
+readOlder borrows none
+readOlder catch none
+readOlder suppresses none

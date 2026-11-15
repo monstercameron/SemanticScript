@@ -632,11 +632,12 @@ op toUnsignedMax "strtoumax: strtoul, as uintmax_t is an unsigned long"
   value = clibrary.parseWhole(text, endAt, base, true)
   return value
 
-op parseWide "wcstol and its kin over wide characters (32-bit wchar_t): the leading characters from 1 to 127 are read as the bytes strtol reads, and the end is moved on by four bytes for each"
+op parseWide "wcstol and its kin over wide characters (32-bit wchar_t): the leading characters from 1 to 127 are read as the bytes strtol reads (with C23's 0b when binary, D-173), and the end is moved on by four bytes for each"
   input text machine.Address copied
   input endAt machine.Address copied
   input base Int32 copied
   input unsigned Bool copied
+  input binary Bool copied
   output Int64
   effect use machine.memory
   effect use system.calls
@@ -672,7 +673,7 @@ op parseWide "wcstol and its kin over wide characters (32-bit wchar_t): the lead
 :parse
   cell = kernel.stateAt(endCellAt)
   machine.storeAddress(cell, buffer)
-  value = clibrary.parseWhole(buffer, cell, base, unsigned)
+  value = parseNarrow(buffer, cell, base, unsigned, binary)
   end = machine.loadAddress(cell)
   read = machine.difference(end, buffer)
   heap.give(buffer)
@@ -696,7 +697,7 @@ op wideToMax "wcstoimax: strtoimax over wide characters"
   uses systemCalls
   abi library "wcstoimax"
 :begin
-  value = parseWide(text, endAt, base, false)
+  value = parseWide(text, endAt, base, false, false)
   return value
 
 op wideToUnsignedMax "wcstoumax: strtoumax over wide characters"
@@ -710,8 +711,26 @@ op wideToUnsignedMax "wcstoumax: strtoumax over wide characters"
   uses systemCalls
   abi library "wcstoumax"
 :begin
-  value = parseWide(text, endAt, base, true)
+  value = parseWide(text, endAt, base, true, false)
   return value
+
+op parseNarrow "strtol's reading of bytes, as C17 reads them or (binary) as C23 does"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  input unsigned Bool copied
+  input binary Bool copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  if binary c23 c17
+:c23
+  newer = clibrary.parseWholeBinary(text, endAt, base, unsigned)
+  return newer
+:c17
+  older = clibrary.parseWhole(text, endAt, base, unsigned)
+  return older
 
 ## ---------------------------------------------------------------- stdlib.h: aligned allocation
 
@@ -1500,6 +1519,58 @@ op toSingle "strtof: a C string's leading number as a float, correctly rounded, 
   real = convert.uint64BitsToFloat64(doubleBits)
   answer = convert.float64ToFloat32(real)
   return answer
+
+op toMaxC23 "__isoc23_strtoimax: strtoimax as C23 reads it, `0b` binary included (D-173)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  abi library "__isoc23_strtoimax"
+:begin
+  value = clibrary.parseWholeBinary(text, endAt, base, false)
+  return value
+
+op toUnsignedMaxC23 "__isoc23_strtoumax: strtoumax as C23 reads it, `0b` binary included (D-173)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  abi library "__isoc23_strtoumax"
+:begin
+  value = clibrary.parseWholeBinary(text, endAt, base, true)
+  return value
+
+op wideToMaxC23 "__isoc23_wcstoimax: wcstoimax as C23 reads it, `0b` binary included (D-173)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_wcstoimax"
+:begin
+  value = parseWide(text, endAt, base, false, true)
+  return value
+
+op wideToUnsignedMaxC23 "__isoc23_wcstoumax: wcstoumax as C23 reads it, `0b` binary included (D-173)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_wcstoumax"
+:begin
+  value = parseWide(text, endAt, base, true, true)
+  return value
 
 @tests
 

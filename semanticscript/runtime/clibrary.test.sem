@@ -4524,6 +4524,7 @@ helpersTest verifies charOf keepsLowByte
 helpersTest verifies runHandlers runsInReverse
 helpersTest verifies checkFits passesWhatFits
 helpersTest verifies errnoCell firstThreadsCell
+helpersTest verifies parseWholeBinary readsBinary
 helpersTest verifies windowsErrno mapsWindowsErrors
 helpersTest verifies divideWhole dividesTowardZero
 helpersTest verifies prepare pointsAtStreams
@@ -4545,6 +4546,7 @@ helpersTest label begin loopKind none
 helpersTest label begin within none
 helpersTest let sample String "hello" immutable
 helpersTest let absText String "abs" immutable
+helpersTest let binaryWord String "0b101" immutable
 helpersTest let one Int64 1 immutable
 helpersTest let byte101 Byte 101 immutable
 helpersTest let int3234 Int32 34 immutable
@@ -4569,6 +4571,7 @@ helpersTest let n1920 Int64 1920 immutable
 helpersTest let eight Int64 8 immutable
 helpersTest let zero Int64 0 immutable
 helpersTest let four Int64 4 immutable
+helpersTest let no Bool false immutable
 helpersTest let int322 Int32 2 immutable
 helpersTest let int32109 Int32 109 immutable
 helpersTest let int3232 Int32 32 immutable
@@ -4628,6 +4631,11 @@ helpersTest at begin do readQuickCell
 helpersTest at begin do readLeft
 helpersTest at begin do doAssertEqualInt645
 helpersTest at begin do doCheckFits
+helpersTest at begin do readBinaryText
+helpersTest at begin do readBinaryValue
+helpersTest at begin do doAssertEqualInt646
+helpersTest at begin do readPlainValue
+helpersTest at begin do doAssertEqualInt647
 helpersTest at begin do readNotFound
 helpersTest at begin do doAssertTrueStep8
 helpersTest at begin do doAssertTrue9
@@ -4645,8 +4653,8 @@ helpersTest at begin do doCheckFits2
 helpersTest at begin do readPair
 helpersTest at begin do readQuotient
 helpersTest at begin do readRemainder
-helpersTest at begin do doAssertEqualInt646
-helpersTest at begin do doAssertEqualInt647
+helpersTest at begin do doAssertEqualInt648
+helpersTest at begin do doAssertEqualInt649
 helpersTest at begin do doSetErrno4
 helpersTest at begin return ok none
 
@@ -5234,6 +5242,69 @@ doCheckFits borrows none
 doCheckFits catch none
 doCheckFits suppresses none
 
+readBinaryText is call
+readBinaryText in helpersTest
+readBinaryText invokes firstScratch
+readBinaryText argument text String binaryWord lend
+readBinaryText result binaryText machine.Address
+readBinaryText ownedBy none
+readBinaryText cleanedBy none
+readBinaryText borrows none
+readBinaryText catch none
+readBinaryText suppresses none
+
+readBinaryValue is call
+readBinaryValue in helpersTest
+readBinaryValue invokes parseWholeBinary
+readBinaryValue argument text machine.Address binaryText copy
+readBinaryValue argument endAt machine.Address binaryText copy
+readBinaryValue argument base Int32 int320 copy
+readBinaryValue argument unsigned Bool no copy
+readBinaryValue result binaryValue Int64
+readBinaryValue ownedBy none
+readBinaryValue cleanedBy none
+readBinaryValue borrows none
+readBinaryValue catch none
+readBinaryValue suppresses none
+
+doAssertEqualInt646 is call
+doAssertEqualInt646 in helpersTest
+doAssertEqualInt646 invokes test.assertEqualInt64
+doAssertEqualInt646 argument expected Int64 five copy
+doAssertEqualInt646 argument actual Int64 binaryValue copy
+doAssertEqualInt646 result none
+doAssertEqualInt646 ownedBy none
+doAssertEqualInt646 cleanedBy none
+doAssertEqualInt646 borrows none
+doAssertEqualInt646 catch none
+doAssertEqualInt646 suppresses none
+
+readPlainValue is call
+readPlainValue in helpersTest
+readPlainValue invokes parseWhole
+readPlainValue argument text machine.Address binaryText copy
+readPlainValue argument endAt machine.Address binaryText copy
+readPlainValue argument base Int32 int320 copy
+readPlainValue argument unsigned Bool no copy
+readPlainValue result plainValue Int64
+readPlainValue ownedBy none
+readPlainValue cleanedBy none
+readPlainValue borrows none
+readPlainValue catch none
+readPlainValue suppresses none
+
+doAssertEqualInt647 is call
+doAssertEqualInt647 in helpersTest
+doAssertEqualInt647 invokes test.assertEqualInt64
+doAssertEqualInt647 argument expected Int64 zero copy
+doAssertEqualInt647 argument actual Int64 plainValue copy
+doAssertEqualInt647 result none
+doAssertEqualInt647 ownedBy none
+doAssertEqualInt647 cleanedBy none
+doAssertEqualInt647 borrows none
+doAssertEqualInt647 catch none
+doAssertEqualInt647 suppresses none
+
 readNotFound is call
 readNotFound in helpersTest
 readNotFound invokes windowsErrno
@@ -5427,29 +5498,29 @@ readRemainder borrows none
 readRemainder catch none
 readRemainder suppresses none
 
-doAssertEqualInt646 is call
-doAssertEqualInt646 in helpersTest
-doAssertEqualInt646 invokes test.assertEqualInt64
-doAssertEqualInt646 argument expected Int64 minus3 copy
-doAssertEqualInt646 argument actual Int64 quotient copy
-doAssertEqualInt646 result none
-doAssertEqualInt646 ownedBy none
-doAssertEqualInt646 cleanedBy none
-doAssertEqualInt646 borrows none
-doAssertEqualInt646 catch none
-doAssertEqualInt646 suppresses none
+doAssertEqualInt648 is call
+doAssertEqualInt648 in helpersTest
+doAssertEqualInt648 invokes test.assertEqualInt64
+doAssertEqualInt648 argument expected Int64 minus3 copy
+doAssertEqualInt648 argument actual Int64 quotient copy
+doAssertEqualInt648 result none
+doAssertEqualInt648 ownedBy none
+doAssertEqualInt648 cleanedBy none
+doAssertEqualInt648 borrows none
+doAssertEqualInt648 catch none
+doAssertEqualInt648 suppresses none
 
-doAssertEqualInt647 is call
-doAssertEqualInt647 in helpersTest
-doAssertEqualInt647 invokes test.assertEqualInt64
-doAssertEqualInt647 argument expected Int64 minus1 copy
-doAssertEqualInt647 argument actual Int64 remainder copy
-doAssertEqualInt647 result none
-doAssertEqualInt647 ownedBy none
-doAssertEqualInt647 cleanedBy none
-doAssertEqualInt647 borrows none
-doAssertEqualInt647 catch none
-doAssertEqualInt647 suppresses none
+doAssertEqualInt649 is call
+doAssertEqualInt649 in helpersTest
+doAssertEqualInt649 invokes test.assertEqualInt64
+doAssertEqualInt649 argument expected Int64 minus1 copy
+doAssertEqualInt649 argument actual Int64 remainder copy
+doAssertEqualInt649 result none
+doAssertEqualInt649 ownedBy none
+doAssertEqualInt649 cleanedBy none
+doAssertEqualInt649 borrows none
+doAssertEqualInt649 catch none
+doAssertEqualInt649 suppresses none
 
 doSetErrno4 is call
 doSetErrno4 in helpersTest

@@ -2203,6 +2203,11 @@ op convertOne "Write one conversion of an argument (its 16 bytes at an address) 
   formatWideString(builder, flags, width, precision, wideText)
   return
 :unknown
+  when conversion == 37 percent notPercent
+:percent
+  wide.builderAddByte(builder, 37)
+  return
+:notPercent
   calc percentAt = format + start - 1
   calc unknownBytes = end - start + 1
   wide.builderAdd(builder, percentAt, unknownBytes)
@@ -2538,8 +2543,8 @@ test formatTest "Integers, strings of digits, and floating values are written as
   let expected5 String "0x1.5555p-2|-1 44 4464"
   let format6 String "[%*d] [%.*f] %lu"
   let expected6 String "[     7] [1.00] 18446744073709551615"
-  let format7 String "%2$d %1$d %%|%y"
-  let expected7 String "2 1 %|%y"
+  let format7 String "%2$d %1$d %%|%5%|%y"
+  let expected7 String "2 1 %|%|%y"
   let format8 String "%f %F %e %+g"
   let expected8 String "inf -INF nan -nan"
   let format9 String "%08.3f|%-8.2e|%+.3g"

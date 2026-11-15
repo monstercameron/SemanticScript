@@ -2342,6 +2342,7 @@ op collectInteger "Gather the text of an integer in a base (0 for strtol's choic
   input width Int64 copied
   input base Int64 copied
   input buffer machine.Address copied
+  input binary Bool copied
   output Int64
   effect use machine.memory
   effect use system.calls
@@ -2362,13 +2363,21 @@ op collectInteger "Gather the text of an integer in a base (0 for strtol's choic
   calc value := scanGet(scanner)
   goto prefix
 :prefix
-  when (base == 0 || base == 16) && value == 48 && count < width zeroPrefix noPrefix
+  when (base == 0 || base == 16 || (binary && base == 2)) && value == 48 && count < width zeroPrefix noPrefix
 :zeroPrefix
   storeValue(buffer, count, value)
   calc count := count + 1
   calc digits := digits + 1
   calc value := scanGet(scanner)
-  when lowerValue(value) == 120 && count < width hexMark notHex
+  when lowerValue(value) == 120 && count < width && base != 2 hexMark binaryCheck
+:binaryCheck
+  when binary && lowerValue(value) == 98 && count < width && (base == 0 || base == 2) binaryMark notHex
+:binaryMark
+  storeValue(buffer, count, value)
+  calc count := count + 1
+  calc radix := 2
+  calc value := scanGet(scanner)
+  goto eachDigit
 :hexMark
   storeValue(buffer, count, value)
   calc count := count + 1
@@ -2448,7 +2457,7 @@ op matchWord "Gather the bytes of a word (in lower case) as they come in any cas
   machine.storeInt64(pending, value)
   return matched
 
-op collectReal "Gather the text of a floating number into a buffer, at most `width` bytes: a sign, then inf or infinity, nan with an optional (chars), or a hexadecimal or decimal number with its point and exponent; gives how many bytes, or -1 when what came cannot be a number"
+op collectReal "Gather the text of a floating number into a buffer, at most `width` bytes: a sign, then inf or infinity, nan (glibc's scanf reads no (chars) after it), or a hexadecimal or decimal number with its point and exponent; gives how many bytes, or -1 when what came cannot be a number"
   input scanner machine.Address copied
   input width Int64 copied
   input buffer machine.Address copied
@@ -2493,32 +2502,10 @@ op collectReal "Gather the text of a floating number into a buffer, at most `wid
   machine.storeInt64(pending, value)
   nanMatched = matchWord(scanner, nanWord, buffer, count, width, pending)
   calc count := count + nanMatched
-  when nanMatched == 3 nanPayload wordFailed
-:nanPayload
+  when nanMatched == 3 nanDone wordFailed
+:nanDone
   calc digits := 1
-  calc value := machine.loadInt64(pending)
-  when value == 40 && count < width payloadOpen wordValue
-:payloadOpen
-  storeValue(buffer, count, value)
-  calc count := count + 1
-  calc value := scanGet(scanner)
-  goto payload
-:payload loop=while max=forever
-  when count < width && (digitValue(value) < 36 || value == 95) payloadChar payloadEnd
-:payloadChar in=payload
-  storeValue(buffer, count, value)
-  calc count := count + 1
-  calc value := scanGet(scanner)
-  goto payload
-:payloadEnd
-  when value == 41 && count < width payloadClose finish
-:payloadClose
-  storeValue(buffer, count, value)
-  calc count := count + 1
-  calc value := scanGet(scanner)
-  goto finish
-:wordValue
-  goto finish
+  goto wordDone
 :wordDone
   calc value := machine.loadInt64(pending)
   goto finish
@@ -2846,6 +2833,7 @@ op scanAll "scanf's engine (glibc's __isoc99 forms): match a format against a st
   input stream machine.Address copied
   input format machine.Address copied
   input cursor machine.Address copied
+  input c23 Bool copied
   output Int32
   effect use machine.memory
   effect use system.calls
@@ -3020,14 +3008,19 @@ op scanAll "scanf's engine (glibc's __isoc99 forms): match a format against a st
   goto addAssigned
 :whole in=eachDirective
   calc base := baseOf(conversion)
+  when c23 && conversion == 98 binaryConversion baseKnown
+:binaryConversion in=eachDirective
+  calc base := 2
+  goto baseKnown
+:baseKnown in=eachDirective
   when base < 0 finish wholeRead
 :wholeRead in=eachDirective
-  wholeBytes = collectInteger(scanner, limit, base, buffer)
+  wholeBytes = collectInteger(scanner, limit, base, buffer, c23)
   when wholeBytes < 0 finish wholeStore
 :wholeStore in=eachDirective
   calc unsigned = conversion != 100 && conversion != 105
   nowhereWhole = machine.zero()
-  wholeValue = clibrary.parseWhole(buffer, nowhereWhole, clibrary.lowInt32(base), unsigned)
+  wholeValue = readWhole(buffer, nowhereWhole, clibrary.lowInt32(base), unsigned, c23)
   if suppress eachDirective wholeWrite
 :wholeWrite in=eachDirective
   wholeTarget = machine.fromInt64(cformat.readWord(cursor))
@@ -3043,6 +3036,24 @@ op scanAll "scanf's engine (glibc's __isoc99 forms): match a format against a st
   releaseScan(scanner, buffer, table, widthCell)
   calc result = clibrary.lowInt32(assigned)
   return result
+
+op readWhole "strtol's reading of the text a conversion gathered: C23's (0b too) for the __isoc23_ forms"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  input unsigned Bool copied
+  input binary Bool copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  if binary c23 c17
+:c23
+  newer = clibrary.parseWholeBinary(text, endAt, base, unsigned)
+  return newer
+:c17
+  older = clibrary.parseWhole(text, endAt, base, unsigned)
+  return older
 
 op releaseScan "Give back a scan's blocks"
   input scanner machine.Address copied
@@ -3193,10 +3204,11 @@ op readLength "Read a scanf length modifier into a cell (0 none, 1 hh, 2 h, 3 l,
 
 ## ---------------------------------------------------------------- the scanf family
 
-op scanWith "scanf's engine over the arguments a va_list holds"
+op scanWith "scanf's engine over the arguments a va_list holds (C23's %b and 0b for the __isoc23_ forms)"
   input stream machine.Address copied
   input format machine.Address copied
   input list machine.Address copied
+  input c23 Bool copied
   output Int32
   effect use machine.memory
   effect use system.calls
@@ -3204,7 +3216,7 @@ op scanWith "scanf's engine over the arguments a va_list holds"
   uses systemCalls
 :begin
   cursor = cformat.cursorNew(list)
-  result = scanAll(stream, format, cursor)
+  result = scanAll(stream, format, cursor, c23)
   cformat.cursorFree(cursor)
   return result
 
@@ -3238,7 +3250,7 @@ op scanStandard "scanf: read stdin by a format"
 :begin
   list = machine.variadicStart()
   inStream = stdinStream()
-  result = scanWith(inStream, format, list)
+  result = scanWith(inStream, format, list, false)
   return result
 
 op scanStream "fscanf: read a stream by a format"
@@ -3253,7 +3265,7 @@ op scanStream "fscanf: read a stream by a format"
 :begin
   list = machine.variadicStart()
   ensureStandard()
-  result = scanWith(stream, format, list)
+  result = scanWith(stream, format, list, false)
   return result
 
 op scanText "sscanf: read a C string by a format"
@@ -3268,7 +3280,7 @@ op scanText "sscanf: read a C string by a format"
 :begin
   list = machine.variadicStart()
   source = textStream(text)
-  result = scanWith(source, format, list)
+  result = scanWith(source, format, list, false)
   heap.give(source)
   return result
 
@@ -3284,7 +3296,7 @@ op scanStandardList "vscanf: read stdin by a format, from a va_list"
 :begin
   list = listFor(arguments)
   inStream = stdinStream()
-  result = scanWith(inStream, format, list)
+  result = scanWith(inStream, format, list, false)
   releaseList(list)
   return result
 
@@ -3301,7 +3313,7 @@ op scanStreamList "vfscanf: read a stream by a format, from a va_list"
 :begin
   list = listFor(arguments)
   ensureStandard()
-  result = scanWith(stream, format, list)
+  result = scanWith(stream, format, list, false)
   releaseList(list)
   return result
 
@@ -3318,7 +3330,7 @@ op scanTextList "vsscanf: read a C string by a format, from a va_list"
 :begin
   list = listFor(arguments)
   source = textStream(text)
-  result = scanWith(source, format, list)
+  result = scanWith(source, format, list, false)
   heap.give(source)
   releaseList(list)
   return result
@@ -3334,7 +3346,7 @@ op scanStandardGlibc "__isoc99_scanf: read stdin by a format (the name glibc's h
 :begin
   list = machine.variadicStart()
   inStream = stdinStream()
-  result = scanWith(inStream, format, list)
+  result = scanWith(inStream, format, list, false)
   return result
 
 op scanStreamGlibc "__isoc99_fscanf: read a stream by a format (the name glibc's headers give it in C99 and later)"
@@ -3349,7 +3361,7 @@ op scanStreamGlibc "__isoc99_fscanf: read a stream by a format (the name glibc's
 :begin
   list = machine.variadicStart()
   ensureStandard()
-  result = scanWith(stream, format, list)
+  result = scanWith(stream, format, list, false)
   return result
 
 op scanTextGlibc "__isoc99_sscanf: read a C string by a format (the name glibc's headers give it in C99 and later)"
@@ -3364,7 +3376,7 @@ op scanTextGlibc "__isoc99_sscanf: read a C string by a format (the name glibc's
 :begin
   list = machine.variadicStart()
   source = textStream(text)
-  result = scanWith(source, format, list)
+  result = scanWith(source, format, list, false)
   heap.give(source)
   return result
 
@@ -3380,7 +3392,7 @@ op scanStandardListGlibc "__isoc99_vscanf: read stdin by a format, from a va_lis
 :begin
   list = listFor(arguments)
   inStream = stdinStream()
-  result = scanWith(inStream, format, list)
+  result = scanWith(inStream, format, list, false)
   releaseList(list)
   return result
 
@@ -3397,7 +3409,7 @@ op scanStreamListGlibc "__isoc99_vfscanf: read a stream by a format, from a va_l
 :begin
   list = listFor(arguments)
   ensureStandard()
-  result = scanWith(stream, format, list)
+  result = scanWith(stream, format, list, false)
   releaseList(list)
   return result
 
@@ -3414,7 +3426,7 @@ op scanTextListGlibc "__isoc99_vsscanf: read a C string by a format, from a va_l
 :begin
   list = listFor(arguments)
   source = textStream(text)
-  result = scanWith(source, format, list)
+  result = scanWith(source, format, list, false)
   heap.give(source)
   releaseList(list)
   return result
@@ -3818,6 +3830,102 @@ op flushAll "fflush(NULL): write what every stream holds, the standard ones and 
   unlockStreams()
   return result
 
+op scanStandardC23 "__isoc23_scanf: scanf (glibc's C23 name: %b and 0b read binary)"
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_scanf" variadic
+:begin
+  list = machine.variadicStart()
+  inStream = stdinStream()
+  result = scanWith(inStream, format, list, true)
+  return result
+
+op scanStreamC23 "__isoc23_fscanf: fscanf (glibc's C23 name: %b and 0b read binary)"
+  input stream machine.Address copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_fscanf" variadic
+:begin
+  list = machine.variadicStart()
+  ensureStandard()
+  result = scanWith(stream, format, list, true)
+  return result
+
+op scanTextC23 "__isoc23_sscanf: sscanf (glibc's C23 name: %b and 0b read binary)"
+  input text machine.Address copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_sscanf" variadic
+:begin
+  list = machine.variadicStart()
+  source = textStream(text)
+  result = scanWith(source, format, list, true)
+  heap.give(source)
+  return result
+
+op scanStandardListC23 "__isoc23_vscanf: vscanf (glibc's C23 name: %b and 0b read binary)"
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_vscanf"
+:begin
+  list = listFor(arguments)
+  inStream = stdinStream()
+  result = scanWith(inStream, format, list, true)
+  releaseList(list)
+  return result
+
+op scanStreamListC23 "__isoc23_vfscanf: vfscanf (glibc's C23 name: %b and 0b read binary)"
+  input stream machine.Address copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_vfscanf"
+:begin
+  list = listFor(arguments)
+  ensureStandard()
+  result = scanWith(stream, format, list, true)
+  releaseList(list)
+  return result
+
+op scanTextListC23 "__isoc23_vsscanf: vsscanf (glibc's C23 name: %b and 0b read binary)"
+  input text machine.Address copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_vsscanf"
+:begin
+  list = listFor(arguments)
+  source = textStream(text)
+  result = scanWith(source, format, list, true)
+  heap.give(source)
+  releaseList(list)
+  return result
+
 @tests
 
 op cText "A C string in a new heap block: a text's bytes and a 0"
@@ -3898,7 +4006,7 @@ test streamTest "A temporary file is written through its buffer, flushed, read b
   cells = heap.take(320)
   cursor = slotCursor(cells, 5)
   formatText = cText(firstFormat)
-  stored = scanAll(file, formatText, cursor)
+  stored = scanAll(file, formatText, cursor, false)
   test.assertTrue(stored == 5)
   wordLength = clibrary.cStringLength(cells)
   test.assertEqualInt64(3, wordLength)
@@ -3919,18 +4027,18 @@ test streamTest "A temporary file is written through its buffer, flushed, read b
   blankStream = textStream(blank)
   numberFormatText = cText(numberFormat)
   blankCursor = slotCursor(cells, 1)
-  blankResult = scanAll(blankStream, numberFormatText, blankCursor)
+  blankResult = scanAll(blankStream, numberFormatText, blankCursor, false)
   test.assertTrue(blankResult == -1)
   letter = cText(letterText)
   letterStream = textStream(letter)
   letterCursor = slotCursor(cells, 1)
-  letterResult = scanAll(letterStream, numberFormatText, letterCursor)
+  letterResult = scanAll(letterStream, numberFormatText, letterCursor, false)
   test.assertTrue(letterResult == 0)
   number = cText(numberText)
   numberStream = textStream(number)
   countFormatText = cText(countFormat)
   countCursor = slotCursor(cells, 2)
-  countResult = scanAll(numberStream, countFormatText, countCursor)
+  countResult = scanAll(numberStream, countFormatText, countCursor, false)
   test.assertTrue(countResult == 1)
   firstNumber = machine.loadInt32(cells)
   test.assertTrue(firstNumber == 12)

@@ -1337,11 +1337,12 @@ op storeWideEnd "Store, at an address unless it is 0, the wide place where a par
 :done
   return
 
-op parseWide "wcstol and its kin: the wide text as bytes, read by parseWhole, the end stored as a wide place"
+op parseWide "wcstol and its kin: the wide text as bytes, read by parseWhole (C17) or parseWholeBinary (C23's 0b, D-173), the end stored as a wide place"
   input text machine.Address copied
   input endAt machine.Address copied
   input base Int32 copied
   input unsigned Bool copied
+  input binary Bool copied
   output Int64
   effect use machine.memory
   effect use system.calls
@@ -1352,7 +1353,7 @@ op parseWide "wcstol and its kin: the wide text as bytes, read by parseWhole, th
   countIt: units = wcslen(text)
   cellIndex: afterUnits = math.addInt64(units, lit95=1)
   cellPlace: cell = machine.offset(block, afterUnits)
-  parseIt: value = clibrary.parseWhole(block, cell, base, unsigned)
+  value = readWhole(block, cell, base, unsigned, binary)
   endIt: storeWideEnd(text, block, cell, endAt)
   giveIt: heap.give(block)
   return value
@@ -1388,7 +1389,7 @@ op wcstol "wcstol: a wide text's leading whole number as a long in a base, with 
   abi library "wcstol"
   let mode Bool false
 :begin
-  parseIt: value = parseWide(text, endAt, base, mode)
+  parseIt: value = parseWide(text, endAt, base, mode, false)
   return value
 
 op wcstoll "wcstoll: a wide text's leading whole number as a long long in a base, with the end stored at endptr unless it is 0"
@@ -1403,7 +1404,7 @@ op wcstoll "wcstoll: a wide text's leading whole number as a long long in a base
   abi library "wcstoll"
   let mode Bool false
 :begin
-  parseIt: value = parseWide(text, endAt, base, mode)
+  parseIt: value = parseWide(text, endAt, base, mode, false)
   return value
 
 op wcstoul "wcstoul: a wide text's leading whole number as an unsigned long in a base, with the end stored at endptr unless it is 0"
@@ -1418,7 +1419,7 @@ op wcstoul "wcstoul: a wide text's leading whole number as an unsigned long in a
   abi library "wcstoul"
   let mode Bool true
 :begin
-  parseIt: value = parseWide(text, endAt, base, mode)
+  parseIt: value = parseWide(text, endAt, base, mode, false)
   return value
 
 op wcstoull "wcstoull: a wide text's leading whole number as an unsigned long long in a base, with the end stored at endptr unless it is 0"
@@ -1433,7 +1434,7 @@ op wcstoull "wcstoull: a wide text's leading whole number as an unsigned long lo
   abi library "wcstoull"
   let mode Bool true
 :begin
-  parseIt: value = parseWide(text, endAt, base, mode)
+  parseIt: value = parseWide(text, endAt, base, mode, false)
   return value
 
 op wcstod "wcstod: a wide text's leading number as a double (strtod's reading), with the end stored at endptr unless it is 0"
@@ -2389,6 +2390,80 @@ op c32rtomb "c32rtomb: the byte of a char32_t written at s, 1, or -1 with EILSEQ
   widenIt: value = convert.int32ToInt64(char32)
   encodeIt: result = encodeOne(text, value)
   return result
+
+op wcstolC23 "__isoc23_wcstol: cstol as C23 reads it, `0b` binary included (D-173)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_wcstol"
+:begin
+  value = parseWide(text, endAt, base, false, true)
+  return value
+
+op wcstollC23 "__isoc23_wcstoll: cstoll as C23 reads it, `0b` binary included (D-173)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_wcstoll"
+:begin
+  value = parseWide(text, endAt, base, false, true)
+  return value
+
+op wcstoulC23 "__isoc23_wcstoul: cstoul as C23 reads it, `0b` binary included (D-173)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_wcstoul"
+:begin
+  value = parseWide(text, endAt, base, true, true)
+  return value
+
+op wcstoullC23 "__isoc23_wcstoull: cstoull as C23 reads it, `0b` binary included (D-173)"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_wcstoull"
+:begin
+  value = parseWide(text, endAt, base, true, true)
+  return value
+
+op readWhole "strtol's reading of bytes, as C17 reads them or (binary) as C23 does"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input base Int32 copied
+  input unsigned Bool copied
+  input binary Bool copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  if binary c23 c17
+:c23
+  newer = clibrary.parseWholeBinary(text, endAt, base, unsigned)
+  return newer
+:c17
+  older = clibrary.parseWhole(text, endAt, base, unsigned)
+  return older
 
 @tests
 
