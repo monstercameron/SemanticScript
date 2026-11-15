@@ -415,9 +415,13 @@ C_LIBRARY = {
     "swscanf", "vwscanf", "vfwscanf", "vswscanf", "__isoc99_wscanf", "__isoc99_fwscanf", "__isoc99_swscanf",
     "__isoc99_vwscanf", "__isoc99_vfwscanf", "__isoc99_vswscanf", "__isoc23_wscanf", "__isoc23_fwscanf",
     "__isoc23_swscanf", "__isoc23_vwscanf", "__isoc23_vfwscanf", "__isoc23_vswscanf",
+    # D-188: math.h's transcendental long double functions and fmal (cmathlong)
+    "sinl", "cosl", "tanl", "asinl", "acosl", "atanl", "expl", "exp2l", "expm1l", "logl", "log2l", "log10l",
+    "log1pl", "cbrtl", "sinhl", "coshl", "tanhl", "asinhl", "acoshl", "atanhl", "erfl", "erfcl", "tgammal",
+    "lgammal", "atan2l", "powl", "hypotl", "fmal", "lgammal_r",
 }
 # the modules whose `abi library` operations make up the C library (D-153, D-159, D-160, D-164, D-180)
-C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem", "cthreads.sem", "cextra.sem", "cwide.sem", "cmathbits.sem", "ctime.sem", "clong.sem", "cformat.sem", "cmathcomplex.sem", "cwidetime.sem")
+C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem", "cthreads.sem", "cextra.sem", "cwide.sem", "cmathbits.sem", "ctime.sem", "clong.sem", "cformat.sem", "cmathcomplex.sem", "cwidetime.sem", "cmathlong.sem")
 
 
 @pytest.mark.skipif(WINDOWS or not PLATFORM, reason="the runtime's loader maps ELF shared libraries on Linux")
@@ -792,9 +796,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 145 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 146 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "145 of 145 tests passed" in tested.stdout
+    assert "146 of 146 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

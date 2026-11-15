@@ -45,6 +45,7 @@ runtime includesModule cmathexp
 runtime includesModule cmathtrig
 runtime includesModule cmathspecial
 runtime includesModule cmathcomplex
+runtime includesModule cmathlong
 runtime includesModule loader
 runtime includesModule tasks
 runtime includesModule interrupts

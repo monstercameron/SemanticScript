@@ -1,0 +1,3 @@
+# math.h's transcendental long double functions for the runtime C library, written in SemanticScript.
+#
+# This module is generated from tools/cmathlong.dsl (itself written by tools/cmathlonggen.py) by tools/build.py.

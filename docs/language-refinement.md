@@ -2873,6 +2873,19 @@ with glibc. Decided by delegation:
   as the caller had it (C99's complex functions raise only floating-point exceptions). The `f` forms compute in
   double and round each part once.
 
+- **D-188** math.h's transcendental long double functions and fmal (`cmathlong`): sinl, cosl, tanl, asinl, acosl,
+  atanl, atan2l, expl, exp2l, expm1l, logl, log2l, log10l, log1pl, powl, cbrtl, hypotl, sinhl, coshl, tanhl, asinhl,
+  acoshl, atanhl, erfl, erfcl, tgammal, lgammal, lgammal_r, and fmal. Each computes on a 320-bit floating value of its
+  own (sign, kind, power of two, ten 32-bit limbs) in a heap workspace per call, so each is reentrant and needs no
+  long double arithmetic, and rounds once with clong's settling into the target's long double (D-174): the same code
+  serves x87 on x86_64, binary128 on AArch64, and double on Windows, and all three are tested on any host. Each is
+  within 1 ulp of the exact value (the method's error is near 2^-300, so results are correctly rounded but within that
+  of a rounding boundary; the 1,596 table cases across the three formats are bit for bit); fmal is exactly rounded;
+  lgammal near its zeros below -2 is within 2^-250 absolutely; the argument reduction's 2/pi reaches 17,200 bits, for
+  the largest x87 and binary128 arguments. An invalid result is the default NaN (sign set on x86_64, clear on
+  AArch64); errno is EDOM or ERANGE as glibc sets them (not for a subnormal result). The cost is size and time: each
+  call takes a 17.6 KB workspace.
+
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3743,6 +3756,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-185 | The runtime in SemanticScript, the whole C library: math.h's exact operations bit for bit, and fenv.h on the processor's own state (by delegation) |
 | 2026-11-15 | D-186 | The runtime in SemanticScript, the whole C library: time.h with the runtime's own reading of TZ, TZif files, and the Windows zone (by delegation) |
 | 2026-11-15 | D-187 | The runtime in SemanticScript, the whole C library: complex.h with Annex G's special values, through the complex ABI (by delegation) |
+| 2026-11-15 | D-188 | The runtime in SemanticScript, the whole C library: math.h's transcendental long double functions and fmal in 320-bit arithmetic, one code for x87, binary128, and double (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |
