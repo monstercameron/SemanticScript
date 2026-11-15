@@ -47,6 +47,21 @@ constant kindGenerator "The kind of a random number generator" Int64 9
 
 constant kindLibrary "The kind of a foreign library" Int64 10
 
+op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+  input code Int32 copied
+  effect use system.calls
+  uses systemCalls
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxExit windowsExit
+:linuxExit
+  widenCode: wideCode = convert.int32ToInt64(code)
+  callExit: exitResult = system.exitGroup(wideCode)
+  return
+:windowsExit
+  callExitProcess: system.exitProcess(code)
+  return
+
 ## ---------------------------------------------------------------- the table
 
 op nextHandle "The number the next handle gets: 1 before any was made"
@@ -96,7 +111,7 @@ op failText "Report a trap with a message and end the process with exit code 70"
   findText: textAt = machine.addressOfString(text)
   textLength: bytes = string.byteLength(text)
   writeReport: status = frames.report(textAt, bytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 op failStale "Trap because a handle of a kind was used after it was closed or its region was released, naming the kind"

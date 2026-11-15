@@ -117,7 +117,7 @@ op narrow "UTF-16 units as UTF-8 text in a new heap block, with a 0 byte after i
   storeLength: machine.storeInt64(lengthAt, bytes)
   return block
 
-op lowercase "Text in lower case as Python's normcase gives it on Windows (LCMapStringEx, the invariant locale), every `/` made `\\`, in a new heap block; its length is stored at an address"
+op lowercase "Text in lower case as Python's normcase gives it on Windows (LCMapStringEx, the invariant locale), every `/` made `\\`, in a new heap block; its length is stored at an address. On Linux normcase changes nothing: a copy"
   invariant lowersText "The block holds the text in lower case with `\\` for `/`"
   input text machine.Address copied
   input bytes Int64 copied
@@ -131,6 +131,15 @@ op lowercase "Text in lower case as Python's normcase gives it on Windows (LCMap
   let slash Byte 47
   let backslash Byte 92
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux copyLinux lowerWindows
+:copyLinux
+  withNul: room = math.addInt64(bytes, one=1)
+  takeCopy: copied = heap.take(room)
+  copyText: machine.copy(copied, text, bytes)
+  storeCopyLength: machine.storeInt64(lengthAt, bytes)
+  return copied
+:lowerWindows
   wideText: source = widen(text, bytes)
   countUnits: units = wideUnits(source)
   withEnd: unitsAndEnd = math.addInt64(units, one=1)
@@ -325,6 +334,18 @@ test wideTest "Text goes to UTF-16 and back unchanged, lower case is the invaria
   findLength: lengthAt = machine.offset(state, scratchAt=61440)
   findMixed: mixedAt = machine.addressOfString(mixed)
   mixedLength: mixedBytes = string.byteLength(mixed)
+  osCheck: onLinux = system.linux()
+  if onLinux linuxLower windowsWide
+:linuxLower
+  copyIt: copied = lowercase(mixedAt, mixedBytes, lengthAt)
+  readCopied: copiedBytes = machine.loadInt64(lengthAt)
+  expectCopiedLength: test.assertEqualInt64(mixedBytes, copiedBytes)
+  compareCopied: sameCopied = machine.compare(copied, mixedAt, mixedBytes)
+  sameCopiedWide: sameCopiedValue = convert.int32ToInt64(sameCopied)
+  expectCopied: test.assertEqualInt64(zero=0, sameCopiedValue)
+  giveCopied: heap.give(copied)
+  goto builders
+:windowsWide
   wideIt: wideText = widen(mixedAt, mixedBytes)
   countIt: units = wideUnits(wideText)
   expectUnits: test.assertEqualInt64(fourteen=14, units)
@@ -333,7 +354,7 @@ test wideTest "Text goes to UTF-16 and back unchanged, lower case is the invaria
   expectBackLength: test.assertEqualInt64(mixedBytes, backBytes)
   compareBack: same = machine.compare(back, mixedAt, mixedBytes)
   sameWide: sameValue = convert.int32ToInt64(same)
-  expectBack: test.assertEqualInt64(zero=0, sameValue)
+  expectBack: test.assertEqualInt64(zero, sameValue)
   lowerIt: lower = lowercase(mixedAt, mixedBytes, lengthAt)
   readLower: lowerBytes = machine.loadInt64(lengthAt)
   findLowered: loweredAt = machine.addressOfString(lowered)
@@ -342,6 +363,11 @@ test wideTest "Text goes to UTF-16 and back unchanged, lower case is the invaria
   compareLower: sameLower = machine.compare(lower, loweredAt, loweredBytes)
   sameLowerWide: sameLowerValue = convert.int32ToInt64(sameLower)
   expectLower: test.assertEqualInt64(zero, sameLowerValue)
+  giveWide: heap.give(wideText)
+  giveBack: heap.give(back)
+  giveLower: heap.give(lower)
+  goto builders
+:builders
   makeBuilder: builder = builderNew()
   readEmpty: emptyLength = builderLength(builder)
   expectEmpty: test.assertEqualInt64(zero, emptyLength)
@@ -358,7 +384,4 @@ test wideTest "Text goes to UTF-16 and back unchanged, lower case is the invaria
   expectLess: test.assertEqualInt64(minusOne=-1, lessOrder)
   orderPrefix: prefixOrder = textOrder(built, four, shorterAt, three)
   expectPrefix: test.assertEqualInt64(one=1, prefixOrder)
-  giveWide: heap.give(wideText)
-  giveBack: heap.give(back)
-  giveLower: heap.give(lower)
   return

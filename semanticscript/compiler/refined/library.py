@@ -249,6 +249,12 @@ def _machine() -> dict:
         "runEntry": Sig((), "Int32", effects=_MEM),
         # D-131: the address of the runtime's `refined_task_entry` operation, where a task's fiber starts
         "taskEntry": Sig((), _A, effects=_MEM),
+        # D-139: stacks of the runtime's own on Linux, where there are no fibers: keep the running stack's place at
+        # `saveAt` and resume the one kept at `resume`; or keep it and run `function(argument)` on a fresh stack
+        # whose top is `top` (it never returns); or run the program's entry on a fresh stack and give its exit code
+        "switchStack": Sig((_at("saveAt"), _at("resume")), effects=_MEM),
+        "startStack": Sig((_at("saveAt"), _at("top"), _at("function"), _at("argument")), effects=_MEM),
+        "runEntryOnStack": Sig((_at("top"),), "Int32", effects=_MEM),
     }
     for t in ("Byte", "Int32", "Int64", "UInt64", "Float64", "Address"):
         canon = _A if t == "Address" else t
@@ -355,6 +361,55 @@ SYSTEM_CALLS.update({
     "getProcAddress": _sys("GetProcAddress", ("module:A", "name:A"), "A"),
 })
 
+
+def _linux(number: int, params: tuple) -> tuple[int, Sig]:
+    """A Linux `system` row: the x86_64 system call number and its parameters, each `name` (an `Int64`) or
+    `name:A` (a pointer, `machine.Address`); every call gives the kernel's `Int64` result, a negative errno when it
+    fails."""
+    inputs = []
+    for spec in params:
+        name, _sep, kind = spec.partition(":")
+        inputs.append(_at(name) if kind == "A" else P(name, "Int64", "copied"))
+    return number, Sig(tuple(inputs), "Int64", effects=_SYS)
+
+
+# D-138: Linux, reached through raw system calls (x86_64 numbers), as the runtime in SemanticScript needs them. Each
+# is a `syscall` instruction in the backend; there is no C library to call. Named after the system call.
+LINUX_CALLS: dict[str, tuple[int, Sig]] = {
+    "read": _linux(0, ("fd", "buffer:A", "bytes")),
+    "write": _linux(1, ("fd", "buffer:A", "bytes")),
+    "close": _linux(3, ("fd",)),
+    "fstat": _linux(5, ("fd", "status:A")),
+    "poll": _linux(7, ("fds:A", "count", "milliseconds")),
+    "lseek": _linux(8, ("fd", "offset", "whence")),
+    "mmap": _linux(9, ("address:A", "bytes", "protection", "flags", "fd", "offset")),
+    "munmap": _linux(11, ("address:A", "bytes")),
+    "rtSigaction": _linux(13, ("signal", "action:A", "old:A", "maskBytes")),
+    "ioctl": _linux(16, ("fd", "request", "argument:A")),
+    "dup2": _linux(33, ("fd", "target")),
+    "nanosleep": _linux(35, ("duration:A", "left:A")),
+    "getpid": _linux(39, ()),
+    "fork": _linux(57, ()),
+    "execve": _linux(59, ("path:A", "arguments:A", "environment:A")),
+    "exit": _linux(60, ("code",)),
+    "wait4": _linux(61, ("pid", "status:A", "options", "usage:A")),
+    "kill": _linux(62, ("pid", "signal")),
+    "fcntl": _linux(72, ("fd", "command", "argument")),
+    "flock": _linux(73, ("fd", "operation")),
+    "ftruncate": _linux(77, ("fd", "bytes")),
+    "getcwd": _linux(79, ("buffer:A", "bytes")),
+    "getdents64": _linux(217, ("fd", "buffer:A", "bytes")),
+    "clockGettime": _linux(228, ("clock", "time:A")),
+    "exitGroup": _linux(231, ("code",)),
+    "openat": _linux(257, ("directory", "path:A", "flags", "mode")),
+    "mkdirat": _linux(258, ("directory", "path:A", "mode")),
+    "newfstatat": _linux(262, ("directory", "path:A", "status:A", "flags")),
+    "unlinkat": _linux(263, ("directory", "path:A", "flags")),
+    "readlinkat": _linux(267, ("directory", "path:A", "buffer:A", "bytes")),
+    "pipe2": _linux(293, ("fds:A", "flags")),
+    "pidfdOpen": _linux(434, ("pid", "flags")),
+}
+
 LIBRARY: dict[str, dict] = {
     "machine": {
         "types": {"Address": TypeInfo(_A, "opaque", True)},
@@ -362,7 +417,10 @@ LIBRARY: dict[str, dict] = {
     },
     "system": {
         "types": {},
-        "targets": {name: sig for name, (_symbol, sig) in SYSTEM_CALLS.items()},
+        "targets": {**{name: sig for name, (_symbol, sig) in SYSTEM_CALLS.items()},
+                    **{name: sig for name, (_number, sig) in LINUX_CALLS.items()},
+                    # D-138: whether the program is compiled for Linux, a constant of the target
+                    "linux": Sig((), "Bool", effects=_SYS)},
     },
     "console": {
         "types": {

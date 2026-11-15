@@ -1,6 +1,6 @@
 module processes "The program's arguments, the environment and secrets, standard input, child processes with their pipes, and foreign libraries"
   path processes
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test memory heap handles regions slots wide tasks files frames
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel memory heap handles regions slots wide tasks files frames
   exports argumentCount argument environmentGet readLine newArguments addArgument processRun processRunCaptured splitCommandLine commandLine secretFromText secretFromEnvironment secretReveal secretMatches secretLength ffiOpen ffiClose ffiBind
 
 capability memoryAccess "Authority to read the command line, the environment, standard input, and a child's output into memory" use machine.memory none
@@ -15,6 +15,15 @@ capability systemCalls "Authority to read the command line and the environment, 
 ## machine.state bytes 768 to 831 belong to this module: 768 the list of the program's arguments (0 until it is
 ## first asked for), 776 the builder of standard input read but not yet taken, 784 whether standard input has
 ## ended, 792 a count a system call writes, 800 how many bytes a pipe has to read.
+## D-138, on Linux: the arguments are argv after its first word and the environment is envp, as the kernel started
+## the process (a Python child sees the same: posix.environ is read from envp); standard input is descriptor 0; a
+## child is started as _posixsubprocess starts one: the program, or each of PATH's directories with it (/bin and
+## /usr/bin when PATH is not set) found and the arguments and environment made ready before fork, then in the child
+## SIGPIPE back to its default, the pipes made its standard streams, and execve tried with each name in turn; the
+## first error that is not ENOENT or ENOTDIR (or the last error) comes back on a pipe that closes when execve
+## succeeds. A child's exit is waited for on its pidfd; a child ended by a signal exits with minus the signal, as
+## Popen.returncode has it. This program's ends of a captured child's pipes are non-blocking, so they are written
+## and read a piece at a time between other tasks, as on Windows.
 constant argumentsAt "Where the list of the program's arguments is kept, in machine.state" Int64 768
 
 constant stdinAt "Where the builder of standard input read but not yet taken is kept, in machine.state" Int64 776
@@ -344,6 +353,13 @@ op programArguments "The words after the program's name on its command line, spl
   return list
 :split
   takeList: names = heap.take(twentyFour=24)
+  osCheck: onLinux = system.linux()
+  if onLinux splitLinux splitWindows
+:splitLinux
+  addLinux: linuxArguments(names)
+  storeLinuxList: machine.storeAddress(listSlot, names)
+  return names
+:splitWindows
   fetchLine: wideLine = system.getCommandLineW()
   countUnits: units = wide.wideUnits(wideLine)
   takeCell: cell = heap.take(eight=8)
@@ -354,6 +370,96 @@ op programArguments "The words after the program's name on its command line, spl
   giveCell: heap.give(cell)
   storeList: machine.storeAddress(listSlot, names)
   return names
+
+op cStringLength "How many bytes a C string has before its 0"
+  input text machine.Address copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  let at Int64 0 mut
+:begin
+  goto eachByte
+:eachByte loop=while max=forever
+  readIt: byte = byteAt(text, at)
+  zeroCheck: isZero = compare.equalByte(byte, zeroByte=0)
+  if isZero give advance
+:advance in=eachByte
+  nextByte: after = math.addInt64(at, one=1)
+  set at after
+  goto eachByte
+:give
+  return at
+
+op linuxArguments "Add the program's arguments on Linux, argv after its first word, to a list of names"
+  input names machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 1 mut
+:begin
+  readCount: count = kernel.argumentCount()
+  readVector: vector = kernel.argumentVector()
+  goto eachArgument
+:eachArgument loop=while max=count
+  doneCheck: done = compare.greaterOrEqualInt64(at, count)
+  if done finish addOne
+:addOne in=eachArgument
+  offsetOf: offset = math.multiplyInt64(at, eight=8)
+  findWord: wordSlot = machine.offset(vector, offset)
+  readWord: word = machine.loadAddress(wordSlot)
+  measure: wordBytes = cStringLength(word)
+  addIt: handles.addName(names, word, wordBytes)
+  nextArgument: after = math.addInt64(at, one=1)
+  set at after
+  goto eachArgument
+:finish
+  return
+
+op linuxVariable "The value of an environment variable on Linux, the first `NAME=` of envp: its address, its length stored at an address; the address 0 when it is not set"
+  input name machine.Address copied
+  input bytes Int64 copied
+  input lengthAt machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  uses memoryAccess
+  let at Int64 0 mut
+:begin
+  nowhere: anywhere = machine.zero()
+  readEnvironment: environment = kernel.environmentVector()
+  noneCheck: noEnvironment = machine.equal(environment, anywhere)
+  if noEnvironment missing eachVariable
+:eachVariable loop=while max=forever
+  offsetOf: offset = math.multiplyInt64(at, eight=8)
+  findWord: wordSlot = machine.offset(environment, offset)
+  readWord: word = machine.loadAddress(wordSlot)
+  endCheck: atEnd = machine.equal(word, anywhere)
+  if atEnd missing compareName
+:compareName in=eachVariable
+  measure: wordBytes = cStringLength(word)
+  longEnough: fits = compare.greaterThanInt64(wordBytes, bytes)
+  if fits compareBytes nextVariable
+:compareBytes in=eachVariable
+  sameName: order = machine.compare(word, name, bytes)
+  sameCheck: same = compare.equalInt32(order, zero32=0)
+  if same equalsCheck nextVariable
+:equalsCheck in=eachVariable
+  findEquals: equalsAt = machine.offset(word, bytes)
+  readEquals: equals = machine.loadByte(equalsAt)
+  isEquals: hasEquals = compare.equalByte(equals, equalsByte=61)
+  if hasEquals found nextVariable
+:nextVariable in=eachVariable
+  nextAt: after = math.addInt64(at, one=1)
+  set at after
+  goto eachVariable
+:found
+  findValue: value = machine.offset(equalsAt, one)
+  withEquals: nameAndEquals = math.addInt64(bytes, one)
+  valueOf: valueBytes = math.subtractInt64(wordBytes, nameAndEquals)
+  storeLength: machine.storeInt64(lengthAt, valueBytes)
+  return value
+:missing
+  return anywhere
 
 op argumentCount "process.argumentCount: how many words follow the program's name on its command line"
   invariant countsArguments "The result slot holds the number of arguments"
@@ -433,6 +539,21 @@ op environmentGet "environment.get: a variable's value, into a region; missing w
   hasNul: withNul = compare.greaterOrEqualInt64(nulAt, zero)
   if withNul refuse lookUp
 :lookUp
+  osCheck: onLinux = system.linux()
+  if onLinux lookUpLinux lookUpWindows
+:lookUpLinux
+  takeLength: linuxCell = heap.take(eight=8)
+  findVariable: linuxValue = linuxVariable(name, bytes, linuxCell)
+  readLinuxLength: linuxBytes = machine.loadInt64(linuxCell)
+  giveLinuxCell: heap.give(linuxCell)
+  noValue: nothing = machine.zero()
+  missingLinuxCheck: missingLinux = machine.equal(linuxValue, nothing)
+  if missingLinux refuse putLinux
+:putLinux
+  readLinuxRegion: linuxRegion = slots.addressArg(shape, args, one)
+  putLinuxValue: slots.putText(linuxRegion, linuxValue, linuxBytes, results)
+  return ok
+:lookUpWindows
   wideName: nameWide = wide.widen(name, bytes)
   nowhere: anywhere = machine.zero()
   measure: units32 = system.getEnvironmentVariableW(nameWide, anywhere, zero32=0)
@@ -517,6 +638,30 @@ op stdinFill "Read what standard input has next into its builder; its end is not
   let ok Int64 0
 :begin
   readBuffer: buffer = stdinBuffer()
+  osCheck: onLinux = system.linux()
+  if onLinux fillLinux fillWindows
+:fillLinux
+  takeLinuxChunk: linuxBlock = heap.take(chunk)
+  readLinux: gotLinux = system.read(zero=0, linuxBlock, chunk)
+  readLinuxFailed: refusedLinux = kernel.failed(gotLinux)
+  if refusedLinux linuxFailure linuxCounted
+:linuxFailure
+  giveLinuxFailed: heap.give(linuxBlock)
+  errnoOf: linuxErrno = kernel.errnoOf(gotLinux)
+  return linuxErrno
+:linuxCounted
+  linuxNothing: linuxEnded = compare.equalInt64(gotLinux, zero)
+  if linuxEnded linuxEnd linuxKeep
+:linuxKeep
+  addLinux: wide.builderAdd(buffer, linuxBlock, gotLinux)
+  giveLinuxBlock: heap.give(linuxBlock)
+  return ok
+:linuxEnd
+  findLinuxDone: linuxDoneSlot = stateAt(stdinDoneAt)
+  storeLinuxDone: machine.storeInt64(linuxDoneSlot, one=1)
+  giveLinuxEnd: heap.give(linuxBlock)
+  return ok
+:fillWindows
   findInput: input = system.getStdHandle(stdInput=-10)
   takeChunk: block = heap.take(chunk)
   findCounted: counted = stateAt(countedAt)
@@ -539,7 +684,7 @@ op stdinFill "Read what standard input has next into its builder; its end is not
 :counted2
   readCount: got32 = machine.loadInt32(counted)
   widenCount: got = convert.int32ToInt64(got32)
-  nothingCheck: nothing = compare.equalInt64(got, zero=0)
+  nothingCheck: nothing = compare.equalInt64(got, zero)
   if nothing noteEnd keep
 :keep
   addIt: wide.builderAdd(buffer, block, got)
@@ -547,7 +692,7 @@ op stdinFill "Read what standard input has next into its builder; its end is not
   return ok
 :noteEnd
   findDone: doneSlot = stateAt(stdinDoneAt)
-  storeDone: machine.storeInt64(doneSlot, one=1)
+  storeDone: machine.storeInt64(doneSlot, one)
   giveChunkEnd: heap.give(block)
   return ok
 
@@ -563,6 +708,12 @@ op stdinWait "Wait until standard input has something to read or has ended, lett
   let late Int64 1
   let stopped Int64 2
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux waitLinux waitWindows
+:waitLinux
+  linuxIt: linuxOutcome = stdinWaitLinux(deadline)
+  return linuxOutcome
+:waitWindows
   findInput: input = system.getStdHandle(stdInput=-10)
   readType: type = system.getFileType(input)
   pipeCheck: isPipe = compare.equalInt32(type, pipeType=3)
@@ -613,6 +764,41 @@ op stdinWait "Wait until standard input has something to read or has ended, lett
 :comparePast in=eachTry
   pastNow: past = compare.greaterOrEqualInt64(later, deadline)
   if past giveLate eachTry
+:giveReady
+  return ready
+:giveLate
+  return late
+:giveStopped
+  return stopped
+
+op stdinWaitLinux "Wait on Linux until standard input has something to read or has ended (poll on descriptor 0), letting other tasks run: 0 when it may be read, 1 at the deadline, 2 when the task is cancelled"
+  input deadline Int64 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let ready Int64 0
+  let late Int64 1
+  let stopped Int64 2
+:begin
+  findPoll: pollAt = stateAt(availableAt)
+  inputHandle: waitHandle = machine.fromInt64(one=1)
+  goto eachTry
+:eachTry loop=while max=forever
+  storeFd: machine.storeInt64(pollAt, zero=0)
+  findEvents: eventsAt = machine.offset(pollAt, four=4)
+  storeEvents: machine.storeInt32(eventsAt, pollIn=1)
+  pollIt: polled = system.poll(pollAt, one, zero)
+  readyCheck: isReady = compare.greaterThanInt64(polled, zero)
+  if isReady giveReady waitIt
+:waitIt in=eachTry
+  waitOnce: outcome = tasks.wait(readText="a read of standard input", deadline, one, waitHandle)
+  cancelledCheck: isCancelled = compare.equalInt64(outcome, two=2)
+  if isCancelled giveStopped lateCheck
+:lateCheck in=eachTry
+  lateOutcome: isLate = compare.equalInt64(outcome, one)
+  if isLate giveLate eachTry
 :giveReady
   return ready
 :giveLate
@@ -1023,6 +1209,12 @@ op runChild "Run a child to its end or stop it at the deadline or a cancel; with
   let ok Int32 0
   let childText String "a wait for a child process"
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux runLinux runWindows
+:runLinux
+  linuxIt: linuxStatus = runChildLinux(program, programBytes, names, deadline, captured, input, inputBytes, out, errors, codeAt, payload)
+  return linuxStatus
+:runWindows
   nowhere: anywhere = machine.zero()
   makeLine: line = commandLine(program, programBytes, names)
   fetchLineText: lineText = wide.builderText(line)
@@ -1282,6 +1474,655 @@ op runChild "Run a child to its end or stop it at the deadline or a cancel; with
   giveInformation: heap.give(information)
   giveEnds: heap.give(ends)
   return ok
+
+op closeDescriptor "Close a Linux descriptor unless it is -1"
+  input fd Int64 copied
+  effect use system.calls
+  uses systemCalls
+:begin
+  noneCheck: isNone = compare.lessThanInt64(fd, zero=0)
+  if isNone done closeIt
+:closeIt
+  closeFd: closed = system.close(fd)
+  goto done
+:done
+  return
+
+op pipeEnd "One end of a pipe pipe2 made, from the two 32-bit descriptors at an address: 0 the read end, 1 the write end"
+  input fds machine.Address copied
+  input which Int64 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  offsetOf: offset = math.multiplyInt64(which, four=4)
+  findEnd: endAt = machine.offset(fds, offset)
+  readEnd: fd32 = machine.loadInt32(endAt)
+  widenEnd: fd = convert.int32ToInt64(fd32)
+  return fd
+
+op nonBlocking "Make a Linux descriptor non-blocking (O_NONBLOCK), so a read or write that would wait gives EAGAIN instead"
+  input fd Int64 copied
+  effect use system.calls
+  uses systemCalls
+:begin
+  setIt: set = system.fcntl(fd, setFlags=4, nonBlock=2048)
+  return
+
+op readPipeLinux "Read what a pipe from a child has into a builder on Linux: 1 when it gave something, 0 when it had nothing yet, -1 when it has ended"
+  input fd Int64 copied
+  input into machine.Address copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let gave Int64 1
+  let nothing Int64 0
+  let ended Int64 -1
+:begin
+  takeBlock: block = heap.take(chunk)
+  readIt: got = system.read(fd, block, chunk)
+  someCheck: some = compare.greaterThanInt64(got, zero=0)
+  if some keep noneCheck
+:keep
+  addIt: wide.builderAdd(into, block, got)
+  giveBlock: heap.give(block)
+  return gave
+:noneCheck
+  giveEmpty: heap.give(block)
+  againCheck: isAgain = compare.equalInt64(got, eagainResult=-11)
+  if isAgain giveNothing giveEnded
+:giveNothing
+  return nothing
+:giveEnded
+  return ended
+
+op childNames "The names execve is tried with for a program on Linux, as _posixsubprocess has them: the program alone when it holds a `/`, otherwise each directory of PATH (/bin:/usr/bin when it is not set) with `/` and the program, an empty directory giving the program alone; a list of 0-ended copies"
+  input program machine.Address copied
+  input programBytes Int64 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let start Int64 0 mut
+  let at Int64 0 mut
+  let pathText String "PATH"
+  let defaultPath String "/bin:/usr/bin"
+  let slashText String "/"
+:begin
+  takeList: names = heap.take(twentyFour=24)
+  findSlash: slashAt = machine.addressOfString(slashText)
+  searchSlash: slashFound = memory.findBytes(program, programBytes, slashAt, one=1)
+  slashCheck: hasSlash = compare.greaterOrEqualInt64(slashFound, zero=0)
+  if hasSlash alone lookPath
+:alone
+  addAlone: handles.addName(names, program, programBytes)
+  return names
+:lookPath
+  takeCell: cell = heap.take(eight=8)
+  findPathName: pathNameAt = machine.addressOfString(pathText)
+  findPath: pathValue = linuxVariable(pathNameAt, four=4, cell)
+  readPathBytes: foundBytes = machine.loadInt64(cell)
+  giveCell: heap.give(cell)
+  nowhere: anywhere = machine.zero()
+  unsetCheck: isUnset = machine.equal(pathValue, anywhere)
+  findDefault: defaultAt = machine.addressOfString(defaultPath)
+  defaultLength: defaultBytes = string.byteLength(defaultPath)
+  if isUnset useDefault usePath
+:useDefault
+  copyDefault: defaultCopy = files.copyBytes(defaultAt, defaultBytes)
+  defaultValue: copyValue = machine.toInt64(defaultCopy)
+  set start copyValue
+  set at defaultBytes
+  goto split
+:usePath
+  copyPath: pathCopy = files.copyBytes(pathValue, foundBytes)
+  pathCopyValue: copyValueFound = machine.toInt64(pathCopy)
+  set start copyValueFound
+  set at foundBytes
+  goto split
+:split
+  textOf: text = machine.fromInt64(start)
+  keepBytes: textBytes = math.addInt64(at, zero)
+  set start zero
+  set at zero
+  goto eachByte
+:eachByte loop=while max=textBytes
+  endCheck: atEnd = compare.greaterOrEqualInt64(at, textBytes)
+  if atEnd addLast readByte
+:readByte in=eachByte
+  readIt: byte = byteAt(text, at)
+  colonCheck: isColon = compare.equalByte(byte, colon=58)
+  if isColon addOne advance
+:addOne in=eachByte
+  addDirectory: addCandidate(names, text, start, at, program, programBytes)
+  afterColon: next = math.addInt64(at, one)
+  set start next
+  goto advance
+:advance in=eachByte
+  nextByte: after = math.addInt64(at, one)
+  set at after
+  goto eachByte
+:addLast
+  addFinal: addCandidate(names, text, start, at, program, programBytes)
+  giveText: heap.give(text)
+  return names
+
+op addCandidate "Add one name execve is tried with: a directory of PATH (the bytes from start to end of a text), `/`, and the program; the program alone for an empty directory"
+  input names machine.Address copied
+  input text machine.Address copied
+  input start Int64 copied
+  input end Int64 copied
+  input program machine.Address copied
+  input programBytes Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  lengthOf: directoryBytes = math.subtractInt64(end, start)
+  emptyCheck: empty = compare.lessOrEqualInt64(directoryBytes, zero=0)
+  if empty alone join
+:alone
+  addAlone: handles.addName(names, program, programBytes)
+  return
+:join
+  makeBuilder: builder = wide.builderNew()
+  findDirectory: directory = machine.offset(text, start)
+  addDirectory: wide.builderAdd(builder, directory, directoryBytes)
+  addSlash: wide.builderAddByte(builder, slash=47)
+  addProgram: wide.builderAdd(builder, program, programBytes)
+  readJoined: joined = wide.builderText(builder)
+  readJoinedBytes: joinedBytes = wide.builderLength(builder)
+  addJoined: handles.addName(names, joined, joinedBytes)
+  giveJoined: giveBuilder(builder)
+  return
+
+op giveNameList "Give back a list of names: each name's bytes, its block of names, and the list"
+  input names machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+:begin
+  readCount: count = handles.nameCount(names)
+  goto eachName
+:eachName loop=while max=count
+  doneCheck: done = compare.greaterOrEqualInt64(at, count)
+  if done finish giveOne
+:giveOne in=eachName
+  findName: nameSlot = handles.nameAt(names, at)
+  readName: name = machine.loadAddress(nameSlot)
+  giveName: heap.give(name)
+  nextName: after = math.addInt64(at, one=1)
+  set at after
+  goto eachName
+:finish
+  findBlock: blockSlot = machine.offset(names, sixteen=16)
+  readBlock: block = machine.loadAddress(blockSlot)
+  giveBlock: heap.give(block)
+  giveList: heap.give(names)
+  return
+
+op cVector "A 0-ended array of 0-ended copies of a list of names, with a first word before them when one is given (the address 0 for none)"
+  input first machine.Address copied
+  input firstBytes Int64 copied
+  input names machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+  let slot Int64 0 mut
+  let firstSlot Int64 1
+:begin
+  readCount: count = handles.nameCount(names)
+  withFirst: words = math.addInt64(count, two=2)
+  wordBytes: size = math.multiplyInt64(words, eight=8)
+  takeVector: vector = heap.take(size)
+  nowhere: anywhere = machine.zero()
+  firstCheck: noFirst = machine.equal(first, anywhere)
+  if noFirst eachName addFirst
+:addFirst
+  copyFirst: firstCopy = files.copyBytes(first, firstBytes)
+  storeFirst: machine.storeAddress(vector, firstCopy)
+  set slot firstSlot
+  goto eachName
+:eachName loop=while max=count
+  doneCheck: done = compare.greaterOrEqualInt64(at, count)
+  if done finish addName
+:addName in=eachName
+  findName: nameSlot = handles.nameAt(names, at)
+  readName: name = machine.loadAddress(nameSlot)
+  findLength: lengthSlot = machine.offset(nameSlot, eight)
+  readLength: length = machine.loadInt64(lengthSlot)
+  copyName: copied = files.copyBytes(name, length)
+  slotOffset: offset = math.multiplyInt64(slot, eight)
+  findSlot: target = machine.offset(vector, offset)
+  storeName: machine.storeAddress(target, copied)
+  nextSlot: afterSlot = math.addInt64(slot, one=1)
+  set slot afterSlot
+  nextName: after = math.addInt64(at, one)
+  set at after
+  goto eachName
+:finish
+  return vector
+
+op giveVector "Give back a 0-ended array of heap blocks and the blocks"
+  input vector machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+:begin
+  goto eachWord
+:eachWord loop=while max=forever
+  offsetOf: offset = math.multiplyInt64(at, eight=8)
+  findWord: slot = machine.offset(vector, offset)
+  readWord: word = machine.loadAddress(slot)
+  nowhere: anywhere = machine.zero()
+  endCheck: atEnd = machine.equal(word, anywhere)
+  if atEnd finish giveWord
+:giveWord in=eachWord
+  giveIt: heap.give(word)
+  nextWord: after = math.addInt64(at, one=1)
+  set at after
+  goto eachWord
+:finish
+  giveBlock: heap.give(vector)
+  return
+
+op execChild "In a forked child on Linux: SIGPIPE back to its default, the captured streams as standard input, output, and error, then execve with each name in turn; when none starts, the errno goes to the report pipe and the child exits with 127. It never returns"
+  input candidates machine.Address copied
+  input arguments machine.Address copied
+  input fds machine.Address copied
+  input captured Bool copied
+  input action machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let saved Int64 0 mut
+  let last Int64 2 mut
+  let at Int64 0 mut
+:begin
+  nowhere: anywhere = machine.zero()
+  defaultPipe: reset = system.rtSigaction(brokenPipeSignal=13, action, anywhere, maskBytes=8)
+  if captured redirect tryNames
+:redirect
+  inputEnd: childInput = pipeEnd(fds, zero=0)
+  dupInput: dupedInput = system.dup2(childInput, zero)
+  findOutputPipe: outputFds = machine.offset(fds, eight=8)
+  outputEnd: childOutput = pipeEnd(outputFds, one=1)
+  dupOutput: dupedOutput = system.dup2(childOutput, one)
+  findErrorPipe: errorFds = machine.offset(fds, sixteen=16)
+  errorEnd: childError = pipeEnd(errorFds, one)
+  dupError: dupedError = system.dup2(childError, two=2)
+  goto tryNames
+:tryNames
+  readCount: count = handles.nameCount(candidates)
+  environmentOf: environment = kernel.environmentVector()
+  goto eachName
+:eachName loop=while max=count
+  doneCheck: done = compare.greaterOrEqualInt64(at, count)
+  if done report tryOne
+:tryOne in=eachName
+  findName: nameSlot = handles.nameAt(candidates, at)
+  readName: name = machine.loadAddress(nameSlot)
+  findLength: lengthSlot = machine.offset(nameSlot, eight)
+  readLength: length = machine.loadInt64(lengthSlot)
+  copyName: path = files.copyBytes(name, length)
+  execIt: execResult = system.execve(path, arguments, environment)
+  errnoOf: errno = kernel.errnoOf(execResult)
+  set last errno
+  missingCheck: isMissing = compare.equalInt64(errno, two)
+  notDirectoryCheck: isNotDirectory = compare.equalInt64(errno, twenty=20)
+  passCheck: passOver = logic.or(isMissing, isNotDirectory)
+  noneSavedCheck: noneSaved = compare.equalInt64(saved, zero)
+  keepCheck: notPassed = logic.not(passOver)
+  keepNow: keepIt = logic.and(notPassed, noneSaved)
+  if keepIt keepErrno nextName
+:keepErrno in=eachName
+  set saved errno
+  goto nextName
+:nextName in=eachName
+  nextAt: after = math.addInt64(at, one)
+  set at after
+  goto eachName
+:report
+  anySaved: haveSaved = compare.notEqualInt64(saved, zero)
+  if haveSaved writeSaved writeLast
+:writeSaved
+  set last saved
+  goto writeLast
+:writeLast
+  findReport: reportFds = machine.offset(fds, twentyFour=24)
+  reportEnd: reportWrite = pipeEnd(reportFds, one)
+  findErrno: errnoAt = machine.offset(fds, thirtyTwo=32)
+  storeErrno: machine.storeInt64(errnoAt, last)
+  writeIt: wrote = system.write(reportWrite, errnoAt, eight)
+  exitIt: exited = system.exitGroup(childFailed=127)
+  return
+
+op runChildLinux "runChild on Linux: fork, execve in the child, and wait for it on its pidfd; with `captured`, its streams are non-blocking pipes on this side, pumped between other tasks. Gives 0 with the exit code at an address, or an error's number with its payload stored"
+  input program machine.Address copied
+  input programBytes Int64 copied
+  input names machine.Address copied
+  input deadline Int64 copied
+  input captured Bool copied
+  input input machine.Address copied
+  input inputBytes Int64 copied
+  input out machine.Address copied
+  input errors machine.Address copied
+  input codeAt machine.Address copied
+  input payload machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let written Int64 0 mut
+  let inputOpen Bool false mut
+  let outOpen Bool false mut
+  let errorsOpen Bool false mut
+  let progress Bool false mut
+  let poll Int64 0 mut
+  let waitValue Int64 0 mut
+  let ourInput Int64 -1 mut
+  let ourOut Int64 -1 mut
+  let ourErrors Int64 -1 mut
+  let yes Bool true
+  let no Bool false
+  let ok Int32 0
+  let closedFd Int64 -1
+  let result Int32 0 mut
+  let childText String "a wait for a child process"
+:begin
+  nowhere: anywhere = machine.zero()
+  makeCandidates: candidates = childNames(program, programBytes)
+  makeArguments: arguments = cVector(program, programBytes, names)
+  takeAction: action = heap.take(thirtyTwo=32)
+  takeFds: fds = heap.take(sixtyFour=64)
+  findOutFds: outFds = machine.offset(fds, eight=8)
+  findErrorFds: errorFds = machine.offset(fds, sixteen=16)
+  findReportFds: reportFds = machine.offset(fds, twentyFour=24)
+  makeReport: reportMade = system.pipe2(reportFds, closeOnExec=524288)
+  if captured pipes start
+:pipes
+  makeInput: inputMade = system.pipe2(fds, closeOnExec)
+  makeOutput: outputMade = system.pipe2(outFds, closeOnExec)
+  makeErrors: errorsMade = system.pipe2(errorFds, closeOnExec)
+  goto start
+:start
+  forkIt: pid = system.fork()
+  childCheck: inChild = compare.equalInt64(pid, zero=0)
+  if inChild child parent
+:child
+  runIt: execChild(candidates, arguments, fds, captured, action)
+  return ok
+:parent
+  readReportRead: reportRead = pipeEnd(reportFds, zero)
+  readReportWrite: reportWrite = pipeEnd(reportFds, one=1)
+  closeReportWrite: closeDescriptor(reportWrite)
+  if captured closeTheirs forkCheck
+:closeTheirs
+  theirInput: theirInputFd = pipeEnd(fds, zero)
+  closeTheirInput: closeDescriptor(theirInputFd)
+  theirOutput: theirOutputFd = pipeEnd(outFds, one)
+  closeTheirOutput: closeDescriptor(theirOutputFd)
+  theirError: theirErrorFd = pipeEnd(errorFds, one)
+  closeTheirError: closeDescriptor(theirErrorFd)
+  oursInput: ourInputFd = pipeEnd(fds, one)
+  set ourInput ourInputFd
+  oursOutput: ourOutFd = pipeEnd(outFds, zero)
+  set ourOut ourOutFd
+  oursErrors: ourErrorsFd = pipeEnd(errorFds, zero)
+  set ourErrors ourErrorsFd
+  blockInput: nonBlocking(ourInput)
+  blockOutput: nonBlocking(ourOut)
+  blockErrors: nonBlocking(ourErrors)
+  goto forkCheck
+:forkCheck
+  forkFailed: noFork = kernel.failed(pid)
+  if noFork refuseFork readReport
+:refuseFork
+  forkErrno: forkCode = kernel.errnoOf(pid)
+  closeReportFork: closeDescriptor(reportRead)
+  closeInputFork: closeDescriptor(ourInput)
+  closeOutFork: closeDescriptor(ourOut)
+  closeErrorsFork: closeDescriptor(ourErrors)
+  failedFork: status0 = slots.failWith(payload, runFailed, forkCode)
+  set result status0
+  goto giveAll
+:readReport
+  findErrno: errnoAt = machine.offset(fds, thirtyTwo=32)
+  storeNoErrno: machine.storeInt64(errnoAt, zero)
+  readIt: reported = system.read(reportRead, errnoAt, eight)
+  closeReportRead: closeDescriptor(reportRead)
+  reportedCheck: execFailed = compare.equalInt64(reported, eight)
+  if execFailed refuseStart running
+:refuseStart
+  readErrno: startErrno = machine.loadInt64(errnoAt)
+  findStatusFailed: reapStatus = machine.offset(fds, forty=40)
+  reapIt: reaped = system.wait4(pid, reapStatus, zero, anywhere)
+  closeInputFailed: closeDescriptor(ourInput)
+  closeOutFailed: closeDescriptor(ourOut)
+  closeErrorsFailed: closeDescriptor(ourErrors)
+  missingCheck: isMissing = compare.equalInt64(startErrno, two=2)
+  if isMissing giveNotFound giveFailed
+:giveNotFound
+  notFoundStatus: status1 = slots.failWith(payload, runNotFound, zero)
+  set result status1
+  goto giveAll
+:giveFailed
+  failedStatus: status2 = slots.failWith(payload, runFailed, startErrno)
+  set result status2
+  goto giveAll
+:running
+  pidAddress: process = machine.fromInt64(pid)
+  holdIt: frames.holdResource(two, process)
+  openPidfd: pidfd = system.pidfdOpen(pid, zero)
+  pidfdFailed: noPidfd = kernel.failed(pidfd)
+  if noPidfd pollOnly withPidfd
+:withPidfd
+  plusOne: pidfdValue = math.addInt64(pidfd, one)
+  set waitValue pidfdValue
+  goto pumpStart
+:pollOnly
+  set waitValue zero
+  goto pumpStart
+:pumpStart
+  waitHandleOf: waitHandle = machine.fromInt64(waitValue)
+  if captured startPump eachWait
+:startPump
+  set outOpen yes
+  set errorsOpen yes
+  anyInput: hasInput = compare.greaterThanInt64(inputBytes, zero)
+  if hasInput keepInput closeInput
+:keepInput
+  set inputOpen yes
+  goto eachPump
+:closeInput
+  closeInputNow: closeDescriptor(ourInput)
+  set ourInput closedFd
+  goto eachPump
+:eachPump loop=while max=forever
+  set progress no
+  if inputOpen writeInput readOut
+:writeInput in=eachPump
+  leftOf: left = math.subtractInt64(inputBytes, written)
+  findFrom: from = machine.offset(input, written)
+  writeIt: wrote = system.write(ourInput, from, left)
+  wroteCheck: wroteSome = compare.greaterThanInt64(wrote, zero)
+  if wroteSome countWritten notWritten
+:notWritten in=eachPump
+  againCheck: isAgain = compare.equalInt64(wrote, eagainResult=-11)
+  if isAgain inputDoneCheck inputBroken
+:inputBroken in=eachPump
+  set written inputBytes
+  goto inputDoneCheck
+:countWritten in=eachPump
+  addWritten: moreWritten = math.addInt64(written, wrote)
+  set written moreWritten
+  set progress yes
+  goto inputDoneCheck
+:inputDoneCheck in=eachPump
+  allCheck: allWritten = compare.greaterOrEqualInt64(written, inputBytes)
+  if allWritten finishInput readOut
+:finishInput in=eachPump
+  closeInputEnd: closeDescriptor(ourInput)
+  set ourInput closedFd
+  set inputOpen no
+  set progress yes
+  goto readOut
+:readOut in=eachPump
+  if outOpen pumpOut readErrors
+:pumpOut in=eachPump
+  readOutPipe: outResult = readPipeLinux(ourOut, out)
+  outEndCheck: outEnded = compare.lessThanInt64(outResult, zero)
+  if outEnded endOut outGaveCheck
+:endOut in=eachPump
+  closeOut: closeDescriptor(ourOut)
+  set ourOut closedFd
+  set outOpen no
+  set progress yes
+  goto readErrors
+:outGaveCheck in=eachPump
+  outGave: gotOut = compare.greaterThanInt64(outResult, zero)
+  if gotOut outProgress readErrors
+:outProgress in=eachPump
+  set progress yes
+  goto readErrors
+:readErrors in=eachPump
+  if errorsOpen pumpErrors pumpCheck
+:pumpErrors in=eachPump
+  readErrorPipe: errorResult = readPipeLinux(ourErrors, errors)
+  errorEndCheck: errorEnded = compare.lessThanInt64(errorResult, zero)
+  if errorEnded endErrors errorGaveCheck
+:endErrors in=eachPump
+  closeErrors: closeDescriptor(ourErrors)
+  set ourErrors closedFd
+  set errorsOpen no
+  set progress yes
+  goto pumpCheck
+:errorGaveCheck in=eachPump
+  errorGave: gotError = compare.greaterThanInt64(errorResult, zero)
+  if gotError errorProgress pumpCheck
+:errorProgress in=eachPump
+  set progress yes
+  goto pumpCheck
+:pumpCheck in=eachPump
+  bothOpen: streamsOpen = logic.or(outOpen, errorsOpen)
+  if streamsOpen pumpDeadline pumpDone
+:pumpDeadline in=eachPump
+  readPumpNow: pumpMoment = tasks.now()
+  pumpNever: pumpNoDeadline = compare.equalInt64(deadline, never)
+  if pumpNoDeadline pumpPause pumpPast
+:pumpPast in=eachPump
+  pumpPastCheck: pumpLate = compare.greaterOrEqualInt64(pumpMoment, deadline)
+  if pumpLate stopLate pumpPause
+:pumpPause in=eachPump
+  if progress eachPump pumpWait
+:pumpWait in=eachPump
+  pollSoon: soon = math.addInt64(pumpMoment, one)
+  set poll soon
+  earlierCheck: deadlineFirst = compare.lessThanInt64(deadline, soon)
+  notNever: hasDeadline = logic.not(pumpNoDeadline)
+  useCheck: useDeadline = logic.and(hasDeadline, deadlineFirst)
+  if useDeadline useDeadlineTime waitPump
+:useDeadlineTime in=eachPump
+  set poll deadline
+  goto waitPump
+:waitPump in=eachPump
+  waitIt: outcome = tasks.wait(childText, poll, one, waitHandle)
+  cancelledCheck: isCancelled = compare.equalInt64(outcome, two)
+  if isCancelled stopCancelled eachPump
+:pumpDone
+  closeLeft: closeDescriptor(ourInput)
+  set ourInput closedFd
+  goto eachWait
+:eachWait loop=while max=forever
+  findStatus: statusAt = machine.offset(fds, forty)
+  storeNoStatus: machine.storeInt64(statusAt, zero)
+  pollChild: exited = system.wait4(pid, statusAt, noHang=1, anywhere)
+  exitedCheck: hasExited = compare.equalInt64(exited, pid)
+  if hasExited finished waitDeadline
+:waitDeadline in=eachWait
+  readWaitNow: waitMoment = tasks.now()
+  waitNever: waitNoDeadline = compare.equalInt64(deadline, never)
+  if waitNoDeadline waitPoll waitPast
+:waitPast in=eachWait
+  waitPastCheck: waitLate = compare.greaterOrEqualInt64(waitMoment, deadline)
+  if waitLate stopLate waitPoll
+:waitPoll in=eachWait
+  set poll deadline
+  pidfdCheck: hasPidfd = compare.greaterThanInt64(waitValue, zero)
+  if hasPidfd waitMore pollSoonWait
+:pollSoonWait in=eachWait
+  tenLater: pollTen = math.addInt64(waitMoment, ten=10)
+  laterCheck: tenFirst = compare.lessThanInt64(pollTen, deadline)
+  noDeadlineCheck: tenAlways = logic.or(waitNoDeadline, tenFirst)
+  if tenAlways useTen waitMore
+:useTen in=eachWait
+  set poll pollTen
+  goto waitMore
+:waitMore in=eachWait
+  waitOnce: waitOutcome = tasks.wait(childText, poll, one, waitHandle)
+  waitCancelledCheck: waitCancelled = compare.equalInt64(waitOutcome, two)
+  if waitCancelled stopCancelled eachWait
+:stopLate
+  killLate: killedLate = system.kill(pid, killSignal=9)
+  findLateStatus: lateStatusAt = machine.offset(fds, forty)
+  reapLate: reapedLate = system.wait4(pid, lateStatusAt, zero, anywhere)
+  letGoLate: frames.letGoResource(process)
+  lateStatus: status3 = slots.failWith(payload, runTimedOut, zero)
+  set result status3
+  goto closeAll
+:stopCancelled
+  killCancel: killedCancel = system.kill(pid, killSignal)
+  findCancelStatus: cancelStatusAt = machine.offset(fds, forty)
+  reapCancel: reapedCancel = system.wait4(pid, cancelStatusAt, zero, anywhere)
+  letGoCancel: frames.letGoResource(process)
+  cancelStatus: status4 = slots.failWith(payload, runCancelled, zero)
+  set result status4
+  goto closeAll
+:finished
+  readStatus: waitStatus = machine.loadInt64(statusAt)
+  lowOf: signalled = bits.andInt64(waitStatus, signalMask=127)
+  exitCheck: normalExit = compare.equalInt64(signalled, zero)
+  if normalExit exitCode signalCode
+:exitCode
+  shiftIt: shifted = bits.shiftRightInt64(waitStatus, eight)
+  maskIt: code = bits.andInt64(shifted, byteMask=255)
+  narrowCode: code32 = convert.int64ToInt32(code)
+  storeCode: machine.storeInt32(codeAt, code32)
+  goto childExited
+:signalCode
+  negateIt: minusSignal = math.negateInt64(signalled)
+  narrowSignal: signal32 = convert.int64ToInt32(minusSignal)
+  storeSignal: machine.storeInt32(codeAt, signal32)
+  goto childExited
+:childExited
+  letGo: frames.letGoResource(process)
+  goto closeAll
+:closeAll
+  closeInputAll: closeDescriptor(ourInput)
+  closeOutAll: closeDescriptor(ourOut)
+  closeErrorsAll: closeDescriptor(ourErrors)
+  pidfdOf: pidfdAgain = math.subtractInt64(waitValue, one)
+  closePidfd: closeDescriptor(pidfdAgain)
+  goto giveAll
+:giveAll
+  giveCandidates: giveNameList(candidates)
+  giveArguments: giveVector(arguments)
+  giveAction: heap.give(action)
+  giveFds: heap.give(fds)
+  return result
 
 op processRun "process.run: run a program with arguments to its end, sharing this program's streams; its exit code, or notFound, timedOut, cancelled, failed"
   invariant runsChild "The result slot holds the child's exit code, or the status is an error"
@@ -1848,6 +2689,46 @@ test splitTest "A command line splits into words as CommandLineToArgvW splits it
   expectLine: expectText(lineText, lineBytes, listed)
   return
 
+op putTestText "Copy a text into machine.state with a 0 after it, for a C string the tests hand the runtime"
+  input text String borrowed
+  input at machine.Address copied
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  findText: textAt = machine.addressOfString(text)
+  textLength: bytes = string.byteLength(text)
+  copyIt: machine.copy(at, textAt, bytes)
+  findEnd: endAt = machine.offset(at, bytes)
+  storeEnd: machine.storeByte(endAt, zeroByte=0)
+  return
+
+op linuxEnvironment "On Linux, where `refined test` starts no process stack, give the tests one at byte 63488 of machine.state: argc 1, the program's name, and the environment `SystemRoot=/linux`"
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let programName String "program"
+  let rootVariable String "SystemRoot=/linux"
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux make done
+:make
+  findStack: stack = stateAt(fakeStackAt=63488)
+  clearIt: machine.fill(stack, zeroByte=0, clearBytes=256)
+  storeCount: machine.storeInt64(stack, one=1)
+  findName: nameAt = machine.offset(stack, nameOffset=64)
+  putName: putTestText(programName, nameAt)
+  findNameSlot: nameSlot = machine.offset(stack, eight=8)
+  storeName: machine.storeAddress(nameSlot, nameAt)
+  findVariable: variableAt = machine.offset(stack, variableOffset=96)
+  putVariable: putTestText(rootVariable, variableAt)
+  findVariableSlot: variableSlot = machine.offset(stack, twentyFour=24)
+  storeVariable: machine.storeAddress(variableSlot, variableAt)
+  keepIt: kernel.initialStack(stack)
+  goto done
+:done
+  return
+
 op addTestWord "Add a word to a list of names"
   input names machine.Address copied
   input word String borrowed
@@ -1876,6 +2757,7 @@ test environmentTest "The program's arguments are counted and read up to their e
   findLabel: labelAt = machine.addressOfString(label)
   labelLength: labelBytes = string.byteLength(label)
   make: region = regions.newRegion(capacity=65536, labelAt, labelBytes)
+  giveEnvironment: linuxEnvironment()
   findArgs: args = argSlot(zero=0)
   findResults: results = stateAt(resultsOffset=62016)
   findPayload: payload = stateAt(payloadOffset=62080)
@@ -1973,6 +2855,40 @@ test childTest "A child runs to its end with its exit code, and a captured child
   findArgs: args = argSlot(zero=0)
   findResults: results = stateAt(resultsOffset=62016)
   findPayload: payload = stateAt(payloadOffset=62080)
+  osCheck: onLinux = system.linux()
+  if onLinux linuxChild windowsChild
+:linuxChild
+  takeLinuxNames: linuxNames = heap.take(twentyFour=24)
+  makeLinuxHandle: linuxHandle = handles.newHandle(kindArguments, linuxNames, region)
+  addDashC: addTestWord(linuxNames, dashC="-c")
+  addExitThree: addTestWord(linuxNames, exitThree="exit 3")
+  shapeLinuxRun: linuxShape1 = testShape(two=2, one=1, one, zero, zero, zero)
+  setShell: setTextArg(zero, shell="/bin/sh")
+  setLinuxHandle: setArg(two, linuxHandle)
+  setLinuxDeadline: setArg(three=3, minusOne=-1)
+  runLinux: linuxRunStatus = processRun(linuxShape1, args, results, payload)
+  expectLinuxRun: expectStatus(zero, linuxRunStatus)
+  readLinuxCode: linuxCode = machine.loadInt64(results)
+  expectLinuxCode: test.assertEqualInt64(three, linuxCode)
+  takeLinuxEchoNames: linuxEchoNames = heap.take(twentyFour)
+  makeLinuxEchoHandle: linuxEchoHandle = handles.newHandle(kindArguments, linuxEchoNames, region)
+  addEchoDashC: addTestWord(linuxEchoNames, dashC)
+  addEchoHi: addTestWord(linuxEchoNames, echoHi="echo hi")
+  shapeLinuxCaptured: linuxShape2 = testShape(two, one, two, one, one, one)
+  setCapturedShell: setTextArg(zero, shell)
+  setLinuxEchoHandle: setArg(two, linuxEchoHandle)
+  setLinuxInput: setTextArg(three, nothing="")
+  setLinuxRegion: setAddressArg(five=5, region)
+  setLinuxLimit: setArg(six=6, thousand=1000)
+  setLinuxCapturedDeadline: setArg(seven=7, minusOne)
+  captureLinux: linuxCapturedStatus = processRunCaptured(linuxShape2, args, results, payload)
+  expectLinuxCaptured: expectStatus(zero, linuxCapturedStatus)
+  readLinuxCapturedCode: linuxCapturedCode = machine.loadInt64(results)
+  expectLinuxCapturedCode: test.assertEqualInt64(zero, linuxCapturedCode)
+  findLinuxOut: linuxOutSlot = machine.offset(results, eight=8)
+  expectLinuxOut: expectSlotText(linuxOutSlot, hiLinuxLine="hi\n")
+  goto finish
+:windowsChild
   takeNames: names = heap.take(twentyFour=24)
   makeHandle: handle = handles.newHandle(kindArguments, names, region)
   addSlash: addTestWord(names, slashC="/c")
@@ -2004,6 +2920,8 @@ test childTest "A child runs to its end with its exit code, and a captured child
   expectCapturedCode: test.assertEqualInt64(zero, capturedCode)
   findOut: outSlot = machine.offset(results, eight=8)
   expectOut: expectSlotText(outSlot, hiLine="hi\x0d\n")
+  goto finish
+:finish
   free: regions.release(region)
   return
 
@@ -2019,6 +2937,7 @@ test secretTest "A Secret keeps its text, reveals it, matches only the same text
   uses systemCalls
   let label String "secret test"
 :begin
+  giveEnvironment: linuxEnvironment()
   findLabel: labelAt = machine.addressOfString(label)
   labelLength: labelBytes = string.byteLength(label)
   make: region = regions.newRegion(capacity=65536, labelAt, labelBytes)
@@ -2072,6 +2991,11 @@ test ffiTest "The C library loads by the name `c`, its functions bind by name, a
   uses memoryAccess
   uses systemCalls
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux skipped windowsOnly
+:skipped
+  return
+:windowsOnly
   findArgs: args = argSlot(zero=0)
   findResults: results = stateAt(resultsOffset=62016)
   findPayload: payload = stateAt(payloadOffset=62080)

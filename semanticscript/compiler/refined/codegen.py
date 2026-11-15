@@ -48,7 +48,7 @@ from .diagnostics import Diagnostic
 from .check import TEST_OFFSET
 from .runtime import default_triple
 from .host import HANDLERS as HOST_TARGETS
-from .library import INTEGER_RANGES, INTEGER_TYPES as INTEGER_TARGET_TYPES, STATE_BYTES, SYSTEM_CALLS
+from .library import INTEGER_RANGES, INTEGER_TYPES as INTEGER_TARGET_TYPES, LINUX_CALLS, STATE_BYTES, SYSTEM_CALLS
 from .semantics import (CallInfo, Module, OpInfo, World, abi_symbol, grant_scope, instance_scope, resolve_type,
                         resolve_variant, type_params_of)
 
@@ -115,6 +115,117 @@ POSITION_BITS = 32
 LIST = LIST_HEADER.as_pointer()
 
 
+class _AsmModule(ir.Module):
+    """An LLVM module that can carry module-level assembly: the few routines of the runtime on Linux that switch
+    stacks, and its process entry `_start` (D-139)."""
+
+    def __init__(self, name: str = ""):
+        super().__init__(name=name)
+        self.asm_parts: dict[str, list[str]] = {}
+
+    def _get_body_lines(self):
+        lines = [f'module asm "{line}"' for part in self.asm_parts.values() for line in part]
+        return lines + super()._get_body_lines()
+
+
+def target_os(triple: str) -> str:
+    """`windows`, `linux`, or `other`, from an LLVM target triple."""
+    if "windows" in triple or "mingw" in triple or "win32" in triple:
+        return "windows"
+    if "linux" in triple:
+        return "linux"
+    return "other"
+
+
+# D-139: the runtime's own stacks on Linux x86_64 (System V): the callee-saved registers go on the running stack,
+# its stack pointer is kept at the save slot, and the resumed stack pops them back.
+_X86_64_STACKS = [
+    ".text",
+    ".p2align 4",
+    ".globl refined_switch_stack",
+    ".type refined_switch_stack,@function",
+    "refined_switch_stack:",
+    "  pushq %rbp", "  pushq %rbx", "  pushq %r12", "  pushq %r13", "  pushq %r14", "  pushq %r15",
+    "  movq %rsp, (%rdi)",
+    "  movq %rsi, %rsp",
+    "  popq %r15", "  popq %r14", "  popq %r13", "  popq %r12", "  popq %rbx", "  popq %rbp",
+    "  retq",
+    ".p2align 4",
+    ".globl refined_start_stack",
+    ".type refined_start_stack,@function",
+    "refined_start_stack:",
+    "  pushq %rbp", "  pushq %rbx", "  pushq %r12", "  pushq %r13", "  pushq %r14", "  pushq %r15",
+    "  movq %rsp, (%rdi)",
+    "  movq %rsi, %rsp",
+    "  movq %rcx, %rdi",
+    "  xorl %ebp, %ebp",
+    "  callq *%rdx",
+    "  ud2",
+    ".p2align 4",
+    ".globl refined_run_on_stack",
+    ".type refined_run_on_stack,@function",
+    "refined_run_on_stack:",
+    "  pushq %rbp",
+    "  movq %rsp, %rbp",
+    "  movq %rdi, %rsp",
+    "  callq *%rsi",
+    "  movq %rbp, %rsp",
+    "  popq %rbp",
+    "  retq",
+]
+# the same on AArch64 (AAPCS64): x19 to x30 and d8 to d15 are the callee-saved registers
+_AARCH64_SAVE = ["  sub sp, sp, #160", "  stp x19, x20, [sp, #0]", "  stp x21, x22, [sp, #16]",
+                 "  stp x23, x24, [sp, #32]", "  stp x25, x26, [sp, #48]", "  stp x27, x28, [sp, #64]",
+                 "  stp x29, x30, [sp, #80]", "  stp d8, d9, [sp, #96]", "  stp d10, d11, [sp, #112]",
+                 "  stp d12, d13, [sp, #128]", "  stp d14, d15, [sp, #144]", "  mov x9, sp", "  str x9, [x0]"]
+_AARCH64_STACKS = [
+    ".text",
+    ".p2align 4",
+    ".globl refined_switch_stack",
+    "refined_switch_stack:",
+    *_AARCH64_SAVE,
+    "  mov sp, x1",
+    "  ldp x19, x20, [sp, #0]", "  ldp x21, x22, [sp, #16]", "  ldp x23, x24, [sp, #32]",
+    "  ldp x25, x26, [sp, #48]", "  ldp x27, x28, [sp, #64]", "  ldp x29, x30, [sp, #80]",
+    "  ldp d8, d9, [sp, #96]", "  ldp d10, d11, [sp, #112]", "  ldp d12, d13, [sp, #128]",
+    "  ldp d14, d15, [sp, #144]", "  add sp, sp, #160",
+    "  ret",
+    ".p2align 4",
+    ".globl refined_start_stack",
+    "refined_start_stack:",
+    *_AARCH64_SAVE,
+    "  mov sp, x1",
+    "  mov x0, x3",
+    "  mov x29, xzr",
+    "  blr x2",
+    "  brk #0",
+    ".p2align 4",
+    ".globl refined_run_on_stack",
+    "refined_run_on_stack:",
+    "  stp x29, x30, [sp, #-16]!",
+    "  mov x29, sp",
+    "  mov sp, x0",
+    "  blr x1",
+    "  mov sp, x29",
+    "  ldp x29, x30, [sp], #16",
+    "  ret",
+]
+# D-139: the process entry of a Linux executable with no C library: the kernel starts it with the stack holding
+# argc, argv, and envp; `refined_entry` is given that address and the stack aligned for a call.
+_X86_64_START = [
+    ".text",
+    ".p2align 4",
+    ".globl _start",
+    ".type _start,@function",
+    "_start:",
+    "  xorl %ebp, %ebp",
+    "  movq %rsp, %rdi",
+    "  andq $-16, %rsp",
+    "  callq refined_entry",
+    "  ud2",
+]
+
+
 class _Callbacks:
     """The runtime functions compiled code calls, declared when first used. In a program that implements the runtime
     (D-124) a callback its `abi c` operations define is that operation, so the runtime calls itself directly."""
@@ -153,8 +264,11 @@ class Backend:
         self.options = dict(options or {})
         self.instrument = bool(self.options.get("trace") or self.options.get("coverage") or self.options.get("debug"))
         self.block_names: list[str] = []  # every block compiled, for coverage reports
-        self.module = ir.Module(name="refined")
-        self.module.triple = default_triple()
+        self.module = _AsmModule(name="refined")
+        # the target the module is compiled for: the JIT's own, or the executable's (D-138: `system` targets are
+        # the operating system's of this triple, and `system.linux` is a constant of it)
+        self.module.triple = self.options.get("triple") or default_triple()
+        self.os = target_os(self.module.triple)
         self.functions: dict[tuple[str, str], ir.Function] = {}
         self.pending: list[tuple[Module, OpInfo, ir.Function, dict]] = []
         self.strings: dict[bytes, ir.GlobalVariable] = {}
@@ -220,7 +334,46 @@ class Backend:
         while self.pending:
             m, info, fn, sub = self.pending.pop()
             OpGen(self, m, info, fn, sub).emit()
+        if self.options.get("runtime_object") and "refined_entry" in self.abi and self.linux_x86_64():
+            self.module.asm_parts["start"] = _X86_64_START  # D-139: the process entry calls refined_entry
         return self.module
+
+    # ------------------------------------------------------------ the operating system (D-122, D-138, D-139)
+
+    def linux_x86_64(self) -> bool:
+        return self.os == "linux" and self.module.triple.startswith("x86_64")
+
+    def off_target(self, b: ir.IRBuilder, out: Optional[ir.Type]):
+        """A `system` target of another operating system than the module's: it is never reached (the runtime
+        branches on `system.linux`), so it traps, and refers to nothing the linker would have to find."""
+        trap = self.module.declare_intrinsic("llvm.trap", fnty=ir.FunctionType(ir.VoidType(), []))
+        b.call(trap, [])
+        return ir.Constant(out, ir.Undefined) if out is not None else None
+
+    def linux_syscall(self, b: ir.IRBuilder, number: int, values: list):
+        """D-138: a raw Linux system call, the x86_64 `syscall` instruction: the number in rax, the arguments in
+        rdi, rsi, rdx, r10, r8, r9, the result (a negative errno for a failure) in rax."""
+        if not self.linux_x86_64():
+            return self.off_target(b, I64)
+        regs = ["rdi", "rsi", "rdx", "r10", "r8", "r9"][:len(values)]
+        constraint = ",".join(["={rax}", "{rax}"] + [f"{{{r}}}" for r in regs] + ["~{rcx}", "~{r11}", "~{memory}"])
+        fty = ir.FunctionType(I64, [I64] * (len(values) + 1))
+        return b.asm(fty, "syscall", constraint, [I64(number)] + values, side_effect=True)
+
+    def stack_routine(self, name: str, ftype: ir.FunctionType) -> Optional[ir.Function]:
+        """D-139: one of the routines that switch stacks, written in the module's assembly for its architecture;
+        None where the runtime has none (Windows uses its fibers)."""
+        arch = self.module.triple.split("-")[0]
+        if arch == "x86_64" and self.os == "linux":
+            self.module.asm_parts["stacks"] = _X86_64_STACKS
+        elif arch in ("aarch64", "arm64"):
+            self.module.asm_parts["stacks"] = _AARCH64_STACKS
+        else:
+            return None
+        fn = self.module.globals.get(name)
+        if fn is None:
+            fn = ir.Function(self.module, ftype, name=name)
+        return fn
 
     # ------------------------------------------------------------ types
 
@@ -1106,8 +1259,18 @@ class OpGen:
             return self.machine(b, name, args, ci, line)
         if mod == "system" and name in SYSTEM_CALLS:
             sig = SYSTEM_CALLS[name][1]
+            if self.be.os != "windows":
+                out = self.be.ltype(sig.output) if sig.output else None
+                return self.be.off_target(b, out), None, None
             res = b.call(self.be.system_function(name), [args[p.name] for p in sig.inputs])
             return (res if sig.output else None), None, None
+        if mod == "system" and name in LINUX_CALLS:
+            number, sig = LINUX_CALLS[name]
+            values = [b.ptrtoint(args[p.name], I64) if p.type == "machine.Address" else args[p.name]
+                      for p in sig.inputs]
+            return self.be.linux_syscall(b, number, values), None, None
+        if mod == "system" and name == "linux":
+            return I1(1 if self.be.os == "linux" else 0), None, None
 
         def trap_if(cond, message: str) -> None:
             with b.if_then(cond, likely=False):
@@ -1505,6 +1668,25 @@ class OpGen:
                                        "--kind executable --runtime semanticscript`)")
             entry = self.be.module.globals.get("refined_program_main") or                 ir.Function(self.be.module, ir.FunctionType(I32, []), name="refined_program_main")
             return b.call(entry, []), None, None
+        if name in ("switchStack", "startStack", "runEntryOnStack"):
+            # D-139: stacks of the runtime's own, switched by a few instructions of assembly
+            if name == "runEntryOnStack":
+                if not self.be.options.get("runtime_object"):
+                    self.unsupported(line, "`machine.runEntryOnStack` outside the runtime linked with a program")
+                entry = self.be.module.globals.get("refined_program_main") or \
+                    ir.Function(self.be.module, ir.FunctionType(I32, []), name="refined_program_main")
+                fn = self.be.stack_routine("refined_run_on_stack", ir.FunctionType(I32, [PTR, PTR]))
+                if fn is None:
+                    return self.be.off_target(b, I32), None, None
+                return b.call(fn, [args["top"], b.bitcast(entry, PTR)]), None, None
+            params = ["saveAt", "resume"] if name == "switchStack" else ["saveAt", "top", "function", "argument"]
+            symbol = "refined_switch_stack" if name == "switchStack" else "refined_start_stack"
+            fn = self.be.stack_routine(symbol, ir.FunctionType(ir.VoidType(), [PTR] * len(params)))
+            if fn is None:
+                self.be.off_target(b, None)
+                return None, None, None
+            b.call(fn, [args[p] for p in params])
+            return None, None, None
         if name == "taskEntry":
             # D-131: only the runtime has it, and only for the operation a task's fiber starts in
             if "refined_task_entry" not in self.be.abi:

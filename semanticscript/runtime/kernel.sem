@@ -1,0 +1,1118 @@
+# The operating system as the runtime reaches it (D-138): every module that calls it asks
+# `system.linux()`, a constant of the target, and takes the Windows path (kernel32's functions)
+# or the Linux path (raw system calls). What many modules share is here: memory from the
+# system, Linux's clocks and sleep, and what a Linux process is started with (argc, argv, and
+# envp on its first stack).
+#
+# This module is generated from tools/kernel.dsl by tools/build.py.
+
+kernel is module
+kernel purpose "The operating system as the runtime reaches it: Windows through kernel32, Linux through system calls; memory from the system, Linux's clocks, and what a Linux process is started with"
+kernel path kernel
+kernel imports standard.machine
+kernel imports standard.system
+kernel imports standard.math
+kernel imports standard.compare
+kernel imports standard.logic
+kernel imports standard.test
+kernel exports stateAt
+kernel exports initialStack
+kernel exports argumentCount
+kernel exports argumentVector
+kernel exports environmentVector
+kernel exports failed
+kernel exports errnoOf
+kernel exports mapMemory
+kernel exports mapStack
+kernel exports unmapMemory
+kernel exports monotonic
+kernel exports wallClock
+kernel exports sleepFor
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep what the process was started with in machine.state"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to take memory from the operating system, give it back, read its clocks, and sleep"
+systemCalls grants use system.calls none
+
+# D-138: every module that reaches the operating system asks `system.linux()`, a constant of the target, and takes
+# the Windows path (kernel32's functions) or the Linux path (system calls); the backend drops the other. The calls
+# many modules share are here. A Linux system call gives a negative errno when it fails (from -4095 to -1).
+# machine.state bytes 832 to 895 belong to this module: 832 the address the Linux process started with its stack
+# at (0 under `refined run`, and on Windows), 840 argc, 848 argv, 856 envp, 864 to 879 a struct timespec.
+stackAt is constant
+stackAt purpose "Where the address of the stack the Linux process started with is kept, in machine.state"
+stackAt type Int64
+stackAt value 832
+
+argcAt is constant
+argcAt purpose "Where argc is kept, in machine.state"
+argcAt type Int64
+argcAt value 840
+
+argvAt is constant
+argvAt purpose "Where argv is kept, in machine.state"
+argvAt type Int64
+argvAt value 848
+
+envpAt is constant
+envpAt purpose "Where envp is kept, in machine.state"
+envpAt type Int64
+envpAt value 856
+
+timeAt is constant
+timeAt purpose "Where a struct timespec is put, in machine.state"
+timeAt type Int64
+timeAt value 864
+
+# ---------------------------------------------------------------- state
+stateAt is operation
+stateAt purpose "The address of a byte of machine.state"
+stateAt invariant offsetsState "\"Gives machine.state's first byte moved on by the offset\""
+stateAt typeParameter none
+stateAt input offset Int64 copied
+stateAt output machine.Address
+stateAt outputOwnedBy none
+stateAt raises none
+stateAt effect use machine.memory
+stateAt uses memoryAccess
+stateAt memoryHeap false
+stateAt async false
+stateAt maxRecursion none
+stateAt label begin loopKind none
+stateAt label begin within none
+stateAt let none
+stateAt at begin do findState
+stateAt at begin do findPlace
+stateAt at begin return ok place
+
+findState is call
+findState in stateAt
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findPlace is call
+findPlace in stateAt
+findPlace invokes machine.offset
+findPlace argument address machine.Address state copy
+findPlace argument bytes Int64 offset copy
+findPlace result place machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+initialStack is operation
+initialStack purpose "Keep what a Linux process was started with: the address of its stack, which holds argc, then argv's words and a 0, then envp's words and a 0"
+initialStack invariant keepsStart "\"argc, argv, and envp are read back as the stack holds them\""
+initialStack typeParameter none
+initialStack input stack machine.Address copied
+initialStack output none
+initialStack outputOwnedBy none
+initialStack raises none
+initialStack effect use machine.memory
+initialStack uses memoryAccess
+initialStack memoryHeap false
+initialStack async false
+initialStack maxRecursion none
+initialStack label begin loopKind none
+initialStack label begin within none
+initialStack let eight Int64 8 immutable
+initialStack let one Int64 1 immutable
+initialStack at begin do findStack
+initialStack at begin do storeStack
+initialStack at begin do readCount
+initialStack at begin do findCount
+initialStack at begin do storeCount
+initialStack at begin do findVector
+initialStack at begin do findVectorSlot
+initialStack at begin do storeVector
+initialStack at begin do withEnd
+initialStack at begin do wordBytes
+initialStack at begin do findEnvironment
+initialStack at begin do findEnvironmentSlot
+initialStack at begin do storeEnvironment
+initialStack at begin return ok none
+
+findStack is call
+findStack in initialStack
+findStack invokes stateAt
+findStack argument offset Int64 stackAt copy
+findStack result stackSlot machine.Address
+findStack ownedBy none
+findStack cleanedBy none
+findStack borrows none
+findStack catch none
+findStack suppresses none
+
+storeStack is call
+storeStack in initialStack
+storeStack invokes machine.storeAddress
+storeStack argument address machine.Address stackSlot copy
+storeStack argument value machine.Address stack copy
+storeStack result none
+storeStack ownedBy none
+storeStack cleanedBy none
+storeStack borrows none
+storeStack catch none
+storeStack suppresses none
+
+readCount is call
+readCount in initialStack
+readCount invokes machine.loadInt64
+readCount argument address machine.Address stack copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCount is call
+findCount in initialStack
+findCount invokes stateAt
+findCount argument offset Int64 argcAt copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+storeCount is call
+storeCount in initialStack
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address countSlot copy
+storeCount argument value Int64 count copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+findVector is call
+findVector in initialStack
+findVector invokes machine.offset
+findVector argument address machine.Address stack copy
+findVector argument bytes Int64 eight copy
+findVector result vector machine.Address
+findVector ownedBy none
+findVector cleanedBy none
+findVector borrows none
+findVector catch none
+findVector suppresses none
+
+findVectorSlot is call
+findVectorSlot in initialStack
+findVectorSlot invokes stateAt
+findVectorSlot argument offset Int64 argvAt copy
+findVectorSlot result vectorSlot machine.Address
+findVectorSlot ownedBy none
+findVectorSlot cleanedBy none
+findVectorSlot borrows none
+findVectorSlot catch none
+findVectorSlot suppresses none
+
+storeVector is call
+storeVector in initialStack
+storeVector invokes machine.storeAddress
+storeVector argument address machine.Address vectorSlot copy
+storeVector argument value machine.Address vector copy
+storeVector result none
+storeVector ownedBy none
+storeVector cleanedBy none
+storeVector borrows none
+storeVector catch none
+storeVector suppresses none
+
+withEnd is call
+withEnd in initialStack
+withEnd invokes math.addInt64
+withEnd argument left Int64 count copy
+withEnd argument right Int64 one copy
+withEnd result words Int64
+withEnd ownedBy none
+withEnd cleanedBy none
+withEnd borrows none
+withEnd catch none
+withEnd suppresses none
+
+wordBytes is call
+wordBytes in initialStack
+wordBytes invokes math.multiplyInt64
+wordBytes argument left Int64 words copy
+wordBytes argument right Int64 eight copy
+wordBytes result skip Int64
+wordBytes ownedBy none
+wordBytes cleanedBy none
+wordBytes borrows none
+wordBytes catch none
+wordBytes suppresses none
+
+findEnvironment is call
+findEnvironment in initialStack
+findEnvironment invokes machine.offset
+findEnvironment argument address machine.Address vector copy
+findEnvironment argument bytes Int64 skip copy
+findEnvironment result environment machine.Address
+findEnvironment ownedBy none
+findEnvironment cleanedBy none
+findEnvironment borrows none
+findEnvironment catch none
+findEnvironment suppresses none
+
+findEnvironmentSlot is call
+findEnvironmentSlot in initialStack
+findEnvironmentSlot invokes stateAt
+findEnvironmentSlot argument offset Int64 envpAt copy
+findEnvironmentSlot result environmentSlot machine.Address
+findEnvironmentSlot ownedBy none
+findEnvironmentSlot cleanedBy none
+findEnvironmentSlot borrows none
+findEnvironmentSlot catch none
+findEnvironmentSlot suppresses none
+
+storeEnvironment is call
+storeEnvironment in initialStack
+storeEnvironment invokes machine.storeAddress
+storeEnvironment argument address machine.Address environmentSlot copy
+storeEnvironment argument value machine.Address environment copy
+storeEnvironment result none
+storeEnvironment ownedBy none
+storeEnvironment cleanedBy none
+storeEnvironment borrows none
+storeEnvironment catch none
+storeEnvironment suppresses none
+
+argumentCount is operation
+argumentCount purpose "argc, as the Linux process was started (0 when it was not started by refined_entry)"
+argumentCount invariant readsArgc "\"Gives the argc initialStack kept\""
+argumentCount typeParameter none
+argumentCount input none
+argumentCount output Int64
+argumentCount outputOwnedBy none
+argumentCount raises none
+argumentCount effect use machine.memory
+argumentCount uses memoryAccess
+argumentCount memoryHeap false
+argumentCount async false
+argumentCount maxRecursion none
+argumentCount label begin loopKind none
+argumentCount label begin within none
+argumentCount let none
+argumentCount at begin do findCount
+argumentCount at begin do readCount
+argumentCount at begin return ok count
+
+findCount is call
+findCount in argumentCount
+findCount invokes stateAt
+findCount argument offset Int64 argcAt copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readCount is call
+readCount in argumentCount
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countSlot copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+argumentVector is operation
+argumentVector purpose "argv, as the Linux process was started (the address 0 when it was not started by refined_entry)"
+argumentVector invariant readsArgv "\"Gives the argv initialStack kept\""
+argumentVector typeParameter none
+argumentVector input none
+argumentVector output machine.Address
+argumentVector outputOwnedBy none
+argumentVector raises none
+argumentVector effect use machine.memory
+argumentVector uses memoryAccess
+argumentVector memoryHeap false
+argumentVector async false
+argumentVector maxRecursion none
+argumentVector label begin loopKind none
+argumentVector label begin within none
+argumentVector let none
+argumentVector at begin do findVector
+argumentVector at begin do readVector
+argumentVector at begin return ok vector
+
+findVector is call
+findVector in argumentVector
+findVector invokes stateAt
+findVector argument offset Int64 argvAt copy
+findVector result vectorSlot machine.Address
+findVector ownedBy none
+findVector cleanedBy none
+findVector borrows none
+findVector catch none
+findVector suppresses none
+
+readVector is call
+readVector in argumentVector
+readVector invokes machine.loadAddress
+readVector argument address machine.Address vectorSlot copy
+readVector result vector machine.Address
+readVector ownedBy none
+readVector cleanedBy none
+readVector borrows none
+readVector catch none
+readVector suppresses none
+
+environmentVector is operation
+environmentVector purpose "envp, as the Linux process was started (the address 0 when it was not started by refined_entry)"
+environmentVector invariant readsEnvp "\"Gives the envp initialStack kept\""
+environmentVector typeParameter none
+environmentVector input none
+environmentVector output machine.Address
+environmentVector outputOwnedBy none
+environmentVector raises none
+environmentVector effect use machine.memory
+environmentVector uses memoryAccess
+environmentVector memoryHeap false
+environmentVector async false
+environmentVector maxRecursion none
+environmentVector label begin loopKind none
+environmentVector label begin within none
+environmentVector let none
+environmentVector at begin do findEnvironment
+environmentVector at begin do readEnvironment
+environmentVector at begin return ok environment
+
+findEnvironment is call
+findEnvironment in environmentVector
+findEnvironment invokes stateAt
+findEnvironment argument offset Int64 envpAt copy
+findEnvironment result environmentSlot machine.Address
+findEnvironment ownedBy none
+findEnvironment cleanedBy none
+findEnvironment borrows none
+findEnvironment catch none
+findEnvironment suppresses none
+
+readEnvironment is call
+readEnvironment in environmentVector
+readEnvironment invokes machine.loadAddress
+readEnvironment argument address machine.Address environmentSlot copy
+readEnvironment result environment machine.Address
+readEnvironment ownedBy none
+readEnvironment cleanedBy none
+readEnvironment borrows none
+readEnvironment catch none
+readEnvironment suppresses none
+
+# ---------------------------------------------------------------- results
+failed is operation
+failed purpose "Whether a Linux system call's result is a failure: from -4095 to -1"
+failed invariant spotsFailure "\"-4095 to -1 fail; 0, positive results, and addresses do not\""
+failed typeParameter none
+failed input result Int64 copied
+failed output Bool
+failed outputOwnedBy none
+failed raises none
+failed effect none
+failed uses none
+failed memoryHeap false
+failed async false
+failed maxRecursion none
+failed label begin loopKind none
+failed label begin within none
+failed let zero Int64 0 immutable
+failed let lowest Int64 -4096 immutable
+failed at begin do negativeCheck
+failed at begin do rangeCheck
+failed at begin do bothCheck
+failed at begin return ok isFailure
+
+negativeCheck is call
+negativeCheck in failed
+negativeCheck invokes compare.lessThanInt64
+negativeCheck argument left Int64 result copy
+negativeCheck argument right Int64 zero copy
+negativeCheck result negative Bool
+negativeCheck ownedBy none
+negativeCheck cleanedBy none
+negativeCheck borrows none
+negativeCheck catch none
+negativeCheck suppresses none
+
+rangeCheck is call
+rangeCheck in failed
+rangeCheck invokes compare.greaterThanInt64
+rangeCheck argument left Int64 result copy
+rangeCheck argument right Int64 lowest copy
+rangeCheck result inRange Bool
+rangeCheck ownedBy none
+rangeCheck cleanedBy none
+rangeCheck borrows none
+rangeCheck catch none
+rangeCheck suppresses none
+
+bothCheck is call
+bothCheck in failed
+bothCheck invokes logic.and
+bothCheck argument left Bool negative copy
+bothCheck argument right Bool inRange copy
+bothCheck result isFailure Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+errnoOf is operation
+errnoOf purpose "The errno of a Linux system call's result: 0 when it did not fail"
+errnoOf invariant givesErrno "\"A failed result gives its errno, any other 0\""
+errnoOf typeParameter none
+errnoOf input result Int64 copied
+errnoOf output Int64
+errnoOf outputOwnedBy none
+errnoOf raises none
+errnoOf effect none
+errnoOf uses none
+errnoOf memoryHeap false
+errnoOf async false
+errnoOf maxRecursion none
+errnoOf label begin loopKind none
+errnoOf label begin within none
+errnoOf label giveErrno loopKind none
+errnoOf label giveErrno within none
+errnoOf label giveNone loopKind none
+errnoOf label giveNone within none
+errnoOf let noErrno Int64 0 immutable
+errnoOf at begin do failedCheck
+errnoOf at begin branch if isFailure goto giveErrno else goto giveNone
+errnoOf at giveErrno do negateIt
+errnoOf at giveErrno return ok errno
+errnoOf at giveNone return ok noErrno
+
+failedCheck is call
+failedCheck in errnoOf
+failedCheck invokes failed
+failedCheck argument result Int64 result copy
+failedCheck result isFailure Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+negateIt is call
+negateIt in errnoOf
+negateIt invokes math.negateInt64
+negateIt argument value Int64 result copy
+negateIt result errno Int64
+negateIt ownedBy none
+negateIt cleanedBy none
+negateIt borrows none
+negateIt catch none
+negateIt suppresses none
+
+# ---------------------------------------------------------------- memory
+mapMemory is operation
+mapMemory purpose "Zeroed memory of a number of bytes from the operating system, readable and writable (VirtualAlloc, or an anonymous mmap); the address 0 when there is none"
+mapMemory invariant mapsZeroed "\"Gives zeroed memory that can be written, or the address 0\""
+mapMemory typeParameter none
+mapMemory input bytes Int64 copied
+mapMemory output machine.Address
+mapMemory outputOwnedBy none
+mapMemory raises none
+mapMemory effect use machine.memory
+mapMemory effect use system.calls
+mapMemory uses memoryAccess
+mapMemory uses systemCalls
+mapMemory memoryHeap false
+mapMemory async false
+mapMemory maxRecursion none
+mapMemory label begin loopKind none
+mapMemory label begin within none
+mapMemory label linuxMap loopKind none
+mapMemory label linuxMap within none
+mapMemory label giveNothing loopKind none
+mapMemory label giveNothing within none
+mapMemory label giveMapped loopKind none
+mapMemory label giveMapped within none
+mapMemory label windowsMap loopKind none
+mapMemory label windowsMap within none
+mapMemory let readWrite Int64 3 immutable
+mapMemory let privateAnonymous Int64 34 immutable
+mapMemory let noFile Int64 -1 immutable
+mapMemory let zero Int64 0 immutable
+mapMemory let commitAndReserve Int32 12288 immutable
+mapMemory let readWriteWindows Int32 4 immutable
+mapMemory at begin do nowhere
+mapMemory at begin do osCheck
+mapMemory at begin branch if onLinux goto linuxMap else goto windowsMap
+mapMemory at linuxMap do mapIt
+mapMemory at linuxMap do failedCheck
+mapMemory at linuxMap branch if refused goto giveNothing else goto giveMapped
+mapMemory at giveNothing return ok anywhere
+mapMemory at giveMapped do addressOf
+mapMemory at giveMapped return ok address
+mapMemory at windowsMap do allocate
+mapMemory at windowsMap return ok fresh
+
+nowhere is call
+nowhere in mapMemory
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+osCheck is call
+osCheck in mapMemory
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+mapIt is call
+mapIt in mapMemory
+mapIt invokes system.mmap
+mapIt argument address machine.Address anywhere copy
+mapIt argument bytes Int64 bytes copy
+mapIt argument protection Int64 readWrite copy
+mapIt argument flags Int64 privateAnonymous copy
+mapIt argument fd Int64 noFile copy
+mapIt argument offset Int64 zero copy
+mapIt result mapped Int64
+mapIt ownedBy none
+mapIt cleanedBy none
+mapIt borrows none
+mapIt catch none
+mapIt suppresses none
+
+failedCheck is call
+failedCheck in mapMemory
+failedCheck invokes failed
+failedCheck argument result Int64 mapped copy
+failedCheck result refused Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+addressOf is call
+addressOf in mapMemory
+addressOf invokes machine.fromInt64
+addressOf argument value Int64 mapped copy
+addressOf result address machine.Address
+addressOf ownedBy none
+addressOf cleanedBy none
+addressOf borrows none
+addressOf catch none
+addressOf suppresses none
+
+allocate is call
+allocate in mapMemory
+allocate invokes system.virtualAlloc
+allocate argument address machine.Address anywhere copy
+allocate argument bytes Int64 bytes copy
+allocate argument allocationType Int32 commitAndReserve copy
+allocate argument protection Int32 readWriteWindows copy
+allocate result fresh machine.Address
+allocate ownedBy none
+allocate cleanedBy none
+allocate borrows none
+allocate catch none
+allocate suppresses none
+
+mapStack is operation
+mapStack purpose "Memory for a stack of a number of bytes on Linux, given pages only as they are touched (MAP_NORESERVE, MAP_STACK); the address 0 when there is none"
+mapStack invariant mapsStack "\"Gives memory that can be written at both ends, or the address 0\""
+mapStack typeParameter none
+mapStack input bytes Int64 copied
+mapStack output machine.Address
+mapStack outputOwnedBy none
+mapStack raises none
+mapStack effect use machine.memory
+mapStack effect use system.calls
+mapStack uses memoryAccess
+mapStack uses systemCalls
+mapStack memoryHeap false
+mapStack async false
+mapStack maxRecursion none
+mapStack label begin loopKind none
+mapStack label begin within none
+mapStack label giveNothing loopKind none
+mapStack label giveNothing within none
+mapStack label giveMapped loopKind none
+mapStack label giveMapped within none
+mapStack let readWrite Int64 3 immutable
+mapStack let stackFlags Int64 147490 immutable
+mapStack let noFile Int64 -1 immutable
+mapStack let zero Int64 0 immutable
+mapStack at begin do nowhere
+mapStack at begin do mapIt
+mapStack at begin do failedCheck
+mapStack at begin branch if refused goto giveNothing else goto giveMapped
+mapStack at giveNothing return ok anywhere
+mapStack at giveMapped do addressOf
+mapStack at giveMapped return ok address
+
+nowhere is call
+nowhere in mapStack
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+mapIt is call
+mapIt in mapStack
+mapIt invokes system.mmap
+mapIt argument address machine.Address anywhere copy
+mapIt argument bytes Int64 bytes copy
+mapIt argument protection Int64 readWrite copy
+mapIt argument flags Int64 stackFlags copy
+mapIt argument fd Int64 noFile copy
+mapIt argument offset Int64 zero copy
+mapIt result mapped Int64
+mapIt ownedBy none
+mapIt cleanedBy none
+mapIt borrows none
+mapIt catch none
+mapIt suppresses none
+
+failedCheck is call
+failedCheck in mapStack
+failedCheck invokes failed
+failedCheck argument result Int64 mapped copy
+failedCheck result refused Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+addressOf is call
+addressOf in mapStack
+addressOf invokes machine.fromInt64
+addressOf argument value Int64 mapped copy
+addressOf result address machine.Address
+addressOf ownedBy none
+addressOf cleanedBy none
+addressOf borrows none
+addressOf catch none
+addressOf suppresses none
+
+unmapMemory is operation
+unmapMemory purpose "Give memory back to the operating system: all VirtualAlloc gave on Windows, the bytes from the address on Linux"
+unmapMemory invariant givesBack "\"The memory goes back to the operating system\""
+unmapMemory typeParameter none
+unmapMemory input address machine.Address copied
+unmapMemory input bytes Int64 copied
+unmapMemory output none
+unmapMemory outputOwnedBy none
+unmapMemory raises none
+unmapMemory effect use system.calls
+unmapMemory uses systemCalls
+unmapMemory memoryHeap false
+unmapMemory async false
+unmapMemory maxRecursion none
+unmapMemory label begin loopKind none
+unmapMemory label begin within none
+unmapMemory label linuxUnmap loopKind none
+unmapMemory label linuxUnmap within none
+unmapMemory label windowsFree loopKind none
+unmapMemory label windowsFree within none
+unmapMemory let zero Int64 0 immutable
+unmapMemory let releaseMemory Int32 32768 immutable
+unmapMemory at begin do osCheck
+unmapMemory at begin branch if onLinux goto linuxUnmap else goto windowsFree
+unmapMemory at linuxUnmap do unmapIt
+unmapMemory at linuxUnmap return ok none
+unmapMemory at windowsFree do freeIt
+unmapMemory at windowsFree return ok none
+
+osCheck is call
+osCheck in unmapMemory
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+unmapIt is call
+unmapIt in unmapMemory
+unmapIt invokes system.munmap
+unmapIt argument address machine.Address address copy
+unmapIt argument bytes Int64 bytes copy
+unmapIt result unmapped Int64
+unmapIt ownedBy none
+unmapIt cleanedBy none
+unmapIt borrows none
+unmapIt catch none
+unmapIt suppresses none
+
+freeIt is call
+freeIt in unmapMemory
+freeIt invokes system.virtualFree
+freeIt argument address machine.Address address copy
+freeIt argument bytes Int64 zero copy
+freeIt argument freeType Int32 releaseMemory copy
+freeIt result freed Int32
+freeIt ownedBy none
+freeIt cleanedBy none
+freeIt borrows none
+freeIt catch none
+freeIt suppresses none
+
+# ---------------------------------------------------------------- Linux clocks and sleep
+readClock is operation
+readClock purpose "Milliseconds on a Linux clock (CLOCK_REALTIME 0, CLOCK_MONOTONIC 1)"
+readClock invariant none
+readClock typeParameter none
+readClock input clock Int64 copied
+readClock output Int64
+readClock outputOwnedBy none
+readClock raises none
+readClock effect use machine.memory
+readClock effect use system.calls
+readClock uses memoryAccess
+readClock uses systemCalls
+readClock memoryHeap false
+readClock async false
+readClock maxRecursion none
+readClock label begin loopKind none
+readClock label begin within none
+readClock let eight Int64 8 immutable
+readClock let thousand Int64 1000 immutable
+readClock let million Int64 1000000 immutable
+readClock at begin do findTime
+readClock at begin do readIt
+readClock at begin do readSeconds
+readClock at begin do findNanoseconds
+readClock at begin do readNanoseconds
+readClock at begin do toMilliseconds
+readClock at begin do fraction
+readClock at begin do sum
+readClock at begin return ok milliseconds
+
+findTime is call
+findTime in readClock
+findTime invokes stateAt
+findTime argument offset Int64 timeAt copy
+findTime result time machine.Address
+findTime ownedBy none
+findTime cleanedBy none
+findTime borrows none
+findTime catch none
+findTime suppresses none
+
+readIt is call
+readIt in readClock
+readIt invokes system.clockGettime
+readIt argument clock Int64 clock copy
+readIt argument time machine.Address time copy
+readIt result status Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+readSeconds is call
+readSeconds in readClock
+readSeconds invokes machine.loadInt64
+readSeconds argument address machine.Address time copy
+readSeconds result seconds Int64
+readSeconds ownedBy none
+readSeconds cleanedBy none
+readSeconds borrows none
+readSeconds catch none
+readSeconds suppresses none
+
+findNanoseconds is call
+findNanoseconds in readClock
+findNanoseconds invokes machine.offset
+findNanoseconds argument address machine.Address time copy
+findNanoseconds argument bytes Int64 eight copy
+findNanoseconds result nanosecondsSlot machine.Address
+findNanoseconds ownedBy none
+findNanoseconds cleanedBy none
+findNanoseconds borrows none
+findNanoseconds catch none
+findNanoseconds suppresses none
+
+readNanoseconds is call
+readNanoseconds in readClock
+readNanoseconds invokes machine.loadInt64
+readNanoseconds argument address machine.Address nanosecondsSlot copy
+readNanoseconds result nanoseconds Int64
+readNanoseconds ownedBy none
+readNanoseconds cleanedBy none
+readNanoseconds borrows none
+readNanoseconds catch none
+readNanoseconds suppresses none
+
+toMilliseconds is call
+toMilliseconds in readClock
+toMilliseconds invokes math.multiplyInt64
+toMilliseconds argument left Int64 seconds copy
+toMilliseconds argument right Int64 thousand copy
+toMilliseconds result secondsPart Int64
+toMilliseconds ownedBy none
+toMilliseconds cleanedBy none
+toMilliseconds borrows none
+toMilliseconds catch none
+toMilliseconds suppresses none
+
+fraction is call
+fraction in readClock
+fraction invokes math.divideInt64
+fraction argument left Int64 nanoseconds copy
+fraction argument right Int64 million copy
+fraction result nanosecondsPart Int64
+fraction ownedBy none
+fraction cleanedBy none
+fraction borrows none
+fraction catch none
+fraction suppresses none
+
+sum is call
+sum in readClock
+sum invokes math.addInt64
+sum argument left Int64 secondsPart copy
+sum argument right Int64 nanosecondsPart copy
+sum result milliseconds Int64
+sum ownedBy none
+sum cleanedBy none
+sum borrows none
+sum catch none
+sum suppresses none
+
+monotonic is operation
+monotonic purpose "Milliseconds on Linux's monotonic clock, which never goes back"
+monotonic invariant neverBack "\"A later reading is never smaller\""
+monotonic typeParameter none
+monotonic input none
+monotonic output Int64
+monotonic outputOwnedBy none
+monotonic raises none
+monotonic effect use machine.memory
+monotonic effect use system.calls
+monotonic uses memoryAccess
+monotonic uses systemCalls
+monotonic memoryHeap false
+monotonic async false
+monotonic maxRecursion none
+monotonic label begin loopKind none
+monotonic label begin within none
+monotonic let monotonicClock Int64 1 immutable
+monotonic at begin do readIt
+monotonic at begin return ok milliseconds
+
+readIt is call
+readIt in monotonic
+readIt invokes readClock
+readIt argument clock Int64 monotonicClock copy
+readIt result milliseconds Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+wallClock is operation
+wallClock purpose "Milliseconds since 1970 on Linux's real-time clock"
+wallClock invariant readsWall "\"Gives a time after 2020\""
+wallClock typeParameter none
+wallClock input none
+wallClock output Int64
+wallClock outputOwnedBy none
+wallClock raises none
+wallClock effect use machine.memory
+wallClock effect use system.calls
+wallClock uses memoryAccess
+wallClock uses systemCalls
+wallClock memoryHeap false
+wallClock async false
+wallClock maxRecursion none
+wallClock label begin loopKind none
+wallClock label begin within none
+wallClock let realtimeClock Int64 0 immutable
+wallClock at begin do readIt
+wallClock at begin return ok milliseconds
+
+readIt is call
+readIt in wallClock
+readIt invokes readClock
+readIt argument clock Int64 realtimeClock copy
+readIt result milliseconds Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+sleepFor is operation
+sleepFor purpose "Sleep on Linux for a number of milliseconds (nanosleep)"
+sleepFor invariant sleeps "\"The monotonic clock has moved on by at least the milliseconds when it returns\""
+sleepFor typeParameter none
+sleepFor input milliseconds Int64 copied
+sleepFor output none
+sleepFor outputOwnedBy none
+sleepFor raises none
+sleepFor effect use machine.memory
+sleepFor effect use system.calls
+sleepFor uses memoryAccess
+sleepFor uses systemCalls
+sleepFor memoryHeap false
+sleepFor async false
+sleepFor maxRecursion none
+sleepFor label begin loopKind none
+sleepFor label begin within none
+sleepFor let thousand Int64 1000 immutable
+sleepFor let million Int64 1000000 immutable
+sleepFor let eight Int64 8 immutable
+sleepFor at begin do findTime
+sleepFor at begin do wholeSeconds
+sleepFor at begin do leftOver
+sleepFor at begin do toNanoseconds
+sleepFor at begin do storeSeconds
+sleepFor at begin do findNanoseconds
+sleepFor at begin do storeNanoseconds
+sleepFor at begin do nowhere
+sleepFor at begin do sleepIt
+sleepFor at begin return ok none
+
+findTime is call
+findTime in sleepFor
+findTime invokes stateAt
+findTime argument offset Int64 timeAt copy
+findTime result time machine.Address
+findTime ownedBy none
+findTime cleanedBy none
+findTime borrows none
+findTime catch none
+findTime suppresses none
+
+wholeSeconds is call
+wholeSeconds in sleepFor
+wholeSeconds invokes math.divideInt64
+wholeSeconds argument left Int64 milliseconds copy
+wholeSeconds argument right Int64 thousand copy
+wholeSeconds result seconds Int64
+wholeSeconds ownedBy none
+wholeSeconds cleanedBy none
+wholeSeconds borrows none
+wholeSeconds catch none
+wholeSeconds suppresses none
+
+leftOver is call
+leftOver in sleepFor
+leftOver invokes math.remainderInt64
+leftOver argument left Int64 milliseconds copy
+leftOver argument right Int64 thousand copy
+leftOver result rest Int64
+leftOver ownedBy none
+leftOver cleanedBy none
+leftOver borrows none
+leftOver catch none
+leftOver suppresses none
+
+toNanoseconds is call
+toNanoseconds in sleepFor
+toNanoseconds invokes math.multiplyInt64
+toNanoseconds argument left Int64 rest copy
+toNanoseconds argument right Int64 million copy
+toNanoseconds result nanoseconds Int64
+toNanoseconds ownedBy none
+toNanoseconds cleanedBy none
+toNanoseconds borrows none
+toNanoseconds catch none
+toNanoseconds suppresses none
+
+storeSeconds is call
+storeSeconds in sleepFor
+storeSeconds invokes machine.storeInt64
+storeSeconds argument address machine.Address time copy
+storeSeconds argument value Int64 seconds copy
+storeSeconds result none
+storeSeconds ownedBy none
+storeSeconds cleanedBy none
+storeSeconds borrows none
+storeSeconds catch none
+storeSeconds suppresses none
+
+findNanoseconds is call
+findNanoseconds in sleepFor
+findNanoseconds invokes machine.offset
+findNanoseconds argument address machine.Address time copy
+findNanoseconds argument bytes Int64 eight copy
+findNanoseconds result nanosecondsSlot machine.Address
+findNanoseconds ownedBy none
+findNanoseconds cleanedBy none
+findNanoseconds borrows none
+findNanoseconds catch none
+findNanoseconds suppresses none
+
+storeNanoseconds is call
+storeNanoseconds in sleepFor
+storeNanoseconds invokes machine.storeInt64
+storeNanoseconds argument address machine.Address nanosecondsSlot copy
+storeNanoseconds argument value Int64 nanoseconds copy
+storeNanoseconds result none
+storeNanoseconds ownedBy none
+storeNanoseconds cleanedBy none
+storeNanoseconds borrows none
+storeNanoseconds catch none
+storeNanoseconds suppresses none
+
+nowhere is call
+nowhere in sleepFor
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+sleepIt is call
+sleepIt in sleepFor
+sleepIt invokes system.nanosleep
+sleepIt argument duration machine.Address time copy
+sleepIt argument left machine.Address anywhere copy
+sleepIt result slept Int64
+sleepIt ownedBy none
+sleepIt cleanedBy none
+sleepIt borrows none
+sleepIt catch none
+sleepIt suppresses none

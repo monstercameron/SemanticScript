@@ -1,0 +1,811 @@
+# Tests of the `kernel` module; generated from tools/kernel.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests write in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state never reaches.
+startTest is test
+startTest purpose "What a Linux process starts with is kept and read back: argc, argv after it, envp after argv's 0"
+startTest verifies stateAt offsetsState
+startTest verifies initialStack keepsStart
+startTest verifies argumentCount readsArgc
+startTest verifies argumentVector readsArgv
+startTest verifies environmentVector readsEnvp
+startTest typeParameter none
+startTest input none
+startTest output none
+startTest outputOwnedBy none
+startTest raises none
+startTest effect use machine.memory
+startTest uses memoryAccess
+startTest memoryHeap false
+startTest async false
+startTest maxRecursion none
+startTest label begin loopKind none
+startTest label begin within none
+startTest let scratchAt Int64 61440 immutable
+startTest let savedAt Int64 61952 immutable
+startTest let thirtyTwo Int64 32 immutable
+startTest let two Int64 2 immutable
+startTest let eight Int64 8 immutable
+startTest at begin do findState
+startTest at begin do findScratch
+startTest at begin do findSame
+startTest at begin do sameCheck
+startTest at begin do expectSame
+startTest at begin do readOldStack
+startTest at begin do findSaved
+startTest at begin do keepOld
+startTest at begin do storeCount
+startTest at begin do keepIt
+startTest at begin do readCount
+startTest at begin do expectCount
+startTest at begin do readVector
+startTest at begin do findVector
+startTest at begin do vectorCheck
+startTest at begin do expectVector
+startTest at begin do readEnvironment
+startTest at begin do findEnvironment
+startTest at begin do environmentCheck
+startTest at begin do expectEnvironment
+startTest at begin do restoreOld
+startTest at begin return ok none
+
+findState is call
+findState in startTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in startTest
+findScratch invokes stateAt
+findScratch argument offset Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findSame is call
+findSame in startTest
+findSame invokes machine.offset
+findSame argument address machine.Address state copy
+findSame argument bytes Int64 scratchAt copy
+findSame result same machine.Address
+findSame ownedBy none
+findSame cleanedBy none
+findSame borrows none
+findSame catch none
+findSame suppresses none
+
+sameCheck is call
+sameCheck in startTest
+sameCheck invokes machine.equal
+sameCheck argument left machine.Address scratch copy
+sameCheck argument right machine.Address same copy
+sameCheck result isSame Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+expectSame is call
+expectSame in startTest
+expectSame invokes test.assertTrue
+expectSame argument value Bool isSame copy
+expectSame result none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none
+expectSame suppresses none
+
+readOldStack is call
+readOldStack in startTest
+readOldStack invokes stateAt
+readOldStack argument offset Int64 stackAt copy
+readOldStack result oldStack machine.Address
+readOldStack ownedBy none
+readOldStack cleanedBy none
+readOldStack borrows none
+readOldStack catch none
+readOldStack suppresses none
+
+findSaved is call
+findSaved in startTest
+findSaved invokes stateAt
+findSaved argument offset Int64 savedAt copy
+findSaved result saved machine.Address
+findSaved ownedBy none
+findSaved cleanedBy none
+findSaved borrows none
+findSaved catch none
+findSaved suppresses none
+
+keepOld is call
+keepOld in startTest
+keepOld invokes machine.copy
+keepOld argument target machine.Address saved copy
+keepOld argument source machine.Address oldStack copy
+keepOld argument bytes Int64 thirtyTwo copy
+keepOld result none
+keepOld ownedBy none
+keepOld cleanedBy none
+keepOld borrows none
+keepOld catch none
+keepOld suppresses none
+
+storeCount is call
+storeCount in startTest
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address scratch copy
+storeCount argument value Int64 two copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+keepIt is call
+keepIt in startTest
+keepIt invokes initialStack
+keepIt argument stack machine.Address scratch copy
+keepIt result none
+keepIt ownedBy none
+keepIt cleanedBy none
+keepIt borrows none
+keepIt catch none
+keepIt suppresses none
+
+readCount is call
+readCount in startTest
+readCount invokes argumentCount
+readCount argument none
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+expectCount is call
+expectCount in startTest
+expectCount invokes test.assertEqualInt64
+expectCount argument expected Int64 two copy
+expectCount argument actual Int64 count copy
+expectCount result none
+expectCount ownedBy none
+expectCount cleanedBy none
+expectCount borrows none
+expectCount catch none
+expectCount suppresses none
+
+readVector is call
+readVector in startTest
+readVector invokes argumentVector
+readVector argument none
+readVector result vector machine.Address
+readVector ownedBy none
+readVector cleanedBy none
+readVector borrows none
+readVector catch none
+readVector suppresses none
+
+findVector is call
+findVector in startTest
+findVector invokes machine.offset
+findVector argument address machine.Address scratch copy
+findVector argument bytes Int64 eight copy
+findVector result wantVector machine.Address
+findVector ownedBy none
+findVector cleanedBy none
+findVector borrows none
+findVector catch none
+findVector suppresses none
+
+vectorCheck is call
+vectorCheck in startTest
+vectorCheck invokes machine.equal
+vectorCheck argument left machine.Address vector copy
+vectorCheck argument right machine.Address wantVector copy
+vectorCheck result vectorSame Bool
+vectorCheck ownedBy none
+vectorCheck cleanedBy none
+vectorCheck borrows none
+vectorCheck catch none
+vectorCheck suppresses none
+
+expectVector is call
+expectVector in startTest
+expectVector invokes test.assertTrue
+expectVector argument value Bool vectorSame copy
+expectVector result none
+expectVector ownedBy none
+expectVector cleanedBy none
+expectVector borrows none
+expectVector catch none
+expectVector suppresses none
+
+readEnvironment is call
+readEnvironment in startTest
+readEnvironment invokes environmentVector
+readEnvironment argument none
+readEnvironment result environment machine.Address
+readEnvironment ownedBy none
+readEnvironment cleanedBy none
+readEnvironment borrows none
+readEnvironment catch none
+readEnvironment suppresses none
+
+findEnvironment is call
+findEnvironment in startTest
+findEnvironment invokes machine.offset
+findEnvironment argument address machine.Address scratch copy
+findEnvironment argument bytes Int64 thirtyTwo copy
+findEnvironment result wantEnvironment machine.Address
+findEnvironment ownedBy none
+findEnvironment cleanedBy none
+findEnvironment borrows none
+findEnvironment catch none
+findEnvironment suppresses none
+
+environmentCheck is call
+environmentCheck in startTest
+environmentCheck invokes machine.equal
+environmentCheck argument left machine.Address environment copy
+environmentCheck argument right machine.Address wantEnvironment copy
+environmentCheck result environmentSame Bool
+environmentCheck ownedBy none
+environmentCheck cleanedBy none
+environmentCheck borrows none
+environmentCheck catch none
+environmentCheck suppresses none
+
+expectEnvironment is call
+expectEnvironment in startTest
+expectEnvironment invokes test.assertTrue
+expectEnvironment argument value Bool environmentSame copy
+expectEnvironment result none
+expectEnvironment ownedBy none
+expectEnvironment cleanedBy none
+expectEnvironment borrows none
+expectEnvironment catch none
+expectEnvironment suppresses none
+
+restoreOld is call
+restoreOld in startTest
+restoreOld invokes machine.copy
+restoreOld argument target machine.Address oldStack copy
+restoreOld argument source machine.Address saved copy
+restoreOld argument bytes Int64 thirtyTwo copy
+restoreOld result none
+restoreOld ownedBy none
+restoreOld cleanedBy none
+restoreOld borrows none
+restoreOld catch none
+restoreOld suppresses none
+
+resultTest is test
+resultTest purpose "A Linux system call's result fails from -4095 to -1, with its errno; others do not"
+resultTest verifies failed spotsFailure
+resultTest verifies errnoOf givesErrno
+resultTest typeParameter none
+resultTest input none
+resultTest output none
+resultTest outputOwnedBy none
+resultTest raises none
+resultTest effect none
+resultTest uses none
+resultTest memoryHeap false
+resultTest async false
+resultTest maxRecursion none
+resultTest label begin loopKind none
+resultTest label begin within none
+resultTest let minusTwo Int64 -2 immutable
+resultTest let minusLast Int64 -4095 immutable
+resultTest let minusBeyond Int64 -4096 immutable
+resultTest let zero Int64 0 immutable
+resultTest let two Int64 2 immutable
+resultTest let seven Int64 7 immutable
+resultTest at begin do failedTwo
+resultTest at begin do expectTwo
+resultTest at begin do failedLast
+resultTest at begin do expectLast
+resultTest at begin do failedBeyond
+resultTest at begin do notBeyond
+resultTest at begin do expectBeyond
+resultTest at begin do failedZero
+resultTest at begin do notZero
+resultTest at begin do expectZero
+resultTest at begin do errnoTwo
+resultTest at begin do expectErrno
+resultTest at begin do errnoNone
+resultTest at begin do expectNone
+resultTest at begin return ok none
+
+failedTwo is call
+failedTwo in resultTest
+failedTwo invokes failed
+failedTwo argument result Int64 minusTwo copy
+failedTwo result twoFailed Bool
+failedTwo ownedBy none
+failedTwo cleanedBy none
+failedTwo borrows none
+failedTwo catch none
+failedTwo suppresses none
+
+expectTwo is call
+expectTwo in resultTest
+expectTwo invokes test.assertTrue
+expectTwo argument value Bool twoFailed copy
+expectTwo result none
+expectTwo ownedBy none
+expectTwo cleanedBy none
+expectTwo borrows none
+expectTwo catch none
+expectTwo suppresses none
+
+failedLast is call
+failedLast in resultTest
+failedLast invokes failed
+failedLast argument result Int64 minusLast copy
+failedLast result lastFailed Bool
+failedLast ownedBy none
+failedLast cleanedBy none
+failedLast borrows none
+failedLast catch none
+failedLast suppresses none
+
+expectLast is call
+expectLast in resultTest
+expectLast invokes test.assertTrue
+expectLast argument value Bool lastFailed copy
+expectLast result none
+expectLast ownedBy none
+expectLast cleanedBy none
+expectLast borrows none
+expectLast catch none
+expectLast suppresses none
+
+failedBeyond is call
+failedBeyond in resultTest
+failedBeyond invokes failed
+failedBeyond argument result Int64 minusBeyond copy
+failedBeyond result beyond Bool
+failedBeyond ownedBy none
+failedBeyond cleanedBy none
+failedBeyond borrows none
+failedBeyond catch none
+failedBeyond suppresses none
+
+notBeyond is call
+notBeyond in resultTest
+notBeyond invokes logic.not
+notBeyond argument value Bool beyond copy
+notBeyond result notIt Bool
+notBeyond ownedBy none
+notBeyond cleanedBy none
+notBeyond borrows none
+notBeyond catch none
+notBeyond suppresses none
+
+expectBeyond is call
+expectBeyond in resultTest
+expectBeyond invokes test.assertTrue
+expectBeyond argument value Bool notIt copy
+expectBeyond result none
+expectBeyond ownedBy none
+expectBeyond cleanedBy none
+expectBeyond borrows none
+expectBeyond catch none
+expectBeyond suppresses none
+
+failedZero is call
+failedZero in resultTest
+failedZero invokes failed
+failedZero argument result Int64 zero copy
+failedZero result zeroFailed Bool
+failedZero ownedBy none
+failedZero cleanedBy none
+failedZero borrows none
+failedZero catch none
+failedZero suppresses none
+
+notZero is call
+notZero in resultTest
+notZero invokes logic.not
+notZero argument value Bool zeroFailed copy
+notZero result notZeroFailed Bool
+notZero ownedBy none
+notZero cleanedBy none
+notZero borrows none
+notZero catch none
+notZero suppresses none
+
+expectZero is call
+expectZero in resultTest
+expectZero invokes test.assertTrue
+expectZero argument value Bool notZeroFailed copy
+expectZero result none
+expectZero ownedBy none
+expectZero cleanedBy none
+expectZero borrows none
+expectZero catch none
+expectZero suppresses none
+
+errnoTwo is call
+errnoTwo in resultTest
+errnoTwo invokes errnoOf
+errnoTwo argument result Int64 minusTwo copy
+errnoTwo result errno Int64
+errnoTwo ownedBy none
+errnoTwo cleanedBy none
+errnoTwo borrows none
+errnoTwo catch none
+errnoTwo suppresses none
+
+expectErrno is call
+expectErrno in resultTest
+expectErrno invokes test.assertEqualInt64
+expectErrno argument expected Int64 two copy
+expectErrno argument actual Int64 errno copy
+expectErrno result none
+expectErrno ownedBy none
+expectErrno cleanedBy none
+expectErrno borrows none
+expectErrno catch none
+expectErrno suppresses none
+
+errnoNone is call
+errnoNone in resultTest
+errnoNone invokes errnoOf
+errnoNone argument result Int64 seven copy
+errnoNone result noErrno Int64
+errnoNone ownedBy none
+errnoNone cleanedBy none
+errnoNone borrows none
+errnoNone catch none
+errnoNone suppresses none
+
+expectNone is call
+expectNone in resultTest
+expectNone invokes test.assertEqualInt64
+expectNone argument expected Int64 zero copy
+expectNone argument actual Int64 noErrno copy
+expectNone result none
+expectNone ownedBy none
+expectNone cleanedBy none
+expectNone borrows none
+expectNone catch none
+expectNone suppresses none
+
+memoryTest is test
+memoryTest purpose "Memory from the system is zeroed and writable, and goes back; on Linux a stack's memory too, and the clocks and sleep"
+memoryTest verifies mapMemory mapsZeroed
+memoryTest verifies unmapMemory givesBack
+memoryTest verifies mapStack mapsStack
+memoryTest verifies monotonic neverBack
+memoryTest verifies wallClock readsWall
+memoryTest verifies sleepFor sleeps
+memoryTest typeParameter none
+memoryTest input none
+memoryTest output none
+memoryTest outputOwnedBy none
+memoryTest raises none
+memoryTest effect use machine.memory
+memoryTest effect use system.calls
+memoryTest uses memoryAccess
+memoryTest uses systemCalls
+memoryTest memoryHeap false
+memoryTest async false
+memoryTest maxRecursion none
+memoryTest label begin loopKind none
+memoryTest label begin within none
+memoryTest label linuxOnly loopKind none
+memoryTest label linuxOnly within none
+memoryTest label done loopKind none
+memoryTest label done within none
+memoryTest let sixtyFourK Int64 65536 immutable
+memoryTest let lastOffset Int64 65528 immutable
+memoryTest let zero Int64 0 immutable
+memoryTest let answer Int64 42 immutable
+memoryTest let twenty Int64 20 immutable
+memoryTest let year2020 Int64 1577836800000 immutable
+memoryTest at begin do mapIt
+memoryTest at begin do findLast
+memoryTest at begin do readLast
+memoryTest at begin do expectZeroed
+memoryTest at begin do writeLast
+memoryTest at begin do readAgain
+memoryTest at begin do expectWritten
+memoryTest at begin do giveIt
+memoryTest at begin do osCheck
+memoryTest at begin branch if onLinux goto linuxOnly else goto done
+memoryTest at linuxOnly do mapStackIt
+memoryTest at linuxOnly do writeFirst
+memoryTest at linuxOnly do findStackLast
+memoryTest at linuxOnly do writeStackLast
+memoryTest at linuxOnly do giveStack
+memoryTest at linuxOnly do readBefore
+memoryTest at linuxOnly do sleepIt
+memoryTest at linuxOnly do readAfter
+memoryTest at linuxOnly do waited
+memoryTest at linuxOnly do enoughCheck
+memoryTest at linuxOnly do expectSlept
+memoryTest at linuxOnly do readWall
+memoryTest at linuxOnly do recentCheck
+memoryTest at linuxOnly do expectRecent
+memoryTest at linuxOnly goto done
+memoryTest at done return ok none
+
+mapIt is call
+mapIt in memoryTest
+mapIt invokes mapMemory
+mapIt argument bytes Int64 sixtyFourK copy
+mapIt result block machine.Address
+mapIt ownedBy none
+mapIt cleanedBy none
+mapIt borrows none
+mapIt catch none
+mapIt suppresses none
+
+findLast is call
+findLast in memoryTest
+findLast invokes machine.offset
+findLast argument address machine.Address block copy
+findLast argument bytes Int64 lastOffset copy
+findLast result lastAt machine.Address
+findLast ownedBy none
+findLast cleanedBy none
+findLast borrows none
+findLast catch none
+findLast suppresses none
+
+readLast is call
+readLast in memoryTest
+readLast invokes machine.loadInt64
+readLast argument address machine.Address lastAt copy
+readLast result lastValue Int64
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch none
+readLast suppresses none
+
+expectZeroed is call
+expectZeroed in memoryTest
+expectZeroed invokes test.assertEqualInt64
+expectZeroed argument expected Int64 zero copy
+expectZeroed argument actual Int64 lastValue copy
+expectZeroed result none
+expectZeroed ownedBy none
+expectZeroed cleanedBy none
+expectZeroed borrows none
+expectZeroed catch none
+expectZeroed suppresses none
+
+writeLast is call
+writeLast in memoryTest
+writeLast invokes machine.storeInt64
+writeLast argument address machine.Address lastAt copy
+writeLast argument value Int64 answer copy
+writeLast result none
+writeLast ownedBy none
+writeLast cleanedBy none
+writeLast borrows none
+writeLast catch none
+writeLast suppresses none
+
+readAgain is call
+readAgain in memoryTest
+readAgain invokes machine.loadInt64
+readAgain argument address machine.Address lastAt copy
+readAgain result again Int64
+readAgain ownedBy none
+readAgain cleanedBy none
+readAgain borrows none
+readAgain catch none
+readAgain suppresses none
+
+expectWritten is call
+expectWritten in memoryTest
+expectWritten invokes test.assertEqualInt64
+expectWritten argument expected Int64 answer copy
+expectWritten argument actual Int64 again copy
+expectWritten result none
+expectWritten ownedBy none
+expectWritten cleanedBy none
+expectWritten borrows none
+expectWritten catch none
+expectWritten suppresses none
+
+giveIt is call
+giveIt in memoryTest
+giveIt invokes unmapMemory
+giveIt argument address machine.Address block copy
+giveIt argument bytes Int64 sixtyFourK copy
+giveIt result none
+giveIt ownedBy none
+giveIt cleanedBy none
+giveIt borrows none
+giveIt catch none
+giveIt suppresses none
+
+osCheck is call
+osCheck in memoryTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+mapStackIt is call
+mapStackIt in memoryTest
+mapStackIt invokes mapStack
+mapStackIt argument bytes Int64 sixtyFourK copy
+mapStackIt result stack machine.Address
+mapStackIt ownedBy none
+mapStackIt cleanedBy none
+mapStackIt borrows none
+mapStackIt catch none
+mapStackIt suppresses none
+
+writeFirst is call
+writeFirst in memoryTest
+writeFirst invokes machine.storeInt64
+writeFirst argument address machine.Address stack copy
+writeFirst argument value Int64 answer copy
+writeFirst result none
+writeFirst ownedBy none
+writeFirst cleanedBy none
+writeFirst borrows none
+writeFirst catch none
+writeFirst suppresses none
+
+findStackLast is call
+findStackLast in memoryTest
+findStackLast invokes machine.offset
+findStackLast argument address machine.Address stack copy
+findStackLast argument bytes Int64 lastOffset copy
+findStackLast result stackLast machine.Address
+findStackLast ownedBy none
+findStackLast cleanedBy none
+findStackLast borrows none
+findStackLast catch none
+findStackLast suppresses none
+
+writeStackLast is call
+writeStackLast in memoryTest
+writeStackLast invokes machine.storeInt64
+writeStackLast argument address machine.Address stackLast copy
+writeStackLast argument value Int64 answer copy
+writeStackLast result none
+writeStackLast ownedBy none
+writeStackLast cleanedBy none
+writeStackLast borrows none
+writeStackLast catch none
+writeStackLast suppresses none
+
+giveStack is call
+giveStack in memoryTest
+giveStack invokes unmapMemory
+giveStack argument address machine.Address stack copy
+giveStack argument bytes Int64 sixtyFourK copy
+giveStack result none
+giveStack ownedBy none
+giveStack cleanedBy none
+giveStack borrows none
+giveStack catch none
+giveStack suppresses none
+
+readBefore is call
+readBefore in memoryTest
+readBefore invokes monotonic
+readBefore argument none
+readBefore result before Int64
+readBefore ownedBy none
+readBefore cleanedBy none
+readBefore borrows none
+readBefore catch none
+readBefore suppresses none
+
+sleepIt is call
+sleepIt in memoryTest
+sleepIt invokes sleepFor
+sleepIt argument milliseconds Int64 twenty copy
+sleepIt result none
+sleepIt ownedBy none
+sleepIt cleanedBy none
+sleepIt borrows none
+sleepIt catch none
+sleepIt suppresses none
+
+readAfter is call
+readAfter in memoryTest
+readAfter invokes monotonic
+readAfter argument none
+readAfter result after Int64
+readAfter ownedBy none
+readAfter cleanedBy none
+readAfter borrows none
+readAfter catch none
+readAfter suppresses none
+
+waited is call
+waited in memoryTest
+waited invokes math.subtractInt64
+waited argument left Int64 after copy
+waited argument right Int64 before copy
+waited result elapsed Int64
+waited ownedBy none
+waited cleanedBy none
+waited borrows none
+waited catch none
+waited suppresses none
+
+enoughCheck is call
+enoughCheck in memoryTest
+enoughCheck invokes compare.greaterOrEqualInt64
+enoughCheck argument left Int64 elapsed copy
+enoughCheck argument right Int64 twenty copy
+enoughCheck result enough Bool
+enoughCheck ownedBy none
+enoughCheck cleanedBy none
+enoughCheck borrows none
+enoughCheck catch none
+enoughCheck suppresses none
+
+expectSlept is call
+expectSlept in memoryTest
+expectSlept invokes test.assertTrue
+expectSlept argument value Bool enough copy
+expectSlept result none
+expectSlept ownedBy none
+expectSlept cleanedBy none
+expectSlept borrows none
+expectSlept catch none
+expectSlept suppresses none
+
+readWall is call
+readWall in memoryTest
+readWall invokes wallClock
+readWall argument none
+readWall result wall Int64
+readWall ownedBy none
+readWall cleanedBy none
+readWall borrows none
+readWall catch none
+readWall suppresses none
+
+recentCheck is call
+recentCheck in memoryTest
+recentCheck invokes compare.greaterThanInt64
+recentCheck argument left Int64 wall copy
+recentCheck argument right Int64 year2020 copy
+recentCheck result recent Bool
+recentCheck ownedBy none
+recentCheck cleanedBy none
+recentCheck borrows none
+recentCheck catch none
+recentCheck suppresses none
+
+expectRecent is call
+expectRecent in memoryTest
+expectRecent invokes test.assertTrue
+expectRecent argument value Bool recent copy
+expectRecent result none
+expectRecent ownedBy none
+expectRecent cleanedBy none
+expectRecent borrows none
+expectRecent catch none
+expectRecent suppresses none

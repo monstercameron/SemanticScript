@@ -125,6 +125,21 @@ table hostTargets "The host targets this runtime implements, numbered from 1" Ho
   row ffiClose name="ffi.close" scoped=-1
   row ffiOpen name="ffi.open" scoped=0
 
+op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+  input code Int32 copied
+  effect use system.calls
+  uses systemCalls
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxExit windowsExit
+:linuxExit
+  widenCode: wideCode = convert.int32ToInt64(code)
+  callExit: exitResult = system.exitGroup(wideCode)
+  return
+:windowsExit
+  callExitProcess: system.exitProcess(code)
+  return
+
 ## ---------------------------------------------------------------- traps
 
 op failText "Report a trap with a message and end the process with exit code 70"
@@ -137,7 +152,7 @@ op failText "Report a trap with a message and end the process with exit code 70"
   findText: textAt = machine.addressOfString(text)
   textLength: bytes = string.byteLength(text)
   writeReport: status = frames.report(textAt, bytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 op failAt "Report a trap whose message is in a block of a length, and end the process with exit code 70"
@@ -149,7 +164,7 @@ op failAt "Report a trap whose message is in a block of a length, and end the pr
   uses systemCalls
 :begin
   writeReport: status = frames.report(message, bytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 op failPosition "Trap because a collection was read at a position outside it: `a <kind> was read at position <n> of <length>`"

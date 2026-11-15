@@ -1428,6 +1428,291 @@ expectLine borrows none
 expectLine catch none
 expectLine suppresses none
 
+putTestText is operation
+putTestText purpose "Copy a text into machine.state with a 0 after it, for a C string the tests hand the runtime"
+putTestText invariant none
+putTestText typeParameter none
+putTestText input text String borrowed
+putTestText input at machine.Address copied
+putTestText output none
+putTestText outputOwnedBy none
+putTestText raises none
+putTestText effect use machine.memory
+putTestText uses memoryAccess
+putTestText memoryHeap false
+putTestText async false
+putTestText maxRecursion none
+putTestText label begin loopKind none
+putTestText label begin within none
+putTestText let zeroByte Byte 0 immutable
+putTestText at begin do findText
+putTestText at begin do textLength
+putTestText at begin do copyIt
+putTestText at begin do findEnd
+putTestText at begin do storeEnd
+putTestText at begin return ok none
+
+findText is call
+findText in putTestText
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in putTestText
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+copyIt is call
+copyIt in putTestText
+copyIt invokes machine.copy
+copyIt argument target machine.Address at copy
+copyIt argument source machine.Address textAt copy
+copyIt argument bytes Int64 bytes copy
+copyIt result none
+copyIt ownedBy none
+copyIt cleanedBy none
+copyIt borrows none
+copyIt catch none
+copyIt suppresses none
+
+findEnd is call
+findEnd in putTestText
+findEnd invokes machine.offset
+findEnd argument address machine.Address at copy
+findEnd argument bytes Int64 bytes copy
+findEnd result endAt machine.Address
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+storeEnd is call
+storeEnd in putTestText
+storeEnd invokes machine.storeByte
+storeEnd argument address machine.Address endAt copy
+storeEnd argument value Byte zeroByte copy
+storeEnd result none
+storeEnd ownedBy none
+storeEnd cleanedBy none
+storeEnd borrows none
+storeEnd catch none
+storeEnd suppresses none
+
+linuxEnvironment is operation
+linuxEnvironment purpose "On Linux, where `refined test` starts no process stack, give the tests one at byte 63488 of machine.state: argc 1, the program's name, and the environment `SystemRoot=/linux`"
+linuxEnvironment invariant none
+linuxEnvironment typeParameter none
+linuxEnvironment input none
+linuxEnvironment output none
+linuxEnvironment outputOwnedBy none
+linuxEnvironment raises none
+linuxEnvironment effect use machine.memory
+linuxEnvironment effect use system.calls
+linuxEnvironment uses memoryAccess
+linuxEnvironment uses systemCalls
+linuxEnvironment memoryHeap false
+linuxEnvironment async false
+linuxEnvironment maxRecursion none
+linuxEnvironment label begin loopKind none
+linuxEnvironment label begin within none
+linuxEnvironment label make loopKind none
+linuxEnvironment label make within none
+linuxEnvironment label done loopKind none
+linuxEnvironment label done within none
+linuxEnvironment let programName String "program" immutable
+linuxEnvironment let rootVariable String "SystemRoot=/linux" immutable
+linuxEnvironment let fakeStackAt Int64 63488 immutable
+linuxEnvironment let zeroByte Byte 0 immutable
+linuxEnvironment let clearBytes Int64 256 immutable
+linuxEnvironment let one Int64 1 immutable
+linuxEnvironment let nameOffset Int64 64 immutable
+linuxEnvironment let eight Int64 8 immutable
+linuxEnvironment let variableOffset Int64 96 immutable
+linuxEnvironment let twentyFour Int64 24 immutable
+linuxEnvironment at begin do osCheck
+linuxEnvironment at begin branch if onLinux goto make else goto done
+linuxEnvironment at make do findStack
+linuxEnvironment at make do clearIt
+linuxEnvironment at make do storeCount
+linuxEnvironment at make do findName
+linuxEnvironment at make do putName
+linuxEnvironment at make do findNameSlot
+linuxEnvironment at make do storeName
+linuxEnvironment at make do findVariable
+linuxEnvironment at make do putVariable
+linuxEnvironment at make do findVariableSlot
+linuxEnvironment at make do storeVariable
+linuxEnvironment at make do keepIt
+linuxEnvironment at make goto done
+linuxEnvironment at done return ok none
+
+osCheck is call
+osCheck in linuxEnvironment
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+findStack is call
+findStack in linuxEnvironment
+findStack invokes stateAt
+findStack argument offset Int64 fakeStackAt copy
+findStack result stack machine.Address
+findStack ownedBy none
+findStack cleanedBy none
+findStack borrows none
+findStack catch none
+findStack suppresses none
+
+clearIt is call
+clearIt in linuxEnvironment
+clearIt invokes machine.fill
+clearIt argument target machine.Address stack copy
+clearIt argument value Byte zeroByte copy
+clearIt argument bytes Int64 clearBytes copy
+clearIt result none
+clearIt ownedBy none
+clearIt cleanedBy none
+clearIt borrows none
+clearIt catch none
+clearIt suppresses none
+
+storeCount is call
+storeCount in linuxEnvironment
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address stack copy
+storeCount argument value Int64 one copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+findName is call
+findName in linuxEnvironment
+findName invokes machine.offset
+findName argument address machine.Address stack copy
+findName argument bytes Int64 nameOffset copy
+findName result nameAt machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+putName is call
+putName in linuxEnvironment
+putName invokes putTestText
+putName argument text String programName lend
+putName argument at machine.Address nameAt copy
+putName result none
+putName ownedBy none
+putName cleanedBy none
+putName borrows none
+putName catch none
+putName suppresses none
+
+findNameSlot is call
+findNameSlot in linuxEnvironment
+findNameSlot invokes machine.offset
+findNameSlot argument address machine.Address stack copy
+findNameSlot argument bytes Int64 eight copy
+findNameSlot result nameSlot machine.Address
+findNameSlot ownedBy none
+findNameSlot cleanedBy none
+findNameSlot borrows none
+findNameSlot catch none
+findNameSlot suppresses none
+
+storeName is call
+storeName in linuxEnvironment
+storeName invokes machine.storeAddress
+storeName argument address machine.Address nameSlot copy
+storeName argument value machine.Address nameAt copy
+storeName result none
+storeName ownedBy none
+storeName cleanedBy none
+storeName borrows none
+storeName catch none
+storeName suppresses none
+
+findVariable is call
+findVariable in linuxEnvironment
+findVariable invokes machine.offset
+findVariable argument address machine.Address stack copy
+findVariable argument bytes Int64 variableOffset copy
+findVariable result variableAt machine.Address
+findVariable ownedBy none
+findVariable cleanedBy none
+findVariable borrows none
+findVariable catch none
+findVariable suppresses none
+
+putVariable is call
+putVariable in linuxEnvironment
+putVariable invokes putTestText
+putVariable argument text String rootVariable lend
+putVariable argument at machine.Address variableAt copy
+putVariable result none
+putVariable ownedBy none
+putVariable cleanedBy none
+putVariable borrows none
+putVariable catch none
+putVariable suppresses none
+
+findVariableSlot is call
+findVariableSlot in linuxEnvironment
+findVariableSlot invokes machine.offset
+findVariableSlot argument address machine.Address stack copy
+findVariableSlot argument bytes Int64 twentyFour copy
+findVariableSlot result variableSlot machine.Address
+findVariableSlot ownedBy none
+findVariableSlot cleanedBy none
+findVariableSlot borrows none
+findVariableSlot catch none
+findVariableSlot suppresses none
+
+storeVariable is call
+storeVariable in linuxEnvironment
+storeVariable invokes machine.storeAddress
+storeVariable argument address machine.Address variableSlot copy
+storeVariable argument value machine.Address variableAt copy
+storeVariable result none
+storeVariable ownedBy none
+storeVariable cleanedBy none
+storeVariable borrows none
+storeVariable catch none
+storeVariable suppresses none
+
+keepIt is call
+keepIt in linuxEnvironment
+keepIt invokes kernel.initialStack
+keepIt argument stack machine.Address stack copy
+keepIt result none
+keepIt ownedBy none
+keepIt cleanedBy none
+keepIt borrows none
+keepIt catch none
+keepIt suppresses none
+
 addTestWord is operation
 addTestWord purpose "Add a word to a list of names"
 addTestWord invariant none
@@ -1523,6 +1808,7 @@ environmentTest let word String "word" immutable
 environmentTest at begin do findLabel
 environmentTest at begin do labelLength
 environmentTest at begin do make
+environmentTest at begin do giveEnvironment
 environmentTest at begin do findArgs
 environmentTest at begin do findResults
 environmentTest at begin do findPayload
@@ -1599,6 +1885,17 @@ make cleanedBy none
 make borrows none
 make catch none
 make suppresses none
+
+giveEnvironment is call
+giveEnvironment in environmentTest
+giveEnvironment invokes linuxEnvironment
+giveEnvironment argument none
+giveEnvironment result none
+giveEnvironment ownedBy none
+giveEnvironment cleanedBy none
+giveEnvironment borrows none
+giveEnvironment catch none
+giveEnvironment suppresses none
 
 findArgs is call
 findArgs in environmentTest
@@ -2524,28 +2821,39 @@ childTest async false
 childTest maxRecursion none
 childTest label begin loopKind none
 childTest label begin within none
+childTest label linuxChild loopKind none
+childTest label linuxChild within none
+childTest label windowsChild loopKind none
+childTest label windowsChild within none
+childTest label finish loopKind none
+childTest label finish within none
 childTest let label String "child test" immutable
 childTest let capacity Int64 65536 immutable
 childTest let zero Int64 0 immutable
 childTest let resultsOffset Int64 62016 immutable
 childTest let payloadOffset Int64 62080 immutable
 childTest let twentyFour Int64 24 immutable
-childTest let slashC String "/c" immutable
-childTest let exitWord String "exit" immutable
-childTest let codeWord String "3" immutable
+childTest let dashC String "-c" immutable
+childTest let exitThree String "exit 3" immutable
 childTest let two Int64 2 immutable
 childTest let one Int64 1 immutable
-childTest let cmd String "cmd.exe" immutable
+childTest let shell String "/bin/sh" immutable
 childTest let three Int64 3 immutable
 childTest let minusOne Int64 -1 immutable
-childTest let echoWord String "echo" immutable
-childTest let hiWord String "hi" immutable
+childTest let echoHi String "echo hi" immutable
 childTest let nothing String "" immutable
 childTest let five Int64 5 immutable
 childTest let six Int64 6 immutable
 childTest let thousand Int64 1000 immutable
 childTest let seven Int64 7 immutable
 childTest let eight Int64 8 immutable
+childTest let hiLinuxLine String "hi\n" immutable
+childTest let slashC String "/c" immutable
+childTest let exitWord String "exit" immutable
+childTest let codeWord String "3" immutable
+childTest let cmd String "cmd.exe" immutable
+childTest let echoWord String "echo" immutable
+childTest let hiWord String "hi" immutable
 childTest let hiLine String "hi\x0d\n" immutable
 childTest at begin do findLabel
 childTest at begin do labelLength
@@ -2553,39 +2861,72 @@ childTest at begin do make
 childTest at begin do findArgs
 childTest at begin do findResults
 childTest at begin do findPayload
-childTest at begin do takeNames
-childTest at begin do makeHandle
-childTest at begin do addSlash
-childTest at begin do addExit
-childTest at begin do addCode
-childTest at begin do shapeRun
-childTest at begin do setProgram
-childTest at begin do setHandle
-childTest at begin do setDeadline
-childTest at begin do runIt
-childTest at begin do expectRun
-childTest at begin do readCode
-childTest at begin do expectCode
-childTest at begin do takeEchoNames
-childTest at begin do makeEchoHandle
-childTest at begin do addEchoSlash
-childTest at begin do addEcho
-childTest at begin do addHi
-childTest at begin do shapeCaptured
-childTest at begin do setCapturedProgram
-childTest at begin do setEchoHandle
-childTest at begin do setInput
-childTest at begin do setRegion
-childTest at begin do setLimit
-childTest at begin do setCapturedDeadline
-childTest at begin do captureIt
-childTest at begin do expectCaptured
-childTest at begin do readCapturedCode
-childTest at begin do expectCapturedCode
-childTest at begin do findOut
-childTest at begin do expectOut
-childTest at begin do free
-childTest at begin return ok none
+childTest at begin do osCheck
+childTest at begin branch if onLinux goto linuxChild else goto windowsChild
+childTest at linuxChild do takeLinuxNames
+childTest at linuxChild do makeLinuxHandle
+childTest at linuxChild do addDashC
+childTest at linuxChild do addExitThree
+childTest at linuxChild do shapeLinuxRun
+childTest at linuxChild do setShell
+childTest at linuxChild do setLinuxHandle
+childTest at linuxChild do setLinuxDeadline
+childTest at linuxChild do runLinux
+childTest at linuxChild do expectLinuxRun
+childTest at linuxChild do readLinuxCode
+childTest at linuxChild do expectLinuxCode
+childTest at linuxChild do takeLinuxEchoNames
+childTest at linuxChild do makeLinuxEchoHandle
+childTest at linuxChild do addEchoDashC
+childTest at linuxChild do addEchoHi
+childTest at linuxChild do shapeLinuxCaptured
+childTest at linuxChild do setCapturedShell
+childTest at linuxChild do setLinuxEchoHandle
+childTest at linuxChild do setLinuxInput
+childTest at linuxChild do setLinuxRegion
+childTest at linuxChild do setLinuxLimit
+childTest at linuxChild do setLinuxCapturedDeadline
+childTest at linuxChild do captureLinux
+childTest at linuxChild do expectLinuxCaptured
+childTest at linuxChild do readLinuxCapturedCode
+childTest at linuxChild do expectLinuxCapturedCode
+childTest at linuxChild do findLinuxOut
+childTest at linuxChild do expectLinuxOut
+childTest at linuxChild goto finish
+childTest at windowsChild do takeNames
+childTest at windowsChild do makeHandle
+childTest at windowsChild do addSlash
+childTest at windowsChild do addExit
+childTest at windowsChild do addCode
+childTest at windowsChild do shapeRun
+childTest at windowsChild do setProgram
+childTest at windowsChild do setHandle
+childTest at windowsChild do setDeadline
+childTest at windowsChild do runIt
+childTest at windowsChild do expectRun
+childTest at windowsChild do readCode
+childTest at windowsChild do expectCode
+childTest at windowsChild do takeEchoNames
+childTest at windowsChild do makeEchoHandle
+childTest at windowsChild do addEchoSlash
+childTest at windowsChild do addEcho
+childTest at windowsChild do addHi
+childTest at windowsChild do shapeCaptured
+childTest at windowsChild do setCapturedProgram
+childTest at windowsChild do setEchoHandle
+childTest at windowsChild do setInput
+childTest at windowsChild do setRegion
+childTest at windowsChild do setLimit
+childTest at windowsChild do setCapturedDeadline
+childTest at windowsChild do captureIt
+childTest at windowsChild do expectCaptured
+childTest at windowsChild do readCapturedCode
+childTest at windowsChild do expectCapturedCode
+childTest at windowsChild do findOut
+childTest at windowsChild do expectOut
+childTest at windowsChild goto finish
+childTest at finish do free
+childTest at finish return ok none
 
 findLabel is call
 findLabel in childTest
@@ -2654,6 +2995,375 @@ findPayload cleanedBy none
 findPayload borrows none
 findPayload catch none
 findPayload suppresses none
+
+osCheck is call
+osCheck in childTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+takeLinuxNames is call
+takeLinuxNames in childTest
+takeLinuxNames invokes heap.take
+takeLinuxNames argument bytes Int64 twentyFour copy
+takeLinuxNames result linuxNames machine.Address
+takeLinuxNames ownedBy none
+takeLinuxNames cleanedBy none
+takeLinuxNames borrows none
+takeLinuxNames catch none
+takeLinuxNames suppresses none
+
+makeLinuxHandle is call
+makeLinuxHandle in childTest
+makeLinuxHandle invokes handles.newHandle
+makeLinuxHandle argument kind Int64 kindArguments copy
+makeLinuxHandle argument object machine.Address linuxNames copy
+makeLinuxHandle argument region machine.Address region copy
+makeLinuxHandle result linuxHandle Int64
+makeLinuxHandle ownedBy none
+makeLinuxHandle cleanedBy none
+makeLinuxHandle borrows none
+makeLinuxHandle catch none
+makeLinuxHandle suppresses none
+
+addDashC is call
+addDashC in childTest
+addDashC invokes addTestWord
+addDashC argument names machine.Address linuxNames copy
+addDashC argument word String dashC lend
+addDashC result none
+addDashC ownedBy none
+addDashC cleanedBy none
+addDashC borrows none
+addDashC catch none
+addDashC suppresses none
+
+addExitThree is call
+addExitThree in childTest
+addExitThree invokes addTestWord
+addExitThree argument names machine.Address linuxNames copy
+addExitThree argument word String exitThree lend
+addExitThree result none
+addExitThree ownedBy none
+addExitThree cleanedBy none
+addExitThree borrows none
+addExitThree catch none
+addExitThree suppresses none
+
+shapeLinuxRun is call
+shapeLinuxRun in childTest
+shapeLinuxRun invokes testShape
+shapeLinuxRun argument first Int64 two copy
+shapeLinuxRun argument second Int64 one copy
+shapeLinuxRun argument third Int64 one copy
+shapeLinuxRun argument fourth Int64 zero copy
+shapeLinuxRun argument fifth Int64 zero copy
+shapeLinuxRun argument sixth Int64 zero copy
+shapeLinuxRun result linuxShape1 machine.Address
+shapeLinuxRun ownedBy none
+shapeLinuxRun cleanedBy none
+shapeLinuxRun borrows none
+shapeLinuxRun catch none
+shapeLinuxRun suppresses none
+
+setShell is call
+setShell in childTest
+setShell invokes setTextArg
+setShell argument slot Int64 zero copy
+setShell argument text String shell lend
+setShell result none
+setShell ownedBy none
+setShell cleanedBy none
+setShell borrows none
+setShell catch none
+setShell suppresses none
+
+setLinuxHandle is call
+setLinuxHandle in childTest
+setLinuxHandle invokes setArg
+setLinuxHandle argument slot Int64 two copy
+setLinuxHandle argument value Int64 linuxHandle copy
+setLinuxHandle result none
+setLinuxHandle ownedBy none
+setLinuxHandle cleanedBy none
+setLinuxHandle borrows none
+setLinuxHandle catch none
+setLinuxHandle suppresses none
+
+setLinuxDeadline is call
+setLinuxDeadline in childTest
+setLinuxDeadline invokes setArg
+setLinuxDeadline argument slot Int64 three copy
+setLinuxDeadline argument value Int64 minusOne copy
+setLinuxDeadline result none
+setLinuxDeadline ownedBy none
+setLinuxDeadline cleanedBy none
+setLinuxDeadline borrows none
+setLinuxDeadline catch none
+setLinuxDeadline suppresses none
+
+runLinux is call
+runLinux in childTest
+runLinux invokes processRun
+runLinux argument shape machine.Address linuxShape1 copy
+runLinux argument args machine.Address args copy
+runLinux argument results machine.Address results copy
+runLinux argument payload machine.Address payload copy
+runLinux result linuxRunStatus Int32
+runLinux ownedBy none
+runLinux cleanedBy none
+runLinux borrows none
+runLinux catch none
+runLinux suppresses none
+
+expectLinuxRun is call
+expectLinuxRun in childTest
+expectLinuxRun invokes expectStatus
+expectLinuxRun argument wanted Int64 zero copy
+expectLinuxRun argument status Int32 linuxRunStatus copy
+expectLinuxRun result none
+expectLinuxRun ownedBy none
+expectLinuxRun cleanedBy none
+expectLinuxRun borrows none
+expectLinuxRun catch none
+expectLinuxRun suppresses none
+
+readLinuxCode is call
+readLinuxCode in childTest
+readLinuxCode invokes machine.loadInt64
+readLinuxCode argument address machine.Address results copy
+readLinuxCode result linuxCode Int64
+readLinuxCode ownedBy none
+readLinuxCode cleanedBy none
+readLinuxCode borrows none
+readLinuxCode catch none
+readLinuxCode suppresses none
+
+expectLinuxCode is call
+expectLinuxCode in childTest
+expectLinuxCode invokes test.assertEqualInt64
+expectLinuxCode argument expected Int64 three copy
+expectLinuxCode argument actual Int64 linuxCode copy
+expectLinuxCode result none
+expectLinuxCode ownedBy none
+expectLinuxCode cleanedBy none
+expectLinuxCode borrows none
+expectLinuxCode catch none
+expectLinuxCode suppresses none
+
+takeLinuxEchoNames is call
+takeLinuxEchoNames in childTest
+takeLinuxEchoNames invokes heap.take
+takeLinuxEchoNames argument bytes Int64 twentyFour copy
+takeLinuxEchoNames result linuxEchoNames machine.Address
+takeLinuxEchoNames ownedBy none
+takeLinuxEchoNames cleanedBy none
+takeLinuxEchoNames borrows none
+takeLinuxEchoNames catch none
+takeLinuxEchoNames suppresses none
+
+makeLinuxEchoHandle is call
+makeLinuxEchoHandle in childTest
+makeLinuxEchoHandle invokes handles.newHandle
+makeLinuxEchoHandle argument kind Int64 kindArguments copy
+makeLinuxEchoHandle argument object machine.Address linuxEchoNames copy
+makeLinuxEchoHandle argument region machine.Address region copy
+makeLinuxEchoHandle result linuxEchoHandle Int64
+makeLinuxEchoHandle ownedBy none
+makeLinuxEchoHandle cleanedBy none
+makeLinuxEchoHandle borrows none
+makeLinuxEchoHandle catch none
+makeLinuxEchoHandle suppresses none
+
+addEchoDashC is call
+addEchoDashC in childTest
+addEchoDashC invokes addTestWord
+addEchoDashC argument names machine.Address linuxEchoNames copy
+addEchoDashC argument word String dashC lend
+addEchoDashC result none
+addEchoDashC ownedBy none
+addEchoDashC cleanedBy none
+addEchoDashC borrows none
+addEchoDashC catch none
+addEchoDashC suppresses none
+
+addEchoHi is call
+addEchoHi in childTest
+addEchoHi invokes addTestWord
+addEchoHi argument names machine.Address linuxEchoNames copy
+addEchoHi argument word String echoHi lend
+addEchoHi result none
+addEchoHi ownedBy none
+addEchoHi cleanedBy none
+addEchoHi borrows none
+addEchoHi catch none
+addEchoHi suppresses none
+
+shapeLinuxCaptured is call
+shapeLinuxCaptured in childTest
+shapeLinuxCaptured invokes testShape
+shapeLinuxCaptured argument first Int64 two copy
+shapeLinuxCaptured argument second Int64 one copy
+shapeLinuxCaptured argument third Int64 two copy
+shapeLinuxCaptured argument fourth Int64 one copy
+shapeLinuxCaptured argument fifth Int64 one copy
+shapeLinuxCaptured argument sixth Int64 one copy
+shapeLinuxCaptured result linuxShape2 machine.Address
+shapeLinuxCaptured ownedBy none
+shapeLinuxCaptured cleanedBy none
+shapeLinuxCaptured borrows none
+shapeLinuxCaptured catch none
+shapeLinuxCaptured suppresses none
+
+setCapturedShell is call
+setCapturedShell in childTest
+setCapturedShell invokes setTextArg
+setCapturedShell argument slot Int64 zero copy
+setCapturedShell argument text String shell lend
+setCapturedShell result none
+setCapturedShell ownedBy none
+setCapturedShell cleanedBy none
+setCapturedShell borrows none
+setCapturedShell catch none
+setCapturedShell suppresses none
+
+setLinuxEchoHandle is call
+setLinuxEchoHandle in childTest
+setLinuxEchoHandle invokes setArg
+setLinuxEchoHandle argument slot Int64 two copy
+setLinuxEchoHandle argument value Int64 linuxEchoHandle copy
+setLinuxEchoHandle result none
+setLinuxEchoHandle ownedBy none
+setLinuxEchoHandle cleanedBy none
+setLinuxEchoHandle borrows none
+setLinuxEchoHandle catch none
+setLinuxEchoHandle suppresses none
+
+setLinuxInput is call
+setLinuxInput in childTest
+setLinuxInput invokes setTextArg
+setLinuxInput argument slot Int64 three copy
+setLinuxInput argument text String nothing lend
+setLinuxInput result none
+setLinuxInput ownedBy none
+setLinuxInput cleanedBy none
+setLinuxInput borrows none
+setLinuxInput catch none
+setLinuxInput suppresses none
+
+setLinuxRegion is call
+setLinuxRegion in childTest
+setLinuxRegion invokes setAddressArg
+setLinuxRegion argument slot Int64 five copy
+setLinuxRegion argument value machine.Address region copy
+setLinuxRegion result none
+setLinuxRegion ownedBy none
+setLinuxRegion cleanedBy none
+setLinuxRegion borrows none
+setLinuxRegion catch none
+setLinuxRegion suppresses none
+
+setLinuxLimit is call
+setLinuxLimit in childTest
+setLinuxLimit invokes setArg
+setLinuxLimit argument slot Int64 six copy
+setLinuxLimit argument value Int64 thousand copy
+setLinuxLimit result none
+setLinuxLimit ownedBy none
+setLinuxLimit cleanedBy none
+setLinuxLimit borrows none
+setLinuxLimit catch none
+setLinuxLimit suppresses none
+
+setLinuxCapturedDeadline is call
+setLinuxCapturedDeadline in childTest
+setLinuxCapturedDeadline invokes setArg
+setLinuxCapturedDeadline argument slot Int64 seven copy
+setLinuxCapturedDeadline argument value Int64 minusOne copy
+setLinuxCapturedDeadline result none
+setLinuxCapturedDeadline ownedBy none
+setLinuxCapturedDeadline cleanedBy none
+setLinuxCapturedDeadline borrows none
+setLinuxCapturedDeadline catch none
+setLinuxCapturedDeadline suppresses none
+
+captureLinux is call
+captureLinux in childTest
+captureLinux invokes processRunCaptured
+captureLinux argument shape machine.Address linuxShape2 copy
+captureLinux argument args machine.Address args copy
+captureLinux argument results machine.Address results copy
+captureLinux argument payload machine.Address payload copy
+captureLinux result linuxCapturedStatus Int32
+captureLinux ownedBy none
+captureLinux cleanedBy none
+captureLinux borrows none
+captureLinux catch none
+captureLinux suppresses none
+
+expectLinuxCaptured is call
+expectLinuxCaptured in childTest
+expectLinuxCaptured invokes expectStatus
+expectLinuxCaptured argument wanted Int64 zero copy
+expectLinuxCaptured argument status Int32 linuxCapturedStatus copy
+expectLinuxCaptured result none
+expectLinuxCaptured ownedBy none
+expectLinuxCaptured cleanedBy none
+expectLinuxCaptured borrows none
+expectLinuxCaptured catch none
+expectLinuxCaptured suppresses none
+
+readLinuxCapturedCode is call
+readLinuxCapturedCode in childTest
+readLinuxCapturedCode invokes machine.loadInt64
+readLinuxCapturedCode argument address machine.Address results copy
+readLinuxCapturedCode result linuxCapturedCode Int64
+readLinuxCapturedCode ownedBy none
+readLinuxCapturedCode cleanedBy none
+readLinuxCapturedCode borrows none
+readLinuxCapturedCode catch none
+readLinuxCapturedCode suppresses none
+
+expectLinuxCapturedCode is call
+expectLinuxCapturedCode in childTest
+expectLinuxCapturedCode invokes test.assertEqualInt64
+expectLinuxCapturedCode argument expected Int64 zero copy
+expectLinuxCapturedCode argument actual Int64 linuxCapturedCode copy
+expectLinuxCapturedCode result none
+expectLinuxCapturedCode ownedBy none
+expectLinuxCapturedCode cleanedBy none
+expectLinuxCapturedCode borrows none
+expectLinuxCapturedCode catch none
+expectLinuxCapturedCode suppresses none
+
+findLinuxOut is call
+findLinuxOut in childTest
+findLinuxOut invokes machine.offset
+findLinuxOut argument address machine.Address results copy
+findLinuxOut argument bytes Int64 eight copy
+findLinuxOut result linuxOutSlot machine.Address
+findLinuxOut ownedBy none
+findLinuxOut cleanedBy none
+findLinuxOut borrows none
+findLinuxOut catch none
+findLinuxOut suppresses none
+
+expectLinuxOut is call
+expectLinuxOut in childTest
+expectLinuxOut invokes expectSlotText
+expectLinuxOut argument slot machine.Address linuxOutSlot copy
+expectLinuxOut argument wanted String hiLinuxLine lend
+expectLinuxOut result none
+expectLinuxOut ownedBy none
+expectLinuxOut cleanedBy none
+expectLinuxOut borrows none
+expectLinuxOut catch none
+expectLinuxOut suppresses none
 
 takeNames is call
 takeNames in childTest
@@ -3082,6 +3792,7 @@ secretTest let other String "hunter3" immutable
 secretTest let short String "hunt" immutable
 secretTest let root String "SystemRoot" immutable
 secretTest let absent String "REFINED_RUNTIME_SURELY_MISSING_42" immutable
+secretTest at begin do giveEnvironment
 secretTest at begin do findLabel
 secretTest at begin do labelLength
 secretTest at begin do make
@@ -3125,6 +3836,17 @@ secretTest at begin do fromMissing
 secretTest at begin do expectMissing
 secretTest at begin do free
 secretTest at begin return ok none
+
+giveEnvironment is call
+giveEnvironment in secretTest
+giveEnvironment invokes linuxEnvironment
+giveEnvironment argument none
+giveEnvironment result none
+giveEnvironment ownedBy none
+giveEnvironment cleanedBy none
+giveEnvironment borrows none
+giveEnvironment catch none
+giveEnvironment suppresses none
 
 findLabel is call
 findLabel in secretTest
@@ -3669,6 +4391,10 @@ ffiTest async false
 ffiTest maxRecursion none
 ffiTest label begin loopKind none
 ffiTest label begin within none
+ffiTest label skipped loopKind none
+ffiTest label skipped within none
+ffiTest label windowsOnly loopKind none
+ffiTest label windowsOnly within none
 ffiTest let zero Int64 0 immutable
 ffiTest let resultsOffset Int64 62016 immutable
 ffiTest let payloadOffset Int64 62080 immutable
@@ -3678,31 +4404,45 @@ ffiTest let one Int64 1 immutable
 ffiTest let absName String "abs" immutable
 ffiTest let missingName String "semanticscriptNoSuchSymbol" immutable
 ffiTest let noLibrary String "refined-surely-missing-library-42" immutable
-ffiTest at begin do findArgs
-ffiTest at begin do findResults
-ffiTest at begin do findPayload
-ffiTest at begin do shapeOpen
-ffiTest at begin do setName
-ffiTest at begin do openIt
-ffiTest at begin do expectOpened
-ffiTest at begin do readHandle
-ffiTest at begin do shapeBind
-ffiTest at begin do setHandle
-ffiTest at begin do setSymbol
-ffiTest at begin do bindIt
-ffiTest at begin do expectBound
-ffiTest at begin do readAddress
-ffiTest at begin do someCheck
-ffiTest at begin do expectFound
-ffiTest at begin do setMissing
-ffiTest at begin do bindMissing
-ffiTest at begin do expectMissing
-ffiTest at begin do shapeClose
-ffiTest at begin do closeIt
-ffiTest at begin do setNoLibrary
-ffiTest at begin do openMissing
-ffiTest at begin do expectNotFound
-ffiTest at begin return ok none
+ffiTest at begin do osCheck
+ffiTest at begin branch if onLinux goto skipped else goto windowsOnly
+ffiTest at skipped return ok none
+ffiTest at windowsOnly do findArgs
+ffiTest at windowsOnly do findResults
+ffiTest at windowsOnly do findPayload
+ffiTest at windowsOnly do shapeOpen
+ffiTest at windowsOnly do setName
+ffiTest at windowsOnly do openIt
+ffiTest at windowsOnly do expectOpened
+ffiTest at windowsOnly do readHandle
+ffiTest at windowsOnly do shapeBind
+ffiTest at windowsOnly do setHandle
+ffiTest at windowsOnly do setSymbol
+ffiTest at windowsOnly do bindIt
+ffiTest at windowsOnly do expectBound
+ffiTest at windowsOnly do readAddress
+ffiTest at windowsOnly do someCheck
+ffiTest at windowsOnly do expectFound
+ffiTest at windowsOnly do setMissing
+ffiTest at windowsOnly do bindMissing
+ffiTest at windowsOnly do expectMissing
+ffiTest at windowsOnly do shapeClose
+ffiTest at windowsOnly do closeIt
+ffiTest at windowsOnly do setNoLibrary
+ffiTest at windowsOnly do openMissing
+ffiTest at windowsOnly do expectNotFound
+ffiTest at windowsOnly return ok none
+
+osCheck is call
+osCheck in ffiTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
 
 findArgs is call
 findArgs in ffiTest

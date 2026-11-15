@@ -603,7 +603,7 @@ storeLength catch none
 storeLength suppresses none
 
 lowercase is operation
-lowercase purpose "Text in lower case as Python's normcase gives it on Windows (LCMapStringEx, the invariant locale), every `/` made `\\`, in a new heap block; its length is stored at an address"
+lowercase purpose "Text in lower case as Python's normcase gives it on Windows (LCMapStringEx, the invariant locale), every `/` made `\\`, in a new heap block; its length is stored at an address. On Linux normcase changes nothing: a copy"
 lowercase invariant lowersText "\"The block holds the text in lower case with `\\\\` for `/`\""
 lowercase typeParameter none
 lowercase input text machine.Address copied
@@ -621,6 +621,10 @@ lowercase async false
 lowercase maxRecursion none
 lowercase label begin loopKind none
 lowercase label begin within none
+lowercase label copyLinux loopKind none
+lowercase label copyLinux within none
+lowercase label lowerWindows loopKind none
+lowercase label lowerWindows within none
 lowercase label lower loopKind none
 lowercase label lower within none
 lowercase label narrowIt loopKind none
@@ -643,13 +647,20 @@ lowercase let one Int64 1 immutable
 lowercase let two Int64 2 immutable
 lowercase let zero Int64 0 immutable
 lowercase let noSort Int64 0 immutable
-lowercase at begin do wideText
-lowercase at begin do countUnits
-lowercase at begin do withEnd
-lowercase at begin do sizeOf
-lowercase at begin do takeTarget
-lowercase at begin do anyCheck
-lowercase at begin branch if some goto lower else goto narrowIt
+lowercase at begin do osCheck
+lowercase at begin branch if onLinux goto copyLinux else goto lowerWindows
+lowercase at copyLinux do withNul
+lowercase at copyLinux do takeCopy
+lowercase at copyLinux do copyText
+lowercase at copyLinux do storeCopyLength
+lowercase at copyLinux return ok copied
+lowercase at lowerWindows do wideText
+lowercase at lowerWindows do countUnits
+lowercase at lowerWindows do withEnd
+lowercase at lowerWindows do sizeOf
+lowercase at lowerWindows do takeTarget
+lowercase at lowerWindows do anyCheck
+lowercase at lowerWindows branch if some goto lower else goto narrowIt
 lowercase at lower do findState
 lowercase at lower do findLocale
 lowercase at lower do narrowUnits
@@ -673,6 +684,65 @@ lowercase at advance do nextByte
 lowercase at advance set at after
 lowercase at advance goto eachByte
 lowercase at finish return ok result
+
+osCheck is call
+osCheck in lowercase
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+withNul is call
+withNul in lowercase
+withNul invokes math.addInt64
+withNul argument left Int64 bytes copy
+withNul argument right Int64 one copy
+withNul result room Int64
+withNul ownedBy none
+withNul cleanedBy none
+withNul borrows none
+withNul catch none
+withNul suppresses none
+
+takeCopy is call
+takeCopy in lowercase
+takeCopy invokes heap.take
+takeCopy argument bytes Int64 room copy
+takeCopy result copied machine.Address
+takeCopy ownedBy none
+takeCopy cleanedBy none
+takeCopy borrows none
+takeCopy catch none
+takeCopy suppresses none
+
+copyText is call
+copyText in lowercase
+copyText invokes machine.copy
+copyText argument target machine.Address copied copy
+copyText argument source machine.Address text copy
+copyText argument bytes Int64 bytes copy
+copyText result none
+copyText ownedBy none
+copyText cleanedBy none
+copyText borrows none
+copyText catch none
+copyText suppresses none
+
+storeCopyLength is call
+storeCopyLength in lowercase
+storeCopyLength invokes machine.storeInt64
+storeCopyLength argument address machine.Address lengthAt copy
+storeCopyLength argument value Int64 bytes copy
+storeCopyLength result none
+storeCopyLength ownedBy none
+storeCopyLength cleanedBy none
+storeCopyLength borrows none
+storeCopyLength catch none
+storeCopyLength suppresses none
 
 wideText is call
 wideText in lowercase

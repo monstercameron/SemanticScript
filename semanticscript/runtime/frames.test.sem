@@ -841,6 +841,80 @@ popOuter borrows none
 popOuter catch none
 popOuter suppresses none
 
+closeTestHandle is operation
+closeTestHandle purpose "Close a handle a test made: CloseHandle, or close on Linux"
+closeTestHandle invariant none
+closeTestHandle typeParameter none
+closeTestHandle input handle machine.Address copied
+closeTestHandle output none
+closeTestHandle outputOwnedBy none
+closeTestHandle raises none
+closeTestHandle effect use machine.memory
+closeTestHandle effect use system.calls
+closeTestHandle uses memoryAccess
+closeTestHandle uses systemCalls
+closeTestHandle memoryHeap false
+closeTestHandle async false
+closeTestHandle maxRecursion none
+closeTestHandle label begin loopKind none
+closeTestHandle label begin within none
+closeTestHandle label linuxClose loopKind none
+closeTestHandle label linuxClose within none
+closeTestHandle label windowsClose loopKind none
+closeTestHandle label windowsClose within none
+closeTestHandle let none
+closeTestHandle at begin do osCheck
+closeTestHandle at begin branch if onLinux goto linuxClose else goto windowsClose
+closeTestHandle at linuxClose do descriptorOf
+closeTestHandle at linuxClose do closeFd
+closeTestHandle at linuxClose return ok none
+closeTestHandle at windowsClose do closeIt
+closeTestHandle at windowsClose return ok none
+
+osCheck is call
+osCheck in closeTestHandle
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+descriptorOf is call
+descriptorOf in closeTestHandle
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+closeFd is call
+closeFd in closeTestHandle
+closeFd invokes system.close
+closeFd argument fd Int64 fd copy
+closeFd result closedFd Int64
+closeFd ownedBy none
+closeFd cleanedBy none
+closeFd borrows none
+closeFd catch none
+closeFd suppresses none
+
+closeIt is call
+closeIt in closeTestHandle
+closeIt invokes system.closeHandle
+closeIt argument handle machine.Address handle copy
+closeIt result closed Int32
+closeIt ownedBy none
+closeIt cleanedBy none
+closeIt borrows none
+closeIt catch none
+closeIt suppresses none
+
 resourceTest is test
 resourceTest purpose "A held resource stays in the table until it is let go, and a trap's release closes the rest and counts them"
 resourceTest verifies holdResource notesResource
@@ -860,8 +934,17 @@ resourceTest async false
 resourceTest maxRecursion none
 resourceTest label begin loopKind none
 resourceTest label begin within none
+resourceTest label linuxPipe loopKind none
+resourceTest label linuxPipe within none
+resourceTest label windowsPipe loopKind none
+resourceTest label windowsPipe within none
+resourceTest label piped loopKind none
+resourceTest label piped within none
 resourceTest let sixtyOneK Int64 61440 immutable
 resourceTest let eight Int64 8 immutable
+resourceTest let thirtyTwo Int64 32 immutable
+resourceTest let cloexec Int64 524288 immutable
+resourceTest let four Int64 4 immutable
 resourceTest let zero32 Int32 0 immutable
 resourceTest let one Int64 1 immutable
 resourceTest let two Int64 2 immutable
@@ -870,26 +953,41 @@ resourceTest at begin do findState
 resourceTest at begin do findEnds
 resourceTest at begin do findWriteEnd
 resourceTest at begin do nowhere
-resourceTest at begin do makePipe
-resourceTest at begin do readRead
-resourceTest at begin do readWrite
-resourceTest at begin do findCount
-resourceTest at begin do readBefore
-resourceTest at begin do holdRead
-resourceTest at begin do holdWrite
-resourceTest at begin do readHeld
-resourceTest at begin do wantHeld
-resourceTest at begin do expectHeld
-resourceTest at begin do forget
-resourceTest at begin do closeWrite
-resourceTest at begin do readLeft
-resourceTest at begin do wantLeft
-resourceTest at begin do expectLeft
-resourceTest at begin do release
-resourceTest at begin do expectReleased
-resourceTest at begin do readAfter
-resourceTest at begin do expectEmpty
-resourceTest at begin return ok none
+resourceTest at begin do osCheck
+resourceTest at begin branch if onLinux goto linuxPipe else goto windowsPipe
+resourceTest at linuxPipe do findFds
+resourceTest at linuxPipe do makeLinuxPipe
+resourceTest at linuxPipe do readReadFd
+resourceTest at linuxPipe do widenReadFd
+resourceTest at linuxPipe do readAsAddress
+resourceTest at linuxPipe do storeReadFd
+resourceTest at linuxPipe do findWriteFd
+resourceTest at linuxPipe do readWriteFd
+resourceTest at linuxPipe do widenWriteFd
+resourceTest at linuxPipe do writeAsAddress
+resourceTest at linuxPipe do storeWriteFd
+resourceTest at linuxPipe goto piped
+resourceTest at windowsPipe do makePipe
+resourceTest at windowsPipe goto piped
+resourceTest at piped do readRead
+resourceTest at piped do readWrite
+resourceTest at piped do findCount
+resourceTest at piped do readBefore
+resourceTest at piped do holdRead
+resourceTest at piped do holdWrite
+resourceTest at piped do readHeld
+resourceTest at piped do wantHeld
+resourceTest at piped do expectHeld
+resourceTest at piped do forget
+resourceTest at piped do closeWrite
+resourceTest at piped do readLeft
+resourceTest at piped do wantLeft
+resourceTest at piped do expectLeft
+resourceTest at piped do release
+resourceTest at piped do expectReleased
+resourceTest at piped do readAfter
+resourceTest at piped do expectEmpty
+resourceTest at piped return ok none
 
 findState is call
 findState in resourceTest
@@ -936,6 +1034,143 @@ nowhere cleanedBy none
 nowhere borrows none
 nowhere catch none
 nowhere suppresses none
+
+osCheck is call
+osCheck in resourceTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+findFds is call
+findFds in resourceTest
+findFds invokes machine.offset
+findFds argument address machine.Address ends copy
+findFds argument bytes Int64 thirtyTwo copy
+findFds result fds machine.Address
+findFds ownedBy none
+findFds cleanedBy none
+findFds borrows none
+findFds catch none
+findFds suppresses none
+
+makeLinuxPipe is call
+makeLinuxPipe in resourceTest
+makeLinuxPipe invokes system.pipe2
+makeLinuxPipe argument fds machine.Address fds copy
+makeLinuxPipe argument flags Int64 cloexec copy
+makeLinuxPipe result madeLinux Int64
+makeLinuxPipe ownedBy none
+makeLinuxPipe cleanedBy none
+makeLinuxPipe borrows none
+makeLinuxPipe catch none
+makeLinuxPipe suppresses none
+
+readReadFd is call
+readReadFd in resourceTest
+readReadFd invokes machine.loadInt32
+readReadFd argument address machine.Address fds copy
+readReadFd result readFd Int32
+readReadFd ownedBy none
+readReadFd cleanedBy none
+readReadFd borrows none
+readReadFd catch none
+readReadFd suppresses none
+
+widenReadFd is call
+widenReadFd in resourceTest
+widenReadFd invokes convert.int32ToInt64
+widenReadFd argument value Int32 readFd copy
+widenReadFd result readValue Int64
+widenReadFd ownedBy none
+widenReadFd cleanedBy none
+widenReadFd borrows none
+widenReadFd catch none
+widenReadFd suppresses none
+
+readAsAddress is call
+readAsAddress in resourceTest
+readAsAddress invokes machine.fromInt64
+readAsAddress argument value Int64 readValue copy
+readAsAddress result readFdAddress machine.Address
+readAsAddress ownedBy none
+readAsAddress cleanedBy none
+readAsAddress borrows none
+readAsAddress catch none
+readAsAddress suppresses none
+
+storeReadFd is call
+storeReadFd in resourceTest
+storeReadFd invokes machine.storeAddress
+storeReadFd argument address machine.Address ends copy
+storeReadFd argument value machine.Address readFdAddress copy
+storeReadFd result none
+storeReadFd ownedBy none
+storeReadFd cleanedBy none
+storeReadFd borrows none
+storeReadFd catch none
+storeReadFd suppresses none
+
+findWriteFd is call
+findWriteFd in resourceTest
+findWriteFd invokes machine.offset
+findWriteFd argument address machine.Address fds copy
+findWriteFd argument bytes Int64 four copy
+findWriteFd result writeFdAt machine.Address
+findWriteFd ownedBy none
+findWriteFd cleanedBy none
+findWriteFd borrows none
+findWriteFd catch none
+findWriteFd suppresses none
+
+readWriteFd is call
+readWriteFd in resourceTest
+readWriteFd invokes machine.loadInt32
+readWriteFd argument address machine.Address writeFdAt copy
+readWriteFd result writeFd Int32
+readWriteFd ownedBy none
+readWriteFd cleanedBy none
+readWriteFd borrows none
+readWriteFd catch none
+readWriteFd suppresses none
+
+widenWriteFd is call
+widenWriteFd in resourceTest
+widenWriteFd invokes convert.int32ToInt64
+widenWriteFd argument value Int32 writeFd copy
+widenWriteFd result writeValue Int64
+widenWriteFd ownedBy none
+widenWriteFd cleanedBy none
+widenWriteFd borrows none
+widenWriteFd catch none
+widenWriteFd suppresses none
+
+writeAsAddress is call
+writeAsAddress in resourceTest
+writeAsAddress invokes machine.fromInt64
+writeAsAddress argument value Int64 writeValue copy
+writeAsAddress result writeFdAddress machine.Address
+writeAsAddress ownedBy none
+writeAsAddress cleanedBy none
+writeAsAddress borrows none
+writeAsAddress catch none
+writeAsAddress suppresses none
+
+storeWriteFd is call
+storeWriteFd in resourceTest
+storeWriteFd invokes machine.storeAddress
+storeWriteFd argument address machine.Address writeEnd copy
+storeWriteFd argument value machine.Address writeFdAddress copy
+storeWriteFd result none
+storeWriteFd ownedBy none
+storeWriteFd cleanedBy none
+storeWriteFd borrows none
+storeWriteFd catch none
+storeWriteFd suppresses none
 
 makePipe is call
 makePipe in resourceTest
@@ -1068,9 +1303,9 @@ forget suppresses none
 
 closeWrite is call
 closeWrite in resourceTest
-closeWrite invokes system.closeHandle
+closeWrite invokes closeTestHandle
 closeWrite argument handle machine.Address writeHandle copy
-closeWrite result closed Int32
+closeWrite result none
 closeWrite ownedBy none
 closeWrite cleanedBy none
 closeWrite borrows none

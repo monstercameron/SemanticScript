@@ -1,6 +1,6 @@
 module regions "Regions: memory taken from the operating system in chunks, handed out by bumping, and returned all at once"
   path regions
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test numbers frames handles
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel numbers frames handles
   exports newRegion allocate remaining release formatInteger
 
 capability memoryAccess "Authority to keep regions and their chunks in memory" use machine.memory none
@@ -29,6 +29,21 @@ constant freeCountAt "Where the number of free chunks is kept, in machine.state"
 
 constant digitsAt "Where a number's digits are put together, in machine.state" Int64 144
 
+op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+  input code Int32 copied
+  effect use system.calls
+  uses systemCalls
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxExit windowsExit
+:linuxExit
+  widenCode: wideCode = convert.int32ToInt64(code)
+  callExit: exitResult = system.exitGroup(wideCode)
+  return
+:windowsExit
+  callExitProcess: system.exitProcess(code)
+  return
+
 ## ---------------------------------------------------------------- chunks
 
 op stop "Report a trap and end the process with exit code 70"
@@ -41,7 +56,7 @@ op stop "Report a trap and end the process with exit code 70"
   findText: textAt = machine.addressOfString(text)
   textLength: bytes = string.byteLength(text)
   writeReport: status = frames.report(textAt, bytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 op takeChunk "A zeroed chunk of a size: a free one when the size is standard and one is free, otherwise fresh from VirtualAlloc; the address 0 when there is no memory"
@@ -69,7 +84,7 @@ op takeChunk "A zeroed chunk of a size: a free one when the size is standard and
   return chunk
 :freshChunk
   nowhere: anywhere = machine.zero()
-  take: fresh = system.virtualAlloc(anywhere, size, commitAndReserve=12288, readWrite=4)
+  take: fresh = kernel.mapMemory(size)
   return fresh
 
 op dropChunk "Give a chunk back: zeroed onto the free list when it is of the standard size and the list has room, otherwise to the operating system"
@@ -100,7 +115,7 @@ op dropChunk "Give a chunk back: zeroed onto the free list when it is of the sta
   storeFreeCount: machine.storeInt64(freeCountSlot, moreFree)
   return
 :giveBack
-  giveToSystem: freed = system.virtualFree(chunk, zero=0, releaseMemory=32768)
+  giveToSystem: kernel.unmapMemory(chunk, size)
   return
 
 ## ---------------------------------------------------------------- regions
@@ -161,7 +176,7 @@ op exceeded "Trap because a region was asked for more than its capacity: `<label
   readLabelBytes: labelBytes = machine.loadInt64(labelBytesSlot)
   roomOf: room = math.addInt64(labelBytes, sixtyFour=64)
   nowhere: anywhere = machine.zero()
-  take: message = system.virtualAlloc(anywhere, room, commitAndReserve=12288, readWrite=4)
+  take: message = kernel.mapMemory(room)
   failedCheck: failed = machine.equal(message, anywhere)
   if failed labelOnly compose
 :compose
@@ -180,11 +195,11 @@ op exceeded "Trap because a region was asked for more than its capacity: `<label
   copyTail: machine.copy(tailAt, tailText, tailBytes)
   total: messageBytes = math.addInt64(tailOffset, tailBytes)
   writeReport: status = frames.report(message, messageBytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 :labelOnly
   writeLabel: labelStatus = frames.report(label, labelBytes)
-  exitLabel: system.exitProcess(trapCode)
+  exitLabel: endProcess(trapCode)
   return
 
 op allocate "Hand out a zeroed block of bytes from a region, sixteen-byte aligned; a request past the region's capacity traps: refined_region_alloc"

@@ -41,6 +41,7 @@ def _init() -> None:
     if not _READY[0]:
         llvm.initialize_all_targets()
         llvm.initialize_all_asmprinters()
+        llvm.initialize_native_asmparser()  # D-139: the runtime's assembly on Linux (system calls, stacks)
         _READY[0] = True
 
 
@@ -191,10 +192,34 @@ def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
 RUNTIME_PROJECT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "runtime"))
 _DECLARE = re.compile(r'^declare [^@\n]*@"?([A-Za-z_][A-Za-z0-9_.]*)"?\(', re.M)
 
+# D-140: what an executable on Linux cannot have: a foreign library is loaded by the C library's dynamic loader,
+# and an executable with no C library has none.
+LINUX_REFUSED = ("ffi.",)
 
-def runtime_ir() -> tuple[str | None, set[str], str]:
-    """The runtime project compiled to LLVM IR with every `abi c` operation as a root: (IR, the symbols it
-    defines, a problem). The project must check clean and its authority must be approved (D-53)."""
+
+def platform(cc: list[str]) -> tuple[str, str | None, str]:
+    """The C compiler's machine (`gcc -dumpmachine`), the LLVM triple an executable for it is compiled for, and a
+    problem (empty when it can be linked): Windows and Linux on x86_64 have the runtime's system layer (D-122,
+    D-138); macOS has none."""
+    machine = subprocess.run(cc + ["-dumpmachine"], capture_output=True, text=True).stdout.strip()
+    arch = machine.split("-")[0]
+    if "mingw" in machine or "windows" in machine:
+        # gcc says `x86_64-w64-mingw32`; LLVM reads that OS as unknown and would emit ELF objects
+        return machine, arch + "-w64-windows-gnu", ""
+    if "linux" in machine:
+        if arch != "x86_64":
+            return machine, None, (f"R901 the runtime in SemanticScript reaches Linux through x86_64 system calls "
+                                   f"(D-138); `{machine}` is another architecture")
+        return machine, "x86_64-unknown-linux-gnu", ""
+    if "apple" in machine or "darwin" in machine:
+        return machine, None, (f"R901 standalone executables are built for Windows and Linux; macOS (`{machine}`) "
+                               "has no system layer in the runtime yet (D-141), so run the program with `refined run`")
+    return machine, None, f"R901 standalone executables are built for Windows and Linux, not `{machine}`"
+
+
+def runtime_ir(triple: str | None = None) -> tuple[str | None, set[str], str]:
+    """The runtime project compiled to LLVM IR for a target triple, with every `abi c` operation as a root: (IR, the
+    symbols it defines, a problem). The project must check clean and its authority must be approved (D-53)."""
     from .check import check_path, find_build, unapproved_authority
     from .codegen import compile_roots
     from .semantics import abi_symbol
@@ -210,7 +235,8 @@ def runtime_ir() -> tuple[str | None, set[str], str]:
         return None, set(), "the runtime project does not check:\n" + "\n".join(d.format() for d in res.diagnostics)
     roots = [(m.short, name) for m in res.world.modules.values() for name, ent in m.ops.items()
              if abi_symbol(ent) is not None]
-    module, diags = compile_roots(res.world, roots, {"runtime_object": True})
+    options = {"runtime_object": True, **({"triple": triple} if triple else {})}
+    module, diags = compile_roots(res.world, roots, options)
     if diags:
         return None, set(), "the runtime project does not compile:\n" + "\n".join(d.format() for d in diags)
     symbols = {abi_symbol(m.ops[name]) for m in res.world.modules.values() for name in m.ops
@@ -218,10 +244,13 @@ def runtime_ir() -> tuple[str | None, set[str], str]:
     return str(module), symbols, ""
 
 
-def _imported(ir_text: str) -> str:
+def _imported(ir_text: str, triple: str) -> str:
     """D-122: the operating system's functions are imported from their DLL (`__imp_<name>`), not called through a
-    stub the import library would add."""
+    stub the import library would add. Linux has no DLLs: its system calls are instructions (D-138)."""
+    from .codegen import target_os
     from .library import SYSTEM_CALLS
+    if target_os(triple) != "windows":
+        return ir_text
     names = "|".join(re.escape(symbol) for symbol, _sig in SYSTEM_CALLS.values())
     return re.sub(rf'^declare ([^@\n]*@"?(?:{names})"?\()', r"declare dllimport \1", ir_text, flags=re.M)
 
@@ -229,12 +258,12 @@ def _imported(ir_text: str) -> str:
 _KEPT = ("refined_entry", "memcpy", "memmove", "memset", "memcmp")  # the entry, and what LLVM's code may call
 
 
-def _ss_runtime_bitcode() -> tuple[bytes | None, set[str], str]:
-    """The runtime as LLVM bitcode, compiled once per runtime and compiler source text and kept in the temporary
-    directory, with the symbols it defines."""
+def _ss_runtime_bitcode(triple: str) -> tuple[bytes | None, set[str], str]:
+    """The runtime as LLVM bitcode for a target triple, compiled once per runtime and compiler source text and
+    triple and kept in the temporary directory, with the symbols it defines."""
     import hashlib
     import json
-    h = hashlib.sha256(b"bitcode")
+    h = hashlib.sha256(b"bitcode\0" + triple.encode())
     here = os.path.dirname(os.path.abspath(__file__))
     for root in (RUNTIME_PROJECT, here):
         for name in sorted(os.listdir(root)):
@@ -247,11 +276,11 @@ def _ss_runtime_bitcode() -> tuple[bytes | None, set[str], str]:
     if os.path.exists(cached) and os.path.exists(listed):
         with open(cached, "rb") as fh, open(listed, encoding="utf-8") as fl:
             return fh.read(), set(json.load(fl)), ""
-    ir_text, symbols, problem = runtime_ir()
+    ir_text, symbols, problem = runtime_ir(triple)
     if ir_text is None:
         return None, set(), problem
     _init()
-    bitcode = llvm.parse_assembly(_imported(ir_text)).as_bitcode()
+    bitcode = llvm.parse_assembly(_imported(ir_text, triple)).as_bitcode()
     try:
         for path, data, mode in ((cached, bitcode, "wb"), (listed, json.dumps(sorted(symbols)), "w")):
             partial = f"{path}.{os.getpid()}"
@@ -261,6 +290,18 @@ def _ss_runtime_bitcode() -> tuple[bytes | None, set[str], str]:
     except OSError:
         pass
     return bitcode, symbols, ""
+
+
+def _simplify(module, tm) -> None:
+    """D-138: fold `system.linux` and drop what it rules out (the other operating system's branches), then what
+    nothing reaches from the entry (global dead code elimination)."""
+    passes = llvm.create_new_module_pass_manager()
+    passes.add_sroa_pass()
+    passes.add_sccp_pass()
+    passes.add_simplify_cfg_pass()
+    passes.add_global_dead_code_eliminate_pass()
+    passes.add_strip_dead_prototype_pass()
+    passes.run(module, llvm.create_pass_builder(tm, llvm.create_pipeline_tuning_options()))
 
 
 def _whole_program(runtime_bitcode: bytes, program_ir: str, triple: str) -> bytes:
@@ -283,10 +324,7 @@ def _whole_program(runtime_bitcode: bytes, program_ir: str, triple: str) -> byte
     tm = target.create_target_machine(reloc="pic", codemodel="default", opt=2)
     runtime.triple = triple
     runtime.data_layout = str(tm.target_data)
-    passes = llvm.create_new_module_pass_manager()
-    passes.add_global_dead_code_eliminate_pass()
-    passes.add_strip_dead_prototype_pass()
-    passes.run(runtime, llvm.create_pass_builder(tm, llvm.create_pipeline_tuning_options()))
+    _simplify(runtime, tm)
     runtime.verify()
     return tm.emit_object(runtime)
 
@@ -294,14 +332,18 @@ def _whole_program(runtime_bitcode: bytes, program_ir: str, triple: str) -> byte
 _HOST_TARGET_CELL = re.compile(r'^hostTargets cell \w+ name "([A-Za-z0-9.]+)"$', re.M)
 
 
-def runtime_host_targets() -> set[str]:
+def runtime_host_targets(triple: str | None = None) -> set[str]:
     """The host targets the runtime in SemanticScript implements: the `hostTargets` table of its host module, which
-    its `refined_host` dispatches over (D-130)."""
+    its `refined_host` dispatches over (D-130); for Linux, less those it cannot have there (D-140)."""
+    from .codegen import target_os
     path = os.path.join(RUNTIME_PROJECT, "host.sem")
     if not os.path.exists(path):
         return set()
     with open(path, encoding="utf-8") as fh:
-        return set(_HOST_TARGET_CELL.findall(fh.read()))
+        found = set(_HOST_TARGET_CELL.findall(fh.read()))
+    if triple is not None and target_os(triple) == "linux":
+        found = {t for t in found if not t.startswith(LINUX_REFUSED)}
+    return found
 
 
 def needed_runtime(ir_text: str) -> set[str]:
@@ -311,40 +353,74 @@ def needed_runtime(ir_text: str) -> set[str]:
     return {name for name in _DECLARE.findall(ir_text) if name in CALLBACKS}
 
 
+def _link_command(cc: list[str], triple: str, output: str, objects: list[str]) -> list[str]:
+    """D-124, D-138: no CRT start files and no C library. Windows: the entry `refined_entry`, a main thread of
+    STACK_BYTES, kernel32 and the compiler's support library (stack probes). Linux: static, the entry `_start` (the
+    runtime's), and the compiler's support library only."""
+    from .codegen import target_os
+    if target_os(triple) == "windows":
+        return cc + ["-nostdlib", "-nostartfiles", "-Wl,-e,refined_entry", f"-Wl,--stack,{STACK_BYTES}",
+                     "-Wl,--gc-sections", "-s", "-o", output, *objects, "-lkernel32", "-lgcc"]
+    return cc + ["-nostdlib", "-nostartfiles", "-static", "-Wl,-e,_start", "-Wl,--gc-sections", "-Wl,--build-id=none",
+                 "-s", "-o", output, *objects, "-lgcc"]
+
+
 def executable_semanticscript(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
     """D-124: link the program's object and the runtime's object (from semanticscript/runtime) with no C library."""
     cc = find_cc()
     if cc is None:
         return False, "no C compiler to link with: install one (cc, gcc, or clang) or set REFINED_CC"
-    machine = subprocess.run(cc + ["-dumpmachine"], capture_output=True, text=True).stdout.strip()
-    if "mingw" not in machine and "windows" not in machine:
-        return False, (f"R901 the runtime in SemanticScript calls Windows only so far (D-122); `{machine}` needs "
-                       "the C runtime (`--runtime c`)")
-    triple = machine.split("-")[0] + "-w64-windows-gnu"
-    runtime_bitcode, provided, problem = _ss_runtime_bitcode()
+    machine, triple, problem = platform(cc)
+    if triple is None:
+        return False, problem
+    runtime_bitcode, provided, problem = _ss_runtime_bitcode(triple)
     if runtime_bitcode is None:
         return False, problem
     missing = sorted(needed_runtime(ir_text) - provided)
-    missing += sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z0-9.]+)\|', ir_text)) - runtime_host_targets())
+    missing += sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z0-9.]+)\|', ir_text)) - runtime_host_targets(triple))
     if missing:
         return False, ("R901 this program needs " + ", ".join(f"`{n}`" for n in missing) + ", which the runtime "
-                       "in SemanticScript does not provide yet (docs/runtime-in-semanticscript.md); build it "
-                       "with the C runtime (`--runtime c`)")
+                       f"in SemanticScript does not provide yet on `{machine}` (docs/runtime-in-semanticscript.md); run "
+                       "it with `refined run`")
     mod, _dot, op = entry.partition(".")
     from .codegen import function_name
-    program = (_imported(ir_text) + "\n; the program's entry, which the runtime's `refined_entry` runs (D-124)\n"
-               "define i32 @refined_program_main() {\nentry:\n"
+    program = (_imported(ir_text, triple) + "\n; the program's entry, which the runtime's `refined_entry` runs "
+               "(D-124)\ndefine i32 @refined_program_main() {\nentry:\n"
                f'  %code = call i32 @"{function_name(mod, op)}"()\n  ret i32 %code\n}}\n')
     with tempfile.TemporaryDirectory() as d:
         obj = os.path.join(d, "program.o")
         with open(obj, "wb") as fh:
             fh.write(_whole_program(runtime_bitcode, program, triple))
-        cmd = cc + ["-nostdlib", "-nostartfiles", "-Wl,-e,refined_entry", f"-Wl,--stack,{STACK_BYTES}",
-                    "-Wl,--gc-sections", "-s", "-o", output, obj, "-lkernel32", "-lgcc"]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = subprocess.run(_link_command(cc, triple, output, [obj]), capture_output=True, text=True)
         if proc.returncode != 0:
             return False, f"linking failed:\n{proc.stdout}{proc.stderr}"
         return True, f"linked {output} (the runtime in SemanticScript, no C library, {machine})"
+
+
+def runtime_object(output: str) -> tuple[bool, str]:
+    """D-142: the runtime in SemanticScript as a standalone object for the C compiler's platform, every `abi c`
+    operation an external symbol (`refined_entry`, `refined_trap`, `memcpy`, ...), the program's
+    `refined_program_main` left for the object linked with it to define. stage0's C links it."""
+    cc = find_cc()
+    if cc is None:
+        return False, "no C compiler to link with: install one (cc, gcc, or clang) or set REFINED_CC"
+    machine, triple, problem = platform(cc)
+    if triple is None:
+        return False, problem
+    runtime_bitcode, _provided, problem = _ss_runtime_bitcode(triple)
+    if runtime_bitcode is None:
+        return False, problem
+    _init()
+    module = llvm.parse_bitcode(runtime_bitcode)
+    tm = llvm.Target.from_triple(triple).create_target_machine(reloc="pic", codemodel="default", opt=2)
+    module.triple = triple
+    module.data_layout = str(tm.target_data)
+    _simplify(module, tm)
+    module.verify()
+    data = tm.emit_object(module)
+    with open(output, "wb") as fh:
+        fh.write(data)
+    return True, f"wrote {output} (the runtime in SemanticScript, {len(data)} bytes, {machine})"
 
 
 def build(ir_text: str, output: str, triple: str | None, kind: str, entry: str | None = None,

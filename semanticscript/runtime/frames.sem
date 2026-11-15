@@ -16,6 +16,7 @@ frames imports standard.compare
 frames imports standard.convert
 frames imports standard.logic
 frames imports standard.test
+frames imports kernel
 frames imports memory
 frames imports numbers
 frames imports output
@@ -116,6 +117,78 @@ shownRuns purpose "How many lines of the call stack a trap prints before saying 
 shownRuns type Int64
 shownRuns value 12
 
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do osCheck
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do widenCode
+endProcess at linuxExit do callExit
+endProcess at linuxExit return ok none
+endProcess at windowsExit do callExitProcess
+endProcess at windowsExit return ok none
+
+osCheck is call
+osCheck in endProcess
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+widenCode is call
+widenCode in endProcess
+widenCode invokes convert.int32ToInt64
+widenCode argument value Int32 code copy
+widenCode result wideCode Int64
+widenCode ownedBy none
+widenCode cleanedBy none
+widenCode borrows none
+widenCode catch none
+widenCode suppresses none
+
+callExit is call
+callExit in endProcess
+callExit invokes system.exitGroup
+callExit argument code Int64 wideCode copy
+callExit result exitResult Int64
+callExit ownedBy none
+callExit cleanedBy none
+callExit borrows none
+callExit catch none
+callExit suppresses none
+
+callExitProcess is call
+callExitProcess in endProcess
+callExitProcess invokes system.exitProcess
+callExitProcess argument code Int32 code copy
+callExitProcess result none
+callExitProcess ownedBy none
+callExitProcess cleanedBy none
+callExitProcess borrows none
+callExitProcess catch none
+callExitProcess suppresses none
+
 # ---------------------------------------------------------------- the call stack
 pushFrame is operation
 pushFrame purpose "Put an operation's name on the call stack, as each compiled operation does when it starts"
@@ -155,9 +228,6 @@ pushFrame label counted within none
 pushFrame let capacity Int64 0 mutable
 pushFrame let zero Int64 0 immutable
 pushFrame let two Int64 2 immutable
-pushFrame let commitAndReserve Int32 12288 immutable
-pushFrame let readWrite Int32 4 immutable
-pushFrame let releaseMemory Int32 32768 immutable
 pushFrame let eight Int64 8 immutable
 pushFrame let one Int64 1 immutable
 pushFrame at begin do findState
@@ -330,11 +400,8 @@ nowhere suppresses none
 
 takeMemory is call
 takeMemory in pushFrame
-takeMemory invokes system.virtualAlloc
-takeMemory argument address machine.Address anywhere copy
+takeMemory invokes kernel.mapMemory
 takeMemory argument bytes Int64 size copy
-takeMemory argument allocationType Int32 commitAndReserve copy
-takeMemory argument protection Int32 readWrite copy
 takeMemory result table machine.Address
 takeMemory ownedBy none
 takeMemory cleanedBy none
@@ -428,11 +495,10 @@ hadCheck suppresses none
 
 freeOld is call
 freeOld in pushFrame
-freeOld invokes system.virtualFree
+freeOld invokes kernel.unmapMemory
 freeOld argument address machine.Address old copy
-freeOld argument bytes Int64 zero copy
-freeOld argument freeType Int32 releaseMemory copy
-freeOld result freed Int32
+freeOld argument bytes Int64 used copy
+freeOld result none
 freeOld ownedBy none
 freeOld cleanedBy none
 freeOld borrows none
@@ -2351,10 +2417,7 @@ holdResource let capacity Int64 0 mutable
 holdResource let two Int64 2 immutable
 holdResource let sixtyFour Int64 64 immutable
 holdResource let sixteen Int64 16 immutable
-holdResource let commitAndReserve Int32 12288 immutable
-holdResource let readWrite Int32 4 immutable
 holdResource let zero Int64 0 immutable
-holdResource let releaseMemory Int32 32768 immutable
 holdResource let eight Int64 8 immutable
 holdResource let one Int64 1 immutable
 holdResource at begin do findState
@@ -2523,11 +2586,8 @@ nowhere suppresses none
 
 takeMemory is call
 takeMemory in holdResource
-takeMemory invokes system.virtualAlloc
-takeMemory argument address machine.Address anywhere copy
+takeMemory invokes kernel.mapMemory
 takeMemory argument bytes Int64 size copy
-takeMemory argument allocationType Int32 commitAndReserve copy
-takeMemory argument protection Int32 readWrite copy
 takeMemory result table machine.Address
 takeMemory ownedBy none
 takeMemory cleanedBy none
@@ -2621,11 +2681,10 @@ hadCheck suppresses none
 
 freeOld is call
 freeOld in holdResource
-freeOld invokes system.virtualFree
+freeOld invokes kernel.unmapMemory
 freeOld argument address machine.Address old copy
-freeOld argument bytes Int64 zero copy
-freeOld argument freeType Int32 releaseMemory copy
-freeOld result freed Int32
+freeOld argument bytes Int64 used copy
+freeOld result none
 freeOld ownedBy none
 freeOld cleanedBy none
 freeOld borrows none
@@ -3005,16 +3064,27 @@ releaseHeld label eachResource within none
 releaseHeld label eachResource maxIterations count
 releaseHeld label releaseOne loopKind none
 releaseHeld label releaseOne within eachResource
+releaseHeld label linuxRelease loopKind none
+releaseHeld label linuxRelease within eachResource
+releaseHeld label killChild loopKind none
+releaseHeld label killChild within eachResource
+releaseHeld label closeDescriptor loopKind none
+releaseHeld label closeDescriptor within eachResource
+releaseHeld label windowsRelease loopKind none
+releaseHeld label windowsRelease within eachResource
 releaseHeld label stopChild loopKind none
 releaseHeld label stopChild within eachResource
 releaseHeld label closeIt loopKind none
 releaseHeld label closeIt within eachResource
+releaseHeld label nextResource loopKind none
+releaseHeld label nextResource within eachResource
 releaseHeld label finish loopKind none
 releaseHeld label finish within none
 releaseHeld let at Int64 0 mutable
 releaseHeld let sixteen Int64 16 immutable
 releaseHeld let eight Int64 8 immutable
 releaseHeld let two Int64 2 immutable
+releaseHeld let killSignal Int64 9 immutable
 releaseHeld let exitOne Int32 1 immutable
 releaseHeld let one Int64 1 immutable
 releaseHeld let zero Int64 0 immutable
@@ -3032,13 +3102,22 @@ releaseHeld at releaseOne do readKind
 releaseHeld at releaseOne do findHandle
 releaseHeld at releaseOne do readHandle
 releaseHeld at releaseOne do childCheck
-releaseHeld at releaseOne branch if isChild goto stopChild else goto closeIt
+releaseHeld at releaseOne do osCheck
+releaseHeld at releaseOne branch if onLinux goto linuxRelease else goto windowsRelease
+releaseHeld at linuxRelease do descriptorOf
+releaseHeld at linuxRelease branch if isChild goto killChild else goto closeDescriptor
+releaseHeld at killChild do killIt
+releaseHeld at killChild goto nextResource
+releaseHeld at closeDescriptor do closeFd
+releaseHeld at closeDescriptor goto nextResource
+releaseHeld at windowsRelease branch if isChild goto stopChild else goto closeIt
 releaseHeld at stopChild do stop
 releaseHeld at stopChild goto closeIt
 releaseHeld at closeIt do close
-releaseHeld at closeIt do advance
-releaseHeld at closeIt set at after
-releaseHeld at closeIt goto eachResource
+releaseHeld at closeIt goto nextResource
+releaseHeld at nextResource do advance
+releaseHeld at nextResource set at after
+releaseHeld at nextResource goto eachResource
 releaseHeld at finish do storeCount
 releaseHeld at finish return ok count
 
@@ -3181,6 +3260,51 @@ childCheck borrows none
 childCheck catch none
 childCheck suppresses none
 
+osCheck is call
+osCheck in releaseHeld
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+descriptorOf is call
+descriptorOf in releaseHeld
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result value Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+killIt is call
+killIt in releaseHeld
+killIt invokes system.kill
+killIt argument pid Int64 value copy
+killIt argument signal Int64 killSignal copy
+killIt result killed Int64
+killIt ownedBy none
+killIt cleanedBy none
+killIt borrows none
+killIt catch none
+killIt suppresses none
+
+closeFd is call
+closeFd in releaseHeld
+closeFd invokes system.close
+closeFd argument fd Int64 value copy
+closeFd result closedFd Int64
+closeFd ownedBy none
+closeFd cleanedBy none
+closeFd borrows none
+closeFd catch none
+closeFd suppresses none
+
 stop is call
 stop in releaseHeld
 stop invokes system.terminateProcess
@@ -3266,7 +3390,7 @@ writeReport suppresses none
 
 stop is call
 stop in trap
-stop invokes system.exitProcess
+stop invokes endProcess
 stop argument code Int32 trapCode copy
 stop result none
 stop ownedBy none

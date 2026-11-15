@@ -15,6 +15,7 @@ runtime standardLibrary 1
 runtime allows use machine.memory none
 runtime allows use system.calls none
 runtime requires none
+runtime includesModule kernel
 runtime includesModule memory
 runtime includesModule numbers
 runtime includesModule output

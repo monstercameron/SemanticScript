@@ -1343,14 +1343,26 @@ cleanUp async false
 cleanUp maxRecursion none
 cleanUp label begin loopKind none
 cleanUp label begin within none
-cleanUp let none
+cleanUp label cleanLinux loopKind none
+cleanUp label cleanLinux within none
+cleanUp label cleanWindows loopKind none
+cleanUp label cleanWindows within none
+cleanUp let zero Int64 0 immutable
+cleanUp let removeDirectoryFlag Int64 512 immutable
 cleanUp at begin do findPath
 cleanUp at begin do pathLength
-cleanUp at begin do wideName
-cleanUp at begin do deleteIt
-cleanUp at begin do removeIt
-cleanUp at begin do giveName
-cleanUp at begin return ok none
+cleanUp at begin do osCheck
+cleanUp at begin branch if onLinux goto cleanLinux else goto cleanWindows
+cleanUp at cleanLinux do copyPath
+cleanUp at cleanLinux do unlinkIt
+cleanUp at cleanLinux do rmdirIt
+cleanUp at cleanLinux do giveLinuxName
+cleanUp at cleanLinux return ok none
+cleanUp at cleanWindows do wideName
+cleanUp at cleanWindows do deleteIt
+cleanUp at cleanWindows do removeIt
+cleanUp at cleanWindows do giveName
+cleanUp at cleanWindows return ok none
 
 findPath is call
 findPath in cleanUp
@@ -1373,6 +1385,66 @@ pathLength cleanedBy none
 pathLength borrows none
 pathLength catch none
 pathLength suppresses none
+
+osCheck is call
+osCheck in cleanUp
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+copyPath is call
+copyPath in cleanUp
+copyPath invokes cPath
+copyPath argument path machine.Address pathAt copy
+copyPath argument bytes Int64 bytes copy
+copyPath result linuxName machine.Address
+copyPath ownedBy none
+copyPath cleanedBy none
+copyPath borrows none
+copyPath catch none
+copyPath suppresses none
+
+unlinkIt is call
+unlinkIt in cleanUp
+unlinkIt invokes system.unlinkat
+unlinkIt argument directory Int64 atWorkingDirectory copy
+unlinkIt argument path machine.Address linuxName copy
+unlinkIt argument flags Int64 zero copy
+unlinkIt result unlinked Int64
+unlinkIt ownedBy none
+unlinkIt cleanedBy none
+unlinkIt borrows none
+unlinkIt catch none
+unlinkIt suppresses none
+
+rmdirIt is call
+rmdirIt in cleanUp
+rmdirIt invokes system.unlinkat
+rmdirIt argument directory Int64 atWorkingDirectory copy
+rmdirIt argument path machine.Address linuxName copy
+rmdirIt argument flags Int64 removeDirectoryFlag copy
+rmdirIt result removedLinux Int64
+rmdirIt ownedBy none
+rmdirIt cleanedBy none
+rmdirIt borrows none
+rmdirIt catch none
+rmdirIt suppresses none
+
+giveLinuxName is call
+giveLinuxName in cleanUp
+giveLinuxName invokes heap.give
+giveLinuxName argument block machine.Address linuxName copy
+giveLinuxName result none
+giveLinuxName ownedBy none
+giveLinuxName cleanedBy none
+giveLinuxName borrows none
+giveLinuxName catch none
+giveLinuxName suppresses none
 
 wideName is call
 wideName in cleanUp
@@ -1455,6 +1527,12 @@ fileTest async false
 fileTest maxRecursion none
 fileTest label begin loopKind none
 fileTest label begin within none
+fileTest label linuxUnlocked loopKind none
+fileTest label linuxUnlocked within none
+fileTest label windowsUnlocked loopKind none
+fileTest label windowsUnlocked within none
+fileTest label afterUnlock loopKind none
+fileTest label afterUnlock within none
 fileTest let file String "refined-runtime-files.tmp" immutable
 fileTest let directory String "refined-runtime-dir.tmp" immutable
 fileTest let inA String "refined-runtime-dir.tmp/b" immutable
@@ -1471,6 +1549,7 @@ fileTest let nope String "nope" immutable
 fileTest let eight Int64 8 immutable
 fileTest let four Int64 4 immutable
 fileTest let bye String "bye" immutable
+fileTest let zero32Status Int64 0 immutable
 fileTest let two Int64 2 immutable
 fileTest let bang String "!" immutable
 fileTest let byeBang String "bye!" immutable
@@ -1541,77 +1620,82 @@ fileTest at begin do expectLocked
 fileTest at begin do unlockIt
 fileTest at begin do expectUnlocked
 fileTest at begin do unlockAgain
-fileTest at begin do expectNotLocked
-fileTest at begin do writeShape3
-fileTest at begin do appendIt
-fileTest at begin do expectAppended
-fileTest at begin do closeShape3
-fileTest at begin do closeAppender
-fileTest at begin do readAllShape3
-fileTest at begin do readAppended
-fileTest at begin do expectAppendedText
-fileTest at begin do pathShape5
-fileTest at begin do openEmptied
-fileTest at begin do expectEmptied
-fileTest at begin do readEmptied
-fileTest at begin do readShape2
-fileTest at begin do readNothing
-fileTest at begin do expectNothing
-fileTest at begin do closeShape4
-fileTest at begin do closeEmptied
-fileTest at begin do pathShape6
-fileTest at begin do existsFile
-fileTest at begin do readPresent
-fileTest at begin do expectPresent
-fileTest at begin do pathShape7
-fileTest at begin do makeDirectory
-fileTest at begin do expectMade
-fileTest at begin do makeAgain
-fileTest at begin do expectMadeAgain
-fileTest at begin do writeAllShape2
-fileTest at begin do writeA
-fileTest at begin do writeAllShape3
-fileTest at begin do writeB
-fileTest at begin do listShape
-fileTest at begin do setListPath
-fileTest at begin do setListRegion
-fileTest at begin do listIt
-fileTest at begin do expectListed
-fileTest at begin do readListing
-fileTest at begin do countShape
-fileTest at begin do setListing
-fileTest at begin do countIt
-fileTest at begin do readCount
-fileTest at begin do expectCount
-fileTest at begin do nameShape
-fileTest at begin do setListingAgain
-fileTest at begin do setIndex
-fileTest at begin do setNameRegion
-fileTest at begin do nameIt
-fileTest at begin do expectNamed
-fileTest at begin do expectFirstName
-fileTest at begin do setFar
-fileTest at begin do nameFar
-fileTest at begin do expectFar
-fileTest at begin do pathShape8
-fileTest at begin do removeA
-fileTest at begin do pathShape9
-fileTest at begin do removeB
-fileTest at begin do pathShape10
-fileTest at begin do removeDirectory
-fileTest at begin do expectRemovedDirectory
-fileTest at begin do pathShape11
-fileTest at begin do removeFile
-fileTest at begin do expectRemoved
-fileTest at begin do existsGone
-fileTest at begin do readAbsent
-fileTest at begin do expectAbsent
-fileTest at begin do removeAgain
-fileTest at begin do expectMissing
-fileTest at begin do openMissing
-fileTest at begin do expectMissingOpen
-fileTest at begin do free
-fileTest at begin return ok none
+fileTest at begin do unlockOs
+fileTest at begin branch if unlockOnLinux goto linuxUnlocked else goto windowsUnlocked
+fileTest at linuxUnlocked do expectLinuxUnlocked
+fileTest at linuxUnlocked goto afterUnlock
+fileTest at windowsUnlocked do expectNotLocked
+fileTest at windowsUnlocked goto afterUnlock
+fileTest at afterUnlock do writeShape3
+fileTest at afterUnlock do appendIt
+fileTest at afterUnlock do expectAppended
+fileTest at afterUnlock do closeShape3
+fileTest at afterUnlock do closeAppender
+fileTest at afterUnlock do readAllShape3
+fileTest at afterUnlock do readAppended
+fileTest at afterUnlock do expectAppendedText
+fileTest at afterUnlock do pathShape5
+fileTest at afterUnlock do openEmptied
+fileTest at afterUnlock do expectEmptied
+fileTest at afterUnlock do readEmptied
+fileTest at afterUnlock do readShape2
+fileTest at afterUnlock do readNothing
+fileTest at afterUnlock do expectNothing
+fileTest at afterUnlock do closeShape4
+fileTest at afterUnlock do closeEmptied
+fileTest at afterUnlock do pathShape6
+fileTest at afterUnlock do existsFile
+fileTest at afterUnlock do readPresent
+fileTest at afterUnlock do expectPresent
+fileTest at afterUnlock do pathShape7
+fileTest at afterUnlock do makeDirectory
+fileTest at afterUnlock do expectMade
+fileTest at afterUnlock do makeAgain
+fileTest at afterUnlock do expectMadeAgain
+fileTest at afterUnlock do writeAllShape2
+fileTest at afterUnlock do writeA
+fileTest at afterUnlock do writeAllShape3
+fileTest at afterUnlock do writeB
+fileTest at afterUnlock do listShape
+fileTest at afterUnlock do setListPath
+fileTest at afterUnlock do setListRegion
+fileTest at afterUnlock do listIt
+fileTest at afterUnlock do expectListed
+fileTest at afterUnlock do readListing
+fileTest at afterUnlock do countShape
+fileTest at afterUnlock do setListing
+fileTest at afterUnlock do countIt
+fileTest at afterUnlock do readCount
+fileTest at afterUnlock do expectCount
+fileTest at afterUnlock do nameShape
+fileTest at afterUnlock do setListingAgain
+fileTest at afterUnlock do setIndex
+fileTest at afterUnlock do setNameRegion
+fileTest at afterUnlock do nameIt
+fileTest at afterUnlock do expectNamed
+fileTest at afterUnlock do expectFirstName
+fileTest at afterUnlock do setFar
+fileTest at afterUnlock do nameFar
+fileTest at afterUnlock do expectFar
+fileTest at afterUnlock do pathShape8
+fileTest at afterUnlock do removeA
+fileTest at afterUnlock do pathShape9
+fileTest at afterUnlock do removeB
+fileTest at afterUnlock do pathShape10
+fileTest at afterUnlock do removeDirectory
+fileTest at afterUnlock do expectRemovedDirectory
+fileTest at afterUnlock do pathShape11
+fileTest at afterUnlock do removeFile
+fileTest at afterUnlock do expectRemoved
+fileTest at afterUnlock do existsGone
+fileTest at afterUnlock do readAbsent
+fileTest at afterUnlock do expectAbsent
+fileTest at afterUnlock do removeAgain
+fileTest at afterUnlock do expectMissing
+fileTest at afterUnlock do openMissing
+fileTest at afterUnlock do expectMissingOpen
+fileTest at afterUnlock do free
+fileTest at afterUnlock return ok none
 
 cleanFile is call
 cleanFile in fileTest
@@ -2387,6 +2471,29 @@ unlockAgain cleanedBy none
 unlockAgain borrows none
 unlockAgain catch none
 unlockAgain suppresses none
+
+unlockOs is call
+unlockOs in fileTest
+unlockOs invokes system.linux
+unlockOs argument none
+unlockOs result unlockOnLinux Bool
+unlockOs ownedBy none
+unlockOs cleanedBy none
+unlockOs borrows none
+unlockOs catch none
+unlockOs suppresses none
+
+expectLinuxUnlocked is call
+expectLinuxUnlocked in fileTest
+expectLinuxUnlocked invokes expectStatus
+expectLinuxUnlocked argument wanted Int64 zero32Status copy
+expectLinuxUnlocked argument status Int32 notLocked copy
+expectLinuxUnlocked result none
+expectLinuxUnlocked ownedBy none
+expectLinuxUnlocked cleanedBy none
+expectLinuxUnlocked borrows none
+expectLinuxUnlocked catch none
+expectLinuxUnlocked suppresses none
 
 expectNotLocked is call
 expectNotLocked in fileTest
@@ -3269,7 +3376,20 @@ pathTest async false
 pathTest maxRecursion none
 pathTest label begin loopKind none
 pathTest label begin within none
+pathTest label linuxPlain loopKind none
+pathTest label linuxPlain within none
+pathTest label resolveIt loopKind none
+pathTest label resolveIt within none
+pathTest label linuxErrnos loopKind none
+pathTest label linuxErrnos within none
+pathTest label windowsErrnos loopKind none
+pathTest label windowsErrnos within none
+pathTest label classifyIt loopKind none
+pathTest label classifyIt within none
 pathTest let plain String "Some/Name" immutable
+pathTest let plainLinux String "some/name" immutable
+pathTest let plainValue Int64 0 mutable
+pathTest let plainLength Int64 0 mutable
 pathTest let roundabout String "some/other/../name" immutable
 pathTest let inside String "data/x.txt" immutable
 pathTest let outside String "other/x.txt" immutable
@@ -3286,72 +3406,93 @@ pathTest let runTarget String "process.run" immutable
 pathTest let two32 Int32 2 immutable
 pathTest let two Int64 2 immutable
 pathTest let five32 Int32 5 immutable
-pathTest let thirteen Int64 13 immutable
 pathTest let eighty32 Int32 80 immutable
-pathTest let seventeen Int64 17 immutable
 pathTest let oneFortyFive32 Int32 145 immutable
+pathTest let five Int64 5 immutable
+pathTest let eighty Int64 80 immutable
+pathTest let oneFortyFive Int64 145 immutable
+pathTest let thirteen Int64 13 immutable
+pathTest let seventeen Int64 17 immutable
 pathTest let fortyOne Int64 41 immutable
 pathTest let twentyTwo Int64 22 immutable
 pathTest at begin do takeCell
 pathTest at begin do findPlain
-pathTest at begin do plainLength
-pathTest at begin do resolvePlain
-pathTest at begin do readFirst
-pathTest at begin do findRoundabout
-pathTest at begin do roundaboutLength
-pathTest at begin do resolveRoundabout
-pathTest at begin do readSecond
-pathTest at begin do compareResolved
-pathTest at begin do sameWide
-pathTest at begin do expectSame
-pathTest at begin do findInside
-pathTest at begin do insideLength
-pathTest at begin do findDirectory
-pathTest at begin do directoryLength
-pathTest at begin do withinCheck
-pathTest at begin do expectWithin
-pathTest at begin do findOutside
-pathTest at begin do outsideLength
-pathTest at begin do outsideCheck
-pathTest at begin do notOutside
-pathTest at begin do expectOutside
-pathTest at begin do findNamed
-pathTest at begin do namedLength
-pathTest at begin do findPattern
-pathTest at begin do patternLength
-pathTest at begin do patternCheck
-pathTest at begin do expectMatches
-pathTest at begin do findScopes
-pathTest at begin do scopesLength
-pathTest at begin do checkInside
-pathTest at begin do checkNamed
-pathTest at begin do findPrograms
-pathTest at begin do programsLength
-pathTest at begin do findTool
-pathTest at begin do toolLength
-pathTest at begin do checkTool
-pathTest at begin do mapMissing
-pathTest at begin do expectMissing
-pathTest at begin do mapDenied
-pathTest at begin do expectDenied
-pathTest at begin do mapExists
-pathTest at begin do expectExists
-pathTest at begin do mapNotEmpty
-pathTest at begin do expectNotEmpty
-pathTest at begin do findPayload
-pathTest at begin do classify
-pathTest at begin do expectFailed
-pathTest at begin do readPayload
-pathTest at begin do expectPayload
-pathTest at begin do copyIt
-pathTest at begin do compareCopy
-pathTest at begin do copiedWide
-pathTest at begin do expectCopy
-pathTest at begin do giveFirst
-pathTest at begin do giveSecond
-pathTest at begin do giveCopy
-pathTest at begin do giveCell
-pathTest at begin return ok none
+pathTest at begin do plainOf
+pathTest at begin do plainAddress
+pathTest at begin set plainValue plainAtValue
+pathTest at begin set plainLength plainBytes
+pathTest at begin do osCheck
+pathTest at begin branch if onLinux goto linuxPlain else goto resolveIt
+pathTest at linuxPlain do findLinuxPlain
+pathTest at linuxPlain do linuxPlainLength
+pathTest at linuxPlain do linuxPlainAddress
+pathTest at linuxPlain set plainValue linuxPlainValue
+pathTest at linuxPlain set plainLength linuxPlainBytes
+pathTest at linuxPlain goto resolveIt
+pathTest at resolveIt do chosenPlain
+pathTest at resolveIt do resolvePlain
+pathTest at resolveIt do readFirst
+pathTest at resolveIt do findRoundabout
+pathTest at resolveIt do roundaboutLength
+pathTest at resolveIt do resolveRoundabout
+pathTest at resolveIt do readSecond
+pathTest at resolveIt do compareResolved
+pathTest at resolveIt do sameWide
+pathTest at resolveIt do expectSame
+pathTest at resolveIt do findInside
+pathTest at resolveIt do insideLength
+pathTest at resolveIt do findDirectory
+pathTest at resolveIt do directoryLength
+pathTest at resolveIt do withinCheck
+pathTest at resolveIt do expectWithin
+pathTest at resolveIt do findOutside
+pathTest at resolveIt do outsideLength
+pathTest at resolveIt do outsideCheck
+pathTest at resolveIt do notOutside
+pathTest at resolveIt do expectOutside
+pathTest at resolveIt do findNamed
+pathTest at resolveIt do namedLength
+pathTest at resolveIt do findPattern
+pathTest at resolveIt do patternLength
+pathTest at resolveIt do patternCheck
+pathTest at resolveIt do expectMatches
+pathTest at resolveIt do findScopes
+pathTest at resolveIt do scopesLength
+pathTest at resolveIt do checkInside
+pathTest at resolveIt do checkNamed
+pathTest at resolveIt do findPrograms
+pathTest at resolveIt do programsLength
+pathTest at resolveIt do findTool
+pathTest at resolveIt do toolLength
+pathTest at resolveIt do checkTool
+pathTest at resolveIt do mapMissing
+pathTest at resolveIt do expectMissing
+pathTest at resolveIt do mapDenied
+pathTest at resolveIt do mapExists
+pathTest at resolveIt do mapNotEmpty
+pathTest at resolveIt branch if onLinux goto linuxErrnos else goto windowsErrnos
+pathTest at linuxErrnos do expectSameDenied
+pathTest at linuxErrnos do expectSameExists
+pathTest at linuxErrnos do expectSameNotEmpty
+pathTest at linuxErrnos goto classifyIt
+pathTest at windowsErrnos do expectDenied
+pathTest at windowsErrnos do expectExists
+pathTest at windowsErrnos do expectNotEmpty
+pathTest at windowsErrnos goto classifyIt
+pathTest at classifyIt do findPayload
+pathTest at classifyIt do classify
+pathTest at classifyIt do expectFailed
+pathTest at classifyIt do readPayload
+pathTest at classifyIt do expectPayload
+pathTest at classifyIt do copyIt
+pathTest at classifyIt do compareCopy
+pathTest at classifyIt do copiedWide
+pathTest at classifyIt do expectCopy
+pathTest at classifyIt do giveFirst
+pathTest at classifyIt do giveSecond
+pathTest at classifyIt do giveCopy
+pathTest at classifyIt do giveCell
+pathTest at classifyIt return ok none
 
 takeCell is call
 takeCell in pathTest
@@ -3375,22 +3516,88 @@ findPlain borrows none
 findPlain catch none
 findPlain suppresses none
 
-plainLength is call
-plainLength in pathTest
-plainLength invokes string.byteLength
-plainLength argument text String plain lend
-plainLength result plainBytes Int64
-plainLength ownedBy none
-plainLength cleanedBy none
-plainLength borrows none
-plainLength catch none
-plainLength suppresses none
+plainOf is call
+plainOf in pathTest
+plainOf invokes string.byteLength
+plainOf argument text String plain lend
+plainOf result plainBytes Int64
+plainOf ownedBy none
+plainOf cleanedBy none
+plainOf borrows none
+plainOf catch none
+plainOf suppresses none
+
+plainAddress is call
+plainAddress in pathTest
+plainAddress invokes machine.toInt64
+plainAddress argument address machine.Address plainAt copy
+plainAddress result plainAtValue Int64
+plainAddress ownedBy none
+plainAddress cleanedBy none
+plainAddress borrows none
+plainAddress catch none
+plainAddress suppresses none
+
+osCheck is call
+osCheck in pathTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+findLinuxPlain is call
+findLinuxPlain in pathTest
+findLinuxPlain invokes machine.addressOfString
+findLinuxPlain argument text String plainLinux lend
+findLinuxPlain result linuxPlainAt machine.Address
+findLinuxPlain ownedBy none
+findLinuxPlain cleanedBy none
+findLinuxPlain borrows none
+findLinuxPlain catch none
+findLinuxPlain suppresses none
+
+linuxPlainLength is call
+linuxPlainLength in pathTest
+linuxPlainLength invokes string.byteLength
+linuxPlainLength argument text String plainLinux lend
+linuxPlainLength result linuxPlainBytes Int64
+linuxPlainLength ownedBy none
+linuxPlainLength cleanedBy none
+linuxPlainLength borrows none
+linuxPlainLength catch none
+linuxPlainLength suppresses none
+
+linuxPlainAddress is call
+linuxPlainAddress in pathTest
+linuxPlainAddress invokes machine.toInt64
+linuxPlainAddress argument address machine.Address linuxPlainAt copy
+linuxPlainAddress result linuxPlainValue Int64
+linuxPlainAddress ownedBy none
+linuxPlainAddress cleanedBy none
+linuxPlainAddress borrows none
+linuxPlainAddress catch none
+linuxPlainAddress suppresses none
+
+chosenPlain is call
+chosenPlain in pathTest
+chosenPlain invokes machine.fromInt64
+chosenPlain argument value Int64 plainValue copy
+chosenPlain result chosenAt machine.Address
+chosenPlain ownedBy none
+chosenPlain cleanedBy none
+chosenPlain borrows none
+chosenPlain catch none
+chosenPlain suppresses none
 
 resolvePlain is call
 resolvePlain in pathTest
 resolvePlain invokes resolve
-resolvePlain argument path machine.Address plainAt copy
-resolvePlain argument bytes Int64 plainBytes copy
+resolvePlain argument path machine.Address chosenAt copy
+resolvePlain argument bytes Int64 plainLength copy
 resolvePlain argument lengthAt machine.Address cell copy
 resolvePlain result first machine.Address
 resolvePlain ownedBy none
@@ -3834,6 +4041,64 @@ mapDenied borrows none
 mapDenied catch none
 mapDenied suppresses none
 
+mapExists is call
+mapExists in pathTest
+mapExists invokes winErrno
+mapExists argument code Int32 eighty32 copy
+mapExists result existsErrno Int64
+mapExists ownedBy none
+mapExists cleanedBy none
+mapExists borrows none
+mapExists catch none
+mapExists suppresses none
+
+mapNotEmpty is call
+mapNotEmpty in pathTest
+mapNotEmpty invokes winErrno
+mapNotEmpty argument code Int32 oneFortyFive32 copy
+mapNotEmpty result notEmptyErrno Int64
+mapNotEmpty ownedBy none
+mapNotEmpty cleanedBy none
+mapNotEmpty borrows none
+mapNotEmpty catch none
+mapNotEmpty suppresses none
+
+expectSameDenied is call
+expectSameDenied in pathTest
+expectSameDenied invokes test.assertEqualInt64
+expectSameDenied argument expected Int64 five copy
+expectSameDenied argument actual Int64 deniedErrno copy
+expectSameDenied result none
+expectSameDenied ownedBy none
+expectSameDenied cleanedBy none
+expectSameDenied borrows none
+expectSameDenied catch none
+expectSameDenied suppresses none
+
+expectSameExists is call
+expectSameExists in pathTest
+expectSameExists invokes test.assertEqualInt64
+expectSameExists argument expected Int64 eighty copy
+expectSameExists argument actual Int64 existsErrno copy
+expectSameExists result none
+expectSameExists ownedBy none
+expectSameExists cleanedBy none
+expectSameExists borrows none
+expectSameExists catch none
+expectSameExists suppresses none
+
+expectSameNotEmpty is call
+expectSameNotEmpty in pathTest
+expectSameNotEmpty invokes test.assertEqualInt64
+expectSameNotEmpty argument expected Int64 oneFortyFive copy
+expectSameNotEmpty argument actual Int64 notEmptyErrno copy
+expectSameNotEmpty result none
+expectSameNotEmpty ownedBy none
+expectSameNotEmpty cleanedBy none
+expectSameNotEmpty borrows none
+expectSameNotEmpty catch none
+expectSameNotEmpty suppresses none
+
 expectDenied is call
 expectDenied in pathTest
 expectDenied invokes test.assertEqualInt64
@@ -3846,17 +4111,6 @@ expectDenied borrows none
 expectDenied catch none
 expectDenied suppresses none
 
-mapExists is call
-mapExists in pathTest
-mapExists invokes winErrno
-mapExists argument code Int32 eighty32 copy
-mapExists result existsErrno Int64
-mapExists ownedBy none
-mapExists cleanedBy none
-mapExists borrows none
-mapExists catch none
-mapExists suppresses none
-
 expectExists is call
 expectExists in pathTest
 expectExists invokes test.assertEqualInt64
@@ -3868,17 +4122,6 @@ expectExists cleanedBy none
 expectExists borrows none
 expectExists catch none
 expectExists suppresses none
-
-mapNotEmpty is call
-mapNotEmpty in pathTest
-mapNotEmpty invokes winErrno
-mapNotEmpty argument code Int32 oneFortyFive32 copy
-mapNotEmpty result notEmptyErrno Int64
-mapNotEmpty ownedBy none
-mapNotEmpty cleanedBy none
-mapNotEmpty borrows none
-mapNotEmpty catch none
-mapNotEmpty suppresses none
 
 expectNotEmpty is call
 expectNotEmpty in pathTest

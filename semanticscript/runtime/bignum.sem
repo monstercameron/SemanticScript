@@ -9,6 +9,7 @@ bignum purpose "Whole numbers of any size up to 6,400 bits, in memory, with exac
 bignum path bignum
 bignum imports standard.machine
 bignum imports standard.system
+bignum imports standard.convert
 bignum imports standard.string
 bignum imports standard.math
 bignum imports standard.compare
@@ -55,6 +56,78 @@ limbMask is constant
 limbMask purpose "The bits of one limb"
 limbMask type UInt64
 limbMask value 4294967295
+
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do osCheck
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do widenCode
+endProcess at linuxExit do callExit
+endProcess at linuxExit return ok none
+endProcess at windowsExit do callExitProcess
+endProcess at windowsExit return ok none
+
+osCheck is call
+osCheck in endProcess
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+widenCode is call
+widenCode in endProcess
+widenCode invokes convert.int32ToInt64
+widenCode argument value Int32 code copy
+widenCode result wideCode Int64
+widenCode ownedBy none
+widenCode cleanedBy none
+widenCode borrows none
+widenCode catch none
+widenCode suppresses none
+
+callExit is call
+callExit in endProcess
+callExit invokes system.exitGroup
+callExit argument code Int64 wideCode copy
+callExit result exitResult Int64
+callExit ownedBy none
+callExit cleanedBy none
+callExit borrows none
+callExit catch none
+callExit suppresses none
+
+callExitProcess is call
+callExitProcess in endProcess
+callExitProcess invokes system.exitProcess
+callExitProcess argument code Int32 code copy
+callExitProcess result none
+callExitProcess ownedBy none
+callExitProcess cleanedBy none
+callExitProcess borrows none
+callExitProcess catch none
+callExitProcess suppresses none
 
 # ---------------------------------------------------------------- limbs
 limbAddress is operation
@@ -344,7 +417,7 @@ writeReport suppresses none
 
 exit is call
 exit in fits
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 trapCode copy
 exit result none
 exit ownedBy none

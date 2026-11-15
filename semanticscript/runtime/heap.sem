@@ -15,6 +15,7 @@ heap imports standard.compare
 heap imports standard.convert
 heap imports standard.logic
 heap imports standard.test
+heap imports kernel
 heap imports numbers
 heap imports frames
 heap exports take
@@ -32,7 +33,12 @@ systemCalls purpose "Authority to take memory from the process heap, give it bac
 systemCalls grants use system.calls none
 
 # machine.state bytes 192 to 255 belong to this module: 192 the process heap's handle (0 until it is first asked
-# for), 200 to 231 a number's digits.
+# for), 200 to 231 a number's digits; on Linux, bytes 896 to 991: from 896 the first free block of each of nine
+# sizes (16 bytes to 4 KiB), 976 the chunk small blocks are cut from and 984 how many of its bytes are left.
+# D-140: Linux has no process heap, so the runtime keeps its own: a block has 32 bytes before it (0 how many bytes
+# it holds, 8 how many bytes its mapping has, 0 for a small block, 16 how many bytes are in use); a small block of
+# up to 4 KiB with its header is cut from a 64 KiB chunk of an anonymous mmap and goes back to the free list of
+# its size; a larger one is a mapping of its own, unmapped when it is given back.
 heapAt is constant
 heapAt purpose "Where the process heap's handle is kept, in machine.state"
 heapAt type Int64
@@ -47,6 +53,113 @@ zeroMemory is constant
 zeroMemory purpose "HEAP_ZERO_MEMORY: what HeapAlloc and HeapReAlloc hand out is zeroed"
 zeroMemory type Int32
 zeroMemory value 8
+
+freeListsAt is constant
+freeListsAt purpose "Where the first free block of each size is kept on Linux, in machine.state"
+freeListsAt type Int64
+freeListsAt value 896
+
+chunkAt is constant
+chunkAt purpose "Where the chunk small blocks are cut from is kept on Linux, in machine.state"
+chunkAt type Int64
+chunkAt value 976
+
+chunkLeftAt is constant
+chunkLeftAt purpose "Where how many bytes of that chunk are left is kept, in machine.state"
+chunkLeftAt type Int64
+chunkLeftAt value 984
+
+blockHead is constant
+blockHead purpose "The bytes before a block on Linux"
+blockHead type Int64
+blockHead value 32
+
+largestSmall is constant
+largestSmall purpose "The largest small block on Linux, its header included"
+largestSmall type Int64
+largestSmall value 4096
+
+chunkSize is constant
+chunkSize purpose "The bytes of a chunk small blocks are cut from on Linux"
+chunkSize type Int64
+chunkSize value 65536
+
+pageBytes is constant
+pageBytes purpose "The bytes of a page"
+pageBytes type Int64
+pageBytes value 4096
+
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do osCheck
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do widenCode
+endProcess at linuxExit do callExit
+endProcess at linuxExit return ok none
+endProcess at windowsExit do callExitProcess
+endProcess at windowsExit return ok none
+
+osCheck is call
+osCheck in endProcess
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+widenCode is call
+widenCode in endProcess
+widenCode invokes convert.int32ToInt64
+widenCode argument value Int32 code copy
+widenCode result wideCode Int64
+widenCode ownedBy none
+widenCode cleanedBy none
+widenCode borrows none
+widenCode catch none
+widenCode suppresses none
+
+callExit is call
+callExit in endProcess
+callExit invokes system.exitGroup
+callExit argument code Int64 wideCode copy
+callExit result exitResult Int64
+callExit ownedBy none
+callExit cleanedBy none
+callExit borrows none
+callExit catch none
+callExit suppresses none
+
+callExitProcess is call
+callExitProcess in endProcess
+callExitProcess invokes system.exitProcess
+callExitProcess argument code Int32 code copy
+callExitProcess result none
+callExitProcess ownedBy none
+callExitProcess cleanedBy none
+callExitProcess borrows none
+callExitProcess catch none
+callExitProcess suppresses none
 
 # ---------------------------------------------------------------- traps
 fail is operation
@@ -109,7 +222,7 @@ writeReport suppresses none
 
 exit is call
 exit in fail
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 trapCode copy
 exit result none
 exit ownedBy none
@@ -252,6 +365,10 @@ take label useBytes loopKind none
 take label useBytes within none
 take label allocate loopKind none
 take label allocate within none
+take label linuxTake loopKind none
+take label linuxTake within none
+take label windowsTake loopKind none
+take label windowsTake within none
 take label done loopKind none
 take label done within none
 take label noMemory loopKind none
@@ -263,11 +380,15 @@ take at begin do bigCheck
 take at begin branch if big goto useBytes else goto allocate
 take at useBytes set size bytes
 take at useBytes goto allocate
-take at allocate do findHeap
-take at allocate do takeBlock
-take at allocate do nowhere
-take at allocate do failedCheck
-take at allocate branch if failed goto noMemory else goto done
+take at allocate do osCheck
+take at allocate branch if onLinux goto linuxTake else goto windowsTake
+take at linuxTake do takeLinuxBlock
+take at linuxTake return ok linuxBlock
+take at windowsTake do findHeap
+take at windowsTake do takeBlock
+take at windowsTake do nowhere
+take at windowsTake do failedCheck
+take at windowsTake branch if failed goto noMemory else goto done
 take at done return ok block
 take at noMemory do stopHere
 take at noMemory return ok anywhere
@@ -283,6 +404,28 @@ bigCheck cleanedBy none
 bigCheck borrows none
 bigCheck catch none
 bigCheck suppresses none
+
+osCheck is call
+osCheck in take
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+takeLinuxBlock is call
+takeLinuxBlock in take
+takeLinuxBlock invokes takeLinux
+takeLinuxBlock argument bytes Int64 size copy
+takeLinuxBlock result linuxBlock machine.Address
+takeLinuxBlock ownedBy none
+takeLinuxBlock cleanedBy none
+takeLinuxBlock borrows none
+takeLinuxBlock catch none
+takeLinuxBlock suppresses none
 
 findHeap is call
 findHeap in take
@@ -368,6 +511,10 @@ resize label useBytes loopKind none
 resize label useBytes within none
 resize label reallocate loopKind none
 resize label reallocate within none
+resize label linuxResize loopKind none
+resize label linuxResize within none
+resize label windowsResize loopKind none
+resize label windowsResize within none
 resize label done loopKind none
 resize label done within none
 resize label noMemory loopKind none
@@ -384,10 +531,14 @@ resize at sizeCheck do bigCheck
 resize at sizeCheck branch if big goto useBytes else goto reallocate
 resize at useBytes set size bytes
 resize at useBytes goto reallocate
-resize at reallocate do findHeap
-resize at reallocate do growBlock
-resize at reallocate do failedCheck
-resize at reallocate branch if failed goto noMemory else goto done
+resize at reallocate do osCheck
+resize at reallocate branch if onLinux goto linuxResize else goto windowsResize
+resize at linuxResize do resizeLinuxBlock
+resize at linuxResize return ok linuxBlock
+resize at windowsResize do findHeap
+resize at windowsResize do growBlock
+resize at windowsResize do failedCheck
+resize at windowsResize branch if failed goto noMemory else goto done
 resize at done return ok grown
 resize at noMemory do stopHere
 resize at noMemory return ok anywhere
@@ -437,6 +588,29 @@ bigCheck cleanedBy none
 bigCheck borrows none
 bigCheck catch none
 bigCheck suppresses none
+
+osCheck is call
+osCheck in resize
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+resizeLinuxBlock is call
+resizeLinuxBlock in resize
+resizeLinuxBlock invokes resizeLinux
+resizeLinuxBlock argument block machine.Address block copy
+resizeLinuxBlock argument bytes Int64 size copy
+resizeLinuxBlock result linuxBlock machine.Address
+resizeLinuxBlock ownedBy none
+resizeLinuxBlock cleanedBy none
+resizeLinuxBlock borrows none
+resizeLinuxBlock catch none
+resizeLinuxBlock suppresses none
 
 findHeap is call
 findHeap in resize
@@ -505,15 +679,23 @@ give label begin loopKind none
 give label begin within none
 give label free loopKind none
 give label free within none
+give label linuxGive loopKind none
+give label linuxGive within none
+give label windowsGive loopKind none
+give label windowsGive within none
 give label done loopKind none
 give label done within none
 give let flags Int32 0 immutable
 give at begin do nowhere
 give at begin do emptyCheck
 give at begin branch if empty goto done else goto free
-give at free do findHeap
-give at free do freeBlock
-give at free goto done
+give at free do osCheck
+give at free branch if onLinux goto linuxGive else goto windowsGive
+give at linuxGive do giveLinuxBlock
+give at linuxGive goto done
+give at windowsGive do findHeap
+give at windowsGive do freeBlock
+give at windowsGive goto done
 give at done return ok none
 
 nowhere is call
@@ -539,6 +721,28 @@ emptyCheck borrows none
 emptyCheck catch none
 emptyCheck suppresses none
 
+osCheck is call
+osCheck in give
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+giveLinuxBlock is call
+giveLinuxBlock in give
+giveLinuxBlock invokes giveLinux
+giveLinuxBlock argument block machine.Address block copy
+giveLinuxBlock result none
+giveLinuxBlock ownedBy none
+giveLinuxBlock cleanedBy none
+giveLinuxBlock borrows none
+giveLinuxBlock catch none
+giveLinuxBlock suppresses none
+
 findHeap is call
 findHeap in give
 findHeap invokes processHeap
@@ -562,6 +766,1270 @@ freeBlock cleanedBy none
 freeBlock borrows none
 freeBlock catch none
 freeBlock suppresses none
+
+# ---------------------------------------------------------------- the runtime's own heap on Linux (D-140)
+freeListAt is operation
+freeListAt purpose "The address of the free list of a size of small block on Linux, by its number (0 for 16 bytes up to 8 for 4 KiB)"
+freeListAt invariant none
+freeListAt typeParameter none
+freeListAt input index Int64 copied
+freeListAt output machine.Address
+freeListAt outputOwnedBy none
+freeListAt raises none
+freeListAt effect use machine.memory
+freeListAt uses memoryAccess
+freeListAt memoryHeap false
+freeListAt async false
+freeListAt maxRecursion none
+freeListAt label begin loopKind none
+freeListAt label begin within none
+freeListAt let eight Int64 8 immutable
+freeListAt at begin do offsetOf
+freeListAt at begin do fromLists
+freeListAt at begin do findPlace
+freeListAt at begin return ok slot
+
+offsetOf is call
+offsetOf in freeListAt
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 index copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+fromLists is call
+fromLists in freeListAt
+fromLists invokes math.addInt64
+fromLists argument left Int64 freeListsAt copy
+fromLists argument right Int64 offset copy
+fromLists result place Int64
+fromLists ownedBy none
+fromLists cleanedBy none
+fromLists borrows none
+fromLists catch none
+fromLists suppresses none
+
+findPlace is call
+findPlace in freeListAt
+findPlace invokes kernel.stateAt
+findPlace argument offset Int64 place copy
+findPlace result slot machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+cutSmall is operation
+cutSmall purpose "A fresh small block of a size (its header included), cut from the current chunk, or from a new one when too few of its bytes are left; the address 0 when there is no memory"
+cutSmall invariant none
+cutSmall typeParameter none
+cutSmall input size Int64 copied
+cutSmall output machine.Address
+cutSmall outputOwnedBy none
+cutSmall raises none
+cutSmall effect use machine.memory
+cutSmall effect use system.calls
+cutSmall uses memoryAccess
+cutSmall uses systemCalls
+cutSmall memoryHeap false
+cutSmall async false
+cutSmall maxRecursion none
+cutSmall label begin loopKind none
+cutSmall label begin within none
+cutSmall label fresh loopKind none
+cutSmall label fresh within none
+cutSmall label giveNothing loopKind none
+cutSmall label giveNothing within none
+cutSmall label keepChunk loopKind none
+cutSmall label keepChunk within none
+cutSmall label cut loopKind none
+cutSmall label cut within none
+cutSmall let none
+cutSmall at begin do findChunk
+cutSmall at begin do findLeft
+cutSmall at begin do readLeft
+cutSmall at begin do roomCheck
+cutSmall at begin branch if room goto cut else goto fresh
+cutSmall at fresh do mapChunk
+cutSmall at fresh do nowhere
+cutSmall at fresh do failedCheck
+cutSmall at fresh branch if refused goto giveNothing else goto keepChunk
+cutSmall at giveNothing return ok anywhere
+cutSmall at keepChunk do storeChunk
+cutSmall at keepChunk do storeLeft
+cutSmall at keepChunk goto cut
+cutSmall at cut do readChunk
+cutSmall at cut do readLeftNow
+cutSmall at cut do usedOf
+cutSmall at cut do findBlock
+cutSmall at cut do fewerLeft
+cutSmall at cut do storeStillLeft
+cutSmall at cut return ok block
+
+findChunk is call
+findChunk in cutSmall
+findChunk invokes kernel.stateAt
+findChunk argument offset Int64 chunkAt copy
+findChunk result chunkSlot machine.Address
+findChunk ownedBy none
+findChunk cleanedBy none
+findChunk borrows none
+findChunk catch none
+findChunk suppresses none
+
+findLeft is call
+findLeft in cutSmall
+findLeft invokes kernel.stateAt
+findLeft argument offset Int64 chunkLeftAt copy
+findLeft result leftSlot machine.Address
+findLeft ownedBy none
+findLeft cleanedBy none
+findLeft borrows none
+findLeft catch none
+findLeft suppresses none
+
+readLeft is call
+readLeft in cutSmall
+readLeft invokes machine.loadInt64
+readLeft argument address machine.Address leftSlot copy
+readLeft result left Int64
+readLeft ownedBy none
+readLeft cleanedBy none
+readLeft borrows none
+readLeft catch none
+readLeft suppresses none
+
+roomCheck is call
+roomCheck in cutSmall
+roomCheck invokes compare.greaterOrEqualInt64
+roomCheck argument left Int64 left copy
+roomCheck argument right Int64 size copy
+roomCheck result room Bool
+roomCheck ownedBy none
+roomCheck cleanedBy none
+roomCheck borrows none
+roomCheck catch none
+roomCheck suppresses none
+
+mapChunk is call
+mapChunk in cutSmall
+mapChunk invokes kernel.mapMemory
+mapChunk argument bytes Int64 chunkSize copy
+mapChunk result chunk machine.Address
+mapChunk ownedBy none
+mapChunk cleanedBy none
+mapChunk borrows none
+mapChunk catch none
+mapChunk suppresses none
+
+nowhere is call
+nowhere in cutSmall
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+failedCheck is call
+failedCheck in cutSmall
+failedCheck invokes machine.equal
+failedCheck argument left machine.Address chunk copy
+failedCheck argument right machine.Address anywhere copy
+failedCheck result refused Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+storeChunk is call
+storeChunk in cutSmall
+storeChunk invokes machine.storeAddress
+storeChunk argument address machine.Address chunkSlot copy
+storeChunk argument value machine.Address chunk copy
+storeChunk result none
+storeChunk ownedBy none
+storeChunk cleanedBy none
+storeChunk borrows none
+storeChunk catch none
+storeChunk suppresses none
+
+storeLeft is call
+storeLeft in cutSmall
+storeLeft invokes machine.storeInt64
+storeLeft argument address machine.Address leftSlot copy
+storeLeft argument value Int64 chunkSize copy
+storeLeft result none
+storeLeft ownedBy none
+storeLeft cleanedBy none
+storeLeft borrows none
+storeLeft catch none
+storeLeft suppresses none
+
+readChunk is call
+readChunk in cutSmall
+readChunk invokes machine.loadAddress
+readChunk argument address machine.Address chunkSlot copy
+readChunk result current machine.Address
+readChunk ownedBy none
+readChunk cleanedBy none
+readChunk borrows none
+readChunk catch none
+readChunk suppresses none
+
+readLeftNow is call
+readLeftNow in cutSmall
+readLeftNow invokes machine.loadInt64
+readLeftNow argument address machine.Address leftSlot copy
+readLeftNow result leftNow Int64
+readLeftNow ownedBy none
+readLeftNow cleanedBy none
+readLeftNow borrows none
+readLeftNow catch none
+readLeftNow suppresses none
+
+usedOf is call
+usedOf in cutSmall
+usedOf invokes math.subtractInt64
+usedOf argument left Int64 chunkSize copy
+usedOf argument right Int64 leftNow copy
+usedOf result used Int64
+usedOf ownedBy none
+usedOf cleanedBy none
+usedOf borrows none
+usedOf catch none
+usedOf suppresses none
+
+findBlock is call
+findBlock in cutSmall
+findBlock invokes machine.offset
+findBlock argument address machine.Address current copy
+findBlock argument bytes Int64 used copy
+findBlock result block machine.Address
+findBlock ownedBy none
+findBlock cleanedBy none
+findBlock borrows none
+findBlock catch none
+findBlock suppresses none
+
+fewerLeft is call
+fewerLeft in cutSmall
+fewerLeft invokes math.subtractInt64
+fewerLeft argument left Int64 leftNow copy
+fewerLeft argument right Int64 size copy
+fewerLeft result stillLeft Int64
+fewerLeft ownedBy none
+fewerLeft cleanedBy none
+fewerLeft borrows none
+fewerLeft catch none
+fewerLeft suppresses none
+
+storeStillLeft is call
+storeStillLeft in cutSmall
+storeStillLeft invokes machine.storeInt64
+storeStillLeft argument address machine.Address leftSlot copy
+storeStillLeft argument value Int64 stillLeft copy
+storeStillLeft result none
+storeStillLeft ownedBy none
+storeStillLeft cleanedBy none
+storeStillLeft borrows none
+storeStillLeft catch none
+storeStillLeft suppresses none
+
+takeLinux is operation
+takeLinux purpose "A zeroed block of at least one byte on Linux, from the runtime's own heap; no memory left traps"
+takeLinux invariant none
+takeLinux typeParameter none
+takeLinux input bytes Int64 copied
+takeLinux output machine.Address
+takeLinux outputOwnedBy none
+takeLinux raises none
+takeLinux effect use machine.memory
+takeLinux effect use system.calls
+takeLinux uses memoryAccess
+takeLinux uses systemCalls
+takeLinux memoryHeap false
+takeLinux async false
+takeLinux maxRecursion none
+takeLinux label begin loopKind none
+takeLinux label begin within none
+takeLinux label eachSize loopKind while
+takeLinux label eachSize within none
+takeLinux label eachSize maxIterations rounds
+takeLinux label grow loopKind none
+takeLinux label grow within eachSize
+takeLinux label found loopKind none
+takeLinux label found within none
+takeLinux label reuse loopKind none
+takeLinux label reuse within none
+takeLinux label cutOne loopKind none
+takeLinux label cutOne within none
+takeLinux label keepCut loopKind none
+takeLinux label keepCut within none
+takeLinux label describeSmall loopKind none
+takeLinux label describeSmall within none
+takeLinux label large loopKind none
+takeLinux label large within none
+takeLinux label describeLarge loopKind none
+takeLinux label describeLarge within none
+takeLinux label noMemory loopKind none
+takeLinux label noMemory within none
+takeLinux let size Int64 16 mutable
+takeLinux let index Int64 0 mutable
+takeLinux let header Int64 0 mutable
+takeLinux let noMapping Int64 0 immutable
+takeLinux let rounds Int64 9 immutable
+takeLinux let two Int64 2 immutable
+takeLinux let one Int64 1 immutable
+takeLinux let zeroByte Byte 0 immutable
+takeLinux let eight Int64 8 immutable
+takeLinux let sixteen Int64 16 immutable
+takeLinux let pageLess Int64 4095 immutable
+takeLinux let outOfMemory String "out of memory in the runtime" immutable
+takeLinux at begin do needOf
+takeLinux at begin do smallCheck
+takeLinux at begin branch if small goto eachSize else goto large
+takeLinux at eachSize do fitsCheck
+takeLinux at eachSize branch if fits goto found else goto grow
+takeLinux at grow do doubled
+takeLinux at grow set size twice
+takeLinux at grow do nextIndex
+takeLinux at grow set index following
+takeLinux at grow goto eachSize
+takeLinux at found do findList
+takeLinux at found do readFirst
+takeLinux at found do nowhere
+takeLinux at found do emptyCheck
+takeLinux at found branch if empty goto cutOne else goto reuse
+takeLinux at reuse do readNext
+takeLinux at reuse do storeNext
+takeLinux at reuse do machineFirst
+takeLinux at reuse set header firstValue
+takeLinux at reuse goto describeSmall
+takeLinux at cutOne do cutIt
+takeLinux at cutOne do cutFailed
+takeLinux at cutOne branch if noCut goto noMemory else goto keepCut
+takeLinux at keepCut do cutValue
+takeLinux at keepCut set header cutAt
+takeLinux at keepCut goto describeSmall
+takeLinux at describeSmall do headerOf
+takeLinux at describeSmall do capacityOf
+takeLinux at describeSmall do findBlock
+takeLinux at describeSmall do clear
+takeLinux at describeSmall do storeCapacity
+takeLinux at describeSmall do findMapping
+takeLinux at describeSmall do storeMapping
+takeLinux at describeSmall do findUsed
+takeLinux at describeSmall do storeUsed
+takeLinux at describeSmall return ok block
+takeLinux at large do pagesOf
+takeLinux at large do wholePages
+takeLinux at large do roundedOf
+takeLinux at large do mapIt
+takeLinux at large do nothing
+takeLinux at large do mapFailed
+takeLinux at large branch if noMapped goto noMemory else goto describeLarge
+takeLinux at describeLarge do largeCapacity
+takeLinux at describeLarge do storeLargeCapacity
+takeLinux at describeLarge do findLargeMapping
+takeLinux at describeLarge do storeLargeMapping
+takeLinux at describeLarge do findLargeUsed
+takeLinux at describeLarge do storeLargeUsed
+takeLinux at describeLarge do findLargeBlock
+takeLinux at describeLarge return ok largeBlock
+takeLinux at noMemory do stopHere
+takeLinux at noMemory do nowhereAgain
+takeLinux at noMemory return ok noBlockAgain
+
+needOf is call
+needOf in takeLinux
+needOf invokes math.addInt64
+needOf argument left Int64 bytes copy
+needOf argument right Int64 blockHead copy
+needOf result need Int64
+needOf ownedBy none
+needOf cleanedBy none
+needOf borrows none
+needOf catch none
+needOf suppresses none
+
+smallCheck is call
+smallCheck in takeLinux
+smallCheck invokes compare.lessOrEqualInt64
+smallCheck argument left Int64 need copy
+smallCheck argument right Int64 largestSmall copy
+smallCheck result small Bool
+smallCheck ownedBy none
+smallCheck cleanedBy none
+smallCheck borrows none
+smallCheck catch none
+smallCheck suppresses none
+
+fitsCheck is call
+fitsCheck in takeLinux
+fitsCheck invokes compare.greaterOrEqualInt64
+fitsCheck argument left Int64 size copy
+fitsCheck argument right Int64 need copy
+fitsCheck result fits Bool
+fitsCheck ownedBy none
+fitsCheck cleanedBy none
+fitsCheck borrows none
+fitsCheck catch none
+fitsCheck suppresses none
+
+doubled is call
+doubled in takeLinux
+doubled invokes math.multiplyInt64
+doubled argument left Int64 size copy
+doubled argument right Int64 two copy
+doubled result twice Int64
+doubled ownedBy none
+doubled cleanedBy none
+doubled borrows none
+doubled catch none
+doubled suppresses none
+
+nextIndex is call
+nextIndex in takeLinux
+nextIndex invokes math.addInt64
+nextIndex argument left Int64 index copy
+nextIndex argument right Int64 one copy
+nextIndex result following Int64
+nextIndex ownedBy none
+nextIndex cleanedBy none
+nextIndex borrows none
+nextIndex catch none
+nextIndex suppresses none
+
+findList is call
+findList in takeLinux
+findList invokes freeListAt
+findList argument index Int64 index copy
+findList result listSlot machine.Address
+findList ownedBy none
+findList cleanedBy none
+findList borrows none
+findList catch none
+findList suppresses none
+
+readFirst is call
+readFirst in takeLinux
+readFirst invokes machine.loadAddress
+readFirst argument address machine.Address listSlot copy
+readFirst result first machine.Address
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+nowhere is call
+nowhere in takeLinux
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+emptyCheck is call
+emptyCheck in takeLinux
+emptyCheck invokes machine.equal
+emptyCheck argument left machine.Address first copy
+emptyCheck argument right machine.Address anywhere copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+readNext is call
+readNext in takeLinux
+readNext invokes machine.loadAddress
+readNext argument address machine.Address first copy
+readNext result next machine.Address
+readNext ownedBy none
+readNext cleanedBy none
+readNext borrows none
+readNext catch none
+readNext suppresses none
+
+storeNext is call
+storeNext in takeLinux
+storeNext invokes machine.storeAddress
+storeNext argument address machine.Address listSlot copy
+storeNext argument value machine.Address next copy
+storeNext result none
+storeNext ownedBy none
+storeNext cleanedBy none
+storeNext borrows none
+storeNext catch none
+storeNext suppresses none
+
+machineFirst is call
+machineFirst in takeLinux
+machineFirst invokes machine.toInt64
+machineFirst argument address machine.Address first copy
+machineFirst result firstValue Int64
+machineFirst ownedBy none
+machineFirst cleanedBy none
+machineFirst borrows none
+machineFirst catch none
+machineFirst suppresses none
+
+cutIt is call
+cutIt in takeLinux
+cutIt invokes cutSmall
+cutIt argument size Int64 size copy
+cutIt result cut machine.Address
+cutIt ownedBy none
+cutIt cleanedBy none
+cutIt borrows none
+cutIt catch none
+cutIt suppresses none
+
+cutFailed is call
+cutFailed in takeLinux
+cutFailed invokes machine.equal
+cutFailed argument left machine.Address cut copy
+cutFailed argument right machine.Address anywhere copy
+cutFailed result noCut Bool
+cutFailed ownedBy none
+cutFailed cleanedBy none
+cutFailed borrows none
+cutFailed catch none
+cutFailed suppresses none
+
+cutValue is call
+cutValue in takeLinux
+cutValue invokes machine.toInt64
+cutValue argument address machine.Address cut copy
+cutValue result cutAt Int64
+cutValue ownedBy none
+cutValue cleanedBy none
+cutValue borrows none
+cutValue catch none
+cutValue suppresses none
+
+headerOf is call
+headerOf in takeLinux
+headerOf invokes machine.fromInt64
+headerOf argument value Int64 header copy
+headerOf result head machine.Address
+headerOf ownedBy none
+headerOf cleanedBy none
+headerOf borrows none
+headerOf catch none
+headerOf suppresses none
+
+capacityOf is call
+capacityOf in takeLinux
+capacityOf invokes math.subtractInt64
+capacityOf argument left Int64 size copy
+capacityOf argument right Int64 blockHead copy
+capacityOf result capacity Int64
+capacityOf ownedBy none
+capacityOf cleanedBy none
+capacityOf borrows none
+capacityOf catch none
+capacityOf suppresses none
+
+findBlock is call
+findBlock in takeLinux
+findBlock invokes machine.offset
+findBlock argument address machine.Address head copy
+findBlock argument bytes Int64 blockHead copy
+findBlock result block machine.Address
+findBlock ownedBy none
+findBlock cleanedBy none
+findBlock borrows none
+findBlock catch none
+findBlock suppresses none
+
+clear is call
+clear in takeLinux
+clear invokes machine.fill
+clear argument target machine.Address block copy
+clear argument value Byte zeroByte copy
+clear argument bytes Int64 capacity copy
+clear result none
+clear ownedBy none
+clear cleanedBy none
+clear borrows none
+clear catch none
+clear suppresses none
+
+storeCapacity is call
+storeCapacity in takeLinux
+storeCapacity invokes machine.storeInt64
+storeCapacity argument address machine.Address head copy
+storeCapacity argument value Int64 capacity copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+findMapping is call
+findMapping in takeLinux
+findMapping invokes machine.offset
+findMapping argument address machine.Address head copy
+findMapping argument bytes Int64 eight copy
+findMapping result mappingSlot machine.Address
+findMapping ownedBy none
+findMapping cleanedBy none
+findMapping borrows none
+findMapping catch none
+findMapping suppresses none
+
+storeMapping is call
+storeMapping in takeLinux
+storeMapping invokes machine.storeInt64
+storeMapping argument address machine.Address mappingSlot copy
+storeMapping argument value Int64 noMapping copy
+storeMapping result none
+storeMapping ownedBy none
+storeMapping cleanedBy none
+storeMapping borrows none
+storeMapping catch none
+storeMapping suppresses none
+
+findUsed is call
+findUsed in takeLinux
+findUsed invokes machine.offset
+findUsed argument address machine.Address head copy
+findUsed argument bytes Int64 sixteen copy
+findUsed result usedSlot machine.Address
+findUsed ownedBy none
+findUsed cleanedBy none
+findUsed borrows none
+findUsed catch none
+findUsed suppresses none
+
+storeUsed is call
+storeUsed in takeLinux
+storeUsed invokes machine.storeInt64
+storeUsed argument address machine.Address usedSlot copy
+storeUsed argument value Int64 bytes copy
+storeUsed result none
+storeUsed ownedBy none
+storeUsed cleanedBy none
+storeUsed borrows none
+storeUsed catch none
+storeUsed suppresses none
+
+pagesOf is call
+pagesOf in takeLinux
+pagesOf invokes math.addInt64
+pagesOf argument left Int64 need copy
+pagesOf argument right Int64 pageLess copy
+pagesOf result pages Int64
+pagesOf ownedBy none
+pagesOf cleanedBy none
+pagesOf borrows none
+pagesOf catch none
+pagesOf suppresses none
+
+wholePages is call
+wholePages in takeLinux
+wholePages invokes math.divideInt64
+wholePages argument left Int64 pages copy
+wholePages argument right Int64 pageBytes copy
+wholePages result count Int64
+wholePages ownedBy none
+wholePages cleanedBy none
+wholePages borrows none
+wholePages catch none
+wholePages suppresses none
+
+roundedOf is call
+roundedOf in takeLinux
+roundedOf invokes math.multiplyInt64
+roundedOf argument left Int64 count copy
+roundedOf argument right Int64 pageBytes copy
+roundedOf result mapped Int64
+roundedOf ownedBy none
+roundedOf cleanedBy none
+roundedOf borrows none
+roundedOf catch none
+roundedOf suppresses none
+
+mapIt is call
+mapIt in takeLinux
+mapIt invokes kernel.mapMemory
+mapIt argument bytes Int64 mapped copy
+mapIt result mapping machine.Address
+mapIt ownedBy none
+mapIt cleanedBy none
+mapIt borrows none
+mapIt catch none
+mapIt suppresses none
+
+nothing is call
+nothing in takeLinux
+nothing invokes machine.zero
+nothing argument none
+nothing result noBlock machine.Address
+nothing ownedBy none
+nothing cleanedBy none
+nothing borrows none
+nothing catch none
+nothing suppresses none
+
+mapFailed is call
+mapFailed in takeLinux
+mapFailed invokes machine.equal
+mapFailed argument left machine.Address mapping copy
+mapFailed argument right machine.Address noBlock copy
+mapFailed result noMapped Bool
+mapFailed ownedBy none
+mapFailed cleanedBy none
+mapFailed borrows none
+mapFailed catch none
+mapFailed suppresses none
+
+largeCapacity is call
+largeCapacity in takeLinux
+largeCapacity invokes math.subtractInt64
+largeCapacity argument left Int64 mapped copy
+largeCapacity argument right Int64 blockHead copy
+largeCapacity result largeHolds Int64
+largeCapacity ownedBy none
+largeCapacity cleanedBy none
+largeCapacity borrows none
+largeCapacity catch none
+largeCapacity suppresses none
+
+storeLargeCapacity is call
+storeLargeCapacity in takeLinux
+storeLargeCapacity invokes machine.storeInt64
+storeLargeCapacity argument address machine.Address mapping copy
+storeLargeCapacity argument value Int64 largeHolds copy
+storeLargeCapacity result none
+storeLargeCapacity ownedBy none
+storeLargeCapacity cleanedBy none
+storeLargeCapacity borrows none
+storeLargeCapacity catch none
+storeLargeCapacity suppresses none
+
+findLargeMapping is call
+findLargeMapping in takeLinux
+findLargeMapping invokes machine.offset
+findLargeMapping argument address machine.Address mapping copy
+findLargeMapping argument bytes Int64 eight copy
+findLargeMapping result largeMappingSlot machine.Address
+findLargeMapping ownedBy none
+findLargeMapping cleanedBy none
+findLargeMapping borrows none
+findLargeMapping catch none
+findLargeMapping suppresses none
+
+storeLargeMapping is call
+storeLargeMapping in takeLinux
+storeLargeMapping invokes machine.storeInt64
+storeLargeMapping argument address machine.Address largeMappingSlot copy
+storeLargeMapping argument value Int64 mapped copy
+storeLargeMapping result none
+storeLargeMapping ownedBy none
+storeLargeMapping cleanedBy none
+storeLargeMapping borrows none
+storeLargeMapping catch none
+storeLargeMapping suppresses none
+
+findLargeUsed is call
+findLargeUsed in takeLinux
+findLargeUsed invokes machine.offset
+findLargeUsed argument address machine.Address mapping copy
+findLargeUsed argument bytes Int64 sixteen copy
+findLargeUsed result largeUsedSlot machine.Address
+findLargeUsed ownedBy none
+findLargeUsed cleanedBy none
+findLargeUsed borrows none
+findLargeUsed catch none
+findLargeUsed suppresses none
+
+storeLargeUsed is call
+storeLargeUsed in takeLinux
+storeLargeUsed invokes machine.storeInt64
+storeLargeUsed argument address machine.Address largeUsedSlot copy
+storeLargeUsed argument value Int64 bytes copy
+storeLargeUsed result none
+storeLargeUsed ownedBy none
+storeLargeUsed cleanedBy none
+storeLargeUsed borrows none
+storeLargeUsed catch none
+storeLargeUsed suppresses none
+
+findLargeBlock is call
+findLargeBlock in takeLinux
+findLargeBlock invokes machine.offset
+findLargeBlock argument address machine.Address mapping copy
+findLargeBlock argument bytes Int64 blockHead copy
+findLargeBlock result largeBlock machine.Address
+findLargeBlock ownedBy none
+findLargeBlock cleanedBy none
+findLargeBlock borrows none
+findLargeBlock catch none
+findLargeBlock suppresses none
+
+stopHere is call
+stopHere in takeLinux
+stopHere invokes fail
+stopHere argument text String outOfMemory lend
+stopHere result none
+stopHere ownedBy none
+stopHere cleanedBy none
+stopHere borrows none
+stopHere catch none
+stopHere suppresses none
+
+nowhereAgain is call
+nowhereAgain in takeLinux
+nowhereAgain invokes machine.zero
+nowhereAgain argument none
+nowhereAgain result noBlockAgain machine.Address
+nowhereAgain ownedBy none
+nowhereAgain cleanedBy none
+nowhereAgain borrows none
+nowhereAgain catch none
+nowhereAgain suppresses none
+
+giveLinux is operation
+giveLinux purpose "Give a block back to the runtime's own heap on Linux: a small one onto the free list of its size, a large one's mapping to the system"
+giveLinux invariant none
+giveLinux typeParameter none
+giveLinux input block machine.Address copied
+giveLinux output none
+giveLinux outputOwnedBy none
+giveLinux raises none
+giveLinux effect use machine.memory
+giveLinux effect use system.calls
+giveLinux uses memoryAccess
+giveLinux uses systemCalls
+giveLinux memoryHeap false
+giveLinux async false
+giveLinux maxRecursion none
+giveLinux label begin loopKind none
+giveLinux label begin within none
+giveLinux label unmap loopKind none
+giveLinux label unmap within none
+giveLinux label small loopKind none
+giveLinux label small within none
+giveLinux label eachSize loopKind while
+giveLinux label eachSize within none
+giveLinux label eachSize maxIterations rounds
+giveLinux label grow loopKind none
+giveLinux label grow within eachSize
+giveLinux label found loopKind none
+giveLinux label found within none
+giveLinux let size Int64 16 mutable
+giveLinux let index Int64 0 mutable
+giveLinux let rounds Int64 9 immutable
+giveLinux let minusHead Int64 -32 immutable
+giveLinux let eight Int64 8 immutable
+giveLinux let zero Int64 0 immutable
+giveLinux let two Int64 2 immutable
+giveLinux let one Int64 1 immutable
+giveLinux at begin do headerOf
+giveLinux at begin do findMapping
+giveLinux at begin do readMapping
+giveLinux at begin do largeCheck
+giveLinux at begin branch if large goto unmap else goto small
+giveLinux at unmap do unmapIt
+giveLinux at unmap return ok none
+giveLinux at small do readCapacity
+giveLinux at small do sizeOf
+giveLinux at small goto eachSize
+giveLinux at eachSize do sameCheck
+giveLinux at eachSize branch if same goto found else goto grow
+giveLinux at grow do doubled
+giveLinux at grow set size twice
+giveLinux at grow do nextIndex
+giveLinux at grow set index following
+giveLinux at grow goto eachSize
+giveLinux at found do findList
+giveLinux at found do readFirst
+giveLinux at found do link
+giveLinux at found do storeFirst
+giveLinux at found return ok none
+
+headerOf is call
+headerOf in giveLinux
+headerOf invokes machine.offset
+headerOf argument address machine.Address block copy
+headerOf argument bytes Int64 minusHead copy
+headerOf result head machine.Address
+headerOf ownedBy none
+headerOf cleanedBy none
+headerOf borrows none
+headerOf catch none
+headerOf suppresses none
+
+findMapping is call
+findMapping in giveLinux
+findMapping invokes machine.offset
+findMapping argument address machine.Address head copy
+findMapping argument bytes Int64 eight copy
+findMapping result mappingSlot machine.Address
+findMapping ownedBy none
+findMapping cleanedBy none
+findMapping borrows none
+findMapping catch none
+findMapping suppresses none
+
+readMapping is call
+readMapping in giveLinux
+readMapping invokes machine.loadInt64
+readMapping argument address machine.Address mappingSlot copy
+readMapping result mapped Int64
+readMapping ownedBy none
+readMapping cleanedBy none
+readMapping borrows none
+readMapping catch none
+readMapping suppresses none
+
+largeCheck is call
+largeCheck in giveLinux
+largeCheck invokes compare.greaterThanInt64
+largeCheck argument left Int64 mapped copy
+largeCheck argument right Int64 zero copy
+largeCheck result large Bool
+largeCheck ownedBy none
+largeCheck cleanedBy none
+largeCheck borrows none
+largeCheck catch none
+largeCheck suppresses none
+
+unmapIt is call
+unmapIt in giveLinux
+unmapIt invokes kernel.unmapMemory
+unmapIt argument address machine.Address head copy
+unmapIt argument bytes Int64 mapped copy
+unmapIt result none
+unmapIt ownedBy none
+unmapIt cleanedBy none
+unmapIt borrows none
+unmapIt catch none
+unmapIt suppresses none
+
+readCapacity is call
+readCapacity in giveLinux
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address head copy
+readCapacity result capacity Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+sizeOf is call
+sizeOf in giveLinux
+sizeOf invokes math.addInt64
+sizeOf argument left Int64 capacity copy
+sizeOf argument right Int64 blockHead copy
+sizeOf result whole Int64
+sizeOf ownedBy none
+sizeOf cleanedBy none
+sizeOf borrows none
+sizeOf catch none
+sizeOf suppresses none
+
+sameCheck is call
+sameCheck in giveLinux
+sameCheck invokes compare.greaterOrEqualInt64
+sameCheck argument left Int64 size copy
+sameCheck argument right Int64 whole copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+doubled is call
+doubled in giveLinux
+doubled invokes math.multiplyInt64
+doubled argument left Int64 size copy
+doubled argument right Int64 two copy
+doubled result twice Int64
+doubled ownedBy none
+doubled cleanedBy none
+doubled borrows none
+doubled catch none
+doubled suppresses none
+
+nextIndex is call
+nextIndex in giveLinux
+nextIndex invokes math.addInt64
+nextIndex argument left Int64 index copy
+nextIndex argument right Int64 one copy
+nextIndex result following Int64
+nextIndex ownedBy none
+nextIndex cleanedBy none
+nextIndex borrows none
+nextIndex catch none
+nextIndex suppresses none
+
+findList is call
+findList in giveLinux
+findList invokes freeListAt
+findList argument index Int64 index copy
+findList result listSlot machine.Address
+findList ownedBy none
+findList cleanedBy none
+findList borrows none
+findList catch none
+findList suppresses none
+
+readFirst is call
+readFirst in giveLinux
+readFirst invokes machine.loadAddress
+readFirst argument address machine.Address listSlot copy
+readFirst result first machine.Address
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+link is call
+link in giveLinux
+link invokes machine.storeAddress
+link argument address machine.Address head copy
+link argument value machine.Address first copy
+link result none
+link ownedBy none
+link cleanedBy none
+link borrows none
+link catch none
+link suppresses none
+
+storeFirst is call
+storeFirst in giveLinux
+storeFirst invokes machine.storeAddress
+storeFirst argument address machine.Address listSlot copy
+storeFirst argument value machine.Address head copy
+storeFirst result none
+storeFirst ownedBy none
+storeFirst cleanedBy none
+storeFirst borrows none
+storeFirst catch none
+storeFirst suppresses none
+
+resizeLinux is operation
+resizeLinux purpose "A block of the runtime's own heap on Linux grown or shrunk to a number of bytes, its old bytes kept and any new ones zero"
+resizeLinux invariant none
+resizeLinux typeParameter none
+resizeLinux input block machine.Address copied
+resizeLinux input bytes Int64 copied
+resizeLinux output machine.Address
+resizeLinux outputOwnedBy none
+resizeLinux raises none
+resizeLinux effect use machine.memory
+resizeLinux effect use system.calls
+resizeLinux uses memoryAccess
+resizeLinux uses systemCalls
+resizeLinux memoryHeap false
+resizeLinux async false
+resizeLinux maxRecursion none
+resizeLinux label begin loopKind none
+resizeLinux label begin within none
+resizeLinux label inPlace loopKind none
+resizeLinux label inPlace within none
+resizeLinux label clearTail loopKind none
+resizeLinux label clearTail within none
+resizeLinux label keep loopKind none
+resizeLinux label keep within none
+resizeLinux label move loopKind none
+resizeLinux label move within none
+resizeLinux let minusHead Int64 -32 immutable
+resizeLinux let sixteen Int64 16 immutable
+resizeLinux let zeroByte Byte 0 immutable
+resizeLinux at begin do headerOf
+resizeLinux at begin do readCapacity
+resizeLinux at begin do findUsed
+resizeLinux at begin do readUsed
+resizeLinux at begin do fitsCheck
+resizeLinux at begin branch if fits goto inPlace else goto move
+resizeLinux at inPlace do shrinkCheck
+resizeLinux at inPlace branch if shrinks goto clearTail else goto keep
+resizeLinux at clearTail do findTail
+resizeLinux at clearTail do tailOf
+resizeLinux at clearTail do clearIt
+resizeLinux at clearTail goto keep
+resizeLinux at keep do storeUsed
+resizeLinux at keep return ok block
+resizeLinux at move do takeNew
+resizeLinux at move do copyOld
+resizeLinux at move do giveOld
+resizeLinux at move return ok fresh
+
+headerOf is call
+headerOf in resizeLinux
+headerOf invokes machine.offset
+headerOf argument address machine.Address block copy
+headerOf argument bytes Int64 minusHead copy
+headerOf result head machine.Address
+headerOf ownedBy none
+headerOf cleanedBy none
+headerOf borrows none
+headerOf catch none
+headerOf suppresses none
+
+readCapacity is call
+readCapacity in resizeLinux
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address head copy
+readCapacity result capacity Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+findUsed is call
+findUsed in resizeLinux
+findUsed invokes machine.offset
+findUsed argument address machine.Address head copy
+findUsed argument bytes Int64 sixteen copy
+findUsed result usedSlot machine.Address
+findUsed ownedBy none
+findUsed cleanedBy none
+findUsed borrows none
+findUsed catch none
+findUsed suppresses none
+
+readUsed is call
+readUsed in resizeLinux
+readUsed invokes machine.loadInt64
+readUsed argument address machine.Address usedSlot copy
+readUsed result used Int64
+readUsed ownedBy none
+readUsed cleanedBy none
+readUsed borrows none
+readUsed catch none
+readUsed suppresses none
+
+fitsCheck is call
+fitsCheck in resizeLinux
+fitsCheck invokes compare.lessOrEqualInt64
+fitsCheck argument left Int64 bytes copy
+fitsCheck argument right Int64 capacity copy
+fitsCheck result fits Bool
+fitsCheck ownedBy none
+fitsCheck cleanedBy none
+fitsCheck borrows none
+fitsCheck catch none
+fitsCheck suppresses none
+
+shrinkCheck is call
+shrinkCheck in resizeLinux
+shrinkCheck invokes compare.lessThanInt64
+shrinkCheck argument left Int64 bytes copy
+shrinkCheck argument right Int64 used copy
+shrinkCheck result shrinks Bool
+shrinkCheck ownedBy none
+shrinkCheck cleanedBy none
+shrinkCheck borrows none
+shrinkCheck catch none
+shrinkCheck suppresses none
+
+findTail is call
+findTail in resizeLinux
+findTail invokes machine.offset
+findTail argument address machine.Address block copy
+findTail argument bytes Int64 bytes copy
+findTail result tail machine.Address
+findTail ownedBy none
+findTail cleanedBy none
+findTail borrows none
+findTail catch none
+findTail suppresses none
+
+tailOf is call
+tailOf in resizeLinux
+tailOf invokes math.subtractInt64
+tailOf argument left Int64 used copy
+tailOf argument right Int64 bytes copy
+tailOf result tailBytes Int64
+tailOf ownedBy none
+tailOf cleanedBy none
+tailOf borrows none
+tailOf catch none
+tailOf suppresses none
+
+clearIt is call
+clearIt in resizeLinux
+clearIt invokes machine.fill
+clearIt argument target machine.Address tail copy
+clearIt argument value Byte zeroByte copy
+clearIt argument bytes Int64 tailBytes copy
+clearIt result none
+clearIt ownedBy none
+clearIt cleanedBy none
+clearIt borrows none
+clearIt catch none
+clearIt suppresses none
+
+storeUsed is call
+storeUsed in resizeLinux
+storeUsed invokes machine.storeInt64
+storeUsed argument address machine.Address usedSlot copy
+storeUsed argument value Int64 bytes copy
+storeUsed result none
+storeUsed ownedBy none
+storeUsed cleanedBy none
+storeUsed borrows none
+storeUsed catch none
+storeUsed suppresses none
+
+takeNew is call
+takeNew in resizeLinux
+takeNew invokes takeLinux
+takeNew argument bytes Int64 bytes copy
+takeNew result fresh machine.Address
+takeNew ownedBy none
+takeNew cleanedBy none
+takeNew borrows none
+takeNew catch none
+takeNew suppresses none
+
+copyOld is call
+copyOld in resizeLinux
+copyOld invokes machine.copy
+copyOld argument target machine.Address fresh copy
+copyOld argument source machine.Address block copy
+copyOld argument bytes Int64 used copy
+copyOld result none
+copyOld ownedBy none
+copyOld cleanedBy none
+copyOld borrows none
+copyOld catch none
+copyOld suppresses none
+
+giveOld is call
+giveOld in resizeLinux
+giveOld invokes giveLinux
+giveOld argument block machine.Address block copy
+giveOld result none
+giveOld ownedBy none
+giveOld cleanedBy none
+giveOld borrows none
+giveOld catch none
+giveOld suppresses none
 
 joinMessage is operation
 joinMessage purpose "A trap's message put together in a new block from a text, a range of bytes, and another text, one after the other; its length is the three lengths added"

@@ -13,6 +13,7 @@ output imports standard.math
 output imports standard.compare
 output imports standard.convert
 output imports standard.test
+output imports kernel
 output imports numbers
 output exports standardHandle
 output exports writeAll
@@ -38,29 +39,48 @@ digitsAt type Int64
 digitsAt value 16
 
 standardHandle is operation
-standardHandle purpose "The operating system's handle of standard error for stream 2, and of standard output for any other stream"
-standardHandle invariant namesStream "\"Stream 2 is standard error (STD_ERROR_HANDLE, -12); every other stream is standard output (STD_OUTPUT_HANDLE, -11)\""
+standardHandle purpose "The operating system's handle of standard error for stream 2, and of standard output for any other stream; on Linux the descriptor, 2 or 1"
+standardHandle invariant namesStream "\"Stream 2 is standard error (STD_ERROR_HANDLE, -12; descriptor 2 on Linux); every other stream is standard output (STD_OUTPUT_HANDLE, -11; descriptor 1)\""
 standardHandle typeParameter none
 standardHandle input stream Int32 copied
 standardHandle output machine.Address
 standardHandle outputOwnedBy none
 standardHandle raises none
+standardHandle effect use machine.memory
 standardHandle effect use system.calls
+standardHandle uses memoryAccess
 standardHandle uses systemCalls
 standardHandle memoryHeap false
 standardHandle async false
 standardHandle maxRecursion none
 standardHandle label begin loopKind none
 standardHandle label begin within none
+standardHandle label linuxStream loopKind none
+standardHandle label linuxStream within none
+standardHandle label linuxError loopKind none
+standardHandle label linuxError within none
+standardHandle label linuxOutput loopKind none
+standardHandle label linuxOutput within none
+standardHandle label windowsStream loopKind none
+standardHandle label windowsStream within none
 standardHandle label errorStream loopKind none
 standardHandle label errorStream within none
 standardHandle label outputStream loopKind none
 standardHandle label outputStream within none
 standardHandle let two Int32 2 immutable
+standardHandle let twoFd Int64 2 immutable
+standardHandle let oneFd Int64 1 immutable
 standardHandle let stdError Int32 -12 immutable
 standardHandle let stdOutput Int32 -11 immutable
 standardHandle at begin do errorCheck
-standardHandle at begin branch if isError goto errorStream else goto outputStream
+standardHandle at begin do osCheck
+standardHandle at begin branch if onLinux goto linuxStream else goto windowsStream
+standardHandle at linuxStream branch if isError goto linuxError else goto linuxOutput
+standardHandle at linuxError do errorDescriptor
+standardHandle at linuxError return ok errorFd
+standardHandle at linuxOutput do outputDescriptor
+standardHandle at linuxOutput return ok outputFd
+standardHandle at windowsStream branch if isError goto errorStream else goto outputStream
 standardHandle at errorStream do findError
 standardHandle at errorStream return ok errorHandle
 standardHandle at outputStream do findOutput
@@ -77,6 +97,39 @@ errorCheck cleanedBy none
 errorCheck borrows none
 errorCheck catch none
 errorCheck suppresses none
+
+osCheck is call
+osCheck in standardHandle
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+errorDescriptor is call
+errorDescriptor in standardHandle
+errorDescriptor invokes machine.fromInt64
+errorDescriptor argument value Int64 twoFd copy
+errorDescriptor result errorFd machine.Address
+errorDescriptor ownedBy none
+errorDescriptor cleanedBy none
+errorDescriptor borrows none
+errorDescriptor catch none
+errorDescriptor suppresses none
+
+outputDescriptor is call
+outputDescriptor in standardHandle
+outputDescriptor invokes machine.fromInt64
+outputDescriptor argument value Int64 oneFd copy
+outputDescriptor result outputFd machine.Address
+outputDescriptor ownedBy none
+outputDescriptor cleanedBy none
+outputDescriptor borrows none
+outputDescriptor catch none
+outputDescriptor suppresses none
 
 findError is call
 findError in standardHandle
@@ -119,6 +172,10 @@ writeAll async false
 writeAll maxRecursion none
 writeAll label begin loopKind none
 writeAll label begin within none
+writeAll label linuxWrite loopKind none
+writeAll label linuxWrite within none
+writeAll label windowsWrite loopKind none
+writeAll label windowsWrite within none
 writeAll label eachWrite loopKind while
 writeAll label eachWrite within none
 writeAll label eachWrite maxIterations bytes
@@ -149,10 +206,14 @@ writeAll let most Int64 1073741824 immutable
 writeAll let okStatus Int32 0 immutable
 writeAll let unknownStatus Int32 1 immutable
 writeAll let failed Int32 0 immutable
-writeAll at begin do findState
-writeAll at begin do findWritten
-writeAll at begin do noOverlap
-writeAll at begin goto eachWrite
+writeAll at begin do osCheck
+writeAll at begin branch if onLinux goto linuxWrite else goto windowsWrite
+writeAll at linuxWrite do linuxIt
+writeAll at linuxWrite return ok linuxStatus
+writeAll at windowsWrite do findState
+writeAll at windowsWrite do findWritten
+writeAll at windowsWrite do noOverlap
+writeAll at windowsWrite goto eachWrite
 writeAll at eachWrite do leftOf
 writeAll at eachWrite do finishedCheck
 writeAll at eachWrite branch if finished goto succeeded else goto writeSome
@@ -183,6 +244,30 @@ writeAll at failure do zeroCheck
 writeAll at failure branch if noCode goto stalled else goto reportCode
 writeAll at reportCode return ok code
 writeAll at stalled return ok unknownStatus
+
+osCheck is call
+osCheck in writeAll
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+linuxIt is call
+linuxIt in writeAll
+linuxIt invokes writeAllLinux
+linuxIt argument handle machine.Address handle copy
+linuxIt argument text machine.Address text copy
+linuxIt argument bytes Int64 bytes copy
+linuxIt result linuxStatus Int32
+linuxIt ownedBy none
+linuxIt cleanedBy none
+linuxIt borrows none
+linuxIt catch none
+linuxIt suppresses none
 
 findState is call
 findState in writeAll
@@ -410,6 +495,181 @@ zeroCheck cleanedBy none
 zeroCheck borrows none
 zeroCheck catch none
 zeroCheck suppresses none
+
+writeAllLinux is operation
+writeAllLinux purpose "Write a range of bytes to a Linux descriptor, as many write calls as it takes; gives 0, or the errno when a write fails"
+writeAllLinux invariant none
+writeAllLinux typeParameter none
+writeAllLinux input handle machine.Address copied
+writeAllLinux input text machine.Address copied
+writeAllLinux input bytes Int64 copied
+writeAllLinux output Int32
+writeAllLinux outputOwnedBy none
+writeAllLinux raises none
+writeAllLinux effect use machine.memory
+writeAllLinux effect use system.calls
+writeAllLinux uses memoryAccess
+writeAllLinux uses systemCalls
+writeAllLinux memoryHeap false
+writeAllLinux async false
+writeAllLinux maxRecursion none
+writeAllLinux label begin loopKind none
+writeAllLinux label begin within none
+writeAllLinux label eachWrite loopKind while
+writeAllLinux label eachWrite within none
+writeAllLinux label eachWrite maxIterations bytes
+writeAllLinux label writeSome loopKind none
+writeAllLinux label writeSome within eachWrite
+writeAllLinux label progressCheck loopKind none
+writeAllLinux label progressCheck within eachWrite
+writeAllLinux label advance loopKind none
+writeAllLinux label advance within eachWrite
+writeAllLinux label succeeded loopKind none
+writeAllLinux label succeeded within none
+writeAllLinux label failure loopKind none
+writeAllLinux label failure within none
+writeAllLinux label stalled loopKind none
+writeAllLinux label stalled within none
+writeAllLinux let done Int64 0 mutable
+writeAllLinux let okStatus Int32 0 immutable
+writeAllLinux let unknownStatus Int32 1 immutable
+writeAllLinux let zero Int64 0 immutable
+writeAllLinux at begin do descriptorOf
+writeAllLinux at begin goto eachWrite
+writeAllLinux at eachWrite do leftOf
+writeAllLinux at eachWrite do finishedCheck
+writeAllLinux at eachWrite branch if finished goto succeeded else goto writeSome
+writeAllLinux at writeSome do findFrom
+writeAllLinux at writeSome do callWrite
+writeAllLinux at writeSome do failedCheck
+writeAllLinux at writeSome branch if refused goto failure else goto progressCheck
+writeAllLinux at progressCheck do stuckCheck
+writeAllLinux at progressCheck branch if stuck goto stalled else goto advance
+writeAllLinux at advance do addCount
+writeAllLinux at advance set done nextDone
+writeAllLinux at advance goto eachWrite
+writeAllLinux at succeeded return ok okStatus
+writeAllLinux at failure do errnoOf
+writeAllLinux at failure do narrowErrno
+writeAllLinux at failure return ok code
+writeAllLinux at stalled return ok unknownStatus
+
+descriptorOf is call
+descriptorOf in writeAllLinux
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+leftOf is call
+leftOf in writeAllLinux
+leftOf invokes math.subtractInt64
+leftOf argument left Int64 bytes copy
+leftOf argument right Int64 done copy
+leftOf result left Int64
+leftOf ownedBy none
+leftOf cleanedBy none
+leftOf borrows none
+leftOf catch none
+leftOf suppresses none
+
+finishedCheck is call
+finishedCheck in writeAllLinux
+finishedCheck invokes compare.lessOrEqualInt64
+finishedCheck argument left Int64 left copy
+finishedCheck argument right Int64 zero copy
+finishedCheck result finished Bool
+finishedCheck ownedBy none
+finishedCheck cleanedBy none
+finishedCheck borrows none
+finishedCheck catch none
+finishedCheck suppresses none
+
+findFrom is call
+findFrom in writeAllLinux
+findFrom invokes machine.offset
+findFrom argument address machine.Address text copy
+findFrom argument bytes Int64 done copy
+findFrom result from machine.Address
+findFrom ownedBy none
+findFrom cleanedBy none
+findFrom borrows none
+findFrom catch none
+findFrom suppresses none
+
+callWrite is call
+callWrite in writeAllLinux
+callWrite invokes system.write
+callWrite argument fd Int64 fd copy
+callWrite argument buffer machine.Address from copy
+callWrite argument bytes Int64 left copy
+callWrite result wrote Int64
+callWrite ownedBy none
+callWrite cleanedBy none
+callWrite borrows none
+callWrite catch none
+callWrite suppresses none
+
+failedCheck is call
+failedCheck in writeAllLinux
+failedCheck invokes kernel.failed
+failedCheck argument result Int64 wrote copy
+failedCheck result refused Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+stuckCheck is call
+stuckCheck in writeAllLinux
+stuckCheck invokes compare.lessOrEqualInt64
+stuckCheck argument left Int64 wrote copy
+stuckCheck argument right Int64 zero copy
+stuckCheck result stuck Bool
+stuckCheck ownedBy none
+stuckCheck cleanedBy none
+stuckCheck borrows none
+stuckCheck catch none
+stuckCheck suppresses none
+
+addCount is call
+addCount in writeAllLinux
+addCount invokes math.addInt64
+addCount argument left Int64 done copy
+addCount argument right Int64 wrote copy
+addCount result nextDone Int64
+addCount ownedBy none
+addCount cleanedBy none
+addCount borrows none
+addCount catch none
+addCount suppresses none
+
+errnoOf is call
+errnoOf in writeAllLinux
+errnoOf invokes kernel.errnoOf
+errnoOf argument result Int64 wrote copy
+errnoOf result errno Int64
+errnoOf ownedBy none
+errnoOf cleanedBy none
+errnoOf borrows none
+errnoOf catch none
+errnoOf suppresses none
+
+narrowErrno is call
+narrowErrno in writeAllLinux
+narrowErrno invokes convert.int64ToInt32
+narrowErrno argument value Int64 errno copy
+narrowErrno result code Int32
+narrowErrno ownedBy none
+narrowErrno cleanedBy none
+narrowErrno borrows none
+narrowErrno catch none
+narrowErrno suppresses none
 
 writeText is operation
 writeText purpose "Write text to standard output (stream 1) or standard error (stream 2), then a line end when asked; gives 0, or the system's error code"

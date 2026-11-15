@@ -1,6 +1,6 @@
 module frames "The call stack a trap prints, recursion depth and the stack floor, and traps"
   path frames
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test memory numbers output
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test kernel memory numbers output
   exports pushFrame popFrame report holdResource letGoResource
 
 capability memoryAccess "Authority to keep the call stack and the depth counters in memory" use machine.memory none
@@ -45,6 +45,21 @@ constant firstCapacity "How many frames the table holds when it is first made; i
 
 constant shownRuns "How many lines of the call stack a trap prints before saying how many more there are" Int64 12
 
+op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+  input code Int32 copied
+  effect use system.calls
+  uses systemCalls
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxExit windowsExit
+:linuxExit
+  widenCode: wideCode = convert.int32ToInt64(code)
+  callExit: exitResult = system.exitGroup(wideCode)
+  return
+:windowsExit
+  callExitProcess: system.exitProcess(code)
+  return
+
 ## ---------------------------------------------------------------- the call stack
 
 op pushFrame "Put an operation's name on the call stack, as each compiled operation does when it starts"
@@ -79,7 +94,7 @@ op pushFrame "Put an operation's name on the call stack, as each compiled operat
 :allocate
   sizeOf: size = math.multiplyInt64(capacity, frameBytes)
   nowhere: anywhere = machine.zero()
-  takeMemory: table = system.virtualAlloc(anywhere, size, commitAndReserve=12288, readWrite=4)
+  takeMemory: table = kernel.mapMemory(size)
   failedCheck: failed = machine.equal(table, anywhere)
   if failed counted move
 :move
@@ -91,7 +106,7 @@ op pushFrame "Put an operation's name on the call stack, as each compiled operat
   hadCheck: hadTable = compare.greaterThanInt64(held, zero)
   if hadTable release keep
 :release
-  freeOld: freed = system.virtualFree(old, zero, releaseMemory=32768)
+  freeOld: kernel.unmapMemory(old, used)
   goto keep
 :keep
   readTable: current = machine.loadAddress(tableSlot)
@@ -437,7 +452,7 @@ op holdResource "Note an open file (kind 1) or a running child process (kind 2) 
   set capacity grown
   sizeOf: size = math.multiplyInt64(capacity, sixteen=16)
   nowhere: anywhere = machine.zero()
-  takeMemory: table = system.virtualAlloc(anywhere, size, commitAndReserve=12288, readWrite=4)
+  takeMemory: table = kernel.mapMemory(size)
   failedCheck: failed = machine.equal(table, anywhere)
   if failed done move
 :move
@@ -449,7 +464,7 @@ op holdResource "Note an open file (kind 1) or a running child process (kind 2) 
   hadCheck: hadTable = compare.greaterThanInt64(held, zero=0)
   if hadTable releaseOld keep
 :releaseOld
-  freeOld: freed = system.virtualFree(old, zero, releaseMemory=32768)
+  freeOld: kernel.unmapMemory(old, used)
   goto keep
 :keep
   readTableNow: current = machine.loadAddress(tableSlot)
@@ -526,12 +541,26 @@ op releaseHeld "Release every resource still held, as a trap does (D-51): close 
   findHandle: handleSlot = machine.offset(entry, eight=8)
   readHandle: handle = machine.loadAddress(handleSlot)
   childCheck: isChild = compare.equalInt64(kind, two=2)
+  osCheck: onLinux = system.linux()
+  if onLinux linuxRelease windowsRelease
+:linuxRelease in=eachResource
+  descriptorOf: value = machine.toInt64(handle)
+  if isChild killChild closeDescriptor
+:killChild in=eachResource
+  killIt: killed = system.kill(value, killSignal=9)
+  goto nextResource
+:closeDescriptor in=eachResource
+  closeFd: closedFd = system.close(value)
+  goto nextResource
+:windowsRelease in=eachResource
   if isChild stopChild closeIt
 :stopChild in=eachResource
   stop: stopped = system.terminateProcess(handle, exitOne=1)
   goto closeIt
 :closeIt in=eachResource
   close: closed = system.closeHandle(handle)
+  goto nextResource
+:nextResource in=eachResource
   advance: after = math.addInt64(at, one=1)
   set at after
   goto eachResource
@@ -549,7 +578,7 @@ op trap "Report a trap and end the process with exit code 70, as `refined run` d
   abi c "refined_trap"
 :begin
   writeReport: status = report(text, bytes)
-  stop: system.exitProcess(trapCode=70)
+  stop: endProcess(trapCode=70)
   return
 
 
@@ -743,6 +772,23 @@ test reportTest "Writing a report succeeds and leaves the call stack as it was"
   popOuter: popFrame()
   return
 
+op closeTestHandle "Close a handle a test made: CloseHandle, or close on Linux"
+  input handle machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxClose windowsClose
+:linuxClose
+  descriptorOf: fd = machine.toInt64(handle)
+  closeFd: closedFd = system.close(fd)
+  return
+:windowsClose
+  closeIt: closed = system.closeHandle(handle)
+  return
+
 test resourceTest "A held resource stays in the table until it is let go, and a trap's release closes the rest and counts them"
   verifies holdResource notesResource
   verifies letGoResource forgetsResource
@@ -756,7 +802,25 @@ test resourceTest "A held resource stays in the table until it is let go, and a 
   findEnds: ends = machine.offset(state, sixtyOneK=61440)
   findWriteEnd: writeEnd = machine.offset(ends, eight=8)
   nowhere: anywhere = machine.zero()
+  osCheck: onLinux = system.linux()
+  if onLinux linuxPipe windowsPipe
+:linuxPipe
+  findFds: fds = machine.offset(ends, thirtyTwo=32)
+  makeLinuxPipe: madeLinux = system.pipe2(fds, cloexec=524288)
+  readReadFd: readFd = machine.loadInt32(fds)
+  widenReadFd: readValue = convert.int32ToInt64(readFd)
+  readAsAddress: readFdAddress = machine.fromInt64(readValue)
+  storeReadFd: machine.storeAddress(ends, readFdAddress)
+  findWriteFd: writeFdAt = machine.offset(fds, four=4)
+  readWriteFd: writeFd = machine.loadInt32(writeFdAt)
+  widenWriteFd: writeValue = convert.int32ToInt64(writeFd)
+  writeAsAddress: writeFdAddress = machine.fromInt64(writeValue)
+  storeWriteFd: machine.storeAddress(writeEnd, writeFdAddress)
+  goto piped
+:windowsPipe
   makePipe: made = system.createPipe(ends, writeEnd, anywhere, zero32=0)
+  goto piped
+:piped
   readRead: readHandle = machine.loadAddress(ends)
   readWrite: writeHandle = machine.loadAddress(writeEnd)
   findCount: countSlot = machine.offset(state, resourceCountAt)
@@ -767,7 +831,7 @@ test resourceTest "A held resource stays in the table until it is let go, and a 
   wantHeld: wanted = math.addInt64(before, two=2)
   expectHeld: test.assertEqualInt64(wanted, held)
   forget: letGoResource(writeHandle)
-  closeWrite: closed = system.closeHandle(writeHandle)
+  closeWrite: closeTestHandle(writeHandle)
   readLeft: left = machine.loadInt64(countSlot)
   wantLeft: wantedLeft = math.addInt64(before, one)
   expectLeft: test.assertEqualInt64(wantedLeft, left)

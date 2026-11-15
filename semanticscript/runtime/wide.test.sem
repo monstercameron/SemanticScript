@@ -27,13 +27,19 @@ wideTest async false
 wideTest maxRecursion none
 wideTest label begin loopKind none
 wideTest label begin within none
+wideTest label linuxLower loopKind none
+wideTest label linuxLower within none
+wideTest label windowsWide loopKind none
+wideTest label windowsWide within none
+wideTest label builders loopKind none
+wideTest label builders within none
 wideTest let mixed String "C:/Données/ÉTÉ" immutable
 wideTest let lowered String "c:\\données\\été" immutable
 wideTest let shorter String "abc" immutable
 wideTest let longer String "abd" immutable
 wideTest let scratchAt Int64 61440 immutable
-wideTest let fourteen Int64 14 immutable
 wideTest let zero Int64 0 immutable
+wideTest let fourteen Int64 14 immutable
 wideTest let three Int64 3 immutable
 wideTest let byteD Byte 100 immutable
 wideTest let four Int64 4 immutable
@@ -43,43 +49,54 @@ wideTest at begin do findState
 wideTest at begin do findLength
 wideTest at begin do findMixed
 wideTest at begin do mixedLength
-wideTest at begin do wideIt
-wideTest at begin do countIt
-wideTest at begin do expectUnits
-wideTest at begin do backIt
-wideTest at begin do readBack
-wideTest at begin do expectBackLength
-wideTest at begin do compareBack
-wideTest at begin do sameWide
-wideTest at begin do expectBack
-wideTest at begin do lowerIt
-wideTest at begin do readLower
-wideTest at begin do findLowered
-wideTest at begin do loweredLength
-wideTest at begin do expectLowerLength
-wideTest at begin do compareLower
-wideTest at begin do sameLowerWide
-wideTest at begin do expectLower
-wideTest at begin do makeBuilder
-wideTest at begin do readEmpty
-wideTest at begin do expectEmpty
-wideTest at begin do findShorter
-wideTest at begin do addShorter
-wideTest at begin do addByte
-wideTest at begin do readBuilt
-wideTest at begin do expectBuilt
-wideTest at begin do readBuiltText
-wideTest at begin do findLonger
-wideTest at begin do orderBuilt
-wideTest at begin do expectBuiltOrder
-wideTest at begin do orderLess
-wideTest at begin do expectLess
-wideTest at begin do orderPrefix
-wideTest at begin do expectPrefix
-wideTest at begin do giveWide
-wideTest at begin do giveBack
-wideTest at begin do giveLower
-wideTest at begin return ok none
+wideTest at begin do osCheck
+wideTest at begin branch if onLinux goto linuxLower else goto windowsWide
+wideTest at linuxLower do copyIt
+wideTest at linuxLower do readCopied
+wideTest at linuxLower do expectCopiedLength
+wideTest at linuxLower do compareCopied
+wideTest at linuxLower do sameCopiedWide
+wideTest at linuxLower do expectCopied
+wideTest at linuxLower do giveCopied
+wideTest at linuxLower goto builders
+wideTest at windowsWide do wideIt
+wideTest at windowsWide do countIt
+wideTest at windowsWide do expectUnits
+wideTest at windowsWide do backIt
+wideTest at windowsWide do readBack
+wideTest at windowsWide do expectBackLength
+wideTest at windowsWide do compareBack
+wideTest at windowsWide do sameWide
+wideTest at windowsWide do expectBack
+wideTest at windowsWide do lowerIt
+wideTest at windowsWide do readLower
+wideTest at windowsWide do findLowered
+wideTest at windowsWide do loweredLength
+wideTest at windowsWide do expectLowerLength
+wideTest at windowsWide do compareLower
+wideTest at windowsWide do sameLowerWide
+wideTest at windowsWide do expectLower
+wideTest at windowsWide do giveWide
+wideTest at windowsWide do giveBack
+wideTest at windowsWide do giveLower
+wideTest at windowsWide goto builders
+wideTest at builders do makeBuilder
+wideTest at builders do readEmpty
+wideTest at builders do expectEmpty
+wideTest at builders do findShorter
+wideTest at builders do addShorter
+wideTest at builders do addByte
+wideTest at builders do readBuilt
+wideTest at builders do expectBuilt
+wideTest at builders do readBuiltText
+wideTest at builders do findLonger
+wideTest at builders do orderBuilt
+wideTest at builders do expectBuiltOrder
+wideTest at builders do orderLess
+wideTest at builders do expectLess
+wideTest at builders do orderPrefix
+wideTest at builders do expectPrefix
+wideTest at builders return ok none
 
 findState is call
 findState in wideTest
@@ -125,6 +142,100 @@ mixedLength cleanedBy none
 mixedLength borrows none
 mixedLength catch none
 mixedLength suppresses none
+
+osCheck is call
+osCheck in wideTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+copyIt is call
+copyIt in wideTest
+copyIt invokes lowercase
+copyIt argument text machine.Address mixedAt copy
+copyIt argument bytes Int64 mixedBytes copy
+copyIt argument lengthAt machine.Address lengthAt copy
+copyIt result copied machine.Address
+copyIt ownedBy none
+copyIt cleanedBy none
+copyIt borrows none
+copyIt catch none
+copyIt suppresses none
+
+readCopied is call
+readCopied in wideTest
+readCopied invokes machine.loadInt64
+readCopied argument address machine.Address lengthAt copy
+readCopied result copiedBytes Int64
+readCopied ownedBy none
+readCopied cleanedBy none
+readCopied borrows none
+readCopied catch none
+readCopied suppresses none
+
+expectCopiedLength is call
+expectCopiedLength in wideTest
+expectCopiedLength invokes test.assertEqualInt64
+expectCopiedLength argument expected Int64 mixedBytes copy
+expectCopiedLength argument actual Int64 copiedBytes copy
+expectCopiedLength result none
+expectCopiedLength ownedBy none
+expectCopiedLength cleanedBy none
+expectCopiedLength borrows none
+expectCopiedLength catch none
+expectCopiedLength suppresses none
+
+compareCopied is call
+compareCopied in wideTest
+compareCopied invokes machine.compare
+compareCopied argument left machine.Address copied copy
+compareCopied argument right machine.Address mixedAt copy
+compareCopied argument bytes Int64 mixedBytes copy
+compareCopied result sameCopied Int32
+compareCopied ownedBy none
+compareCopied cleanedBy none
+compareCopied borrows none
+compareCopied catch none
+compareCopied suppresses none
+
+sameCopiedWide is call
+sameCopiedWide in wideTest
+sameCopiedWide invokes convert.int32ToInt64
+sameCopiedWide argument value Int32 sameCopied copy
+sameCopiedWide result sameCopiedValue Int64
+sameCopiedWide ownedBy none
+sameCopiedWide cleanedBy none
+sameCopiedWide borrows none
+sameCopiedWide catch none
+sameCopiedWide suppresses none
+
+expectCopied is call
+expectCopied in wideTest
+expectCopied invokes test.assertEqualInt64
+expectCopied argument expected Int64 zero copy
+expectCopied argument actual Int64 sameCopiedValue copy
+expectCopied result none
+expectCopied ownedBy none
+expectCopied cleanedBy none
+expectCopied borrows none
+expectCopied catch none
+expectCopied suppresses none
+
+giveCopied is call
+giveCopied in wideTest
+giveCopied invokes heap.give
+giveCopied argument block machine.Address copied copy
+giveCopied result none
+giveCopied ownedBy none
+giveCopied cleanedBy none
+giveCopied borrows none
+giveCopied catch none
+giveCopied suppresses none
 
 wideIt is call
 wideIt in wideTest
@@ -327,6 +438,39 @@ expectLower borrows none
 expectLower catch none
 expectLower suppresses none
 
+giveWide is call
+giveWide in wideTest
+giveWide invokes heap.give
+giveWide argument block machine.Address wideText copy
+giveWide result none
+giveWide ownedBy none
+giveWide cleanedBy none
+giveWide borrows none
+giveWide catch none
+giveWide suppresses none
+
+giveBack is call
+giveBack in wideTest
+giveBack invokes heap.give
+giveBack argument block machine.Address back copy
+giveBack result none
+giveBack ownedBy none
+giveBack cleanedBy none
+giveBack borrows none
+giveBack catch none
+giveBack suppresses none
+
+giveLower is call
+giveLower in wideTest
+giveLower invokes heap.give
+giveLower argument block machine.Address lower copy
+giveLower result none
+giveLower ownedBy none
+giveLower cleanedBy none
+giveLower borrows none
+giveLower catch none
+giveLower suppresses none
+
 makeBuilder is call
 makeBuilder in wideTest
 makeBuilder invokes builderNew
@@ -519,36 +663,3 @@ expectPrefix cleanedBy none
 expectPrefix borrows none
 expectPrefix catch none
 expectPrefix suppresses none
-
-giveWide is call
-giveWide in wideTest
-giveWide invokes heap.give
-giveWide argument block machine.Address wideText copy
-giveWide result none
-giveWide ownedBy none
-giveWide cleanedBy none
-giveWide borrows none
-giveWide catch none
-giveWide suppresses none
-
-giveBack is call
-giveBack in wideTest
-giveBack invokes heap.give
-giveBack argument block machine.Address back copy
-giveBack result none
-giveBack ownedBy none
-giveBack cleanedBy none
-giveBack borrows none
-giveBack catch none
-giveBack suppresses none
-
-giveLower is call
-giveLower in wideTest
-giveLower invokes heap.give
-giveLower argument block machine.Address lower copy
-giveLower result none
-giveLower ownedBy none
-giveLower cleanedBy none
-giveLower borrows none
-giveLower catch none
-giveLower suppresses none

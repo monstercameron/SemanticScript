@@ -18,19 +18,32 @@ standardHandleTest async false
 standardHandleTest maxRecursion none
 standardHandleTest label begin loopKind none
 standardHandleTest label begin within none
+standardHandleTest label linuxHandles loopKind none
+standardHandleTest label linuxHandles within none
+standardHandleTest label windowsHandles loopKind none
+standardHandleTest label windowsHandles within none
 standardHandleTest let two Int32 2 immutable
-standardHandleTest let stdError Int32 -12 immutable
 standardHandleTest let one Int32 1 immutable
+standardHandleTest let twoFd Int64 2 immutable
+standardHandleTest let oneFd Int64 1 immutable
+standardHandleTest let stdError Int32 -12 immutable
 standardHandleTest let stdOutput Int32 -11 immutable
 standardHandleTest at begin do findError
-standardHandleTest at begin do findSystemError
-standardHandleTest at begin do sameError
-standardHandleTest at begin do expectError
 standardHandleTest at begin do findOutput
-standardHandleTest at begin do findSystemOutput
-standardHandleTest at begin do sameOutput
-standardHandleTest at begin do expectOutput
-standardHandleTest at begin return ok none
+standardHandleTest at begin do osCheck
+standardHandleTest at begin branch if onLinux goto linuxHandles else goto windowsHandles
+standardHandleTest at linuxHandles do errorDescriptor
+standardHandleTest at linuxHandles do expectErrorFd
+standardHandleTest at linuxHandles do outputDescriptor
+standardHandleTest at linuxHandles do expectOutputFd
+standardHandleTest at linuxHandles return ok none
+standardHandleTest at windowsHandles do findSystemError
+standardHandleTest at windowsHandles do sameError
+standardHandleTest at windowsHandles do expectError
+standardHandleTest at windowsHandles do findSystemOutput
+standardHandleTest at windowsHandles do sameOutput
+standardHandleTest at windowsHandles do expectOutput
+standardHandleTest at windowsHandles return ok none
 
 findError is call
 findError in standardHandleTest
@@ -42,6 +55,74 @@ findError cleanedBy none
 findError borrows none
 findError catch none
 findError suppresses none
+
+findOutput is call
+findOutput in standardHandleTest
+findOutput invokes standardHandle
+findOutput argument stream Int32 one copy
+findOutput result outputHandle machine.Address
+findOutput ownedBy none
+findOutput cleanedBy none
+findOutput borrows none
+findOutput catch none
+findOutput suppresses none
+
+osCheck is call
+osCheck in standardHandleTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+errorDescriptor is call
+errorDescriptor in standardHandleTest
+errorDescriptor invokes machine.toInt64
+errorDescriptor argument address machine.Address errorHandle copy
+errorDescriptor result errorFd Int64
+errorDescriptor ownedBy none
+errorDescriptor cleanedBy none
+errorDescriptor borrows none
+errorDescriptor catch none
+errorDescriptor suppresses none
+
+expectErrorFd is call
+expectErrorFd in standardHandleTest
+expectErrorFd invokes test.assertEqualInt64
+expectErrorFd argument expected Int64 twoFd copy
+expectErrorFd argument actual Int64 errorFd copy
+expectErrorFd result none
+expectErrorFd ownedBy none
+expectErrorFd cleanedBy none
+expectErrorFd borrows none
+expectErrorFd catch none
+expectErrorFd suppresses none
+
+outputDescriptor is call
+outputDescriptor in standardHandleTest
+outputDescriptor invokes machine.toInt64
+outputDescriptor argument address machine.Address outputHandle copy
+outputDescriptor result outputFd Int64
+outputDescriptor ownedBy none
+outputDescriptor cleanedBy none
+outputDescriptor borrows none
+outputDescriptor catch none
+outputDescriptor suppresses none
+
+expectOutputFd is call
+expectOutputFd in standardHandleTest
+expectOutputFd invokes test.assertEqualInt64
+expectOutputFd argument expected Int64 oneFd copy
+expectOutputFd argument actual Int64 outputFd copy
+expectOutputFd result none
+expectOutputFd ownedBy none
+expectOutputFd cleanedBy none
+expectOutputFd borrows none
+expectOutputFd catch none
+expectOutputFd suppresses none
 
 findSystemError is call
 findSystemError in standardHandleTest
@@ -76,17 +157,6 @@ expectError cleanedBy none
 expectError borrows none
 expectError catch none
 expectError suppresses none
-
-findOutput is call
-findOutput in standardHandleTest
-findOutput invokes standardHandle
-findOutput argument stream Int32 one copy
-findOutput result outputHandle machine.Address
-findOutput ownedBy none
-findOutput cleanedBy none
-findOutput borrows none
-findOutput catch none
-findOutput suppresses none
 
 findSystemOutput is call
 findSystemOutput in standardHandleTest
@@ -139,7 +209,13 @@ writeAllTest async false
 writeAllTest maxRecursion none
 writeAllTest label begin loopKind none
 writeAllTest label begin within none
+writeAllTest label noDescriptor loopKind none
+writeAllTest label noDescriptor within none
+writeAllTest label writeNowhereStep loopKind none
+writeAllTest label writeNowhereStep within none
 writeAllTest let text String "never written" immutable
+writeAllTest let nowhereValue Int64 0 mutable
+writeAllTest let minusOne Int64 -1 immutable
 writeAllTest let two Int32 2 immutable
 writeAllTest let zero Int64 0 immutable
 writeAllTest let thirteen Int64 13 immutable
@@ -149,11 +225,15 @@ writeAllTest at begin do findText
 writeAllTest at begin do writeNothing
 writeAllTest at begin do nothingWide
 writeAllTest at begin do expectNothing
-writeAllTest at begin do findNowhere
-writeAllTest at begin do writeNowhere
-writeAllTest at begin do refusedCheck
-writeAllTest at begin do expectRefused
-writeAllTest at begin return ok none
+writeAllTest at begin do osCheck
+writeAllTest at begin branch if onLinux goto noDescriptor else goto writeNowhereStep
+writeAllTest at noDescriptor set nowhereValue minusOne
+writeAllTest at noDescriptor goto writeNowhereStep
+writeAllTest at writeNowhereStep do findNowhere
+writeAllTest at writeNowhereStep do writeNowhere
+writeAllTest at writeNowhereStep do refusedCheck
+writeAllTest at writeNowhereStep do expectRefused
+writeAllTest at writeNowhereStep return ok none
 
 findError is call
 findError in writeAllTest
@@ -213,10 +293,21 @@ expectNothing borrows none
 expectNothing catch none
 expectNothing suppresses none
 
+osCheck is call
+osCheck in writeAllTest
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
 findNowhere is call
 findNowhere in writeAllTest
-findNowhere invokes machine.zero
-findNowhere argument none
+findNowhere invokes machine.fromInt64
+findNowhere argument value Int64 nowhereValue copy
 findNowhere result nowhere machine.Address
 findNowhere ownedBy none
 findNowhere cleanedBy none

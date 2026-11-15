@@ -15,6 +15,7 @@ tasks imports standard.compare
 tasks imports standard.convert
 tasks imports standard.logic
 tasks imports standard.test
+tasks imports kernel
 tasks imports numbers
 tasks imports frames
 tasks imports heap
@@ -137,6 +138,11 @@ taskBytes is constant
 taskBytes purpose "The bytes of a task"
 taskBytes type Int64
 taskBytes value 176
+
+fiberBytes is constant
+fiberBytes purpose "The bytes of a fiber on Linux: 0 its stack pointer while another runs, 8 its stack's base (0 for the main program's), 16 its stack's bytes, 24 whether it has started"
+fiberBytes type Int64
+fiberBytes value 32
 
 groupBytes is constant
 groupBytes purpose "The bytes of a group"
@@ -362,6 +368,78 @@ channelCancelled is constant
 channelCancelled purpose "channel.ChannelError.cancelled, numbered from 1"
 channelCancelled type Int32
 channelCancelled value 3
+
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do osCheck
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do widenCode
+endProcess at linuxExit do callExit
+endProcess at linuxExit return ok none
+endProcess at windowsExit do callExitProcess
+endProcess at windowsExit return ok none
+
+osCheck is call
+osCheck in endProcess
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+widenCode is call
+widenCode in endProcess
+widenCode invokes convert.int32ToInt64
+widenCode argument value Int32 code copy
+widenCode result wideCode Int64
+widenCode ownedBy none
+widenCode cleanedBy none
+widenCode borrows none
+widenCode catch none
+widenCode suppresses none
+
+callExit is call
+callExit in endProcess
+callExit invokes system.exitGroup
+callExit argument code Int64 wideCode copy
+callExit result exitResult Int64
+callExit ownedBy none
+callExit cleanedBy none
+callExit borrows none
+callExit catch none
+callExit suppresses none
+
+callExitProcess is call
+callExitProcess in endProcess
+callExitProcess invokes system.exitProcess
+callExitProcess argument code Int32 code copy
+callExitProcess result none
+callExitProcess ownedBy none
+callExitProcess cleanedBy none
+callExitProcess borrows none
+callExitProcess catch none
+callExitProcess suppresses none
 
 # ---------------------------------------------------------------- fields and traps
 field is operation
@@ -870,7 +948,7 @@ writeReport suppresses none
 
 exit is call
 exit in failText
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 trapCode copy
 exit result none
 exit ownedBy none
@@ -1020,7 +1098,7 @@ writeReport suppresses none
 
 exit is call
 exit in failNumber
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 trapCode copy
 exit result none
 exit ownedBy none
@@ -1038,16 +1116,48 @@ now input none
 now output Int64
 now outputOwnedBy none
 now raises none
+now effect use machine.memory
 now effect use system.calls
+now uses memoryAccess
 now uses systemCalls
 now memoryHeap false
 now async false
 now maxRecursion none
 now label begin loopKind none
 now label begin within none
+now label linuxClock loopKind none
+now label linuxClock within none
+now label windowsClock loopKind none
+now label windowsClock within none
 now let none
-now at begin do readClock
-now at begin return ok ticks
+now at begin do osCheck
+now at begin branch if onLinux goto linuxClock else goto windowsClock
+now at linuxClock do readMonotonic
+now at linuxClock return ok milliseconds
+now at windowsClock do readClock
+now at windowsClock return ok ticks
+
+osCheck is call
+osCheck in now
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+readMonotonic is call
+readMonotonic in now
+readMonotonic invokes kernel.monotonic
+readMonotonic argument none
+readMonotonic result milliseconds Int64
+readMonotonic ownedBy none
+readMonotonic cleanedBy none
+readMonotonic borrows none
+readMonotonic catch none
+readMonotonic suppresses none
 
 readClock is call
 readClock in now
@@ -2138,9 +2248,21 @@ switchTo label begin loopKind none
 switchTo label begin within none
 switchTo label switch loopKind none
 switchTo label switch within none
+switchTo label linuxSwitch loopKind none
+switchTo label linuxSwitch within none
+switchTo label startFiber loopKind none
+switchTo label startFiber within none
+switchTo label resume loopKind none
+switchTo label resume within none
+switchTo label windowsSwitch loopKind none
+switchTo label windowsSwitch within none
 switchTo label done loopKind none
 switchTo label done within none
-switchTo let none
+switchTo let twentyFour Int64 24 immutable
+switchTo let zero Int64 0 immutable
+switchTo let one Int64 1 immutable
+switchTo let eight Int64 8 immutable
+switchTo let sixteen Int64 16 immutable
 switchTo at begin do readCurrent
 switchTo at begin do sameCheck
 switchTo at begin branch if same goto done else goto switch
@@ -2148,8 +2270,24 @@ switchTo at switch do keep
 switchTo at switch do restore
 switchTo at switch do storeCurrent
 switchTo at switch do readFiber
-switchTo at switch do jump
-switchTo at switch goto done
+switchTo at switch do osCheck
+switchTo at switch branch if onLinux goto linuxSwitch else goto windowsSwitch
+switchTo at linuxSwitch do readMine
+switchTo at linuxSwitch do readStarted
+switchTo at linuxSwitch do startedCheck
+switchTo at linuxSwitch branch if isStarted goto resume else goto startFiber
+switchTo at startFiber do markStarted
+switchTo at startFiber do readBase
+switchTo at startFiber do readStackBytes
+switchTo at startFiber do findTop
+switchTo at startFiber do findEntry
+switchTo at startFiber do startIt
+switchTo at startFiber goto done
+switchTo at resume do readResumeAt
+switchTo at resume do resumeIt
+switchTo at resume goto done
+switchTo at windowsSwitch do jump
+switchTo at windowsSwitch goto done
 switchTo at done return ok none
 
 readCurrent is call
@@ -2221,6 +2359,150 @@ readFiber borrows none
 readFiber catch none
 readFiber suppresses none
 
+osCheck is call
+osCheck in switchTo
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+readMine is call
+readMine in switchTo
+readMine invokes link
+readMine argument block machine.Address me copy
+readMine argument offset Int64 ofFiber copy
+readMine result mine machine.Address
+readMine ownedBy none
+readMine cleanedBy none
+readMine borrows none
+readMine catch none
+readMine suppresses none
+
+readStarted is call
+readStarted in switchTo
+readStarted invokes field
+readStarted argument block machine.Address fiber copy
+readStarted argument offset Int64 twentyFour copy
+readStarted result started Int64
+readStarted ownedBy none
+readStarted cleanedBy none
+readStarted borrows none
+readStarted catch none
+readStarted suppresses none
+
+startedCheck is call
+startedCheck in switchTo
+startedCheck invokes compare.notEqualInt64
+startedCheck argument left Int64 started copy
+startedCheck argument right Int64 zero copy
+startedCheck result isStarted Bool
+startedCheck ownedBy none
+startedCheck cleanedBy none
+startedCheck borrows none
+startedCheck catch none
+startedCheck suppresses none
+
+markStarted is call
+markStarted in switchTo
+markStarted invokes setField
+markStarted argument block machine.Address fiber copy
+markStarted argument offset Int64 twentyFour copy
+markStarted argument value Int64 one copy
+markStarted result none
+markStarted ownedBy none
+markStarted cleanedBy none
+markStarted borrows none
+markStarted catch none
+markStarted suppresses none
+
+readBase is call
+readBase in switchTo
+readBase invokes link
+readBase argument block machine.Address fiber copy
+readBase argument offset Int64 eight copy
+readBase result base machine.Address
+readBase ownedBy none
+readBase cleanedBy none
+readBase borrows none
+readBase catch none
+readBase suppresses none
+
+readStackBytes is call
+readStackBytes in switchTo
+readStackBytes invokes field
+readStackBytes argument block machine.Address fiber copy
+readStackBytes argument offset Int64 sixteen copy
+readStackBytes result stackBytes Int64
+readStackBytes ownedBy none
+readStackBytes cleanedBy none
+readStackBytes borrows none
+readStackBytes catch none
+readStackBytes suppresses none
+
+findTop is call
+findTop in switchTo
+findTop invokes machine.offset
+findTop argument address machine.Address base copy
+findTop argument bytes Int64 stackBytes copy
+findTop result top machine.Address
+findTop ownedBy none
+findTop cleanedBy none
+findTop borrows none
+findTop catch none
+findTop suppresses none
+
+findEntry is call
+findEntry in switchTo
+findEntry invokes machine.taskEntry
+findEntry argument none
+findEntry result entryAt machine.Address
+findEntry ownedBy none
+findEntry cleanedBy none
+findEntry borrows none
+findEntry catch none
+findEntry suppresses none
+
+startIt is call
+startIt in switchTo
+startIt invokes machine.startStack
+startIt argument saveAt machine.Address mine copy
+startIt argument top machine.Address top copy
+startIt argument function machine.Address entryAt copy
+startIt argument argument machine.Address next copy
+startIt result none
+startIt ownedBy none
+startIt cleanedBy none
+startIt borrows none
+startIt catch none
+startIt suppresses none
+
+readResumeAt is call
+readResumeAt in switchTo
+readResumeAt invokes machine.loadAddress
+readResumeAt argument address machine.Address fiber copy
+readResumeAt result resumeAt machine.Address
+readResumeAt ownedBy none
+readResumeAt cleanedBy none
+readResumeAt borrows none
+readResumeAt catch none
+readResumeAt suppresses none
+
+resumeIt is call
+resumeIt in switchTo
+resumeIt invokes machine.switchStack
+resumeIt argument saveAt machine.Address mine copy
+resumeIt argument resume machine.Address resumeAt copy
+resumeIt result none
+resumeIt ownedBy none
+resumeIt cleanedBy none
+resumeIt borrows none
+resumeIt catch none
+resumeIt suppresses none
+
 jump is call
 jump in switchTo
 jump invokes system.switchToFiber
@@ -2262,6 +2544,10 @@ canGoOn label handleCheck loopKind none
 canGoOn label handleCheck within none
 canGoOn label pollHandle loopKind none
 canGoOn label pollHandle within none
+canGoOn label pollLinux loopKind none
+canGoOn label pollLinux within none
+canGoOn label pollWindows loopKind none
+canGoOn label pollWindows within none
 canGoOn label can loopKind none
 canGoOn label can within none
 canGoOn label cannot loopKind none
@@ -2269,6 +2555,10 @@ canGoOn label cannot within none
 canGoOn let yes Bool true immutable
 canGoOn let no Bool false immutable
 canGoOn let zero Int64 0 immutable
+canGoOn let one Int64 1 immutable
+canGoOn let four Int64 4 immutable
+canGoOn let pollIn Int32 1 immutable
+canGoOn let onePoll Int64 1 immutable
 canGoOn let noWait Int32 0 immutable
 canGoOn at begin do readState
 canGoOn at begin do endedCheck
@@ -2292,9 +2582,21 @@ canGoOn at handleCheck do readHandle
 canGoOn at handleCheck do nowhere
 canGoOn at handleCheck do noHandleCheck
 canGoOn at handleCheck branch if noHandle goto cannot else goto pollHandle
-canGoOn at pollHandle do poll
-canGoOn at pollHandle do signalledCheck
-canGoOn at pollHandle branch if isSignalled goto can else goto cannot
+canGoOn at pollHandle do osCheck
+canGoOn at pollHandle branch if onLinux goto pollLinux else goto pollWindows
+canGoOn at pollLinux do handleValue
+canGoOn at pollLinux do descriptorOf
+canGoOn at pollLinux do narrowFd
+canGoOn at pollLinux do findPoll
+canGoOn at pollLinux do storeFd
+canGoOn at pollLinux do findEvents
+canGoOn at pollLinux do storeEvents
+canGoOn at pollLinux do pollIt
+canGoOn at pollLinux do pollReadyCheck
+canGoOn at pollLinux branch if isPollReady goto can else goto cannot
+canGoOn at pollWindows do poll
+canGoOn at pollWindows do signalledCheck
+canGoOn at pollWindows branch if isSignalled goto can else goto cannot
 canGoOn at can return ok yes
 canGoOn at cannot return ok no
 
@@ -2487,6 +2789,123 @@ noHandleCheck cleanedBy none
 noHandleCheck borrows none
 noHandleCheck catch none
 noHandleCheck suppresses none
+
+osCheck is call
+osCheck in canGoOn
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+handleValue is call
+handleValue in canGoOn
+handleValue invokes machine.toInt64
+handleValue argument address machine.Address handle copy
+handleValue result plusOne Int64
+handleValue ownedBy none
+handleValue cleanedBy none
+handleValue borrows none
+handleValue catch none
+handleValue suppresses none
+
+descriptorOf is call
+descriptorOf in canGoOn
+descriptorOf invokes math.subtractInt64
+descriptorOf argument left Int64 plusOne copy
+descriptorOf argument right Int64 one copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+narrowFd is call
+narrowFd in canGoOn
+narrowFd invokes convert.int64ToInt32
+narrowFd argument value Int64 fd copy
+narrowFd result fd32 Int32
+narrowFd ownedBy none
+narrowFd cleanedBy none
+narrowFd borrows none
+narrowFd catch none
+narrowFd suppresses none
+
+findPoll is call
+findPoll in canGoOn
+findPoll invokes kernel.stateAt
+findPoll argument offset Int64 fileTimeAt copy
+findPoll result pollAt machine.Address
+findPoll ownedBy none
+findPoll cleanedBy none
+findPoll borrows none
+findPoll catch none
+findPoll suppresses none
+
+storeFd is call
+storeFd in canGoOn
+storeFd invokes machine.storeInt32
+storeFd argument address machine.Address pollAt copy
+storeFd argument value Int32 fd32 copy
+storeFd result none
+storeFd ownedBy none
+storeFd cleanedBy none
+storeFd borrows none
+storeFd catch none
+storeFd suppresses none
+
+findEvents is call
+findEvents in canGoOn
+findEvents invokes machine.offset
+findEvents argument address machine.Address pollAt copy
+findEvents argument bytes Int64 four copy
+findEvents result eventsAt machine.Address
+findEvents ownedBy none
+findEvents cleanedBy none
+findEvents borrows none
+findEvents catch none
+findEvents suppresses none
+
+storeEvents is call
+storeEvents in canGoOn
+storeEvents invokes machine.storeInt32
+storeEvents argument address machine.Address eventsAt copy
+storeEvents argument value Int32 pollIn copy
+storeEvents result none
+storeEvents ownedBy none
+storeEvents cleanedBy none
+storeEvents borrows none
+storeEvents catch none
+storeEvents suppresses none
+
+pollIt is call
+pollIt in canGoOn
+pollIt invokes system.poll
+pollIt argument fds machine.Address pollAt copy
+pollIt argument count Int64 onePoll copy
+pollIt argument milliseconds Int64 zero copy
+pollIt result ready Int64
+pollIt ownedBy none
+pollIt cleanedBy none
+pollIt borrows none
+pollIt catch none
+pollIt suppresses none
+
+pollReadyCheck is call
+pollReadyCheck in canGoOn
+pollReadyCheck invokes compare.greaterThanInt64
+pollReadyCheck argument left Int64 ready copy
+pollReadyCheck argument right Int64 zero copy
+pollReadyCheck result isPollReady Bool
+pollReadyCheck ownedBy none
+pollReadyCheck cleanedBy none
+pollReadyCheck borrows none
+pollReadyCheck catch none
+pollReadyCheck suppresses none
 
 poll is call
 poll in canGoOn
@@ -3613,7 +4032,7 @@ writeReport suppresses none
 
 exit is call
 exit in deadlock
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 trapCode copy
 exit result none
 exit ownedBy none
@@ -3662,6 +4081,8 @@ idle label locked loopKind none
 idle label locked within none
 idle label timing loopKind none
 idle label timing within none
+idle label foreverCheck loopKind none
+idle label foreverCheck within none
 idle label countDown loopKind none
 idle label countDown within none
 idle label clampLow loopKind none
@@ -3672,6 +4093,21 @@ idle label clampHigh loopKind none
 idle label clampHigh within none
 idle label sleepOrWait loopKind none
 idle label sleepOrWait within none
+idle label linuxWait loopKind none
+idle label linuxWait within none
+idle label eachHandle loopKind while
+idle label eachHandle within none
+idle label eachHandle maxIterations handleTotal
+idle label makePollEntry loopKind none
+idle label makePollEntry within eachHandle
+idle label linuxPoll loopKind none
+idle label linuxPoll within none
+idle label linuxForever loopKind none
+idle label linuxForever within none
+idle label linuxTimed loopKind none
+idle label linuxTimed within none
+idle label windowsWait loopKind none
+idle label windowsWait within none
 idle label justSleep loopKind none
 idle label justSleep within none
 idle label waitTimed loopKind none
@@ -3687,6 +4123,9 @@ idle let zero Int64 0 immutable
 idle let eight Int64 8 immutable
 idle let one Int64 1 immutable
 idle let most Int64 2147483646 immutable
+idle let four Int64 4 immutable
+idle let pollIn Int32 1 immutable
+idle let minusOne Int64 -1 immutable
 idle let any Int32 0 immutable
 idle at begin do readCount
 idle at begin do readHead
@@ -3728,7 +4167,9 @@ idle at decide do stuckCheck
 idle at decide branch if stuck goto locked else goto timing
 idle at locked do trapIt
 idle at locked return ok none
-idle at timing branch if noDeadline goto waitForHandles else goto countDown
+idle at timing branch if noDeadline goto foreverCheck else goto countDown
+idle at foreverCheck do osCheckForever
+idle at foreverCheck branch if onLinuxForever goto sleepOrWait else goto waitForHandles
 idle at countDown do readNow
 idle at countDown do leftOf
 idle at countDown set timeout left
@@ -3740,8 +4181,31 @@ idle at capCheck do tooLongCheck
 idle at capCheck branch if tooLong goto clampHigh else goto sleepOrWait
 idle at clampHigh set timeout most
 idle at clampHigh goto sleepOrWait
-idle at sleepOrWait do narrowTimeout
-idle at sleepOrWait branch if noHandles goto justSleep else goto waitTimed
+idle at sleepOrWait do osCheck
+idle at sleepOrWait branch if onLinux goto linuxWait else goto windowsWait
+idle at linuxWait set at zero
+idle at linuxWait do countHandles
+idle at linuxWait goto eachHandle
+idle at eachHandle do handlesDone
+idle at eachHandle branch if allMade goto linuxPoll else goto makePollEntry
+idle at makePollEntry do entryOffset
+idle at makePollEntry do findEntry
+idle at makePollEntry do readPlusOne
+idle at makePollEntry do descriptorOf
+idle at makePollEntry do narrowFd
+idle at makePollEntry do storeFd
+idle at makePollEntry do findEvents
+idle at makePollEntry do storeEvents
+idle at makePollEntry do nextHandle
+idle at makePollEntry set at afterHandle
+idle at makePollEntry goto eachHandle
+idle at linuxPoll branch if noDeadline goto linuxForever else goto linuxTimed
+idle at linuxForever do pollForever
+idle at linuxForever return ok none
+idle at linuxTimed do pollTimed
+idle at linuxTimed return ok none
+idle at windowsWait do narrowTimeout
+idle at windowsWait branch if noHandles goto justSleep else goto waitTimed
 idle at justSleep do pause
 idle at justSleep return ok none
 idle at waitTimed do narrowCount
@@ -4047,6 +4511,17 @@ trapIt borrows none
 trapIt catch none
 trapIt suppresses none
 
+osCheckForever is call
+osCheckForever in idle
+osCheckForever invokes system.linux
+osCheckForever argument none
+osCheckForever result onLinuxForever Bool
+osCheckForever ownedBy none
+osCheckForever cleanedBy none
+osCheckForever borrows none
+osCheckForever catch none
+osCheckForever suppresses none
+
 readNow is call
 readNow in idle
 readNow invokes now
@@ -4093,6 +4568,173 @@ tooLongCheck cleanedBy none
 tooLongCheck borrows none
 tooLongCheck catch none
 tooLongCheck suppresses none
+
+osCheck is call
+osCheck in idle
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+countHandles is call
+countHandles in idle
+countHandles invokes math.addInt64
+countHandles argument left Int64 handles copy
+countHandles argument right Int64 zero copy
+countHandles result handleTotal Int64
+countHandles ownedBy none
+countHandles cleanedBy none
+countHandles borrows none
+countHandles catch none
+countHandles suppresses none
+
+handlesDone is call
+handlesDone in idle
+handlesDone invokes compare.greaterOrEqualInt64
+handlesDone argument left Int64 at copy
+handlesDone argument right Int64 handles copy
+handlesDone result allMade Bool
+handlesDone ownedBy none
+handlesDone cleanedBy none
+handlesDone borrows none
+handlesDone catch none
+handlesDone suppresses none
+
+entryOffset is call
+entryOffset in idle
+entryOffset invokes math.multiplyInt64
+entryOffset argument left Int64 at copy
+entryOffset argument right Int64 eight copy
+entryOffset result entryAt Int64
+entryOffset ownedBy none
+entryOffset cleanedBy none
+entryOffset borrows none
+entryOffset catch none
+entryOffset suppresses none
+
+findEntry is call
+findEntry in idle
+findEntry invokes machine.offset
+findEntry argument address machine.Address handleList copy
+findEntry argument bytes Int64 entryAt copy
+findEntry result entry machine.Address
+findEntry ownedBy none
+findEntry cleanedBy none
+findEntry borrows none
+findEntry catch none
+findEntry suppresses none
+
+readPlusOne is call
+readPlusOne in idle
+readPlusOne invokes machine.loadInt64
+readPlusOne argument address machine.Address entry copy
+readPlusOne result plusOne Int64
+readPlusOne ownedBy none
+readPlusOne cleanedBy none
+readPlusOne borrows none
+readPlusOne catch none
+readPlusOne suppresses none
+
+descriptorOf is call
+descriptorOf in idle
+descriptorOf invokes math.subtractInt64
+descriptorOf argument left Int64 plusOne copy
+descriptorOf argument right Int64 one copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+narrowFd is call
+narrowFd in idle
+narrowFd invokes convert.int64ToInt32
+narrowFd argument value Int64 fd copy
+narrowFd result fd32 Int32
+narrowFd ownedBy none
+narrowFd cleanedBy none
+narrowFd borrows none
+narrowFd catch none
+narrowFd suppresses none
+
+storeFd is call
+storeFd in idle
+storeFd invokes machine.storeInt32
+storeFd argument address machine.Address entry copy
+storeFd argument value Int32 fd32 copy
+storeFd result none
+storeFd ownedBy none
+storeFd cleanedBy none
+storeFd borrows none
+storeFd catch none
+storeFd suppresses none
+
+findEvents is call
+findEvents in idle
+findEvents invokes machine.offset
+findEvents argument address machine.Address entry copy
+findEvents argument bytes Int64 four copy
+findEvents result eventsAt machine.Address
+findEvents ownedBy none
+findEvents cleanedBy none
+findEvents borrows none
+findEvents catch none
+findEvents suppresses none
+
+storeEvents is call
+storeEvents in idle
+storeEvents invokes machine.storeInt32
+storeEvents argument address machine.Address eventsAt copy
+storeEvents argument value Int32 pollIn copy
+storeEvents result none
+storeEvents ownedBy none
+storeEvents cleanedBy none
+storeEvents borrows none
+storeEvents catch none
+storeEvents suppresses none
+
+nextHandle is call
+nextHandle in idle
+nextHandle invokes math.addInt64
+nextHandle argument left Int64 at copy
+nextHandle argument right Int64 one copy
+nextHandle result afterHandle Int64
+nextHandle ownedBy none
+nextHandle cleanedBy none
+nextHandle borrows none
+nextHandle catch none
+nextHandle suppresses none
+
+pollForever is call
+pollForever in idle
+pollForever invokes system.poll
+pollForever argument fds machine.Address handleList copy
+pollForever argument count Int64 handles copy
+pollForever argument milliseconds Int64 minusOne copy
+pollForever result wokenForever Int64
+pollForever ownedBy none
+pollForever cleanedBy none
+pollForever borrows none
+pollForever catch none
+pollForever suppresses none
+
+pollTimed is call
+pollTimed in idle
+pollTimed invokes system.poll
+pollTimed argument fds machine.Address handleList copy
+pollTimed argument count Int64 handles copy
+pollTimed argument milliseconds Int64 timeout copy
+pollTimed result wokenTimed Int64
+pollTimed ownedBy none
+pollTimed cleanedBy none
+pollTimed borrows none
+pollTimed catch none
+pollTimed suppresses none
 
 narrowTimeout is call
 narrowTimeout in idle
@@ -4838,6 +5480,10 @@ spawn label begin loopKind none
 spawn label begin within none
 spawn label convert loopKind none
 spawn label convert within none
+spawn label convertLinux loopKind none
+spawn label convertLinux within none
+spawn label convertWindows loopKind none
+spawn label convertWindows within none
 spawn label make loopKind none
 spawn label make within none
 spawn label joinGroup loopKind none
@@ -4854,18 +5500,29 @@ spawn label markCancelled loopKind none
 spawn label markCancelled within none
 spawn label prepare loopKind none
 spawn label prepare within none
+spawn label linuxFiber loopKind none
+spawn label linuxFiber within none
+spawn label keepStack loopKind none
+spawn label keepStack within none
+spawn label windowsFiber loopKind none
+spawn label windowsFiber within none
 spawn label refuseStack loopKind none
 spawn label refuseStack within none
 spawn label start loopKind none
 spawn label start within none
+spawn label started loopKind none
+spawn label started within none
 spawn label giveNone loopKind none
 spawn label giveNone within none
 spawn label giveHandle loopKind none
 spawn label giveHandle within none
 spawn let zero Int64 0 immutable
+spawn let twentyFour Int64 24 immutable
 spawn let one Int64 1 immutable
 spawn let fullLead String "a task was started into a full task group (limit " immutable
 spawn let fullTail String "); `awaitSlot` waits for room" immutable
+spawn let eight Int64 8 immutable
+spawn let sixteen Int64 16 immutable
 spawn let floatSwitch Int32 1 immutable
 spawn let stackText String "the runtime could not make a stack for a task" immutable
 spawn at begin do readMe
@@ -4873,10 +5530,17 @@ spawn at begin do readFibers
 spawn at begin do fibersCheck
 spawn at begin branch if noFibers goto convert else goto make
 spawn at convert do nowhere
-spawn at convert do becomeFiber
-spawn at convert do storeMainFiber
-spawn at convert do storeFibers
-spawn at convert goto make
+spawn at convert do osCheck
+spawn at convert branch if onLinux goto convertLinux else goto convertWindows
+spawn at convertLinux do takeMainFiber
+spawn at convertLinux do markMainStarted
+spawn at convertLinux do storeLinuxMainFiber
+spawn at convertLinux do storeLinuxFibers
+spawn at convertLinux goto make
+spawn at convertWindows do becomeFiber
+spawn at convertWindows do storeMainFiber
+spawn at convertWindows do storeFibers
+spawn at convertWindows goto make
 spawn at make do takeTask
 spawn at make do storeThunk
 spawn at make do storeFrame
@@ -4910,18 +5574,29 @@ spawn at markCancelled goto prepare
 spawn at prepare do takeDepths
 spawn at prepare do storeDepths
 spawn at prepare do storeInTask
-spawn at prepare do findEntry
-spawn at prepare do makeFiber
 spawn at prepare do nothing
-spawn at prepare do failedCheck
-spawn at prepare branch if failed goto refuseStack else goto start
+spawn at prepare do osFiberCheck
+spawn at prepare branch if onLinuxFiber goto linuxFiber else goto windowsFiber
+spawn at linuxFiber do mapTaskStack
+spawn at linuxFiber do stackFailed
+spawn at linuxFiber branch if noStack goto refuseStack else goto keepStack
+spawn at keepStack do takeFiber
+spawn at keepStack do storeBase
+spawn at keepStack do storeStackBytes
+spawn at keepStack do storeLinuxFiber
+spawn at keepStack goto started
+spawn at windowsFiber do findEntry
+spawn at windowsFiber do makeFiber
+spawn at windowsFiber do failedCheck
+spawn at windowsFiber branch if failed goto refuseStack else goto start
 spawn at refuseStack do failStack
 spawn at refuseStack return ok zero
 spawn at start do storeFiber
-spawn at start do listIt
-spawn at start do changed
-spawn at start do runIt
-spawn at start branch if inGroup goto giveNone else goto giveHandle
+spawn at start goto started
+spawn at started do listIt
+spawn at started do changed
+spawn at started do runIt
+spawn at started branch if inGroup goto giveNone else goto giveHandle
 spawn at giveNone return ok zero
 spawn at giveHandle do handleOf
 spawn at giveHandle return ok handle
@@ -4970,6 +5645,66 @@ nowhere cleanedBy none
 nowhere borrows none
 nowhere catch none
 nowhere suppresses none
+
+osCheck is call
+osCheck in spawn
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+takeMainFiber is call
+takeMainFiber in spawn
+takeMainFiber invokes heap.take
+takeMainFiber argument bytes Int64 fiberBytes copy
+takeMainFiber result linuxMainFiber machine.Address
+takeMainFiber ownedBy none
+takeMainFiber cleanedBy none
+takeMainFiber borrows none
+takeMainFiber catch none
+takeMainFiber suppresses none
+
+markMainStarted is call
+markMainStarted in spawn
+markMainStarted invokes setField
+markMainStarted argument block machine.Address linuxMainFiber copy
+markMainStarted argument offset Int64 twentyFour copy
+markMainStarted argument value Int64 one copy
+markMainStarted result none
+markMainStarted ownedBy none
+markMainStarted cleanedBy none
+markMainStarted borrows none
+markMainStarted catch none
+markMainStarted suppresses none
+
+storeLinuxMainFiber is call
+storeLinuxMainFiber in spawn
+storeLinuxMainFiber invokes setLink
+storeLinuxMainFiber argument block machine.Address me copy
+storeLinuxMainFiber argument offset Int64 ofFiber copy
+storeLinuxMainFiber argument value machine.Address linuxMainFiber copy
+storeLinuxMainFiber result none
+storeLinuxMainFiber ownedBy none
+storeLinuxMainFiber cleanedBy none
+storeLinuxMainFiber borrows none
+storeLinuxMainFiber catch none
+storeLinuxMainFiber suppresses none
+
+storeLinuxFibers is call
+storeLinuxFibers in spawn
+storeLinuxFibers invokes setStateWord
+storeLinuxFibers argument offset Int64 fibersAt copy
+storeLinuxFibers argument value Int64 one copy
+storeLinuxFibers result none
+storeLinuxFibers ownedBy none
+storeLinuxFibers cleanedBy none
+storeLinuxFibers borrows none
+storeLinuxFibers catch none
+storeLinuxFibers suppresses none
 
 becomeFiber is call
 becomeFiber in spawn
@@ -5327,6 +6062,101 @@ storeInTask borrows none
 storeInTask catch none
 storeInTask suppresses none
 
+nothing is call
+nothing in spawn
+nothing invokes machine.zero
+nothing argument none
+nothing result noFiber machine.Address
+nothing ownedBy none
+nothing cleanedBy none
+nothing borrows none
+nothing catch none
+nothing suppresses none
+
+osFiberCheck is call
+osFiberCheck in spawn
+osFiberCheck invokes system.linux
+osFiberCheck argument none
+osFiberCheck result onLinuxFiber Bool
+osFiberCheck ownedBy none
+osFiberCheck cleanedBy none
+osFiberCheck borrows none
+osFiberCheck catch none
+osFiberCheck suppresses none
+
+mapTaskStack is call
+mapTaskStack in spawn
+mapTaskStack invokes kernel.mapStack
+mapTaskStack argument bytes Int64 stackReserve copy
+mapTaskStack result stack machine.Address
+mapTaskStack ownedBy none
+mapTaskStack cleanedBy none
+mapTaskStack borrows none
+mapTaskStack catch none
+mapTaskStack suppresses none
+
+stackFailed is call
+stackFailed in spawn
+stackFailed invokes machine.equal
+stackFailed argument left machine.Address stack copy
+stackFailed argument right machine.Address noFiber copy
+stackFailed result noStack Bool
+stackFailed ownedBy none
+stackFailed cleanedBy none
+stackFailed borrows none
+stackFailed catch none
+stackFailed suppresses none
+
+takeFiber is call
+takeFiber in spawn
+takeFiber invokes heap.take
+takeFiber argument bytes Int64 fiberBytes copy
+takeFiber result linuxFiberBlock machine.Address
+takeFiber ownedBy none
+takeFiber cleanedBy none
+takeFiber borrows none
+takeFiber catch none
+takeFiber suppresses none
+
+storeBase is call
+storeBase in spawn
+storeBase invokes setLink
+storeBase argument block machine.Address linuxFiberBlock copy
+storeBase argument offset Int64 eight copy
+storeBase argument value machine.Address stack copy
+storeBase result none
+storeBase ownedBy none
+storeBase cleanedBy none
+storeBase borrows none
+storeBase catch none
+storeBase suppresses none
+
+storeStackBytes is call
+storeStackBytes in spawn
+storeStackBytes invokes setField
+storeStackBytes argument block machine.Address linuxFiberBlock copy
+storeStackBytes argument offset Int64 sixteen copy
+storeStackBytes argument value Int64 stackReserve copy
+storeStackBytes result none
+storeStackBytes ownedBy none
+storeStackBytes cleanedBy none
+storeStackBytes borrows none
+storeStackBytes catch none
+storeStackBytes suppresses none
+
+storeLinuxFiber is call
+storeLinuxFiber in spawn
+storeLinuxFiber invokes setLink
+storeLinuxFiber argument block machine.Address task copy
+storeLinuxFiber argument offset Int64 ofFiber copy
+storeLinuxFiber argument value machine.Address linuxFiberBlock copy
+storeLinuxFiber result none
+storeLinuxFiber ownedBy none
+storeLinuxFiber cleanedBy none
+storeLinuxFiber borrows none
+storeLinuxFiber catch none
+storeLinuxFiber suppresses none
+
 findEntry is call
 findEntry in spawn
 findEntry invokes machine.taskEntry
@@ -5352,17 +6182,6 @@ makeFiber cleanedBy none
 makeFiber borrows none
 makeFiber catch none
 makeFiber suppresses none
-
-nothing is call
-nothing in spawn
-nothing invokes machine.zero
-nothing argument none
-nothing result noFiber machine.Address
-nothing ownedBy none
-nothing cleanedBy none
-nothing borrows none
-nothing catch none
-nothing suppresses none
 
 failedCheck is call
 failedCheck in spawn
@@ -5470,16 +6289,18 @@ finishTask label countOut within none
 finishTask label done loopKind none
 finishTask label done within none
 finishTask let sixtyFour Int64 64 immutable
-finishTask let zero Int64 0 immutable
-finishTask let releaseMemory Int32 32768 immutable
-finishTask let seventyTwo Int64 72 immutable
 finishTask let eighty Int64 80 immutable
+finishTask let sixteen Int64 16 immutable
+finishTask let seventyTwo Int64 72 immutable
+finishTask let zero Int64 0 immutable
 finishTask let threeNinetyTwo Int64 392 immutable
 finishTask let one Int64 1 immutable
 finishTask at begin do readTable
 finishTask at begin do nowhere
 finishTask at begin do noTableCheck
 finishTask at begin branch if noTable goto depths else goto freeTable
+finishTask at freeTable do readRoom
+finishTask at freeTable do tableBytes
 finishTask at freeTable do freeIt
 finishTask at freeTable do clearTable
 finishTask at freeTable do clearCount
@@ -5533,13 +6354,35 @@ noTableCheck borrows none
 noTableCheck catch none
 noTableCheck suppresses none
 
+readRoom is call
+readRoom in finishTask
+readRoom invokes stateWord
+readRoom argument offset Int64 eighty copy
+readRoom result room Int64
+readRoom ownedBy none
+readRoom cleanedBy none
+readRoom borrows none
+readRoom catch none
+readRoom suppresses none
+
+tableBytes is call
+tableBytes in finishTask
+tableBytes invokes math.multiplyInt64
+tableBytes argument left Int64 room copy
+tableBytes argument right Int64 sixteen copy
+tableBytes result size Int64
+tableBytes ownedBy none
+tableBytes cleanedBy none
+tableBytes borrows none
+tableBytes catch none
+tableBytes suppresses none
+
 freeIt is call
 freeIt in finishTask
-freeIt invokes system.virtualFree
+freeIt invokes kernel.unmapMemory
 freeIt argument address machine.Address table copy
-freeIt argument bytes Int64 zero copy
-freeIt argument freeType Int32 releaseMemory copy
-freeIt result freed Int32
+freeIt argument bytes Int64 size copy
+freeIt result none
 freeIt ownedBy none
 freeIt cleanedBy none
 freeIt borrows none
@@ -5935,14 +6778,29 @@ dropTask async false
 dropTask maxRecursion none
 dropTask label begin loopKind none
 dropTask label begin within none
-dropTask let none
+dropTask label dropLinux loopKind none
+dropTask label dropLinux within none
+dropTask label dropWindows loopKind none
+dropTask label dropWindows within none
+dropTask label unlistIt loopKind none
+dropTask label unlistIt within none
+dropTask let eight Int64 8 immutable
+dropTask let sixteen Int64 16 immutable
 dropTask at begin do readFiber
-dropTask at begin do deleteIt
-dropTask at begin do unlistIt
-dropTask at begin do readFrame
-dropTask at begin do giveFrame
-dropTask at begin do giveTask
-dropTask at begin return ok none
+dropTask at begin do osCheck
+dropTask at begin branch if onLinux goto dropLinux else goto dropWindows
+dropTask at dropLinux do readBase
+dropTask at dropLinux do readStackBytes
+dropTask at dropLinux do unmapStack
+dropTask at dropLinux do giveFiber
+dropTask at dropLinux goto unlistIt
+dropTask at dropWindows do deleteIt
+dropTask at dropWindows goto unlistIt
+dropTask at unlistIt do unlistTask
+dropTask at unlistIt do readFrame
+dropTask at unlistIt do giveFrame
+dropTask at unlistIt do giveTask
+dropTask at unlistIt return ok none
 
 readFiber is call
 readFiber in dropTask
@@ -5956,6 +6814,64 @@ readFiber borrows none
 readFiber catch none
 readFiber suppresses none
 
+osCheck is call
+osCheck in dropTask
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+readBase is call
+readBase in dropTask
+readBase invokes link
+readBase argument block machine.Address fiber copy
+readBase argument offset Int64 eight copy
+readBase result base machine.Address
+readBase ownedBy none
+readBase cleanedBy none
+readBase borrows none
+readBase catch none
+readBase suppresses none
+
+readStackBytes is call
+readStackBytes in dropTask
+readStackBytes invokes field
+readStackBytes argument block machine.Address fiber copy
+readStackBytes argument offset Int64 sixteen copy
+readStackBytes result stackBytes Int64
+readStackBytes ownedBy none
+readStackBytes cleanedBy none
+readStackBytes borrows none
+readStackBytes catch none
+readStackBytes suppresses none
+
+unmapStack is call
+unmapStack in dropTask
+unmapStack invokes kernel.unmapMemory
+unmapStack argument address machine.Address base copy
+unmapStack argument bytes Int64 stackBytes copy
+unmapStack result none
+unmapStack ownedBy none
+unmapStack cleanedBy none
+unmapStack borrows none
+unmapStack catch none
+unmapStack suppresses none
+
+giveFiber is call
+giveFiber in dropTask
+giveFiber invokes heap.give
+giveFiber argument block machine.Address fiber copy
+giveFiber result none
+giveFiber ownedBy none
+giveFiber cleanedBy none
+giveFiber borrows none
+giveFiber catch none
+giveFiber suppresses none
+
 deleteIt is call
 deleteIt in dropTask
 deleteIt invokes system.deleteFiber
@@ -5967,16 +6883,16 @@ deleteIt borrows none
 deleteIt catch none
 deleteIt suppresses none
 
-unlistIt is call
-unlistIt in dropTask
-unlistIt invokes unlink
-unlistIt argument task machine.Address task copy
-unlistIt result none
-unlistIt ownedBy none
-unlistIt cleanedBy none
-unlistIt borrows none
-unlistIt catch none
-unlistIt suppresses none
+unlistTask is call
+unlistTask in dropTask
+unlistTask invokes unlink
+unlistTask argument task machine.Address task copy
+unlistTask result none
+unlistTask ownedBy none
+unlistTask cleanedBy none
+unlistTask borrows none
+unlistTask catch none
+unlistTask suppresses none
 
 readFrame is call
 readFrame in dropTask
@@ -7690,16 +8606,59 @@ clockNow async false
 clockNow maxRecursion none
 clockNow label begin loopKind none
 clockNow label begin within none
+clockNow label linuxWall loopKind none
+clockNow label linuxWall within none
+clockNow label windowsWall loopKind none
+clockNow label windowsWall within none
 clockNow let tenThousand Int64 10000 immutable
 clockNow let epochOffset Int64 11644473600000 immutable
-clockNow at begin do findState
-clockNow at begin do findTime
-clockNow at begin do readTime
-clockNow at begin do loadTime
-clockNow at begin do toMilliseconds
-clockNow at begin do toEpoch
-clockNow at begin do storeTime
-clockNow at begin return ok none
+clockNow at begin do osCheck
+clockNow at begin branch if onLinux goto linuxWall else goto windowsWall
+clockNow at linuxWall do readWall
+clockNow at linuxWall do storeWall
+clockNow at linuxWall return ok none
+clockNow at windowsWall do findState
+clockNow at windowsWall do findTime
+clockNow at windowsWall do readTime
+clockNow at windowsWall do loadTime
+clockNow at windowsWall do toMilliseconds
+clockNow at windowsWall do toEpoch
+clockNow at windowsWall do storeTime
+clockNow at windowsWall return ok none
+
+osCheck is call
+osCheck in clockNow
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+readWall is call
+readWall in clockNow
+readWall invokes kernel.wallClock
+readWall argument none
+readWall result wall Int64
+readWall ownedBy none
+readWall cleanedBy none
+readWall borrows none
+readWall catch none
+readWall suppresses none
+
+storeWall is call
+storeWall in clockNow
+storeWall invokes machine.storeInt64
+storeWall argument address machine.Address results copy
+storeWall argument value Int64 wall copy
+storeWall result none
+storeWall ownedBy none
+storeWall cleanedBy none
+storeWall borrows none
+storeWall catch none
+storeWall suppresses none
 
 findState is call
 findState in clockNow

@@ -9,7 +9,10 @@ start purpose "The process's entry point: set the stack floor, run the program, 
 start path start
 start imports standard.machine
 start imports standard.system
+start imports standard.convert
 start imports standard.math
+start imports kernel
+start imports heap
 start exports none
 
 memoryAccess is capability
@@ -21,8 +24,11 @@ systemCalls purpose "Authority to end the process with the program's exit code"
 systemCalls grants use system.calls none
 
 # The stack floor is in machine.state at byte 88 (frames' part of it). An executable's main thread has a stack of
-# 256 MiB (native.py links it so); a recursive operation traps when its frame lies more than 248 MiB below the
-# entry's, which leaves 8 MiB for the runtime and the operating system, as the C runtime's entry does.
+# 256 MiB (native.py links it so on Windows); a recursive operation traps when its frame lies more than 248 MiB
+# below the entry's, which leaves 8 MiB for the runtime and the operating system. D-139: a Linux process starts on
+# the stack the kernel gives it (8 MiB as a rule), so the entry keeps what that stack holds (argc, argv, envp),
+# ignores SIGPIPE as Python does (a write to a closed pipe is then EPIPE, not the end of the program), and runs the
+# program on a stack of 256 MiB of its own, with the same floor.
 floorAt is constant
 floorAt purpose "Where the stack floor is kept, in machine.state"
 floorAt type Int64
@@ -33,11 +39,88 @@ stackBudget purpose "How far below the entry's frame the stack floor is: 256 MiB
 stackBudget type Int64
 stackBudget value 260046848
 
+stackBytes is constant
+stackBytes purpose "The bytes of the program's stack on Linux: 256 MiB"
+stackBytes type Int64
+stackBytes value 268435456
+
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do osCheck
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do widenCode
+endProcess at linuxExit do callExit
+endProcess at linuxExit return ok none
+endProcess at windowsExit do callExitProcess
+endProcess at windowsExit return ok none
+
+osCheck is call
+osCheck in endProcess
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+widenCode is call
+widenCode in endProcess
+widenCode invokes convert.int32ToInt64
+widenCode argument value Int32 code copy
+widenCode result wideCode Int64
+widenCode ownedBy none
+widenCode cleanedBy none
+widenCode borrows none
+widenCode catch none
+widenCode suppresses none
+
+callExit is call
+callExit in endProcess
+callExit invokes system.exitGroup
+callExit argument code Int64 wideCode copy
+callExit result exitResult Int64
+callExit ownedBy none
+callExit cleanedBy none
+callExit borrows none
+callExit catch none
+callExit suppresses none
+
+callExitProcess is call
+callExitProcess in endProcess
+callExitProcess invokes system.exitProcess
+callExitProcess argument code Int32 code copy
+callExitProcess result none
+callExitProcess ownedBy none
+callExitProcess cleanedBy none
+callExitProcess borrows none
+callExitProcess catch none
+callExitProcess suppresses none
+
 entry is operation
-entry purpose "Start the process: set the stack floor, run the program's entry operation, and end the process with its exit code: refined_entry"
+entry purpose "Start the process: set the stack floor, run the program's entry operation, and end the process with its exit code: refined_entry. On Linux the kernel's stack, with argc, argv, and envp on it, is the input"
 entry invariant none
 entry typeParameter none
-entry input none
+entry input stack machine.Address copied
 entry output none
 entry outputOwnedBy none
 entry raises none
@@ -51,16 +134,241 @@ entry maxRecursion none
 entry abi c "refined_entry"
 entry label begin loopKind none
 entry label begin within none
-entry let none
-entry at begin do findHere
-entry at begin do hereValue
-entry at begin do findFloor
-entry at begin do findState
-entry at begin do findFloorSlot
-entry at begin do storeFloor
-entry at begin do run
-entry at begin do exit
-entry at begin return ok none
+entry label linuxStart loopKind none
+entry label linuxStart within none
+entry label runOnStack loopKind none
+entry label runOnStack within none
+entry label windowsStart loopKind none
+entry label windowsStart within none
+entry let thirtyTwo Int64 32 immutable
+entry let ignoreHandler Int64 1 immutable
+entry let brokenPipeSignal Int64 13 immutable
+entry let maskBytes Int64 8 immutable
+entry at begin do osCheck
+entry at begin branch if onLinux goto linuxStart else goto windowsStart
+entry at linuxStart do keepStart
+entry at linuxStart do takeAction
+entry at linuxStart do storeIgnore
+entry at linuxStart do nowhere
+entry at linuxStart do ignorePipe
+entry at linuxStart do giveAction
+entry at linuxStart do mapIt
+entry at linuxStart do failedCheck
+entry at linuxStart branch if noStack goto windowsStart else goto runOnStack
+entry at runOnStack do findTop
+entry at runOnStack do topValue
+entry at runOnStack do findLinuxFloor
+entry at runOnStack do findLinuxState
+entry at runOnStack do findLinuxFloorSlot
+entry at runOnStack do storeLinuxFloor
+entry at runOnStack do runLinux
+entry at runOnStack do exitLinux
+entry at runOnStack return ok none
+entry at windowsStart do findHere
+entry at windowsStart do hereValue
+entry at windowsStart do findFloor
+entry at windowsStart do findState
+entry at windowsStart do findFloorSlot
+entry at windowsStart do storeFloor
+entry at windowsStart do run
+entry at windowsStart do exit
+entry at windowsStart return ok none
+
+osCheck is call
+osCheck in entry
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+keepStart is call
+keepStart in entry
+keepStart invokes kernel.initialStack
+keepStart argument stack machine.Address stack copy
+keepStart result none
+keepStart ownedBy none
+keepStart cleanedBy none
+keepStart borrows none
+keepStart catch none
+keepStart suppresses none
+
+takeAction is call
+takeAction in entry
+takeAction invokes heap.take
+takeAction argument bytes Int64 thirtyTwo copy
+takeAction result action machine.Address
+takeAction ownedBy none
+takeAction cleanedBy none
+takeAction borrows none
+takeAction catch none
+takeAction suppresses none
+
+storeIgnore is call
+storeIgnore in entry
+storeIgnore invokes machine.storeInt64
+storeIgnore argument address machine.Address action copy
+storeIgnore argument value Int64 ignoreHandler copy
+storeIgnore result none
+storeIgnore ownedBy none
+storeIgnore cleanedBy none
+storeIgnore borrows none
+storeIgnore catch none
+storeIgnore suppresses none
+
+nowhere is call
+nowhere in entry
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+ignorePipe is call
+ignorePipe in entry
+ignorePipe invokes system.rtSigaction
+ignorePipe argument signal Int64 brokenPipeSignal copy
+ignorePipe argument action machine.Address action copy
+ignorePipe argument old machine.Address anywhere copy
+ignorePipe argument maskBytes Int64 maskBytes copy
+ignorePipe result ignored Int64
+ignorePipe ownedBy none
+ignorePipe cleanedBy none
+ignorePipe borrows none
+ignorePipe catch none
+ignorePipe suppresses none
+
+giveAction is call
+giveAction in entry
+giveAction invokes heap.give
+giveAction argument block machine.Address action copy
+giveAction result none
+giveAction ownedBy none
+giveAction cleanedBy none
+giveAction borrows none
+giveAction catch none
+giveAction suppresses none
+
+mapIt is call
+mapIt in entry
+mapIt invokes kernel.mapStack
+mapIt argument bytes Int64 stackBytes copy
+mapIt result programStack machine.Address
+mapIt ownedBy none
+mapIt cleanedBy none
+mapIt borrows none
+mapIt catch none
+mapIt suppresses none
+
+failedCheck is call
+failedCheck in entry
+failedCheck invokes machine.equal
+failedCheck argument left machine.Address programStack copy
+failedCheck argument right machine.Address anywhere copy
+failedCheck result noStack Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+findTop is call
+findTop in entry
+findTop invokes machine.offset
+findTop argument address machine.Address programStack copy
+findTop argument bytes Int64 stackBytes copy
+findTop result top machine.Address
+findTop ownedBy none
+findTop cleanedBy none
+findTop borrows none
+findTop catch none
+findTop suppresses none
+
+topValue is call
+topValue in entry
+topValue invokes machine.toInt64
+topValue argument address machine.Address top copy
+topValue result topAt Int64
+topValue ownedBy none
+topValue cleanedBy none
+topValue borrows none
+topValue catch none
+topValue suppresses none
+
+findLinuxFloor is call
+findLinuxFloor in entry
+findLinuxFloor invokes math.subtractInt64
+findLinuxFloor argument left Int64 topAt copy
+findLinuxFloor argument right Int64 stackBudget copy
+findLinuxFloor result linuxFloor Int64
+findLinuxFloor ownedBy none
+findLinuxFloor cleanedBy none
+findLinuxFloor borrows none
+findLinuxFloor catch none
+findLinuxFloor suppresses none
+
+findLinuxState is call
+findLinuxState in entry
+findLinuxState invokes machine.state
+findLinuxState argument none
+findLinuxState result linuxState machine.Address
+findLinuxState ownedBy none
+findLinuxState cleanedBy none
+findLinuxState borrows none
+findLinuxState catch none
+findLinuxState suppresses none
+
+findLinuxFloorSlot is call
+findLinuxFloorSlot in entry
+findLinuxFloorSlot invokes machine.offset
+findLinuxFloorSlot argument address machine.Address linuxState copy
+findLinuxFloorSlot argument bytes Int64 floorAt copy
+findLinuxFloorSlot result linuxFloorSlot machine.Address
+findLinuxFloorSlot ownedBy none
+findLinuxFloorSlot cleanedBy none
+findLinuxFloorSlot borrows none
+findLinuxFloorSlot catch none
+findLinuxFloorSlot suppresses none
+
+storeLinuxFloor is call
+storeLinuxFloor in entry
+storeLinuxFloor invokes machine.storeInt64
+storeLinuxFloor argument address machine.Address linuxFloorSlot copy
+storeLinuxFloor argument value Int64 linuxFloor copy
+storeLinuxFloor result none
+storeLinuxFloor ownedBy none
+storeLinuxFloor cleanedBy none
+storeLinuxFloor borrows none
+storeLinuxFloor catch none
+storeLinuxFloor suppresses none
+
+runLinux is call
+runLinux in entry
+runLinux invokes machine.runEntryOnStack
+runLinux argument top machine.Address top copy
+runLinux result linuxCode Int32
+runLinux ownedBy none
+runLinux cleanedBy none
+runLinux borrows none
+runLinux catch none
+runLinux suppresses none
+
+exitLinux is call
+exitLinux in entry
+exitLinux invokes endProcess
+exitLinux argument code Int32 linuxCode copy
+exitLinux result none
+exitLinux ownedBy none
+exitLinux cleanedBy none
+exitLinux borrows none
+exitLinux catch none
+exitLinux suppresses none
 
 findHere is call
 findHere in entry
@@ -144,7 +452,7 @@ run suppresses none
 
 exit is call
 exit in entry
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 code copy
 exit result none
 exit ownedBy none

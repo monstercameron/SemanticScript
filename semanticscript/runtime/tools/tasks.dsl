@@ -1,6 +1,6 @@
 module tasks "Tasks on fibers, task groups, cancellation, waits and deadlocks, deadlines and clocks, and channels"
   path tasks
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test numbers frames heap handles regions slots
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test kernel numbers frames heap handles regions slots
   exports now wait cancelled notify deadlineNever deadlineAfter sleepFor clockNow clockMonotonic channelNew channelSend channelReceive channelClose
 
 capability memoryAccess "Authority to keep the tasks, groups, and channels in memory and switch the call stack between tasks" use machine.memory none
@@ -59,6 +59,8 @@ constant never "time.Deadline.never: a deadline that never passes" Int64 -1
 constant forever "The bound of a loop that waits as long as it takes" Int64 9223372036854775807
 
 constant taskBytes "The bytes of a task" Int64 176
+
+constant fiberBytes "The bytes of a fiber on Linux: 0 its stack pointer while another runs, 8 its stack's base (0 for the main program's), 16 its stack's bytes, 24 whether it has started" Int64 32
 
 constant groupBytes "The bytes of a group" Int64 48
 
@@ -149,6 +151,21 @@ constant channelClosed "channel.ChannelError.closed, numbered from 1" Int32 1
 constant channelTimedOut "channel.ChannelError.timedOut, numbered from 1" Int32 2
 
 constant channelCancelled "channel.ChannelError.cancelled, numbered from 1" Int32 3
+
+op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+  input code Int32 copied
+  effect use system.calls
+  uses systemCalls
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxExit windowsExit
+:linuxExit
+  widenCode: wideCode = convert.int32ToInt64(code)
+  callExit: exitResult = system.exitGroup(wideCode)
+  return
+:windowsExit
+  callExitProcess: system.exitProcess(code)
+  return
 
 ## ---------------------------------------------------------------- fields and traps
 
@@ -268,7 +285,7 @@ op failText "Report a trap with a message and end the process with exit code 70"
   findText: textAt = machine.addressOfString(text)
   textLength: bytes = string.byteLength(text)
   writeReport: status = frames.report(textAt, bytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 op failNumber "Trap with a message of a text, a whole number in decimal, and another text"
@@ -289,7 +306,7 @@ op failNumber "Trap with a message of a text, a whole number in decimal, and ano
   headLength: headBytes = math.addInt64(leadBytes, length)
   totalLength: bytes = math.addInt64(headBytes, tailBytes)
   writeReport: status = frames.report(message, bytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 ## ---------------------------------------------------------------- time
@@ -297,9 +314,17 @@ op failNumber "Trap with a message of a text, a whole number in decimal, and ano
 op now "Milliseconds since the system started (GetTickCount64): the clock deadlines are read against"
   invariant readsClock "Gives a number that never goes down"
   output Int64
+  effect use machine.memory
   effect use system.calls
+  uses memoryAccess
   uses systemCalls
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxClock windowsClock
+:linuxClock
+  readMonotonic: milliseconds = kernel.monotonic()
+  return milliseconds
+:windowsClock
   readClock: ticks = system.getTickCount64()
   return ticks
 
@@ -515,6 +540,26 @@ op switchTo "Run another task: keep the running one's state, put the other's bac
   restore: loadFrom(next)
   storeCurrent: setStateLink(currentAt, next)
   readFiber: fiber = link(next, ofFiber)
+  osCheck: onLinux = system.linux()
+  if onLinux linuxSwitch windowsSwitch
+:linuxSwitch
+  readMine: mine = link(me, ofFiber)
+  readStarted: started = field(fiber, twentyFour=24)
+  startedCheck: isStarted = compare.notEqualInt64(started, zero=0)
+  if isStarted resume startFiber
+:startFiber
+  markStarted: setField(fiber, twentyFour, one=1)
+  readBase: base = link(fiber, eight=8)
+  readStackBytes: stackBytes = field(fiber, sixteen=16)
+  findTop: top = machine.offset(base, stackBytes)
+  findEntry: entryAt = machine.taskEntry()
+  startIt: machine.startStack(mine, top, entryAt, next)
+  goto done
+:resume
+  readResumeAt: resumeAt = machine.loadAddress(fiber)
+  resumeIt: machine.switchStack(mine, resumeAt)
+  goto done
+:windowsSwitch
   jump: system.switchToFiber(fiber)
   goto done
 :done
@@ -559,6 +604,20 @@ op canGoOn "Whether a task can run: ready, or waiting while something changed, i
   noHandleCheck: noHandle = machine.equal(handle, anywhere)
   if noHandle cannot pollHandle
 :pollHandle
+  osCheck: onLinux = system.linux()
+  if onLinux pollLinux pollWindows
+:pollLinux
+  handleValue: plusOne = machine.toInt64(handle)
+  descriptorOf: fd = math.subtractInt64(plusOne, one=1)
+  narrowFd: fd32 = convert.int64ToInt32(fd)
+  findPoll: pollAt = kernel.stateAt(fileTimeAt)
+  storeFd: machine.storeInt32(pollAt, fd32)
+  findEvents: eventsAt = machine.offset(pollAt, four=4)
+  storeEvents: machine.storeInt32(eventsAt, pollIn=1)
+  pollIt: ready = system.poll(pollAt, onePoll=1, zero=0)
+  pollReadyCheck: isPollReady = compare.greaterThanInt64(ready, zero)
+  if isPollReady can cannot
+:pollWindows
   poll: signalled = system.waitForSingleObject(handle, noWait=0)
   signalledCheck: isSignalled = compare.equalInt32(signalled, noWait)
   if isSignalled can cannot
@@ -785,7 +844,7 @@ op deadlock "Trap because every task waits for another and nothing can change: `
   goto eachOther
 :report
   writeReport: status = frames.report(message, length)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 op idle "Sleep until the nearest deadline of a waiting task or a handle one waits on is signalled; with neither, trap: a deadlock"
@@ -851,7 +910,10 @@ op idle "Sleep until the nearest deadline of a waiting task or a handle one wait
   trapIt: deadlock(me)
   return
 :timing
-  if noDeadline waitForHandles countDown
+  if noDeadline foreverCheck countDown
+:foreverCheck
+  osCheckForever: onLinuxForever = system.linux()
+  if onLinuxForever sleepOrWait waitForHandles
 :countDown
   readNow: moment = now()
   leftOf: left = math.subtractInt64(earliest, moment)
@@ -868,6 +930,36 @@ op idle "Sleep until the nearest deadline of a waiting task or a handle one wait
   set timeout most
   goto sleepOrWait
 :sleepOrWait
+  osCheck: onLinux = system.linux()
+  if onLinux linuxWait windowsWait
+:linuxWait
+  set at zero
+  countHandles: handleTotal = math.addInt64(handles, zero)
+  goto eachHandle
+:eachHandle loop=while max=handleTotal
+  handlesDone: allMade = compare.greaterOrEqualInt64(at, handles)
+  if allMade linuxPoll makePollEntry
+:makePollEntry in=eachHandle
+  entryOffset: entryAt = math.multiplyInt64(at, eight)
+  findEntry: entry = machine.offset(handleList, entryAt)
+  readPlusOne: plusOne = machine.loadInt64(entry)
+  descriptorOf: fd = math.subtractInt64(plusOne, one)
+  narrowFd: fd32 = convert.int64ToInt32(fd)
+  storeFd: machine.storeInt32(entry, fd32)
+  findEvents: eventsAt = machine.offset(entry, four=4)
+  storeEvents: machine.storeInt32(eventsAt, pollIn=1)
+  nextHandle: afterHandle = math.addInt64(at, one)
+  set at afterHandle
+  goto eachHandle
+:linuxPoll
+  if noDeadline linuxForever linuxTimed
+:linuxForever
+  pollForever: wokenForever = system.poll(handleList, handles, minusOne=-1)
+  return
+:linuxTimed
+  pollTimed: wokenTimed = system.poll(handleList, handles, timeout)
+  return
+:windowsWait
   narrowTimeout: milliseconds = convert.int64ToInt32(timeout)
   if noHandles justSleep waitTimed
 :justSleep
@@ -1034,6 +1126,15 @@ op spawn "Start a task on a fiber of its own and run it until it waits or ends; 
   if noFibers convert make
 :convert
   nowhere: anywhere = machine.zero()
+  osCheck: onLinux = system.linux()
+  if onLinux convertLinux convertWindows
+:convertLinux
+  takeMainFiber: linuxMainFiber = heap.take(fiberBytes)
+  markMainStarted: setField(linuxMainFiber, twentyFour=24, one=1)
+  storeLinuxMainFiber: setLink(me, ofFiber, linuxMainFiber)
+  storeLinuxFibers: setStateWord(fibersAt, one=1)
+  goto make
+:convertWindows
   becomeFiber: mainFiber = system.convertThreadToFiber(anywhere)
   storeMainFiber: setLink(me, ofFiber, mainFiber)
   storeFibers: setStateWord(fibersAt, one=1)
@@ -1079,9 +1180,22 @@ op spawn "Start a task on a fiber of its own and run it until it waits or ends; 
   takeDepths: depths = heap.take(depthBytes)
   storeDepths: setLink(task, ofDepths, depths)
   storeInTask: setField(task, ofInTask, one)
+  nothing: noFiber = machine.zero()
+  osFiberCheck: onLinuxFiber = system.linux()
+  if onLinuxFiber linuxFiber windowsFiber
+:linuxFiber
+  mapTaskStack: stack = kernel.mapStack(stackReserve)
+  stackFailed: noStack = machine.equal(stack, noFiber)
+  if noStack refuseStack keepStack
+:keepStack
+  takeFiber: linuxFiberBlock = heap.take(fiberBytes)
+  storeBase: setLink(linuxFiberBlock, eight=8, stack)
+  storeStackBytes: setField(linuxFiberBlock, sixteen=16, stackReserve)
+  storeLinuxFiber: setLink(task, ofFiber, linuxFiberBlock)
+  goto started
+:windowsFiber
   findEntry: entryAt = machine.taskEntry()
   makeFiber: fiber = system.createFiberEx(stackCommit, stackReserve, floatSwitch=1, entryAt, task)
-  nothing: noFiber = machine.zero()
   failedCheck: failed = machine.equal(fiber, noFiber)
   if failed refuseStack start
 :refuseStack
@@ -1089,6 +1203,8 @@ op spawn "Start a task on a fiber of its own and run it until it waits or ends; 
   return zero
 :start
   storeFiber: setLink(task, ofFiber, fiber)
+  goto started
+:started
   listIt: append(task)
   changed: notify()
   runIt: switchTo(task)
@@ -1111,10 +1227,12 @@ op finishTask "End the running task: give back its call stack and depth counters
   noTableCheck: noTable = machine.equal(table, anywhere)
   if noTable depths freeTable
 :freeTable
-  freeIt: freed = system.virtualFree(table, zero=0, releaseMemory=32768)
+  readRoom: room = stateWord(eighty=80)
+  tableBytes: size = math.multiplyInt64(room, sixteen=16)
+  freeIt: kernel.unmapMemory(table, size)
   clearTable: setStateLink(sixtyFour, anywhere)
-  clearCount: setStateWord(seventyTwo=72, zero)
-  clearRoom: setStateWord(eighty=80, zero)
+  clearCount: setStateWord(seventyTwo=72, zero=0)
+  clearRoom: setStateWord(eighty, zero)
   goto depths
 :depths
   readDepths: depthTable = stateLink(threeNinetyTwo=392)
@@ -1172,8 +1290,19 @@ op dropTask "Give back an ended task: its fiber, its place in the list, its fram
   uses systemCalls
 :begin
   readFiber: fiber = link(task, ofFiber)
+  osCheck: onLinux = system.linux()
+  if onLinux dropLinux dropWindows
+:dropLinux
+  readBase: base = link(fiber, eight=8)
+  readStackBytes: stackBytes = field(fiber, sixteen=16)
+  unmapStack: kernel.unmapMemory(base, stackBytes)
+  giveFiber: heap.give(fiber)
+  goto unlistIt
+:dropWindows
   deleteIt: system.deleteFiber(fiber)
-  unlistIt: unlink(task)
+  goto unlistIt
+:unlistIt
+  unlistTask: unlink(task)
   readFrame: frame = link(task, ofFrame)
   giveFrame: heap.give(frame)
   giveTask: heap.give(task)
@@ -1525,6 +1654,13 @@ op clockNow "clock.now: milliseconds since 1970 on the system's clock"
   uses memoryAccess
   uses systemCalls
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxWall windowsWall
+:linuxWall
+  readWall: wall = kernel.wallClock()
+  storeWall: machine.storeInt64(results, wall)
+  return
+:windowsWall
   findState: state = machine.state()
   findTime: timeAt = machine.offset(state, fileTimeAt)
   readTime: system.getSystemTimeAsFileTime(timeAt)

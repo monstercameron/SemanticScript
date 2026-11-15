@@ -37,17 +37,23 @@ EXAMPLES = os.path.join(caselib.ROOT, "docs", "refined-examples")
 CASES = {c.name: c for c in caselib.discover()}
 
 
-def _can_link() -> bool:
-    from refined.native import find_cc
+def _platform() -> str:
+    """`windows` or `linux` when this machine's C compiler can link the runtime in SemanticScript (MinGW on Windows,
+    x86_64 Linux), otherwise empty."""
+    from refined.native import find_cc, platform
     cc = find_cc()
-    if os.name != "nt" or cc is None:
-        return False
-    machine = subprocess.run(cc + ["-dumpmachine"], capture_output=True, text=True).stdout
-    return "mingw" in machine or "windows" in machine
+    if cc is None:
+        return ""
+    _machine, triple, _problem = platform(cc)
+    if triple is None:
+        return ""
+    return "windows" if "windows" in triple else "linux"
 
 
-needs_windows_cc = pytest.mark.skipif(not _can_link(), reason="the runtime in SemanticScript links on Windows, "
-                                      "with a MinGW C compiler as the linker")
+PLATFORM = _platform()
+WINDOWS = PLATFORM == "windows"
+needs_windows_cc = pytest.mark.skipif(not PLATFORM, reason="the runtime in SemanticScript links on Windows (MinGW) "
+                                      "and x86_64 Linux")
 
 
 def _build(project: str, exe: str) -> subprocess.CompletedProcess:
@@ -63,6 +69,31 @@ def _jit(project: str, args=(), stdin: str = "") -> subprocess.CompletedProcess:
 def _exe(exe: str, project: str, args=(), stdin: str = "") -> subprocess.CompletedProcess:
     return subprocess.run([exe, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
                           cwd=project, input=stdin, timeout=120)
+
+
+def elf_dynamic(path: str) -> list[int]:
+    """The program headers of an ELF executable that ask for a dynamic loader: PT_DYNAMIC (2) and PT_INTERP (3),
+    read from the file itself; none for a static executable."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    assert data[:4] == b"\x7fELF" and data[4] == 2, "a 64-bit ELF file"
+    phoff = struct.unpack_from("<Q", data, 0x20)[0]
+    phentsize, phnum = struct.unpack_from("<HH", data, 0x36)
+    types = [struct.unpack_from("<I", data, phoff + i * phentsize)[0] for i in range(phnum)]
+    return [t for t in types if t in (2, 3)]
+
+
+def assert_no_libc(path: str) -> None:
+    """Bar point 2: Windows, the import table names KERNEL32.dll alone; Linux, no dynamic section or interpreter and
+    nothing of the C library in the file."""
+    if WINDOWS:
+        assert imported_dlls(path) == ["KERNEL32.dll"]
+        return
+    assert elf_dynamic(path) == [], elf_dynamic(path)
+    with open(path, "rb") as fh:
+        data = fh.read()
+    for mark in (b"libc.so", b"GLIBC_", b"ld-linux", b"__libc_start_main"):
+        assert mark not in data, mark
 
 
 def imported_dlls(path: str) -> list[str]:
@@ -124,6 +155,8 @@ def test_linked_without_libc_matches_the_jit(name, tmp_path):
     maps, sets, log lines, recursion, and traps, linked with the runtime in SemanticScript and no C library, print the
     same standard output and standard error (a trap's report and stack trace included) and exit with the same code as
     under `refined run`; the executable imports from KERNEL32.dll alone."""
+    if name in REFUSED:
+        pytest.skip(f"{name} needs `{REFUSED[name]}`, which an executable here does not have")
     if name in PICKED:
         project = str(tmp_path / name)
         shutil.copytree(PICKED[name], project, ignore=shutil.ignore_patterns(".refined-cache"))
@@ -136,7 +169,7 @@ def test_linked_without_libc_matches_the_jit(name, tmp_path):
     built = _build(project, exe)
     assert built.returncode == 0, built.stdout + built.stderr
     assert "no C library" in built.stdout
-    assert imported_dlls(exe) == ["KERNEL32.dll"]
+    assert_no_libc(exe)
     ran, jit = _exe(exe, project, args, stdin), _jit(project, args, stdin)
     assert (ran.returncode, ran.stdout, ran.stderr) == (jit.returncode, jit.stdout, jit.stderr)
     if name == "hello":
@@ -151,6 +184,8 @@ def test_linked_without_libc_matches_the_jit(name, tmp_path):
 # JSON, random numbers, and interrupts stay under `refined run`; each of these programs needs one of them.
 REFUSED = {"12-io/network-connect": "net", "19-stdlib/json": "json", "19-stdlib/library-tour": "http",
            "19-stdlib/random": "random", "19-stdlib/signal": "signal"}
+if not WINDOWS:  # D-140: a foreign library needs the C library's dynamic loader
+    REFUSED["18-interop/foreign"] = "ffi"
 
 
 @needs_windows_cc
@@ -227,7 +262,7 @@ def test_float_text_matches_python_over_a_large_table(tmp_path):
         built = caselib.refined("build", project, "--kind", "executable", "--runtime", runtime, "--output", exe)
         assert built.returncode == 0, built.stdout
         if runtime == "semanticscript":
-            assert imported_dlls(exe) == ["KERNEL32.dll"]
+            assert_no_libc(exe)
         ran = _exe(exe, project)
         assert ran.returncode == 0 and ran.stderr == "", (runtime, ran.stderr)
         got = ran.stdout.splitlines()
@@ -249,7 +284,7 @@ def test_host_targets_match_the_jit(tmp_path):
     exe = os.path.join(project, "program.exe")
     built = _build(project, exe)
     assert built.returncode == 0, built.stdout
-    assert imported_dlls(exe) == ["KERNEL32.dll"]
+    assert_no_libc(exe)
     ran, jit = _exe(exe, project), _jit(project)
     assert (ran.returncode, ran.stdout, ran.stderr) == (jit.returncode, jit.stdout, jit.stderr)
     assert ran.returncode == 0 and "[warn] a warning" in ran.stderr and "4000" in ran.stdout.splitlines()
@@ -263,7 +298,7 @@ def _same_as_jit(project: str, args=(), stdin: str = "") -> tuple:
     exe = os.path.join(project, "program.exe")
     built = _build(project, exe)
     assert built.returncode == 0, built.stdout + built.stderr
-    assert imported_dlls(exe) == ["KERNEL32.dll"]
+    assert_no_libc(exe)
     ran, jit = _exe(exe, project, args, stdin), _jit(project, args, stdin)
     where = os.path.normpath(project)
     return ((ran.returncode, ran.stdout, ran.stderr.replace(where, "<project>")),
@@ -353,7 +388,7 @@ def test_stage0_samples_without_libc(tmp_path):
     assert len(results) >= 20
 
 
-@needs_windows_cc
+@pytest.mark.skipif(not WINDOWS, reason="stage0's executables link the C runtime, which needs shell32 here")
 def test_stage0_compiler_without_libc(tmp_path, stage0_native):
     """Roadmap: stage0, the compiler written in SemanticScript, built with the runtime in SemanticScript and no C
     library, compiles samples exactly as stage0 built with the C runtime does: the same output, errors, and exit
@@ -363,7 +398,7 @@ def test_stage0_compiler_without_libc(tmp_path, stage0_native):
     built = caselib.refined("build", stage0, "--kind", "executable", "--runtime", "semanticscript", "--output", exe,
                             timeout=1800)
     assert built.returncode == 0, built.stdout + built.stderr
-    assert imported_dlls(exe) == ["KERNEL32.dll"]
+    assert_no_libc(exe)
     from conftest import c_compiler
     link = [os.path.join(caselib.ROOT, "semanticscript", "compiler", "refined", "native_runtime.c"), "-lshell32"]
     for sample in ("hello", "maps", "files", "lists"):
@@ -430,11 +465,13 @@ def test_runtime_project_checks_and_passes_its_tests():
     assert checked.returncode == 0 and checked.stdout.strip() == "ok", checked.stdout
     from refined.check import approved_authority, find_build
     assert approved_authority(find_build(RUNTIME)) == {"use machine.memory none", "use system.calls none"}
-    if os.name != "nt":
-        pytest.skip("the runtime's system targets are Windows functions")
+    from refined.runtime import default_triple
+    triple = default_triple()
+    if os.name != "nt" and not (triple.startswith("x86_64") and "linux" in triple):
+        pytest.skip("the runtime's system targets are Windows functions and x86_64 Linux system calls")
     tested = caselib.refined("test", RUNTIME)
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "57 of 57 tests passed" in tested.stdout
+    assert "60 of 60 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

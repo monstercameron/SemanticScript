@@ -344,6 +344,7 @@ def _init() -> None:
         return
     llvm.initialize_native_target()
     llvm.initialize_native_asmprinter()
+    llvm.initialize_native_asmparser()  # D-139: the runtime's assembly (system calls and stacks on Linux)
     from . import instrument, tasks
     for name, cb in {**_CALLBACKS, **tasks.CALLBACKS, **instrument.CALLBACKS}.items():
         llvm.add_symbol(name, ctypes.cast(cb, ctypes.c_void_p).value)

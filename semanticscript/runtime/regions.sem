@@ -16,6 +16,7 @@ regions imports standard.convert
 regions imports standard.bits
 regions imports standard.logic
 regions imports standard.test
+regions imports kernel
 regions imports numbers
 regions imports frames
 regions imports handles
@@ -75,6 +76,78 @@ digitsAt is constant
 digitsAt purpose "Where a number's digits are put together, in machine.state"
 digitsAt type Int64
 digitsAt value 144
+
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do osCheck
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do widenCode
+endProcess at linuxExit do callExit
+endProcess at linuxExit return ok none
+endProcess at windowsExit do callExitProcess
+endProcess at windowsExit return ok none
+
+osCheck is call
+osCheck in endProcess
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+widenCode is call
+widenCode in endProcess
+widenCode invokes convert.int32ToInt64
+widenCode argument value Int32 code copy
+widenCode result wideCode Int64
+widenCode ownedBy none
+widenCode cleanedBy none
+widenCode borrows none
+widenCode catch none
+widenCode suppresses none
+
+callExit is call
+callExit in endProcess
+callExit invokes system.exitGroup
+callExit argument code Int64 wideCode copy
+callExit result exitResult Int64
+callExit ownedBy none
+callExit cleanedBy none
+callExit borrows none
+callExit catch none
+callExit suppresses none
+
+callExitProcess is call
+callExitProcess in endProcess
+callExitProcess invokes system.exitProcess
+callExitProcess argument code Int32 code copy
+callExitProcess result none
+callExitProcess ownedBy none
+callExitProcess cleanedBy none
+callExitProcess borrows none
+callExitProcess catch none
+callExitProcess suppresses none
 
 # ---------------------------------------------------------------- chunks
 stop is operation
@@ -137,7 +210,7 @@ writeReport suppresses none
 
 exit is call
 exit in stop
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 trapCode copy
 exit result none
 exit ownedBy none
@@ -169,8 +242,6 @@ takeChunk label freshChunk loopKind none
 takeChunk label freshChunk within none
 takeChunk let zero Int64 0 immutable
 takeChunk let one Int64 1 immutable
-takeChunk let commitAndReserve Int32 12288 immutable
-takeChunk let readWrite Int32 4 immutable
 takeChunk at begin do findState
 takeChunk at begin do findFree
 takeChunk at begin do findFreeCount
@@ -342,11 +413,8 @@ nowhere suppresses none
 
 take is call
 take in takeChunk
-take invokes system.virtualAlloc
-take argument address machine.Address anywhere copy
+take invokes kernel.mapMemory
 take argument bytes Int64 size copy
-take argument allocationType Int32 commitAndReserve copy
-take argument protection Int32 readWrite copy
 take result fresh machine.Address
 take ownedBy none
 take cleanedBy none
@@ -379,8 +447,6 @@ dropChunk let eight Int64 8 immutable
 dropChunk let sixteen Int64 16 immutable
 dropChunk let zeroByte Byte 0 immutable
 dropChunk let one Int64 1 immutable
-dropChunk let zero Int64 0 immutable
-dropChunk let releaseMemory Int32 32768 immutable
 dropChunk at begin do findSize
 dropChunk at begin do readSize
 dropChunk at begin do findUsed
@@ -605,11 +671,10 @@ storeFreeCount suppresses none
 
 giveToSystem is call
 giveToSystem in dropChunk
-giveToSystem invokes system.virtualFree
+giveToSystem invokes kernel.unmapMemory
 giveToSystem argument address machine.Address chunk copy
-giveToSystem argument bytes Int64 zero copy
-giveToSystem argument freeType Int32 releaseMemory copy
-giveToSystem result freed Int32
+giveToSystem argument bytes Int64 size copy
+giveToSystem result none
 giveToSystem ownedBy none
 giveToSystem cleanedBy none
 giveToSystem borrows none
@@ -962,8 +1027,6 @@ exceeded let tail String " bytes" immutable
 exceeded let twentyFour Int64 24 immutable
 exceeded let thirtyTwo Int64 32 immutable
 exceeded let sixtyFour Int64 64 immutable
-exceeded let commitAndReserve Int32 12288 immutable
-exceeded let readWrite Int32 4 immutable
 exceeded let trapCode Int32 70 immutable
 exceeded at begin do readCapacity
 exceeded at begin do findLabel
@@ -1078,11 +1141,8 @@ nowhere suppresses none
 
 take is call
 take in exceeded
-take invokes system.virtualAlloc
-take argument address machine.Address anywhere copy
+take invokes kernel.mapMemory
 take argument bytes Int64 room copy
-take argument allocationType Int32 commitAndReserve copy
-take argument protection Int32 readWrite copy
 take result message machine.Address
 take ownedBy none
 take cleanedBy none
@@ -1283,7 +1343,7 @@ writeReport suppresses none
 
 exit is call
 exit in exceeded
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 trapCode copy
 exit result none
 exit ownedBy none
@@ -1306,7 +1366,7 @@ writeLabel suppresses none
 
 exitLabel is call
 exitLabel in exceeded
-exitLabel invokes system.exitProcess
+exitLabel invokes endProcess
 exitLabel argument code Int32 trapCode copy
 exitLabel result none
 exitLabel ownedBy none

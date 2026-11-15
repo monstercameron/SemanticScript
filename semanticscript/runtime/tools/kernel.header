@@ -1,0 +1,7 @@
+# The operating system as the runtime reaches it (D-138): every module that calls it asks
+# `system.linux()`, a constant of the target, and takes the Windows path (kernel32's functions)
+# or the Linux path (raw system calls). What many modules share is here: memory from the
+# system, Linux's clocks and sleep, and what a Linux process is started with (argc, argv, and
+# envp on its first stack).
+#
+# This module is generated from tools/kernel.dsl by tools/build.py.

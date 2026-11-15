@@ -1,6 +1,6 @@
 module bignum "Whole numbers of any size up to 6,400 bits, in memory, with exact arithmetic: what floating-point text is computed with (D-125)"
   path bignum
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.bits standard.logic standard.test frames
+  imports standard.machine standard.system standard.convert standard.string standard.math standard.compare standard.bits standard.logic standard.test frames
   exports setSmall copyNumber isZero compareNumbers addNumber subtractNumber multiplySmall addSmall shiftLeft shiftRightOne bitLength multiplyPowerOfTen lowLimbs
 
 capability memoryAccess "Authority to keep numbers in memory by address" use machine.memory none
@@ -15,6 +15,21 @@ constant limbCapacity "How many limbs a number holds" Int64 200
 constant numberBytes "The bytes of a number's block: its length and its limbs" Int64 1608
 
 constant limbMask "The bits of one limb" UInt64 4294967295
+
+op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+  input code Int32 copied
+  effect use system.calls
+  uses systemCalls
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxExit windowsExit
+:linuxExit
+  widenCode: wideCode = convert.int32ToInt64(code)
+  callExit: exitResult = system.exitGroup(wideCode)
+  return
+:windowsExit
+  callExitProcess: system.exitProcess(code)
+  return
 
 ## ---------------------------------------------------------------- limbs
 
@@ -77,7 +92,7 @@ op fits "Trap unless a number of limbs fits a number's block (the runtime's arit
   findText: textAt = machine.addressOfString(message)
   textLength: bytes = string.byteLength(message)
   writeReport: status = frames.report(textAt, bytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 op trim "Drop a number's highest limbs while they are 0, so its length counts only what is used"

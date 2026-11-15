@@ -15,6 +15,7 @@ files imports standard.convert
 files imports standard.bits
 files imports standard.logic
 files imports standard.test
+files imports kernel
 files imports memory
 files imports numbers
 files imports output
@@ -69,6 +70,10 @@ systemCalls grants use system.calls none
 # machine.state bytes 704 to 767 belong to this module: 704 the address of the table of claims, 712 how many it
 # holds, 720 how many it has room for, 728 to 759 a number's digits, 760 a count a system call writes; bytes 49664
 # to 49727 a file's information (GetFileInformationByHandle), 49728 to 50319 a directory entry (FindFirstFileW).
+# D-138, on Linux: 760 holds the errno of the last file call that failed, 49728 to 49871 a struct stat; a file's
+# handle is its descriptor, paths are resolved as posixpath.realpath resolves them (links followed one component
+# at a time, at most 40 of them), names are compared as they are (normcase changes nothing), and the claims, the
+# scopes, and the errors are the same code as on Windows, with the errno the system call gave.
 # A claim (32 bytes): the address of its key (a heap block), the key's length, how many read it, how many write it.
 # A file (a heap block of fileBytes): 0 its handle, 8 its key and 16 the key's length, 24 its identity and 32 its
 # length (0 when the system gives none), 40 whether it writes, 48 whether it is readable, 56 whether it is
@@ -247,6 +252,118 @@ chunk is constant
 chunk purpose "How many bytes one ReadFile asks for"
 chunk type Int64
 chunk value 65536
+
+statAt is constant
+statAt purpose "Where a struct stat is put on Linux, in machine.state"
+statAt type Int64
+statAt value 49728
+
+atWorkingDirectory is constant
+atWorkingDirectory purpose "AT_FDCWD: a path relative to the working directory"
+atWorkingDirectory type Int64
+atWorkingDirectory value -100
+
+closeOnExec is constant
+closeOnExec purpose "O_CLOEXEC: a child process does not inherit the descriptor"
+closeOnExec type Int64
+closeOnExec value 524288
+
+typeMask is constant
+typeMask purpose "S_IFMT: the bits of st_mode that say what a path names"
+typeMask type Int64
+typeMask value 61440
+
+typeDirectory is constant
+typeDirectory purpose "S_IFDIR: st_mode names a directory"
+typeDirectory type Int64
+typeDirectory value 16384
+
+typeRegular is constant
+typeRegular purpose "S_IFREG: st_mode names a regular file"
+typeRegular type Int64
+typeRegular value 32768
+
+typeLink is constant
+typeLink purpose "S_IFLNK: st_mode names a symbolic link"
+typeLink type Int64
+typeLink value 40960
+
+mostLinks is constant
+mostLinks purpose "How many symbolic links one path resolves through, as the kernel's limit"
+mostLinks type Int64
+mostLinks value 40
+
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do osCheck
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do widenCode
+endProcess at linuxExit do callExit
+endProcess at linuxExit return ok none
+endProcess at windowsExit do callExitProcess
+endProcess at windowsExit return ok none
+
+osCheck is call
+osCheck in endProcess
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+widenCode is call
+widenCode in endProcess
+widenCode invokes convert.int32ToInt64
+widenCode argument value Int32 code copy
+widenCode result wideCode Int64
+widenCode ownedBy none
+widenCode cleanedBy none
+widenCode borrows none
+widenCode catch none
+widenCode suppresses none
+
+callExit is call
+callExit in endProcess
+callExit invokes system.exitGroup
+callExit argument code Int64 wideCode copy
+callExit result exitResult Int64
+callExit ownedBy none
+callExit cleanedBy none
+callExit borrows none
+callExit catch none
+callExit suppresses none
+
+callExitProcess is call
+callExitProcess in endProcess
+callExitProcess invokes system.exitProcess
+callExitProcess argument code Int32 code copy
+callExitProcess result none
+callExitProcess ownedBy none
+callExitProcess cleanedBy none
+callExitProcess borrows none
+callExitProcess catch none
+callExitProcess suppresses none
 
 # ---------------------------------------------------------------- small helpers
 stateAt is operation
@@ -681,6 +798,326 @@ copyIn borrows none
 copyIn catch none
 copyIn suppresses none
 
+cPath is operation
+cPath purpose "A copy of a path's bytes with a 0 after them, for a Linux system call"
+cPath invariant none
+cPath typeParameter none
+cPath input path machine.Address copied
+cPath input bytes Int64 copied
+cPath output machine.Address
+cPath outputOwnedBy none
+cPath raises none
+cPath effect use machine.memory
+cPath effect use system.calls
+cPath uses memoryAccess
+cPath uses systemCalls
+cPath memoryHeap false
+cPath async false
+cPath maxRecursion none
+cPath label begin loopKind none
+cPath label begin within none
+cPath let none
+cPath at begin do copyIt
+cPath at begin return ok copied
+
+copyIt is call
+copyIt in cPath
+copyIt invokes copyBytes
+copyIt argument data machine.Address path copy
+copyIt argument bytes Int64 bytes copy
+copyIt result copied machine.Address
+copyIt ownedBy none
+copyIt cleanedBy none
+copyIt borrows none
+copyIt catch none
+copyIt suppresses none
+
+keepErrno is operation
+keepErrno purpose "Keep the errno of a Linux system call's result that failed, for keptCode and lastFileError"
+keepErrno invariant none
+keepErrno typeParameter none
+keepErrno input result Int64 copied
+keepErrno output none
+keepErrno outputOwnedBy none
+keepErrno raises none
+keepErrno effect use machine.memory
+keepErrno uses memoryAccess
+keepErrno memoryHeap false
+keepErrno async false
+keepErrno maxRecursion none
+keepErrno label begin loopKind none
+keepErrno label begin within none
+keepErrno let none
+keepErrno at begin do errnoOf
+keepErrno at begin do findSlot
+keepErrno at begin do storeIt
+keepErrno at begin return ok none
+
+errnoOf is call
+errnoOf in keepErrno
+errnoOf invokes kernel.errnoOf
+errnoOf argument result Int64 result copy
+errnoOf result errno Int64
+errnoOf ownedBy none
+errnoOf cleanedBy none
+errnoOf borrows none
+errnoOf catch none
+errnoOf suppresses none
+
+findSlot is call
+findSlot in keepErrno
+findSlot invokes stateAt
+findSlot argument offset Int64 countedAt copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeIt is call
+storeIt in keepErrno
+storeIt invokes machine.storeInt64
+storeIt argument address machine.Address slot copy
+storeIt argument value Int64 errno copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+linuxMode is operation
+linuxMode purpose "The st_mode of a struct stat on Linux, its type bits only"
+linuxMode invariant none
+linuxMode typeParameter none
+linuxMode input status machine.Address copied
+linuxMode output Int64
+linuxMode outputOwnedBy none
+linuxMode raises none
+linuxMode effect use machine.memory
+linuxMode uses memoryAccess
+linuxMode memoryHeap false
+linuxMode async false
+linuxMode maxRecursion none
+linuxMode label begin loopKind none
+linuxMode label begin within none
+linuxMode let twentyFour Int64 24 immutable
+linuxMode at begin do modeOf
+linuxMode at begin do typeOf
+linuxMode at begin return ok kind
+
+modeOf is call
+modeOf in linuxMode
+modeOf invokes unsignedAt
+modeOf argument block machine.Address status copy
+modeOf argument offset Int64 twentyFour copy
+modeOf result mode Int64
+modeOf ownedBy none
+modeOf cleanedBy none
+modeOf borrows none
+modeOf catch none
+modeOf suppresses none
+
+typeOf is call
+typeOf in linuxMode
+typeOf invokes bits.andInt64
+typeOf argument left Int64 mode copy
+typeOf argument right Int64 typeMask copy
+typeOf result kind Int64
+typeOf ownedBy none
+typeOf cleanedBy none
+typeOf borrows none
+typeOf catch none
+typeOf suppresses none
+
+statPath is operation
+statPath purpose "newfstatat of a path on Linux into machine.state's struct stat, links followed or not: the kernel's result"
+statPath invariant none
+statPath typeParameter none
+statPath input path machine.Address copied
+statPath input bytes Int64 copied
+statPath input follow Bool copied
+statPath output Int64
+statPath outputOwnedBy none
+statPath raises none
+statPath effect use machine.memory
+statPath effect use system.calls
+statPath uses memoryAccess
+statPath uses systemCalls
+statPath memoryHeap false
+statPath async false
+statPath maxRecursion none
+statPath label begin loopKind none
+statPath label begin within none
+statPath label noFollow loopKind none
+statPath label noFollow within none
+statPath label statIt loopKind none
+statPath label statIt within none
+statPath let flags Int64 0 mutable
+statPath let noFollowFlag Int64 256 immutable
+statPath at begin branch if follow goto statIt else goto noFollow
+statPath at noFollow set flags noFollowFlag
+statPath at noFollow goto statIt
+statPath at statIt do copyPath
+statPath at statIt do findStatus
+statPath at statIt do callStat
+statPath at statIt do giveName
+statPath at statIt return ok result
+
+copyPath is call
+copyPath in statPath
+copyPath invokes cPath
+copyPath argument path machine.Address path copy
+copyPath argument bytes Int64 bytes copy
+copyPath result name machine.Address
+copyPath ownedBy none
+copyPath cleanedBy none
+copyPath borrows none
+copyPath catch none
+copyPath suppresses none
+
+findStatus is call
+findStatus in statPath
+findStatus invokes stateAt
+findStatus argument offset Int64 statAt copy
+findStatus result status machine.Address
+findStatus ownedBy none
+findStatus cleanedBy none
+findStatus borrows none
+findStatus catch none
+findStatus suppresses none
+
+callStat is call
+callStat in statPath
+callStat invokes system.newfstatat
+callStat argument directory Int64 atWorkingDirectory copy
+callStat argument path machine.Address name copy
+callStat argument status machine.Address status copy
+callStat argument flags Int64 flags copy
+callStat result result Int64
+callStat ownedBy none
+callStat cleanedBy none
+callStat borrows none
+callStat catch none
+callStat suppresses none
+
+giveName is call
+giveName in statPath
+giveName invokes heap.give
+giveName argument block machine.Address name copy
+giveName result none
+giveName ownedBy none
+giveName cleanedBy none
+giveName borrows none
+giveName catch none
+giveName suppresses none
+
+closeFile is operation
+closeFile purpose "Close a file's handle: CloseHandle on Windows, close on Linux; nonzero when it worked, 0 when it failed (its error kept for lastFileError)"
+closeFile invariant none
+closeFile typeParameter none
+closeFile input handle machine.Address copied
+closeFile output Int32
+closeFile outputOwnedBy none
+closeFile raises none
+closeFile effect use machine.memory
+closeFile effect use system.calls
+closeFile uses memoryAccess
+closeFile uses systemCalls
+closeFile memoryHeap false
+closeFile async false
+closeFile maxRecursion none
+closeFile label begin loopKind none
+closeFile label begin within none
+closeFile label linuxClose loopKind none
+closeFile label linuxClose within none
+closeFile label keepIt loopKind none
+closeFile label keepIt within none
+closeFile label giveWorked loopKind none
+closeFile label giveWorked within none
+closeFile label windowsClose loopKind none
+closeFile label windowsClose within none
+closeFile let worked Int32 1 immutable
+closeFile let refused Int32 0 immutable
+closeFile at begin do osCheck
+closeFile at begin branch if onLinux goto linuxClose else goto windowsClose
+closeFile at linuxClose do descriptorOf
+closeFile at linuxClose do closeIt
+closeFile at linuxClose do failedCheck
+closeFile at linuxClose branch if isFailure goto keepIt else goto giveWorked
+closeFile at keepIt do keepCode
+closeFile at keepIt return ok refused
+closeFile at giveWorked return ok worked
+closeFile at windowsClose do closeHandleIt
+closeFile at windowsClose return ok closedHandle
+
+osCheck is call
+osCheck in closeFile
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+descriptorOf is call
+descriptorOf in closeFile
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+closeIt is call
+closeIt in closeFile
+closeIt invokes system.close
+closeIt argument fd Int64 fd copy
+closeIt result closed Int64
+closeIt ownedBy none
+closeIt cleanedBy none
+closeIt borrows none
+closeIt catch none
+closeIt suppresses none
+
+failedCheck is call
+failedCheck in closeFile
+failedCheck invokes kernel.failed
+failedCheck argument result Int64 closed copy
+failedCheck result isFailure Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+keepCode is call
+keepCode in closeFile
+keepCode invokes keepErrno
+keepCode argument result Int64 closed copy
+keepCode result none
+keepCode ownedBy none
+keepCode cleanedBy none
+keepCode borrows none
+keepCode catch none
+keepCode suppresses none
+
+closeHandleIt is call
+closeHandleIt in closeFile
+closeHandleIt invokes system.closeHandle
+closeHandleIt argument handle machine.Address handle copy
+closeHandleIt result closedHandle Int32
+closeHandleIt ownedBy none
+closeHandleIt cleanedBy none
+closeHandleIt borrows none
+closeHandleIt catch none
+closeHandleIt suppresses none
+
 invalidHandle is operation
 invalidHandle purpose "Whether a handle is INVALID_HANDLE_VALUE (all bits set)"
 invalidHandle invariant none
@@ -784,7 +1221,7 @@ writeReport suppresses none
 
 exit is call
 exit in failText
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 trapCode copy
 exit result none
 exit ownedBy none
@@ -795,20 +1232,24 @@ exit suppresses none
 
 # ---------------------------------------------------------------- errors
 winErrno is operation
-winErrno purpose "A Windows error code as the errno Python's winerror_to_errno makes it, for the errors file and directory calls report"
+winErrno purpose "A Windows error code as the errno Python's winerror_to_errno makes it, for the errors file and directory calls report; on Linux the code is the errno already"
 winErrno invariant mapsErrors "\"File and path not found are ENOENT (2), access and sharing errors EACCES (13), already exists EEXIST (17), and so on; any other is EINVAL (22)\""
 winErrno typeParameter none
 winErrno input code Int32 copied
 winErrno output Int64
 winErrno outputOwnedBy none
 winErrno raises none
-winErrno effect none
-winErrno uses none
+winErrno effect use system.calls
+winErrno uses systemCalls
 winErrno memoryHeap false
 winErrno async false
 winErrno maxRecursion none
 winErrno label begin loopKind none
 winErrno label begin within none
+winErrno label giveErrno loopKind none
+winErrno label giveErrno within none
+winErrno label mapWindows loopKind none
+winErrno label mapWindows within none
 winErrno label giveNotFound loopKind none
 winErrno label giveNotFound within none
 winErrno label accessCheck loopKind none
@@ -888,24 +1329,27 @@ winErrno let thirtyNine Int64 39 immutable
 winErrno let oneOhNine Int64 109 immutable
 winErrno let twoThirtyTwo Int64 232 immutable
 winErrno at begin do widenCode
-winErrno at begin do is2
-winErrno at begin do is3
-winErrno at begin do is15
-winErrno at begin do is18
-winErrno at begin do is53
-winErrno at begin do is67
-winErrno at begin do is161
-winErrno at begin do is206
-winErrno at begin do is123
-winErrno at begin do or1
-winErrno at begin do or2
-winErrno at begin do or3
-winErrno at begin do or4
-winErrno at begin do or5
-winErrno at begin do or6
-winErrno at begin do or7
-winErrno at begin do or8
-winErrno at begin branch if missing goto giveNotFound else goto accessCheck
+winErrno at begin do osCheck
+winErrno at begin branch if onLinux goto giveErrno else goto mapWindows
+winErrno at giveErrno return ok value
+winErrno at mapWindows do is2
+winErrno at mapWindows do is3
+winErrno at mapWindows do is15
+winErrno at mapWindows do is18
+winErrno at mapWindows do is53
+winErrno at mapWindows do is67
+winErrno at mapWindows do is161
+winErrno at mapWindows do is206
+winErrno at mapWindows do is123
+winErrno at mapWindows do or1
+winErrno at mapWindows do or2
+winErrno at mapWindows do or3
+winErrno at mapWindows do or4
+winErrno at mapWindows do or5
+winErrno at mapWindows do or6
+winErrno at mapWindows do or7
+winErrno at mapWindows do or8
+winErrno at mapWindows branch if missing goto giveNotFound else goto accessCheck
 winErrno at giveNotFound return ok enoent
 winErrno at accessCheck do is5
 winErrno at accessCheck do is16
@@ -964,6 +1408,17 @@ widenCode cleanedBy none
 widenCode borrows none
 widenCode catch none
 widenCode suppresses none
+
+osCheck is call
+osCheck in winErrno
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
 
 is2 is call
 is2 in winErrno
@@ -1705,11 +2160,66 @@ lastFileError async false
 lastFileError maxRecursion none
 lastFileError label begin loopKind none
 lastFileError label begin within none
+lastFileError label linuxError loopKind none
+lastFileError label linuxError within none
+lastFileError label windowsError loopKind none
+lastFileError label windowsError within none
 lastFileError let none
-lastFileError at begin do readError
-lastFileError at begin do mapIt
-lastFileError at begin do classify
-lastFileError at begin return ok status
+lastFileError at begin do osCheck
+lastFileError at begin branch if onLinux goto linuxError else goto windowsError
+lastFileError at linuxError do findSlot
+lastFileError at linuxError do readErrno
+lastFileError at linuxError do classifyLinux
+lastFileError at linuxError return ok linuxStatus
+lastFileError at windowsError do readError
+lastFileError at windowsError do mapIt
+lastFileError at windowsError do classify
+lastFileError at windowsError return ok status
+
+osCheck is call
+osCheck in lastFileError
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+findSlot is call
+findSlot in lastFileError
+findSlot invokes stateAt
+findSlot argument offset Int64 countedAt copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readErrno is call
+readErrno in lastFileError
+readErrno invokes machine.loadInt64
+readErrno argument address machine.Address slot copy
+readErrno result linuxErrno Int64
+readErrno ownedBy none
+readErrno cleanedBy none
+readErrno borrows none
+readErrno catch none
+readErrno suppresses none
+
+classifyLinux is call
+classifyLinux in lastFileError
+classifyLinux invokes fileError
+classifyLinux argument payload machine.Address payload copy
+classifyLinux argument errno Int64 linuxErrno copy
+classifyLinux result linuxStatus Int32
+classifyLinux ownedBy none
+classifyLinux cleanedBy none
+classifyLinux borrows none
+classifyLinux catch none
+classifyLinux suppresses none
 
 readError is call
 readError in lastFileError
@@ -2939,6 +3449,10 @@ resolve label usePath loopKind none
 resolve label usePath within none
 resolve label full loopKind none
 resolve label full within none
+resolve label linuxResolve loopKind none
+resolve label linuxResolve within none
+resolve label windowsResolve loopKind none
+resolve label windowsResolve within none
 resolve label fullPath loopKind none
 resolve label fullPath within none
 resolve label dropBuffer loopKind none
@@ -2969,13 +3483,19 @@ resolve at usePath do pathValue
 resolve at usePath set sourceValue pathCopyValue
 resolve at usePath set sourceBytes bytes
 resolve at usePath goto full
-resolve at full do nowhere
-resolve at full do sourceOf
-resolve at full do wideName
-resolve at full do measure
-resolve at full do unitsOf
-resolve at full do noneCheck
-resolve at full branch if noUnits goto keepSource else goto fullPath
+resolve at full do osCheck
+resolve at full branch if onLinux goto linuxResolve else goto windowsResolve
+resolve at linuxResolve do linuxSource
+resolve at linuxResolve do realLinux
+resolve at linuxResolve do giveLinuxSource
+resolve at linuxResolve return ok linuxReal
+resolve at windowsResolve do nowhere
+resolve at windowsResolve do sourceOf
+resolve at windowsResolve do wideName
+resolve at windowsResolve do measure
+resolve at windowsResolve do unitsOf
+resolve at windowsResolve do noneCheck
+resolve at windowsResolve branch if noUnits goto keepSource else goto fullPath
 resolve at fullPath do withRoom
 resolve at fullPath do sizeOf
 resolve at fullPath do takeBuffer
@@ -3073,6 +3593,52 @@ pathValue cleanedBy none
 pathValue borrows none
 pathValue catch none
 pathValue suppresses none
+
+osCheck is call
+osCheck in resolve
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+linuxSource is call
+linuxSource in resolve
+linuxSource invokes machine.fromInt64
+linuxSource argument value Int64 sourceValue copy
+linuxSource result linuxFrom machine.Address
+linuxSource ownedBy none
+linuxSource cleanedBy none
+linuxSource borrows none
+linuxSource catch none
+linuxSource suppresses none
+
+realLinux is call
+realLinux in resolve
+realLinux invokes resolveLinux
+realLinux argument path machine.Address linuxFrom copy
+realLinux argument bytes Int64 sourceBytes copy
+realLinux argument lengthAt machine.Address lengthAt copy
+realLinux result linuxReal machine.Address
+realLinux ownedBy none
+realLinux cleanedBy none
+realLinux borrows none
+realLinux catch none
+realLinux suppresses none
+
+giveLinuxSource is call
+giveLinuxSource in resolve
+giveLinuxSource invokes heap.give
+giveLinuxSource argument block machine.Address linuxFrom copy
+giveLinuxSource result none
+giveLinuxSource ownedBy none
+giveLinuxSource cleanedBy none
+giveLinuxSource borrows none
+giveLinuxSource catch none
+giveLinuxSource suppresses none
 
 nowhere is call
 nowhere in resolve
@@ -3389,27 +3955,1437 @@ giveFinal borrows none
 giveFinal catch none
 giveFinal suppresses none
 
+resolveLinux is operation
+resolveLinux purpose "A path as posixpath.realpath gives it on Linux, as UTF-8 in a new heap block; its length stored at an address: absolute (from the working directory), `.` and empty names dropped, `..` taking off the name before it, each symbolic link replaced by what it holds (an absolute one starting again at `/`), at most 40 of them; names past one that is not there are kept as written"
+resolveLinux invariant none
+resolveLinux typeParameter none
+resolveLinux input path machine.Address copied
+resolveLinux input bytes Int64 copied
+resolveLinux input lengthAt machine.Address copied
+resolveLinux output machine.Address
+resolveLinux outputOwnedBy none
+resolveLinux raises none
+resolveLinux effect use machine.memory
+resolveLinux effect use system.calls
+resolveLinux uses memoryAccess
+resolveLinux uses systemCalls
+resolveLinux memoryHeap false
+resolveLinux async false
+resolveLinux maxRecursion none
+resolveLinux label begin loopKind none
+resolveLinux label begin within none
+resolveLinux label firstCheck loopKind none
+resolveLinux label firstCheck within none
+resolveLinux label fromWorking loopKind none
+resolveLinux label fromWorking within none
+resolveLinux label addCwd loopKind none
+resolveLinux label addCwd within none
+resolveLinux label addWorking loopKind none
+resolveLinux label addWorking within none
+resolveLinux label eachName loopKind while
+resolveLinux label eachName within none
+resolveLinux label eachName maxIterations most
+resolveLinux label skipCheck loopKind none
+resolveLinux label skipCheck within eachName
+resolveLinux label skipSlash loopKind none
+resolveLinux label skipSlash within eachName
+resolveLinux label nameStart loopKind none
+resolveLinux label nameStart within eachName
+resolveLinux label eachByte loopKind while
+resolveLinux label eachByte within eachName
+resolveLinux label eachByte maxIterations most
+resolveLinux label checkByte loopKind none
+resolveLinux label checkByte within eachByte
+resolveLinux label nextByte loopKind none
+resolveLinux label nextByte within eachByte
+resolveLinux label nameFound loopKind none
+resolveLinux label nameFound within eachName
+resolveLinux label dotCheck loopKind none
+resolveLinux label dotCheck within eachName
+resolveLinux label dotsCheck loopKind none
+resolveLinux label dotsCheck within eachName
+resolveLinux label dotsFirst loopKind none
+resolveLinux label dotsFirst within eachName
+resolveLinux label parent loopKind none
+resolveLinux label parent within eachName
+resolveLinux label eachBack loopKind while
+resolveLinux label eachBack within eachName
+resolveLinux label eachBack maxIterations most
+resolveLinux label backByte loopKind none
+resolveLinux label backByte within eachBack
+resolveLinux label cutParent loopKind none
+resolveLinux label cutParent within eachName
+resolveLinux label joinName loopKind none
+resolveLinux label joinName within eachName
+resolveLinux label linkCheck loopKind none
+resolveLinux label linkCheck within eachName
+resolveLinux label readLink loopKind none
+resolveLinux label readLink within eachName
+resolveLinux label expand loopKind none
+resolveLinux label expand within eachName
+resolveLinux label expandRest loopKind none
+resolveLinux label expandRest within eachName
+resolveLinux label restartRoot loopKind none
+resolveLinux label restartRoot within eachName
+resolveLinux label finish loopKind none
+resolveLinux label finish within none
+resolveLinux label giveRoot loopKind none
+resolveLinux label giveRoot within none
+resolveLinux label giveResult loopKind none
+resolveLinux label giveResult within none
+resolveLinux let at Int64 0 mutable
+resolveLinux let start Int64 0 mutable
+resolveLinux let links Int64 0 mutable
+resolveLinux let resultBytes Int64 0 mutable
+resolveLinux let yes Bool true immutable
+resolveLinux let no Bool false immutable
+resolveLinux let slash Byte 47 immutable
+resolveLinux let dot Byte 46 immutable
+resolveLinux let most Int64 1048576 immutable
+resolveLinux let roomBytes Int64 4096 immutable
+resolveLinux let zero Int64 0 immutable
+resolveLinux let one Int64 1 immutable
+resolveLinux let two Int64 2 immutable
+resolveLinux let eight Int64 8 immutable
+resolveLinux let sixteen Int64 16 immutable
+resolveLinux at begin do makeResult
+resolveLinux at begin do makeRest
+resolveLinux at begin do addPath
+resolveLinux at begin do takeBuffer
+resolveLinux at begin do emptyCheck
+resolveLinux at begin branch if empty goto fromWorking else goto firstCheck
+resolveLinux at firstCheck do readFirst
+resolveLinux at firstCheck do absoluteCheck
+resolveLinux at firstCheck branch if absolute goto eachName else goto fromWorking
+resolveLinux at fromWorking do askCwd
+resolveLinux at fromWorking do cwdFailed
+resolveLinux at fromWorking branch if noCwd goto eachName else goto addCwd
+resolveLinux at addCwd do withoutEnd
+resolveLinux at addCwd do rootCheck
+resolveLinux at addCwd branch if isRoot goto eachName else goto addWorking
+resolveLinux at addWorking do addCwdText
+resolveLinux at addWorking goto eachName
+resolveLinux at eachName do readRest
+resolveLinux at eachName do readRestBytes
+resolveLinux at eachName do endCheck
+resolveLinux at eachName branch if atEnd goto finish else goto skipCheck
+resolveLinux at skipCheck do readHere
+resolveLinux at skipCheck do slashCheck
+resolveLinux at skipCheck branch if isSlash goto skipSlash else goto nameStart
+resolveLinux at skipSlash do pastSlash
+resolveLinux at skipSlash set at afterSlash
+resolveLinux at skipSlash goto eachName
+resolveLinux at nameStart set start at
+resolveLinux at nameStart goto eachByte
+resolveLinux at eachByte do byteEnd
+resolveLinux at eachByte branch if atByteEnd goto nameFound else goto checkByte
+resolveLinux at checkByte do readByte
+resolveLinux at checkByte do byteSlash
+resolveLinux at checkByte branch if byteIsSlash goto nameFound else goto nextByte
+resolveLinux at nextByte do pastByte
+resolveLinux at nextByte set at afterByte
+resolveLinux at nextByte goto eachByte
+resolveLinux at nameFound do lengthOf
+resolveLinux at nameFound do findName
+resolveLinux at nameFound do oneCheck
+resolveLinux at nameFound branch if isOne goto dotCheck else goto dotsCheck
+resolveLinux at dotCheck do readDot
+resolveLinux at dotCheck do isDotCheck
+resolveLinux at dotCheck branch if isDot goto eachName else goto joinName
+resolveLinux at dotsCheck do twoCheck
+resolveLinux at dotsCheck branch if isTwo goto dotsFirst else goto joinName
+resolveLinux at dotsFirst do readDotOne
+resolveLinux at dotsFirst do readDotTwo
+resolveLinux at dotsFirst do firstDot
+resolveLinux at dotsFirst do secondDot
+resolveLinux at dotsFirst do bothDots
+resolveLinux at dotsFirst branch if isParent goto parent else goto joinName
+resolveLinux at parent do readResultBytes
+resolveLinux at parent set resultBytes haveBytes
+resolveLinux at parent goto eachBack
+resolveLinux at eachBack do backDone
+resolveLinux at eachBack branch if noneLeft goto cutParent else goto backByte
+resolveLinux at backByte do lastOf
+resolveLinux at backByte do readResultText
+resolveLinux at backByte do readLast
+resolveLinux at backByte set resultBytes lastAt
+resolveLinux at backByte do lastSlash
+resolveLinux at backByte branch if isLastSlash goto cutParent else goto eachBack
+resolveLinux at cutParent do findLength
+resolveLinux at cutParent do storeLength
+resolveLinux at cutParent goto eachName
+resolveLinux at joinName do readBefore
+resolveLinux at joinName do addSlash
+resolveLinux at joinName do addName
+resolveLinux at joinName do readCandidate
+resolveLinux at joinName do readCandidateBytes
+resolveLinux at joinName do statIt
+resolveLinux at joinName do statFailed
+resolveLinux at joinName branch if missing goto eachName else goto linkCheck
+resolveLinux at linkCheck do findStatus
+resolveLinux at linkCheck do readMode
+resolveLinux at linkCheck do isLinkCheck
+resolveLinux at linkCheck do tooManyCheck
+resolveLinux at linkCheck do notTooMany
+resolveLinux at linkCheck do followCheck
+resolveLinux at linkCheck branch if follow goto readLink else goto eachName
+resolveLinux at readLink do copyCandidate
+resolveLinux at readLink do readIt
+resolveLinux at readLink do giveLinkName
+resolveLinux at readLink do linkFailed
+resolveLinux at readLink branch if noLink goto eachName else goto expand
+resolveLinux at expand do moreLinks
+resolveLinux at expand set links linksNow
+resolveLinux at expand goto expandRest
+resolveLinux at expandRest do findBeforeLength
+resolveLinux at expandRest do storeBefore
+resolveLinux at expandRest do makeNewRest
+resolveLinux at expandRest do addTarget
+resolveLinux at expandRest do addRestSlash
+resolveLinux at expandRest do tailOf
+resolveLinux at expandRest do findTail
+resolveLinux at expandRest do addTail
+resolveLinux at expandRest do readOldRest
+resolveLinux at expandRest do giveOldRestText
+resolveLinux at expandRest do readNewText
+resolveLinux at expandRest do storeNewText
+resolveLinux at expandRest do findNewLength
+resolveLinux at expandRest do readNewLength
+resolveLinux at expandRest do findRestLength
+resolveLinux at expandRest do storeRestLength
+resolveLinux at expandRest do findNewRoom
+resolveLinux at expandRest do readNewRoom
+resolveLinux at expandRest do findRestRoom
+resolveLinux at expandRest do storeRestRoom
+resolveLinux at expandRest do giveNewRest
+resolveLinux at expandRest set at zero
+resolveLinux at expandRest do readTargetFirst
+resolveLinux at expandRest do absoluteTarget
+resolveLinux at expandRest branch if targetAbsolute goto restartRoot else goto eachName
+resolveLinux at restartRoot do findRootLength
+resolveLinux at restartRoot do storeRoot
+resolveLinux at restartRoot goto eachName
+resolveLinux at finish do readFinal
+resolveLinux at finish do emptyResult
+resolveLinux at finish branch if noBytes goto giveRoot else goto giveResult
+resolveLinux at giveRoot do addRoot
+resolveLinux at giveRoot goto giveResult
+resolveLinux at giveResult do readResultFinal
+resolveLinux at giveResult do readResultFinalBytes
+resolveLinux at giveResult do copyResult
+resolveLinux at giveResult do storeResolvedLength
+resolveLinux at giveResult do giveResultText
+resolveLinux at giveResult do giveResultBuilder
+resolveLinux at giveResult do readRestFinal
+resolveLinux at giveResult do giveRestText
+resolveLinux at giveResult do giveRestBuilder
+resolveLinux at giveResult do giveBuffer
+resolveLinux at giveResult return ok resolved
+
+makeResult is call
+makeResult in resolveLinux
+makeResult invokes wide.builderNew
+makeResult argument none
+makeResult result result machine.Address
+makeResult ownedBy none
+makeResult cleanedBy none
+makeResult borrows none
+makeResult catch none
+makeResult suppresses none
+
+makeRest is call
+makeRest in resolveLinux
+makeRest invokes wide.builderNew
+makeRest argument none
+makeRest result rest machine.Address
+makeRest ownedBy none
+makeRest cleanedBy none
+makeRest borrows none
+makeRest catch none
+makeRest suppresses none
+
+addPath is call
+addPath in resolveLinux
+addPath invokes wide.builderAdd
+addPath argument builder machine.Address rest copy
+addPath argument data machine.Address path copy
+addPath argument bytes Int64 bytes copy
+addPath result none
+addPath ownedBy none
+addPath cleanedBy none
+addPath borrows none
+addPath catch none
+addPath suppresses none
+
+takeBuffer is call
+takeBuffer in resolveLinux
+takeBuffer invokes heap.take
+takeBuffer argument bytes Int64 roomBytes copy
+takeBuffer result buffer machine.Address
+takeBuffer ownedBy none
+takeBuffer cleanedBy none
+takeBuffer borrows none
+takeBuffer catch none
+takeBuffer suppresses none
+
+emptyCheck is call
+emptyCheck in resolveLinux
+emptyCheck invokes compare.equalInt64
+emptyCheck argument left Int64 bytes copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+readFirst is call
+readFirst in resolveLinux
+readFirst invokes byteAt
+readFirst argument text machine.Address path copy
+readFirst argument position Int64 zero copy
+readFirst result first Byte
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+absoluteCheck is call
+absoluteCheck in resolveLinux
+absoluteCheck invokes compare.equalByte
+absoluteCheck argument left Byte first copy
+absoluteCheck argument right Byte slash copy
+absoluteCheck result absolute Bool
+absoluteCheck ownedBy none
+absoluteCheck cleanedBy none
+absoluteCheck borrows none
+absoluteCheck catch none
+absoluteCheck suppresses none
+
+askCwd is call
+askCwd in resolveLinux
+askCwd invokes system.getcwd
+askCwd argument buffer machine.Address buffer copy
+askCwd argument bytes Int64 roomBytes copy
+askCwd result got Int64
+askCwd ownedBy none
+askCwd cleanedBy none
+askCwd borrows none
+askCwd catch none
+askCwd suppresses none
+
+cwdFailed is call
+cwdFailed in resolveLinux
+cwdFailed invokes kernel.failed
+cwdFailed argument result Int64 got copy
+cwdFailed result noCwd Bool
+cwdFailed ownedBy none
+cwdFailed cleanedBy none
+cwdFailed borrows none
+cwdFailed catch none
+cwdFailed suppresses none
+
+withoutEnd is call
+withoutEnd in resolveLinux
+withoutEnd invokes math.subtractInt64
+withoutEnd argument left Int64 got copy
+withoutEnd argument right Int64 one copy
+withoutEnd result cwdBytes Int64
+withoutEnd ownedBy none
+withoutEnd cleanedBy none
+withoutEnd borrows none
+withoutEnd catch none
+withoutEnd suppresses none
+
+rootCheck is call
+rootCheck in resolveLinux
+rootCheck invokes compare.lessOrEqualInt64
+rootCheck argument left Int64 cwdBytes copy
+rootCheck argument right Int64 one copy
+rootCheck result isRoot Bool
+rootCheck ownedBy none
+rootCheck cleanedBy none
+rootCheck borrows none
+rootCheck catch none
+rootCheck suppresses none
+
+addCwdText is call
+addCwdText in resolveLinux
+addCwdText invokes wide.builderAdd
+addCwdText argument builder machine.Address result copy
+addCwdText argument data machine.Address buffer copy
+addCwdText argument bytes Int64 cwdBytes copy
+addCwdText result none
+addCwdText ownedBy none
+addCwdText cleanedBy none
+addCwdText borrows none
+addCwdText catch none
+addCwdText suppresses none
+
+readRest is call
+readRest in resolveLinux
+readRest invokes wide.builderText
+readRest argument builder machine.Address rest copy
+readRest result restText machine.Address
+readRest ownedBy none
+readRest cleanedBy none
+readRest borrows none
+readRest catch none
+readRest suppresses none
+
+readRestBytes is call
+readRestBytes in resolveLinux
+readRestBytes invokes wide.builderLength
+readRestBytes argument builder machine.Address rest copy
+readRestBytes result restBytes Int64
+readRestBytes ownedBy none
+readRestBytes cleanedBy none
+readRestBytes borrows none
+readRestBytes catch none
+readRestBytes suppresses none
+
+endCheck is call
+endCheck in resolveLinux
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 at copy
+endCheck argument right Int64 restBytes copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+readHere is call
+readHere in resolveLinux
+readHere invokes byteAt
+readHere argument text machine.Address restText copy
+readHere argument position Int64 at copy
+readHere result here Byte
+readHere ownedBy none
+readHere cleanedBy none
+readHere borrows none
+readHere catch none
+readHere suppresses none
+
+slashCheck is call
+slashCheck in resolveLinux
+slashCheck invokes compare.equalByte
+slashCheck argument left Byte here copy
+slashCheck argument right Byte slash copy
+slashCheck result isSlash Bool
+slashCheck ownedBy none
+slashCheck cleanedBy none
+slashCheck borrows none
+slashCheck catch none
+slashCheck suppresses none
+
+pastSlash is call
+pastSlash in resolveLinux
+pastSlash invokes math.addInt64
+pastSlash argument left Int64 at copy
+pastSlash argument right Int64 one copy
+pastSlash result afterSlash Int64
+pastSlash ownedBy none
+pastSlash cleanedBy none
+pastSlash borrows none
+pastSlash catch none
+pastSlash suppresses none
+
+byteEnd is call
+byteEnd in resolveLinux
+byteEnd invokes compare.greaterOrEqualInt64
+byteEnd argument left Int64 at copy
+byteEnd argument right Int64 restBytes copy
+byteEnd result atByteEnd Bool
+byteEnd ownedBy none
+byteEnd cleanedBy none
+byteEnd borrows none
+byteEnd catch none
+byteEnd suppresses none
+
+readByte is call
+readByte in resolveLinux
+readByte invokes byteAt
+readByte argument text machine.Address restText copy
+readByte argument position Int64 at copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+byteSlash is call
+byteSlash in resolveLinux
+byteSlash invokes compare.equalByte
+byteSlash argument left Byte byte copy
+byteSlash argument right Byte slash copy
+byteSlash result byteIsSlash Bool
+byteSlash ownedBy none
+byteSlash cleanedBy none
+byteSlash borrows none
+byteSlash catch none
+byteSlash suppresses none
+
+pastByte is call
+pastByte in resolveLinux
+pastByte invokes math.addInt64
+pastByte argument left Int64 at copy
+pastByte argument right Int64 one copy
+pastByte result afterByte Int64
+pastByte ownedBy none
+pastByte cleanedBy none
+pastByte borrows none
+pastByte catch none
+pastByte suppresses none
+
+lengthOf is call
+lengthOf in resolveLinux
+lengthOf invokes math.subtractInt64
+lengthOf argument left Int64 at copy
+lengthOf argument right Int64 start copy
+lengthOf result nameBytes Int64
+lengthOf ownedBy none
+lengthOf cleanedBy none
+lengthOf borrows none
+lengthOf catch none
+lengthOf suppresses none
+
+findName is call
+findName in resolveLinux
+findName invokes machine.offset
+findName argument address machine.Address restText copy
+findName argument bytes Int64 start copy
+findName result name machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+oneCheck is call
+oneCheck in resolveLinux
+oneCheck invokes compare.equalInt64
+oneCheck argument left Int64 nameBytes copy
+oneCheck argument right Int64 one copy
+oneCheck result isOne Bool
+oneCheck ownedBy none
+oneCheck cleanedBy none
+oneCheck borrows none
+oneCheck catch none
+oneCheck suppresses none
+
+readDot is call
+readDot in resolveLinux
+readDot invokes byteAt
+readDot argument text machine.Address name copy
+readDot argument position Int64 zero copy
+readDot result onlyByte Byte
+readDot ownedBy none
+readDot cleanedBy none
+readDot borrows none
+readDot catch none
+readDot suppresses none
+
+isDotCheck is call
+isDotCheck in resolveLinux
+isDotCheck invokes compare.equalByte
+isDotCheck argument left Byte onlyByte copy
+isDotCheck argument right Byte dot copy
+isDotCheck result isDot Bool
+isDotCheck ownedBy none
+isDotCheck cleanedBy none
+isDotCheck borrows none
+isDotCheck catch none
+isDotCheck suppresses none
+
+twoCheck is call
+twoCheck in resolveLinux
+twoCheck invokes compare.equalInt64
+twoCheck argument left Int64 nameBytes copy
+twoCheck argument right Int64 two copy
+twoCheck result isTwo Bool
+twoCheck ownedBy none
+twoCheck cleanedBy none
+twoCheck borrows none
+twoCheck catch none
+twoCheck suppresses none
+
+readDotOne is call
+readDotOne in resolveLinux
+readDotOne invokes byteAt
+readDotOne argument text machine.Address name copy
+readDotOne argument position Int64 zero copy
+readDotOne result dotOne Byte
+readDotOne ownedBy none
+readDotOne cleanedBy none
+readDotOne borrows none
+readDotOne catch none
+readDotOne suppresses none
+
+readDotTwo is call
+readDotTwo in resolveLinux
+readDotTwo invokes byteAt
+readDotTwo argument text machine.Address name copy
+readDotTwo argument position Int64 one copy
+readDotTwo result dotTwo Byte
+readDotTwo ownedBy none
+readDotTwo cleanedBy none
+readDotTwo borrows none
+readDotTwo catch none
+readDotTwo suppresses none
+
+firstDot is call
+firstDot in resolveLinux
+firstDot invokes compare.equalByte
+firstDot argument left Byte dotOne copy
+firstDot argument right Byte dot copy
+firstDot result isDotOne Bool
+firstDot ownedBy none
+firstDot cleanedBy none
+firstDot borrows none
+firstDot catch none
+firstDot suppresses none
+
+secondDot is call
+secondDot in resolveLinux
+secondDot invokes compare.equalByte
+secondDot argument left Byte dotTwo copy
+secondDot argument right Byte dot copy
+secondDot result isDotTwo Bool
+secondDot ownedBy none
+secondDot cleanedBy none
+secondDot borrows none
+secondDot catch none
+secondDot suppresses none
+
+bothDots is call
+bothDots in resolveLinux
+bothDots invokes logic.and
+bothDots argument left Bool isDotOne copy
+bothDots argument right Bool isDotTwo copy
+bothDots result isParent Bool
+bothDots ownedBy none
+bothDots cleanedBy none
+bothDots borrows none
+bothDots catch none
+bothDots suppresses none
+
+readResultBytes is call
+readResultBytes in resolveLinux
+readResultBytes invokes wide.builderLength
+readResultBytes argument builder machine.Address result copy
+readResultBytes result haveBytes Int64
+readResultBytes ownedBy none
+readResultBytes cleanedBy none
+readResultBytes borrows none
+readResultBytes catch none
+readResultBytes suppresses none
+
+backDone is call
+backDone in resolveLinux
+backDone invokes compare.lessOrEqualInt64
+backDone argument left Int64 resultBytes copy
+backDone argument right Int64 zero copy
+backDone result noneLeft Bool
+backDone ownedBy none
+backDone cleanedBy none
+backDone borrows none
+backDone catch none
+backDone suppresses none
+
+lastOf is call
+lastOf in resolveLinux
+lastOf invokes math.subtractInt64
+lastOf argument left Int64 resultBytes copy
+lastOf argument right Int64 one copy
+lastOf result lastAt Int64
+lastOf ownedBy none
+lastOf cleanedBy none
+lastOf borrows none
+lastOf catch none
+lastOf suppresses none
+
+readResultText is call
+readResultText in resolveLinux
+readResultText invokes wide.builderText
+readResultText argument builder machine.Address result copy
+readResultText result resultText machine.Address
+readResultText ownedBy none
+readResultText cleanedBy none
+readResultText borrows none
+readResultText catch none
+readResultText suppresses none
+
+readLast is call
+readLast in resolveLinux
+readLast invokes byteAt
+readLast argument text machine.Address resultText copy
+readLast argument position Int64 lastAt copy
+readLast result last Byte
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch none
+readLast suppresses none
+
+lastSlash is call
+lastSlash in resolveLinux
+lastSlash invokes compare.equalByte
+lastSlash argument left Byte last copy
+lastSlash argument right Byte slash copy
+lastSlash result isLastSlash Bool
+lastSlash ownedBy none
+lastSlash cleanedBy none
+lastSlash borrows none
+lastSlash catch none
+lastSlash suppresses none
+
+findLength is call
+findLength in resolveLinux
+findLength invokes machine.offset
+findLength argument address machine.Address result copy
+findLength argument bytes Int64 eight copy
+findLength result resultLengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in resolveLinux
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address resultLengthSlot copy
+storeLength argument value Int64 resultBytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+readBefore is call
+readBefore in resolveLinux
+readBefore invokes wide.builderLength
+readBefore argument builder machine.Address result copy
+readBefore result beforeBytes Int64
+readBefore ownedBy none
+readBefore cleanedBy none
+readBefore borrows none
+readBefore catch none
+readBefore suppresses none
+
+addSlash is call
+addSlash in resolveLinux
+addSlash invokes wide.builderAddByte
+addSlash argument builder machine.Address result copy
+addSlash argument byte Byte slash copy
+addSlash result none
+addSlash ownedBy none
+addSlash cleanedBy none
+addSlash borrows none
+addSlash catch none
+addSlash suppresses none
+
+addName is call
+addName in resolveLinux
+addName invokes wide.builderAdd
+addName argument builder machine.Address result copy
+addName argument data machine.Address name copy
+addName argument bytes Int64 nameBytes copy
+addName result none
+addName ownedBy none
+addName cleanedBy none
+addName borrows none
+addName catch none
+addName suppresses none
+
+readCandidate is call
+readCandidate in resolveLinux
+readCandidate invokes wide.builderText
+readCandidate argument builder machine.Address result copy
+readCandidate result candidate machine.Address
+readCandidate ownedBy none
+readCandidate cleanedBy none
+readCandidate borrows none
+readCandidate catch none
+readCandidate suppresses none
+
+readCandidateBytes is call
+readCandidateBytes in resolveLinux
+readCandidateBytes invokes wide.builderLength
+readCandidateBytes argument builder machine.Address result copy
+readCandidateBytes result candidateBytes Int64
+readCandidateBytes ownedBy none
+readCandidateBytes cleanedBy none
+readCandidateBytes borrows none
+readCandidateBytes catch none
+readCandidateBytes suppresses none
+
+statIt is call
+statIt in resolveLinux
+statIt invokes statPath
+statIt argument path machine.Address candidate copy
+statIt argument bytes Int64 candidateBytes copy
+statIt argument follow Bool no copy
+statIt result statResult Int64
+statIt ownedBy none
+statIt cleanedBy none
+statIt borrows none
+statIt catch none
+statIt suppresses none
+
+statFailed is call
+statFailed in resolveLinux
+statFailed invokes kernel.failed
+statFailed argument result Int64 statResult copy
+statFailed result missing Bool
+statFailed ownedBy none
+statFailed cleanedBy none
+statFailed borrows none
+statFailed catch none
+statFailed suppresses none
+
+findStatus is call
+findStatus in resolveLinux
+findStatus invokes stateAt
+findStatus argument offset Int64 statAt copy
+findStatus result status machine.Address
+findStatus ownedBy none
+findStatus cleanedBy none
+findStatus borrows none
+findStatus catch none
+findStatus suppresses none
+
+readMode is call
+readMode in resolveLinux
+readMode invokes linuxMode
+readMode argument status machine.Address status copy
+readMode result mode Int64
+readMode ownedBy none
+readMode cleanedBy none
+readMode borrows none
+readMode catch none
+readMode suppresses none
+
+isLinkCheck is call
+isLinkCheck in resolveLinux
+isLinkCheck invokes compare.equalInt64
+isLinkCheck argument left Int64 mode copy
+isLinkCheck argument right Int64 typeLink copy
+isLinkCheck result isLink Bool
+isLinkCheck ownedBy none
+isLinkCheck cleanedBy none
+isLinkCheck borrows none
+isLinkCheck catch none
+isLinkCheck suppresses none
+
+tooManyCheck is call
+tooManyCheck in resolveLinux
+tooManyCheck invokes compare.greaterOrEqualInt64
+tooManyCheck argument left Int64 links copy
+tooManyCheck argument right Int64 mostLinks copy
+tooManyCheck result tooMany Bool
+tooManyCheck ownedBy none
+tooManyCheck cleanedBy none
+tooManyCheck borrows none
+tooManyCheck catch none
+tooManyCheck suppresses none
+
+notTooMany is call
+notTooMany in resolveLinux
+notTooMany invokes logic.not
+notTooMany argument value Bool tooMany copy
+notTooMany result underLimit Bool
+notTooMany ownedBy none
+notTooMany cleanedBy none
+notTooMany borrows none
+notTooMany catch none
+notTooMany suppresses none
+
+followCheck is call
+followCheck in resolveLinux
+followCheck invokes logic.and
+followCheck argument left Bool isLink copy
+followCheck argument right Bool underLimit copy
+followCheck result follow Bool
+followCheck ownedBy none
+followCheck cleanedBy none
+followCheck borrows none
+followCheck catch none
+followCheck suppresses none
+
+copyCandidate is call
+copyCandidate in resolveLinux
+copyCandidate invokes cPath
+copyCandidate argument path machine.Address candidate copy
+copyCandidate argument bytes Int64 candidateBytes copy
+copyCandidate result linkName machine.Address
+copyCandidate ownedBy none
+copyCandidate cleanedBy none
+copyCandidate borrows none
+copyCandidate catch none
+copyCandidate suppresses none
+
+readIt is call
+readIt in resolveLinux
+readIt invokes system.readlinkat
+readIt argument directory Int64 atWorkingDirectory copy
+readIt argument path machine.Address linkName copy
+readIt argument buffer machine.Address buffer copy
+readIt argument bytes Int64 roomBytes copy
+readIt result linkBytes Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+giveLinkName is call
+giveLinkName in resolveLinux
+giveLinkName invokes heap.give
+giveLinkName argument block machine.Address linkName copy
+giveLinkName result none
+giveLinkName ownedBy none
+giveLinkName cleanedBy none
+giveLinkName borrows none
+giveLinkName catch none
+giveLinkName suppresses none
+
+linkFailed is call
+linkFailed in resolveLinux
+linkFailed invokes kernel.failed
+linkFailed argument result Int64 linkBytes copy
+linkFailed result noLink Bool
+linkFailed ownedBy none
+linkFailed cleanedBy none
+linkFailed borrows none
+linkFailed catch none
+linkFailed suppresses none
+
+moreLinks is call
+moreLinks in resolveLinux
+moreLinks invokes math.addInt64
+moreLinks argument left Int64 links copy
+moreLinks argument right Int64 one copy
+moreLinks result linksNow Int64
+moreLinks ownedBy none
+moreLinks cleanedBy none
+moreLinks borrows none
+moreLinks catch none
+moreLinks suppresses none
+
+findBeforeLength is call
+findBeforeLength in resolveLinux
+findBeforeLength invokes machine.offset
+findBeforeLength argument address machine.Address result copy
+findBeforeLength argument bytes Int64 eight copy
+findBeforeLength result beforeSlot machine.Address
+findBeforeLength ownedBy none
+findBeforeLength cleanedBy none
+findBeforeLength borrows none
+findBeforeLength catch none
+findBeforeLength suppresses none
+
+storeBefore is call
+storeBefore in resolveLinux
+storeBefore invokes machine.storeInt64
+storeBefore argument address machine.Address beforeSlot copy
+storeBefore argument value Int64 beforeBytes copy
+storeBefore result none
+storeBefore ownedBy none
+storeBefore cleanedBy none
+storeBefore borrows none
+storeBefore catch none
+storeBefore suppresses none
+
+makeNewRest is call
+makeNewRest in resolveLinux
+makeNewRest invokes wide.builderNew
+makeNewRest argument none
+makeNewRest result newRest machine.Address
+makeNewRest ownedBy none
+makeNewRest cleanedBy none
+makeNewRest borrows none
+makeNewRest catch none
+makeNewRest suppresses none
+
+addTarget is call
+addTarget in resolveLinux
+addTarget invokes wide.builderAdd
+addTarget argument builder machine.Address newRest copy
+addTarget argument data machine.Address buffer copy
+addTarget argument bytes Int64 linkBytes copy
+addTarget result none
+addTarget ownedBy none
+addTarget cleanedBy none
+addTarget borrows none
+addTarget catch none
+addTarget suppresses none
+
+addRestSlash is call
+addRestSlash in resolveLinux
+addRestSlash invokes wide.builderAddByte
+addRestSlash argument builder machine.Address newRest copy
+addRestSlash argument byte Byte slash copy
+addRestSlash result none
+addRestSlash ownedBy none
+addRestSlash cleanedBy none
+addRestSlash borrows none
+addRestSlash catch none
+addRestSlash suppresses none
+
+tailOf is call
+tailOf in resolveLinux
+tailOf invokes math.subtractInt64
+tailOf argument left Int64 restBytes copy
+tailOf argument right Int64 at copy
+tailOf result tailBytes Int64
+tailOf ownedBy none
+tailOf cleanedBy none
+tailOf borrows none
+tailOf catch none
+tailOf suppresses none
+
+findTail is call
+findTail in resolveLinux
+findTail invokes machine.offset
+findTail argument address machine.Address restText copy
+findTail argument bytes Int64 at copy
+findTail result tail machine.Address
+findTail ownedBy none
+findTail cleanedBy none
+findTail borrows none
+findTail catch none
+findTail suppresses none
+
+addTail is call
+addTail in resolveLinux
+addTail invokes wide.builderAdd
+addTail argument builder machine.Address newRest copy
+addTail argument data machine.Address tail copy
+addTail argument bytes Int64 tailBytes copy
+addTail result none
+addTail ownedBy none
+addTail cleanedBy none
+addTail borrows none
+addTail catch none
+addTail suppresses none
+
+readOldRest is call
+readOldRest in resolveLinux
+readOldRest invokes wide.builderText
+readOldRest argument builder machine.Address rest copy
+readOldRest result oldRestText machine.Address
+readOldRest ownedBy none
+readOldRest cleanedBy none
+readOldRest borrows none
+readOldRest catch none
+readOldRest suppresses none
+
+giveOldRestText is call
+giveOldRestText in resolveLinux
+giveOldRestText invokes heap.give
+giveOldRestText argument block machine.Address oldRestText copy
+giveOldRestText result none
+giveOldRestText ownedBy none
+giveOldRestText cleanedBy none
+giveOldRestText borrows none
+giveOldRestText catch none
+giveOldRestText suppresses none
+
+readNewText is call
+readNewText in resolveLinux
+readNewText invokes wide.builderText
+readNewText argument builder machine.Address newRest copy
+readNewText result newText machine.Address
+readNewText ownedBy none
+readNewText cleanedBy none
+readNewText borrows none
+readNewText catch none
+readNewText suppresses none
+
+storeNewText is call
+storeNewText in resolveLinux
+storeNewText invokes machine.storeAddress
+storeNewText argument address machine.Address rest copy
+storeNewText argument value machine.Address newText copy
+storeNewText result none
+storeNewText ownedBy none
+storeNewText cleanedBy none
+storeNewText borrows none
+storeNewText catch none
+storeNewText suppresses none
+
+findNewLength is call
+findNewLength in resolveLinux
+findNewLength invokes machine.offset
+findNewLength argument address machine.Address newRest copy
+findNewLength argument bytes Int64 eight copy
+findNewLength result newLengthSlot machine.Address
+findNewLength ownedBy none
+findNewLength cleanedBy none
+findNewLength borrows none
+findNewLength catch none
+findNewLength suppresses none
+
+readNewLength is call
+readNewLength in resolveLinux
+readNewLength invokes machine.loadInt64
+readNewLength argument address machine.Address newLengthSlot copy
+readNewLength result newLength Int64
+readNewLength ownedBy none
+readNewLength cleanedBy none
+readNewLength borrows none
+readNewLength catch none
+readNewLength suppresses none
+
+findRestLength is call
+findRestLength in resolveLinux
+findRestLength invokes machine.offset
+findRestLength argument address machine.Address rest copy
+findRestLength argument bytes Int64 eight copy
+findRestLength result restLengthSlot machine.Address
+findRestLength ownedBy none
+findRestLength cleanedBy none
+findRestLength borrows none
+findRestLength catch none
+findRestLength suppresses none
+
+storeRestLength is call
+storeRestLength in resolveLinux
+storeRestLength invokes machine.storeInt64
+storeRestLength argument address machine.Address restLengthSlot copy
+storeRestLength argument value Int64 newLength copy
+storeRestLength result none
+storeRestLength ownedBy none
+storeRestLength cleanedBy none
+storeRestLength borrows none
+storeRestLength catch none
+storeRestLength suppresses none
+
+findNewRoom is call
+findNewRoom in resolveLinux
+findNewRoom invokes machine.offset
+findNewRoom argument address machine.Address newRest copy
+findNewRoom argument bytes Int64 sixteen copy
+findNewRoom result newRoomSlot machine.Address
+findNewRoom ownedBy none
+findNewRoom cleanedBy none
+findNewRoom borrows none
+findNewRoom catch none
+findNewRoom suppresses none
+
+readNewRoom is call
+readNewRoom in resolveLinux
+readNewRoom invokes machine.loadInt64
+readNewRoom argument address machine.Address newRoomSlot copy
+readNewRoom result newRoom Int64
+readNewRoom ownedBy none
+readNewRoom cleanedBy none
+readNewRoom borrows none
+readNewRoom catch none
+readNewRoom suppresses none
+
+findRestRoom is call
+findRestRoom in resolveLinux
+findRestRoom invokes machine.offset
+findRestRoom argument address machine.Address rest copy
+findRestRoom argument bytes Int64 sixteen copy
+findRestRoom result restRoomSlot machine.Address
+findRestRoom ownedBy none
+findRestRoom cleanedBy none
+findRestRoom borrows none
+findRestRoom catch none
+findRestRoom suppresses none
+
+storeRestRoom is call
+storeRestRoom in resolveLinux
+storeRestRoom invokes machine.storeInt64
+storeRestRoom argument address machine.Address restRoomSlot copy
+storeRestRoom argument value Int64 newRoom copy
+storeRestRoom result none
+storeRestRoom ownedBy none
+storeRestRoom cleanedBy none
+storeRestRoom borrows none
+storeRestRoom catch none
+storeRestRoom suppresses none
+
+giveNewRest is call
+giveNewRest in resolveLinux
+giveNewRest invokes heap.give
+giveNewRest argument block machine.Address newRest copy
+giveNewRest result none
+giveNewRest ownedBy none
+giveNewRest cleanedBy none
+giveNewRest borrows none
+giveNewRest catch none
+giveNewRest suppresses none
+
+readTargetFirst is call
+readTargetFirst in resolveLinux
+readTargetFirst invokes byteAt
+readTargetFirst argument text machine.Address buffer copy
+readTargetFirst argument position Int64 zero copy
+readTargetFirst result targetFirst Byte
+readTargetFirst ownedBy none
+readTargetFirst cleanedBy none
+readTargetFirst borrows none
+readTargetFirst catch none
+readTargetFirst suppresses none
+
+absoluteTarget is call
+absoluteTarget in resolveLinux
+absoluteTarget invokes compare.equalByte
+absoluteTarget argument left Byte targetFirst copy
+absoluteTarget argument right Byte slash copy
+absoluteTarget result targetAbsolute Bool
+absoluteTarget ownedBy none
+absoluteTarget cleanedBy none
+absoluteTarget borrows none
+absoluteTarget catch none
+absoluteTarget suppresses none
+
+findRootLength is call
+findRootLength in resolveLinux
+findRootLength invokes machine.offset
+findRootLength argument address machine.Address result copy
+findRootLength argument bytes Int64 eight copy
+findRootLength result rootLengthSlot machine.Address
+findRootLength ownedBy none
+findRootLength cleanedBy none
+findRootLength borrows none
+findRootLength catch none
+findRootLength suppresses none
+
+storeRoot is call
+storeRoot in resolveLinux
+storeRoot invokes machine.storeInt64
+storeRoot argument address machine.Address rootLengthSlot copy
+storeRoot argument value Int64 zero copy
+storeRoot result none
+storeRoot ownedBy none
+storeRoot cleanedBy none
+storeRoot borrows none
+storeRoot catch none
+storeRoot suppresses none
+
+readFinal is call
+readFinal in resolveLinux
+readFinal invokes wide.builderLength
+readFinal argument builder machine.Address result copy
+readFinal result finalBytes Int64
+readFinal ownedBy none
+readFinal cleanedBy none
+readFinal borrows none
+readFinal catch none
+readFinal suppresses none
+
+emptyResult is call
+emptyResult in resolveLinux
+emptyResult invokes compare.equalInt64
+emptyResult argument left Int64 finalBytes copy
+emptyResult argument right Int64 zero copy
+emptyResult result noBytes Bool
+emptyResult ownedBy none
+emptyResult cleanedBy none
+emptyResult borrows none
+emptyResult catch none
+emptyResult suppresses none
+
+addRoot is call
+addRoot in resolveLinux
+addRoot invokes wide.builderAddByte
+addRoot argument builder machine.Address result copy
+addRoot argument byte Byte slash copy
+addRoot result none
+addRoot ownedBy none
+addRoot cleanedBy none
+addRoot borrows none
+addRoot catch none
+addRoot suppresses none
+
+readResultFinal is call
+readResultFinal in resolveLinux
+readResultFinal invokes wide.builderText
+readResultFinal argument builder machine.Address result copy
+readResultFinal result resultFinal machine.Address
+readResultFinal ownedBy none
+readResultFinal cleanedBy none
+readResultFinal borrows none
+readResultFinal catch none
+readResultFinal suppresses none
+
+readResultFinalBytes is call
+readResultFinalBytes in resolveLinux
+readResultFinalBytes invokes wide.builderLength
+readResultFinalBytes argument builder machine.Address result copy
+readResultFinalBytes result resultFinalBytes Int64
+readResultFinalBytes ownedBy none
+readResultFinalBytes cleanedBy none
+readResultFinalBytes borrows none
+readResultFinalBytes catch none
+readResultFinalBytes suppresses none
+
+copyResult is call
+copyResult in resolveLinux
+copyResult invokes copyBytes
+copyResult argument data machine.Address resultFinal copy
+copyResult argument bytes Int64 resultFinalBytes copy
+copyResult result resolved machine.Address
+copyResult ownedBy none
+copyResult cleanedBy none
+copyResult borrows none
+copyResult catch none
+copyResult suppresses none
+
+storeResolvedLength is call
+storeResolvedLength in resolveLinux
+storeResolvedLength invokes machine.storeInt64
+storeResolvedLength argument address machine.Address lengthAt copy
+storeResolvedLength argument value Int64 resultFinalBytes copy
+storeResolvedLength result none
+storeResolvedLength ownedBy none
+storeResolvedLength cleanedBy none
+storeResolvedLength borrows none
+storeResolvedLength catch none
+storeResolvedLength suppresses none
+
+giveResultText is call
+giveResultText in resolveLinux
+giveResultText invokes heap.give
+giveResultText argument block machine.Address resultFinal copy
+giveResultText result none
+giveResultText ownedBy none
+giveResultText cleanedBy none
+giveResultText borrows none
+giveResultText catch none
+giveResultText suppresses none
+
+giveResultBuilder is call
+giveResultBuilder in resolveLinux
+giveResultBuilder invokes heap.give
+giveResultBuilder argument block machine.Address result copy
+giveResultBuilder result none
+giveResultBuilder ownedBy none
+giveResultBuilder cleanedBy none
+giveResultBuilder borrows none
+giveResultBuilder catch none
+giveResultBuilder suppresses none
+
+readRestFinal is call
+readRestFinal in resolveLinux
+readRestFinal invokes wide.builderText
+readRestFinal argument builder machine.Address rest copy
+readRestFinal result restFinal machine.Address
+readRestFinal ownedBy none
+readRestFinal cleanedBy none
+readRestFinal borrows none
+readRestFinal catch none
+readRestFinal suppresses none
+
+giveRestText is call
+giveRestText in resolveLinux
+giveRestText invokes heap.give
+giveRestText argument block machine.Address restFinal copy
+giveRestText result none
+giveRestText ownedBy none
+giveRestText cleanedBy none
+giveRestText borrows none
+giveRestText catch none
+giveRestText suppresses none
+
+giveRestBuilder is call
+giveRestBuilder in resolveLinux
+giveRestBuilder invokes heap.give
+giveRestBuilder argument block machine.Address rest copy
+giveRestBuilder result none
+giveRestBuilder ownedBy none
+giveRestBuilder cleanedBy none
+giveRestBuilder borrows none
+giveRestBuilder catch none
+giveRestBuilder suppresses none
+
+giveBuffer is call
+giveBuffer in resolveLinux
+giveBuffer invokes heap.give
+giveBuffer argument block machine.Address buffer copy
+giveBuffer result none
+giveBuffer ownedBy none
+giveBuffer cleanedBy none
+giveBuffer borrows none
+giveBuffer catch none
+giveBuffer suppresses none
+
+pathSeparator is operation
+pathSeparator purpose "The path separator: `\\` on Windows, `/` on Linux"
+pathSeparator invariant none
+pathSeparator typeParameter none
+pathSeparator input none
+pathSeparator output Byte
+pathSeparator outputOwnedBy none
+pathSeparator raises none
+pathSeparator effect use system.calls
+pathSeparator uses systemCalls
+pathSeparator memoryHeap false
+pathSeparator async false
+pathSeparator maxRecursion none
+pathSeparator label begin loopKind none
+pathSeparator label begin within none
+pathSeparator label giveSlash loopKind none
+pathSeparator label giveSlash within none
+pathSeparator label giveBackslash loopKind none
+pathSeparator label giveBackslash within none
+pathSeparator let slashByte Byte 47 immutable
+pathSeparator let backslashByte Byte 92 immutable
+pathSeparator at begin do osCheck
+pathSeparator at begin branch if onLinux goto giveSlash else goto giveBackslash
+pathSeparator at giveSlash return ok slashByte
+pathSeparator at giveBackslash return ok backslashByte
+
+osCheck is call
+osCheck in pathSeparator
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
 isSeparator is operation
-isSeparator purpose "Whether a byte is a path separator on Windows, `/` or `\\`"
+isSeparator purpose "Whether a byte is a path separator: on Windows `/` or `\\`, on Linux `/`"
 isSeparator invariant none
 isSeparator typeParameter none
 isSeparator input byte Byte copied
 isSeparator output Bool
 isSeparator outputOwnedBy none
 isSeparator raises none
-isSeparator effect none
-isSeparator uses none
+isSeparator effect use system.calls
+isSeparator uses systemCalls
 isSeparator memoryHeap false
 isSeparator async false
 isSeparator maxRecursion none
 isSeparator label begin loopKind none
 isSeparator label begin within none
+isSeparator label giveSlash loopKind none
+isSeparator label giveSlash within none
+isSeparator label giveEither loopKind none
+isSeparator label giveEither within none
 isSeparator let slash Byte 47 immutable
 isSeparator let backslash Byte 92 immutable
 isSeparator at begin do slashCheck
 isSeparator at begin do backslashCheck
-isSeparator at begin do eitherCheck
-isSeparator at begin return ok either
+isSeparator at begin do osCheck
+isSeparator at begin branch if onLinux goto giveSlash else goto giveEither
+isSeparator at giveSlash return ok isSlash
+isSeparator at giveEither do eitherCheck
+isSeparator at giveEither return ok either
 
 slashCheck is call
 slashCheck in isSeparator
@@ -3434,6 +5410,17 @@ backslashCheck cleanedBy none
 backslashCheck borrows none
 backslashCheck catch none
 backslashCheck suppresses none
+
+osCheck is call
+osCheck in isSeparator
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
 
 eitherCheck is call
 eitherCheck in isSeparator
@@ -3476,10 +5463,10 @@ asPrefix label stepBack within eachByte
 asPrefix label make loopKind none
 asPrefix label make within none
 asPrefix let at Int64 0 mutable
-asPrefix let backslash Byte 92 immutable
 asPrefix let zero Int64 0 immutable
 asPrefix let one Int64 1 immutable
 asPrefix let two Int64 2 immutable
+asPrefix at begin do findSeparator
 asPrefix at begin set at bytes
 asPrefix at begin goto eachByte
 asPrefix at eachByte do startCheck
@@ -3498,6 +5485,17 @@ asPrefix at make do storeSeparator
 asPrefix at make do lengthOf
 asPrefix at make do storeLength
 asPrefix at make return ok prefix
+
+findSeparator is call
+findSeparator in asPrefix
+findSeparator invokes pathSeparator
+findSeparator argument none
+findSeparator result backslash Byte
+findSeparator ownedBy none
+findSeparator cleanedBy none
+findSeparator borrows none
+findSeparator catch none
+findSeparator suppresses none
 
 startCheck is call
 startCheck in asPrefix
@@ -3780,11 +5778,11 @@ pathWithin let length Int64 0 mutable
 pathWithin let no Bool false immutable
 pathWithin let slash Byte 47 immutable
 pathWithin let star Byte 42 immutable
-pathWithin let backslash Byte 92 immutable
 pathWithin let zero Int64 0 immutable
 pathWithin let one Int64 1 immutable
 pathWithin let eight Int64 8 immutable
 pathWithin let zero32 Int32 0 immutable
+pathWithin at begin do findSeparator
 pathWithin at begin do emptyCheck
 pathWithin at begin branch if empty goto notIt else goto readLast
 pathWithin at notIt return ok no
@@ -3878,6 +5876,17 @@ pathWithin at patternOutside do giveRootNo
 pathWithin at patternOutside do givePrefixNo
 pathWithin at patternOutside do giveCellNo
 pathWithin at patternOutside return ok no
+
+findSeparator is call
+findSeparator in pathWithin
+findSeparator invokes pathSeparator
+findSeparator argument none
+findSeparator result backslash Byte
+findSeparator ownedBy none
+findSeparator cleanedBy none
+findSeparator borrows none
+findSeparator catch none
+findSeparator suppresses none
 
 emptyCheck is call
 emptyCheck in pathWithin
@@ -6347,7 +8356,7 @@ writeReport suppresses none
 
 exit is call
 exit in checkScope
-exit invokes system.exitProcess
+exit invokes endProcess
 exit argument code Int32 trapCode copy
 exit result none
 exit ownedBy none
@@ -7665,6 +9674,12 @@ identityKey async false
 identityKey maxRecursion none
 identityKey label begin loopKind none
 identityKey label begin within none
+identityKey label linuxIdentity loopKind none
+identityKey label linuxIdentity within none
+identityKey label linuxKey loopKind none
+identityKey label linuxKey within none
+identityKey label windowsIdentity loopKind none
+identityKey label windowsIdentity within none
 identityKey label giveNothing loopKind none
 identityKey label giveNothing within none
 identityKey label readIndex loopKind none
@@ -7679,10 +9694,19 @@ identityKey let zero Int64 0 immutable
 identityKey let hash Byte 35 immutable
 identityKey let colon Byte 58 immutable
 identityKey at begin do nowhere
-identityKey at begin do findInfo
-identityKey at begin do readInfo
-identityKey at begin do failedCheck
-identityKey at begin branch if notRead goto giveNothing else goto readIndex
+identityKey at begin do osCheck
+identityKey at begin branch if onLinux goto linuxIdentity else goto windowsIdentity
+identityKey at linuxIdentity do descriptorOf
+identityKey at linuxIdentity do findStatus
+identityKey at linuxIdentity do statIt
+identityKey at linuxIdentity do statFailed
+identityKey at linuxIdentity branch if noStatus goto giveNothing else goto linuxKey
+identityKey at linuxKey do keyOf
+identityKey at linuxKey return ok linuxKeyText
+identityKey at windowsIdentity do findInfo
+identityKey at windowsIdentity do readInfo
+identityKey at windowsIdentity do failedCheck
+identityKey at windowsIdentity branch if notRead goto giveNothing else goto readIndex
 identityKey at giveNothing return ok anywhere
 identityKey at readIndex do volume
 identityKey at readIndex do indexHigh
@@ -7713,6 +9737,74 @@ nowhere cleanedBy none
 nowhere borrows none
 nowhere catch none
 nowhere suppresses none
+
+osCheck is call
+osCheck in identityKey
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+descriptorOf is call
+descriptorOf in identityKey
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+findStatus is call
+findStatus in identityKey
+findStatus invokes stateAt
+findStatus argument offset Int64 statAt copy
+findStatus result status machine.Address
+findStatus ownedBy none
+findStatus cleanedBy none
+findStatus borrows none
+findStatus catch none
+findStatus suppresses none
+
+statIt is call
+statIt in identityKey
+statIt invokes system.fstat
+statIt argument fd Int64 fd copy
+statIt argument status machine.Address status copy
+statIt result statResult Int64
+statIt ownedBy none
+statIt cleanedBy none
+statIt borrows none
+statIt catch none
+statIt suppresses none
+
+statFailed is call
+statFailed in identityKey
+statFailed invokes kernel.failed
+statFailed argument result Int64 statResult copy
+statFailed result noStatus Bool
+statFailed ownedBy none
+statFailed cleanedBy none
+statFailed borrows none
+statFailed catch none
+statFailed suppresses none
+
+keyOf is call
+keyOf in identityKey
+keyOf invokes statusIdentity
+keyOf argument status machine.Address status copy
+keyOf argument lengthAt machine.Address lengthAt copy
+keyOf result linuxKeyText machine.Address
+keyOf ownedBy none
+keyOf cleanedBy none
+keyOf borrows none
+keyOf catch none
+keyOf suppresses none
 
 findInfo is call
 findInfo in identityKey
@@ -7937,8 +10029,213 @@ giveBuilder borrows none
 giveBuilder catch none
 giveBuilder suppresses none
 
+statusIdentity is operation
+statusIdentity purpose "D-109 on Linux: the file a struct stat describes, `#<st_dev>:<st_ino>` as host.py writes it, in a new heap block (its length stored at an address); the address 0 when st_ino is 0"
+statusIdentity invariant none
+statusIdentity typeParameter none
+statusIdentity input status machine.Address copied
+statusIdentity input lengthAt machine.Address copied
+statusIdentity output machine.Address
+statusIdentity outputOwnedBy none
+statusIdentity raises none
+statusIdentity effect use machine.memory
+statusIdentity effect use system.calls
+statusIdentity uses memoryAccess
+statusIdentity uses systemCalls
+statusIdentity memoryHeap false
+statusIdentity async false
+statusIdentity maxRecursion none
+statusIdentity label begin loopKind none
+statusIdentity label begin within none
+statusIdentity label giveNothing loopKind none
+statusIdentity label giveNothing within none
+statusIdentity label format loopKind none
+statusIdentity label format within none
+statusIdentity let eight Int64 8 immutable
+statusIdentity let zero Int64 0 immutable
+statusIdentity let hash Byte 35 immutable
+statusIdentity let colon Byte 58 immutable
+statusIdentity at begin do readDevice
+statusIdentity at begin do findInode
+statusIdentity at begin do readInode
+statusIdentity at begin do zeroCheck
+statusIdentity at begin branch if noInode goto giveNothing else goto format
+statusIdentity at giveNothing do nowhere
+statusIdentity at giveNothing return ok anywhere
+statusIdentity at format do makeKey
+statusIdentity at format do addHash
+statusIdentity at format do addDevice
+statusIdentity at format do addColon
+statusIdentity at format do addInode
+statusIdentity at format do readKey
+statusIdentity at format do readLength
+statusIdentity at format do storeLength
+statusIdentity at format do giveBuilder
+statusIdentity at format return ok key
+
+readDevice is call
+readDevice in statusIdentity
+readDevice invokes machine.loadInt64
+readDevice argument address machine.Address status copy
+readDevice result device Int64
+readDevice ownedBy none
+readDevice cleanedBy none
+readDevice borrows none
+readDevice catch none
+readDevice suppresses none
+
+findInode is call
+findInode in statusIdentity
+findInode invokes machine.offset
+findInode argument address machine.Address status copy
+findInode argument bytes Int64 eight copy
+findInode result inodeSlot machine.Address
+findInode ownedBy none
+findInode cleanedBy none
+findInode borrows none
+findInode catch none
+findInode suppresses none
+
+readInode is call
+readInode in statusIdentity
+readInode invokes machine.loadInt64
+readInode argument address machine.Address inodeSlot copy
+readInode result inode Int64
+readInode ownedBy none
+readInode cleanedBy none
+readInode borrows none
+readInode catch none
+readInode suppresses none
+
+zeroCheck is call
+zeroCheck in statusIdentity
+zeroCheck invokes compare.equalInt64
+zeroCheck argument left Int64 inode copy
+zeroCheck argument right Int64 zero copy
+zeroCheck result noInode Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+nowhere is call
+nowhere in statusIdentity
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+makeKey is call
+makeKey in statusIdentity
+makeKey invokes wide.builderNew
+makeKey argument none
+makeKey result builder machine.Address
+makeKey ownedBy none
+makeKey cleanedBy none
+makeKey borrows none
+makeKey catch none
+makeKey suppresses none
+
+addHash is call
+addHash in statusIdentity
+addHash invokes wide.builderAddByte
+addHash argument builder machine.Address builder copy
+addHash argument byte Byte hash copy
+addHash result none
+addHash ownedBy none
+addHash cleanedBy none
+addHash borrows none
+addHash catch none
+addHash suppresses none
+
+addDevice is call
+addDevice in statusIdentity
+addDevice invokes addNumber
+addDevice argument builder machine.Address builder copy
+addDevice argument value Int64 device copy
+addDevice result none
+addDevice ownedBy none
+addDevice cleanedBy none
+addDevice borrows none
+addDevice catch none
+addDevice suppresses none
+
+addColon is call
+addColon in statusIdentity
+addColon invokes wide.builderAddByte
+addColon argument builder machine.Address builder copy
+addColon argument byte Byte colon copy
+addColon result none
+addColon ownedBy none
+addColon cleanedBy none
+addColon borrows none
+addColon catch none
+addColon suppresses none
+
+addInode is call
+addInode in statusIdentity
+addInode invokes addNumber
+addInode argument builder machine.Address builder copy
+addInode argument value Int64 inode copy
+addInode result none
+addInode ownedBy none
+addInode cleanedBy none
+addInode borrows none
+addInode catch none
+addInode suppresses none
+
+readKey is call
+readKey in statusIdentity
+readKey invokes wide.builderText
+readKey argument builder machine.Address builder copy
+readKey result key machine.Address
+readKey ownedBy none
+readKey cleanedBy none
+readKey borrows none
+readKey catch none
+readKey suppresses none
+
+readLength is call
+readLength in statusIdentity
+readLength invokes wide.builderLength
+readLength argument builder machine.Address builder copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+storeLength is call
+storeLength in statusIdentity
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthAt copy
+storeLength argument value Int64 length copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+giveBuilder is call
+giveBuilder in statusIdentity
+giveBuilder invokes heap.give
+giveBuilder argument block machine.Address builder copy
+giveBuilder result none
+giveBuilder ownedBy none
+giveBuilder cleanedBy none
+giveBuilder borrows none
+giveBuilder catch none
+giveBuilder suppresses none
+
 isRegularFile is operation
-isRegularFile purpose "Whether a path names something that is not a directory"
+isRegularFile purpose "Whether a path names something that is not a directory (on Linux, a regular file, as os.path.isfile has it)"
 isRegularFile invariant none
 isRegularFile typeParameter none
 isRegularFile input path machine.Address copied
@@ -7955,19 +10252,108 @@ isRegularFile async false
 isRegularFile maxRecursion none
 isRegularFile label begin loopKind none
 isRegularFile label begin within none
+isRegularFile label linuxCheck loopKind none
+isRegularFile label linuxCheck within none
+isRegularFile label giveNo loopKind none
+isRegularFile label giveNo within none
+isRegularFile label modeCheck loopKind none
+isRegularFile label modeCheck within none
+isRegularFile label windowsCheck loopKind none
+isRegularFile label windowsCheck within none
+isRegularFile let no Bool false immutable
+isRegularFile let yes Bool true immutable
 isRegularFile let minusOne32 Int32 -1 immutable
 isRegularFile let sixteen Int64 16 immutable
 isRegularFile let zero Int64 0 immutable
-isRegularFile at begin do wideName
-isRegularFile at begin do readAttributes
-isRegularFile at begin do giveName
-isRegularFile at begin do invalidCheck
-isRegularFile at begin do widenAttributes
-isRegularFile at begin do directoryBit
-isRegularFile at begin do directoryCheck
-isRegularFile at begin do eitherCheck
-isRegularFile at begin do regularCheck
-isRegularFile at begin return ok regular
+isRegularFile at begin do osCheck
+isRegularFile at begin branch if onLinux goto linuxCheck else goto windowsCheck
+isRegularFile at linuxCheck do statIt
+isRegularFile at linuxCheck do statFailed
+isRegularFile at linuxCheck branch if missing goto giveNo else goto modeCheck
+isRegularFile at giveNo return ok no
+isRegularFile at modeCheck do findStatus
+isRegularFile at modeCheck do readMode
+isRegularFile at modeCheck do regularMode
+isRegularFile at modeCheck return ok isRegular
+isRegularFile at windowsCheck do wideName
+isRegularFile at windowsCheck do readAttributes
+isRegularFile at windowsCheck do giveName
+isRegularFile at windowsCheck do invalidCheck
+isRegularFile at windowsCheck do widenAttributes
+isRegularFile at windowsCheck do directoryBit
+isRegularFile at windowsCheck do directoryCheck
+isRegularFile at windowsCheck do eitherCheck
+isRegularFile at windowsCheck do regularCheck
+isRegularFile at windowsCheck return ok regular
+
+osCheck is call
+osCheck in isRegularFile
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+statIt is call
+statIt in isRegularFile
+statIt invokes statPath
+statIt argument path machine.Address path copy
+statIt argument bytes Int64 bytes copy
+statIt argument follow Bool yes copy
+statIt result statResult Int64
+statIt ownedBy none
+statIt cleanedBy none
+statIt borrows none
+statIt catch none
+statIt suppresses none
+
+statFailed is call
+statFailed in isRegularFile
+statFailed invokes kernel.failed
+statFailed argument result Int64 statResult copy
+statFailed result missing Bool
+statFailed ownedBy none
+statFailed cleanedBy none
+statFailed borrows none
+statFailed catch none
+statFailed suppresses none
+
+findStatus is call
+findStatus in isRegularFile
+findStatus invokes stateAt
+findStatus argument offset Int64 statAt copy
+findStatus result status machine.Address
+findStatus ownedBy none
+findStatus cleanedBy none
+findStatus borrows none
+findStatus catch none
+findStatus suppresses none
+
+readMode is call
+readMode in isRegularFile
+readMode invokes linuxMode
+readMode argument status machine.Address status copy
+readMode result mode Int64
+readMode ownedBy none
+readMode cleanedBy none
+readMode borrows none
+readMode catch none
+readMode suppresses none
+
+regularMode is call
+regularMode in isRegularFile
+regularMode invokes compare.equalInt64
+regularMode argument left Int64 mode copy
+regularMode argument right Int64 typeRegular copy
+regularMode result isRegular Bool
+regularMode ownedBy none
+regularMode cleanedBy none
+regularMode borrows none
+regularMode catch none
+regularMode suppresses none
 
 wideName is call
 wideName in isRegularFile
@@ -8102,6 +10488,16 @@ readUpTo label useChunk loopKind none
 readUpTo label useChunk within eachRead
 readUpTo label readSome loopKind none
 readUpTo label readSome within eachRead
+readUpTo label readLinux loopKind none
+readUpTo label readLinux within eachRead
+readUpTo label linuxReadFailed loopKind none
+readUpTo label linuxReadFailed within none
+readUpTo label linuxCount loopKind none
+readUpTo label linuxCount within eachRead
+readUpTo label keepLinux loopKind none
+readUpTo label keepLinux within eachRead
+readUpTo label readWindows loopKind none
+readUpTo label readWindows within eachRead
 readUpTo label readFailed loopKind none
 readUpTo label readFailed within none
 readUpTo label storeError loopKind none
@@ -8131,10 +10527,25 @@ readUpTo at sizeIt do bigCheck
 readUpTo at sizeIt branch if big goto useChunk else goto readSome
 readUpTo at useChunk set want chunk
 readUpTo at useChunk goto readSome
-readUpTo at readSome do narrowWant
-readUpTo at readSome do readIt
-readUpTo at readSome do failedCheck
-readUpTo at readSome branch if refused goto readFailed else goto countIt
+readUpTo at readSome do osCheck
+readUpTo at readSome branch if onLinux goto readLinux else goto readWindows
+readUpTo at readLinux do descriptorOf
+readUpTo at readLinux do readFd
+readUpTo at readLinux do linuxFailed
+readUpTo at readLinux branch if refusedLinux goto linuxReadFailed else goto linuxCount
+readUpTo at linuxReadFailed do errnoOf
+readUpTo at linuxReadFailed do storeErrno
+readUpTo at linuxReadFailed goto finish
+readUpTo at linuxCount do linuxEnd
+readUpTo at linuxCount branch if atLinuxEnd goto finish else goto keepLinux
+readUpTo at keepLinux do addLinux
+readUpTo at keepLinux do moreLinux
+readUpTo at keepLinux set length afterLinux
+readUpTo at keepLinux goto eachRead
+readUpTo at readWindows do narrowWant
+readUpTo at readWindows do readIt
+readUpTo at readWindows do failedCheck
+readUpTo at readWindows branch if refused goto readFailed else goto countIt
 readUpTo at readFailed do readError
 readUpTo at readFailed do widenError
 readUpTo at readFailed do brokenCheck
@@ -8243,6 +10654,112 @@ bigCheck cleanedBy none
 bigCheck borrows none
 bigCheck catch none
 bigCheck suppresses none
+
+osCheck is call
+osCheck in readUpTo
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+descriptorOf is call
+descriptorOf in readUpTo
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+readFd is call
+readFd in readUpTo
+readFd invokes system.read
+readFd argument fd Int64 fd copy
+readFd argument buffer machine.Address buffer copy
+readFd argument bytes Int64 want copy
+readFd result gotLinux Int64
+readFd ownedBy none
+readFd cleanedBy none
+readFd borrows none
+readFd catch none
+readFd suppresses none
+
+linuxFailed is call
+linuxFailed in readUpTo
+linuxFailed invokes kernel.failed
+linuxFailed argument result Int64 gotLinux copy
+linuxFailed result refusedLinux Bool
+linuxFailed ownedBy none
+linuxFailed cleanedBy none
+linuxFailed borrows none
+linuxFailed catch none
+linuxFailed suppresses none
+
+errnoOf is call
+errnoOf in readUpTo
+errnoOf invokes kernel.errnoOf
+errnoOf argument result Int64 gotLinux copy
+errnoOf result readErrno Int64
+errnoOf ownedBy none
+errnoOf cleanedBy none
+errnoOf borrows none
+errnoOf catch none
+errnoOf suppresses none
+
+storeErrno is call
+storeErrno in readUpTo
+storeErrno invokes machine.storeInt64
+storeErrno argument address machine.Address errorAt copy
+storeErrno argument value Int64 readErrno copy
+storeErrno result none
+storeErrno ownedBy none
+storeErrno cleanedBy none
+storeErrno borrows none
+storeErrno catch none
+storeErrno suppresses none
+
+linuxEnd is call
+linuxEnd in readUpTo
+linuxEnd invokes compare.equalInt64
+linuxEnd argument left Int64 gotLinux copy
+linuxEnd argument right Int64 zero copy
+linuxEnd result atLinuxEnd Bool
+linuxEnd ownedBy none
+linuxEnd cleanedBy none
+linuxEnd borrows none
+linuxEnd catch none
+linuxEnd suppresses none
+
+addLinux is call
+addLinux in readUpTo
+addLinux invokes wide.builderAdd
+addLinux argument builder machine.Address builder copy
+addLinux argument data machine.Address buffer copy
+addLinux argument bytes Int64 gotLinux copy
+addLinux result none
+addLinux ownedBy none
+addLinux cleanedBy none
+addLinux borrows none
+addLinux catch none
+addLinux suppresses none
+
+moreLinux is call
+moreLinux in readUpTo
+moreLinux invokes math.addInt64
+moreLinux argument left Int64 length copy
+moreLinux argument right Int64 gotLinux copy
+moreLinux result afterLinux Int64
+moreLinux ownedBy none
+moreLinux cleanedBy none
+moreLinux borrows none
+moreLinux catch none
+moreLinux suppresses none
 
 narrowWant is call
 narrowWant in readUpTo
@@ -8417,11 +10934,109 @@ seekTo async false
 seekTo maxRecursion none
 seekTo label begin loopKind none
 seekTo label begin within none
+seekTo label seekLinux loopKind none
+seekTo label seekLinux within none
+seekTo label keepIt loopKind none
+seekTo label keepIt within none
+seekTo label giveMoved loopKind none
+seekTo label giveMoved within none
+seekTo label seekWindows loopKind none
+seekTo label seekWindows within none
 seekTo let zero32 Int32 0 immutable
-seekTo at begin do nowhere
-seekTo at begin do moveIt
-seekTo at begin do movedCheck
-seekTo at begin return ok ok
+seekTo at begin do osCheck
+seekTo at begin branch if onLinux goto seekLinux else goto seekWindows
+seekTo at seekLinux do descriptorOf
+seekTo at seekLinux do widenMethod
+seekTo at seekLinux do seekIt
+seekTo at seekLinux do seekFailed
+seekTo at seekLinux branch if refused goto keepIt else goto giveMoved
+seekTo at keepIt do keepCode
+seekTo at keepIt goto giveMoved
+seekTo at giveMoved do movedLinux
+seekTo at giveMoved return ok linuxOk
+seekTo at seekWindows do nowhere
+seekTo at seekWindows do moveIt
+seekTo at seekWindows do movedCheck
+seekTo at seekWindows return ok ok
+
+osCheck is call
+osCheck in seekTo
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+descriptorOf is call
+descriptorOf in seekTo
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+widenMethod is call
+widenMethod in seekTo
+widenMethod invokes convert.int32ToInt64
+widenMethod argument value Int32 method copy
+widenMethod result whence Int64
+widenMethod ownedBy none
+widenMethod cleanedBy none
+widenMethod borrows none
+widenMethod catch none
+widenMethod suppresses none
+
+seekIt is call
+seekIt in seekTo
+seekIt invokes system.lseek
+seekIt argument fd Int64 fd copy
+seekIt argument offset Int64 distance copy
+seekIt argument whence Int64 whence copy
+seekIt result position Int64
+seekIt ownedBy none
+seekIt cleanedBy none
+seekIt borrows none
+seekIt catch none
+seekIt suppresses none
+
+seekFailed is call
+seekFailed in seekTo
+seekFailed invokes kernel.failed
+seekFailed argument result Int64 position copy
+seekFailed result refused Bool
+seekFailed ownedBy none
+seekFailed cleanedBy none
+seekFailed borrows none
+seekFailed catch none
+seekFailed suppresses none
+
+keepCode is call
+keepCode in seekTo
+keepCode invokes keepErrno
+keepCode argument result Int64 position copy
+keepCode result none
+keepCode ownedBy none
+keepCode cleanedBy none
+keepCode borrows none
+keepCode catch none
+keepCode suppresses none
+
+movedLinux is call
+movedLinux in seekTo
+movedLinux invokes logic.not
+movedLinux argument value Bool refused copy
+movedLinux result linuxOk Bool
+movedLinux ownedBy none
+movedLinux cleanedBy none
+movedLinux borrows none
+movedLinux catch none
+movedLinux suppresses none
 
 nowhere is call
 nowhere in seekTo
@@ -8477,6 +11092,12 @@ emptyFile async false
 emptyFile maxRecursion none
 emptyFile label begin loopKind none
 emptyFile label begin within none
+emptyFile label truncateLinux loopKind none
+emptyFile label truncateLinux within none
+emptyFile label giveErrno loopKind none
+emptyFile label giveErrno within none
+emptyFile label windowsEmpty loopKind none
+emptyFile label windowsEmpty within none
 emptyFile label cut loopKind none
 emptyFile label cut within none
 emptyFile label worked loopKind none
@@ -8486,7 +11107,16 @@ emptyFile label failedEmpty within none
 emptyFile let zero Int64 0 immutable
 emptyFile let fromStart Int32 0 immutable
 emptyFile at begin do toStart
-emptyFile at begin branch if moved goto cut else goto failedEmpty
+emptyFile at begin do osCheck
+emptyFile at begin branch if onLinux goto truncateLinux else goto windowsEmpty
+emptyFile at truncateLinux do descriptorOf
+emptyFile at truncateLinux do truncateIt
+emptyFile at truncateLinux do truncateFailed
+emptyFile at truncateLinux branch if refused goto giveErrno else goto worked
+emptyFile at giveErrno do errnoOf
+emptyFile at giveErrno do narrowErrno
+emptyFile at giveErrno return ok code32
+emptyFile at windowsEmpty branch if moved goto cut else goto failedEmpty
 emptyFile at cut do cutIt
 emptyFile at cut do cutCheck
 emptyFile at cut branch if cutOk goto worked else goto failedEmpty
@@ -8506,6 +11136,73 @@ toStart cleanedBy none
 toStart borrows none
 toStart catch none
 toStart suppresses none
+
+osCheck is call
+osCheck in emptyFile
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+descriptorOf is call
+descriptorOf in emptyFile
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+truncateIt is call
+truncateIt in emptyFile
+truncateIt invokes system.ftruncate
+truncateIt argument fd Int64 fd copy
+truncateIt argument bytes Int64 zero copy
+truncateIt result truncated Int64
+truncateIt ownedBy none
+truncateIt cleanedBy none
+truncateIt borrows none
+truncateIt catch none
+truncateIt suppresses none
+
+truncateFailed is call
+truncateFailed in emptyFile
+truncateFailed invokes kernel.failed
+truncateFailed argument result Int64 truncated copy
+truncateFailed result refused Bool
+truncateFailed ownedBy none
+truncateFailed cleanedBy none
+truncateFailed borrows none
+truncateFailed catch none
+truncateFailed suppresses none
+
+errnoOf is call
+errnoOf in emptyFile
+errnoOf invokes kernel.errnoOf
+errnoOf argument result Int64 truncated copy
+errnoOf result errno Int64
+errnoOf ownedBy none
+errnoOf cleanedBy none
+errnoOf borrows none
+errnoOf catch none
+errnoOf suppresses none
+
+narrowErrno is call
+narrowErrno in emptyFile
+narrowErrno invokes convert.int64ToInt32
+narrowErrno argument value Int64 errno copy
+narrowErrno result code32 Int32
+narrowErrno ownedBy none
+narrowErrno cleanedBy none
+narrowErrno borrows none
+narrowErrno catch none
+narrowErrno suppresses none
 
 cutIt is call
 cutIt in emptyFile
@@ -8563,15 +11260,48 @@ openPath async false
 openPath maxRecursion none
 openPath label begin loopKind none
 openPath label begin within none
+openPath label linuxOpen loopKind none
+openPath label linuxOpen within none
+openPath label windowsOpen loopKind none
+openPath label windowsOpen within none
 openPath let none
-openPath at begin do wideName
-openPath at begin do nowhere
-openPath at begin do openIt
-openPath at begin do readError
-openPath at begin do giveName
-openPath at begin do findCounted
-openPath at begin do storeCode
-openPath at begin return ok handle
+openPath at begin do osCheck
+openPath at begin branch if onLinux goto linuxOpen else goto windowsOpen
+openPath at linuxOpen do linuxIt
+openPath at linuxOpen return ok linuxHandle
+openPath at windowsOpen do wideName
+openPath at windowsOpen do nowhere
+openPath at windowsOpen do openIt
+openPath at windowsOpen do readError
+openPath at windowsOpen do giveName
+openPath at windowsOpen do findCounted
+openPath at windowsOpen do storeCode
+openPath at windowsOpen return ok handle
+
+osCheck is call
+osCheck in openPath
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+linuxIt is call
+linuxIt in openPath
+linuxIt invokes openPathLinux
+linuxIt argument path machine.Address path copy
+linuxIt argument bytes Int64 bytes copy
+linuxIt argument access Int32 access copy
+linuxIt argument disposition Int32 disposition copy
+linuxIt result linuxHandle machine.Address
+linuxIt ownedBy none
+linuxIt cleanedBy none
+linuxIt borrows none
+linuxIt catch none
+linuxIt suppresses none
 
 wideName is call
 wideName in openPath
@@ -8658,8 +11388,284 @@ storeCode borrows none
 storeCode catch none
 storeCode suppresses none
 
+openPathLinux is operation
+openPathLinux purpose "openat of a path on Linux for the access and disposition openPath names (read: O_RDONLY; read and write: O_RDWR; a new file: O_WRONLY, O_CREAT, O_EXCL; at the end: O_WRONLY, O_CREAT, O_APPEND), never inherited; a directory opened for reading is EISDIR, as Python's open gives it; -1 when it fails, its errno kept"
+openPathLinux invariant none
+openPathLinux typeParameter none
+openPathLinux input path machine.Address copied
+openPathLinux input bytes Int64 copied
+openPathLinux input access Int32 copied
+openPathLinux input disposition Int32 copied
+openPathLinux output machine.Address
+openPathLinux outputOwnedBy none
+openPathLinux raises none
+openPathLinux effect use machine.memory
+openPathLinux effect use system.calls
+openPathLinux uses memoryAccess
+openPathLinux uses systemCalls
+openPathLinux memoryHeap false
+openPathLinux async false
+openPathLinux maxRecursion none
+openPathLinux label begin loopKind none
+openPathLinux label begin within none
+openPathLinux label useReadWrite loopKind none
+openPathLinux label useReadWrite within none
+openPathLinux label createCheck loopKind none
+openPathLinux label createCheck within none
+openPathLinux label useCreate loopKind none
+openPathLinux label useCreate within none
+openPathLinux label appendCheck loopKind none
+openPathLinux label appendCheck within none
+openPathLinux label useAppend loopKind none
+openPathLinux label useAppend within none
+openPathLinux label open loopKind none
+openPathLinux label open within none
+openPathLinux label keepFailure loopKind none
+openPathLinux label keepFailure within none
+openPathLinux label statIt loopKind none
+openPathLinux label statIt within none
+openPathLinux label refuseDirectory loopKind none
+openPathLinux label refuseDirectory within none
+openPathLinux label giveFd loopKind none
+openPathLinux label giveFd within none
+openPathLinux let flags Int64 0 mutable
+openPathLinux let readWriteFlags Int64 2 immutable
+openPathLinux let createFlags Int64 193 immutable
+openPathLinux let appendFlags Int64 1089 immutable
+openPathLinux let eisdirResult Int64 -21 immutable
+openPathLinux let minusOne Int64 -1 immutable
+openPathLinux let readWriteAll Int64 438 immutable
+openPathLinux at begin do failedValue
+openPathLinux at begin do readWriteCheck
+openPathLinux at begin branch if isReadWrite goto useReadWrite else goto createCheck
+openPathLinux at useReadWrite set flags readWriteFlags
+openPathLinux at useReadWrite goto open
+openPathLinux at createCheck do newCheck
+openPathLinux at createCheck branch if isNew goto useCreate else goto appendCheck
+openPathLinux at useCreate set flags createFlags
+openPathLinux at useCreate goto open
+openPathLinux at appendCheck do alwaysCheck
+openPathLinux at appendCheck branch if isAlways goto useAppend else goto open
+openPathLinux at useAppend set flags appendFlags
+openPathLinux at useAppend goto open
+openPathLinux at open do withClose
+openPathLinux at open do copyPath
+openPathLinux at open do openIt
+openPathLinux at open do giveName
+openPathLinux at open do openFailed
+openPathLinux at open branch if refused goto keepFailure else goto statIt
+openPathLinux at keepFailure do keepCode
+openPathLinux at keepFailure return ok invalid
+openPathLinux at statIt do findStatus
+openPathLinux at statIt do statFd
+openPathLinux at statIt do readMode
+openPathLinux at statIt do directoryCheck
+openPathLinux at statIt branch if isDirectory goto refuseDirectory else goto giveFd
+openPathLinux at refuseDirectory do closeIt
+openPathLinux at refuseDirectory do keepDirectory
+openPathLinux at refuseDirectory return ok invalid
+openPathLinux at giveFd do handleOf
+openPathLinux at giveFd return ok handle
+
+failedValue is call
+failedValue in openPathLinux
+failedValue invokes machine.fromInt64
+failedValue argument value Int64 minusOne copy
+failedValue result invalid machine.Address
+failedValue ownedBy none
+failedValue cleanedBy none
+failedValue borrows none
+failedValue catch none
+failedValue suppresses none
+
+readWriteCheck is call
+readWriteCheck in openPathLinux
+readWriteCheck invokes compare.equalInt32
+readWriteCheck argument left Int32 access copy
+readWriteCheck argument right Int32 genericReadWrite copy
+readWriteCheck result isReadWrite Bool
+readWriteCheck ownedBy none
+readWriteCheck cleanedBy none
+readWriteCheck borrows none
+readWriteCheck catch none
+readWriteCheck suppresses none
+
+newCheck is call
+newCheck in openPathLinux
+newCheck invokes compare.equalInt32
+newCheck argument left Int32 disposition copy
+newCheck argument right Int32 createNew copy
+newCheck result isNew Bool
+newCheck ownedBy none
+newCheck cleanedBy none
+newCheck borrows none
+newCheck catch none
+newCheck suppresses none
+
+alwaysCheck is call
+alwaysCheck in openPathLinux
+alwaysCheck invokes compare.equalInt32
+alwaysCheck argument left Int32 disposition copy
+alwaysCheck argument right Int32 openAlways copy
+alwaysCheck result isAlways Bool
+alwaysCheck ownedBy none
+alwaysCheck cleanedBy none
+alwaysCheck borrows none
+alwaysCheck catch none
+alwaysCheck suppresses none
+
+withClose is call
+withClose in openPathLinux
+withClose invokes bits.orInt64
+withClose argument left Int64 flags copy
+withClose argument right Int64 closeOnExec copy
+withClose result allFlags Int64
+withClose ownedBy none
+withClose cleanedBy none
+withClose borrows none
+withClose catch none
+withClose suppresses none
+
+copyPath is call
+copyPath in openPathLinux
+copyPath invokes cPath
+copyPath argument path machine.Address path copy
+copyPath argument bytes Int64 bytes copy
+copyPath result name machine.Address
+copyPath ownedBy none
+copyPath cleanedBy none
+copyPath borrows none
+copyPath catch none
+copyPath suppresses none
+
+openIt is call
+openIt in openPathLinux
+openIt invokes system.openat
+openIt argument directory Int64 atWorkingDirectory copy
+openIt argument path machine.Address name copy
+openIt argument flags Int64 allFlags copy
+openIt argument mode Int64 readWriteAll copy
+openIt result fd Int64
+openIt ownedBy none
+openIt cleanedBy none
+openIt borrows none
+openIt catch none
+openIt suppresses none
+
+giveName is call
+giveName in openPathLinux
+giveName invokes heap.give
+giveName argument block machine.Address name copy
+giveName result none
+giveName ownedBy none
+giveName cleanedBy none
+giveName borrows none
+giveName catch none
+giveName suppresses none
+
+openFailed is call
+openFailed in openPathLinux
+openFailed invokes kernel.failed
+openFailed argument result Int64 fd copy
+openFailed result refused Bool
+openFailed ownedBy none
+openFailed cleanedBy none
+openFailed borrows none
+openFailed catch none
+openFailed suppresses none
+
+keepCode is call
+keepCode in openPathLinux
+keepCode invokes keepErrno
+keepCode argument result Int64 fd copy
+keepCode result none
+keepCode ownedBy none
+keepCode cleanedBy none
+keepCode borrows none
+keepCode catch none
+keepCode suppresses none
+
+findStatus is call
+findStatus in openPathLinux
+findStatus invokes stateAt
+findStatus argument offset Int64 statAt copy
+findStatus result status machine.Address
+findStatus ownedBy none
+findStatus cleanedBy none
+findStatus borrows none
+findStatus catch none
+findStatus suppresses none
+
+statFd is call
+statFd in openPathLinux
+statFd invokes system.fstat
+statFd argument fd Int64 fd copy
+statFd argument status machine.Address status copy
+statFd result statResult Int64
+statFd ownedBy none
+statFd cleanedBy none
+statFd borrows none
+statFd catch none
+statFd suppresses none
+
+readMode is call
+readMode in openPathLinux
+readMode invokes linuxMode
+readMode argument status machine.Address status copy
+readMode result mode Int64
+readMode ownedBy none
+readMode cleanedBy none
+readMode borrows none
+readMode catch none
+readMode suppresses none
+
+directoryCheck is call
+directoryCheck in openPathLinux
+directoryCheck invokes compare.equalInt64
+directoryCheck argument left Int64 mode copy
+directoryCheck argument right Int64 typeDirectory copy
+directoryCheck result isDirectory Bool
+directoryCheck ownedBy none
+directoryCheck cleanedBy none
+directoryCheck borrows none
+directoryCheck catch none
+directoryCheck suppresses none
+
+closeIt is call
+closeIt in openPathLinux
+closeIt invokes system.close
+closeIt argument fd Int64 fd copy
+closeIt result closed Int64
+closeIt ownedBy none
+closeIt cleanedBy none
+closeIt borrows none
+closeIt catch none
+closeIt suppresses none
+
+keepDirectory is call
+keepDirectory in openPathLinux
+keepDirectory invokes keepErrno
+keepDirectory argument result Int64 eisdirResult copy
+keepDirectory result none
+keepDirectory ownedBy none
+keepDirectory cleanedBy none
+keepDirectory borrows none
+keepDirectory catch none
+keepDirectory suppresses none
+
+handleOf is call
+handleOf in openPathLinux
+handleOf invokes machine.fromInt64
+handleOf argument value Int64 fd copy
+handleOf result handle machine.Address
+handleOf ownedBy none
+handleOf cleanedBy none
+handleOf borrows none
+handleOf catch none
+handleOf suppresses none
+
 keptCode is operation
-keptCode purpose "The error code openPath kept"
+keptCode purpose "The error code openPath kept (on Linux, the errno)"
 keptCode invariant none
 keptCode typeParameter none
 keptCode input none
@@ -8667,16 +11673,27 @@ keptCode output Int32
 keptCode outputOwnedBy none
 keptCode raises none
 keptCode effect use machine.memory
+keptCode effect use system.calls
 keptCode uses memoryAccess
+keptCode uses systemCalls
 keptCode memoryHeap false
 keptCode async false
 keptCode maxRecursion none
 keptCode label begin loopKind none
 keptCode label begin within none
+keptCode label linuxCode loopKind none
+keptCode label linuxCode within none
+keptCode label windowsCode loopKind none
+keptCode label windowsCode within none
 keptCode let none
 keptCode at begin do findCounted
-keptCode at begin do readCode
-keptCode at begin return ok code
+keptCode at begin do osCheck
+keptCode at begin branch if onLinux goto linuxCode else goto windowsCode
+keptCode at linuxCode do readErrno
+keptCode at linuxCode do narrowErrno
+keptCode at linuxCode return ok errno32
+keptCode at windowsCode do readCode
+keptCode at windowsCode return ok code
 
 findCounted is call
 findCounted in keptCode
@@ -8688,6 +11705,39 @@ findCounted cleanedBy none
 findCounted borrows none
 findCounted catch none
 findCounted suppresses none
+
+osCheck is call
+osCheck in keptCode
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+readErrno is call
+readErrno in keptCode
+readErrno invokes machine.loadInt64
+readErrno argument address machine.Address counted copy
+readErrno result errno Int64
+readErrno ownedBy none
+readErrno cleanedBy none
+readErrno borrows none
+readErrno catch none
+readErrno suppresses none
+
+narrowErrno is call
+narrowErrno in keptCode
+narrowErrno invokes convert.int64ToInt32
+narrowErrno argument value Int64 errno copy
+narrowErrno result errno32 Int32
+narrowErrno ownedBy none
+narrowErrno cleanedBy none
+narrowErrno borrows none
+narrowErrno catch none
+narrowErrno suppresses none
 
 readCode is call
 readCode in keptCode
@@ -9204,7 +12254,7 @@ claimIdent suppresses none
 
 closeBusy is call
 closeBusy in openFile
-closeBusy invokes system.closeHandle
+closeBusy invokes closeFile
 closeBusy argument handle machine.Address handle copy
 closeBusy result closedBusy Int32
 closeBusy ownedBy none
@@ -9308,7 +12358,7 @@ mapEmpty suppresses none
 
 closeEmpty is call
 closeEmpty in openFile
-closeEmpty invokes system.closeHandle
+closeEmpty invokes closeFile
 closeEmpty argument handle machine.Address handle copy
 closeEmpty result closedEmpty Int32
 closeEmpty ownedBy none
@@ -10021,7 +13071,7 @@ letGo suppresses none
 
 closeIt is call
 closeIt in fsClose
-closeIt invokes system.closeHandle
+closeIt invokes closeFile
 closeIt argument handle machine.Address handle copy
 closeIt result closed Int32
 closeIt ownedBy none
@@ -11265,7 +14315,7 @@ claimIdent suppresses none
 
 closeBusy is call
 closeBusy in fsReadAll
-closeBusy invokes system.closeHandle
+closeBusy invokes closeFile
 closeBusy argument handle machine.Address handle copy
 closeBusy result closedBusy Int32
 closeBusy ownedBy none
@@ -11417,7 +14467,7 @@ giveErrorCell suppresses none
 
 closeIt is call
 closeIt in fsReadAll
-closeIt invokes system.closeHandle
+closeIt invokes closeFile
 closeIt argument handle machine.Address handle copy
 closeIt result closed Int32
 closeIt ownedBy none
@@ -12138,7 +15188,7 @@ claimIdent suppresses none
 
 closeBusy is call
 closeBusy in fsWriteAll
-closeBusy invokes system.closeHandle
+closeBusy invokes closeFile
 closeBusy argument handle machine.Address handle copy
 closeBusy result closedBusy Int32
 closeBusy ownedBy none
@@ -12304,7 +15354,7 @@ mapWrite suppresses none
 
 closeIt is call
 closeIt in fsWriteAll
-closeIt invokes system.closeHandle
+closeIt invokes closeFile
 closeIt argument handle machine.Address handle copy
 closeIt result closed Int32
 closeIt ownedBy none
@@ -12431,6 +15481,12 @@ fsExists label giveNo loopKind none
 fsExists label giveNo within none
 fsExists label probe loopKind none
 fsExists label probe within none
+fsExists label probeLinux loopKind none
+fsExists label probeLinux within none
+fsExists label giveYesLinux loopKind none
+fsExists label giveYesLinux within none
+fsExists label probeWindows loopKind none
+fsExists label probeWindows within none
 fsExists label giveYes loopKind none
 fsExists label giveYes within none
 fsExists label sharingCheck loopKind none
@@ -12439,9 +15495,10 @@ fsExists label attributes loopKind none
 fsExists label attributes within none
 fsExists label giveYesAttributes loopKind none
 fsExists label giveYesAttributes within none
+fsExists let yes Bool true immutable
 fsExists let zero Int64 0 immutable
-fsExists let noAccess Int32 0 immutable
 fsExists let one Int64 1 immutable
+fsExists let noAccess Int32 0 immutable
 fsExists let sharingViolation Int32 32 immutable
 fsExists let minusOne32 Int32 -1 immutable
 fsExists at begin do readPath
@@ -12450,9 +15507,16 @@ fsExists at begin do emptyCheck
 fsExists at begin branch if empty goto giveNo else goto probe
 fsExists at giveNo do storeNo
 fsExists at giveNo return ok none
-fsExists at probe do openIt
-fsExists at probe do invalidCheck
-fsExists at probe branch if invalid goto sharingCheck else goto giveYes
+fsExists at probe do osCheck
+fsExists at probe branch if onLinux goto probeLinux else goto probeWindows
+fsExists at probeLinux do statIt
+fsExists at probeLinux do statFailed
+fsExists at probeLinux branch if missingLinux goto giveNo else goto giveYesLinux
+fsExists at giveYesLinux do storeYesLinux
+fsExists at giveYesLinux return ok none
+fsExists at probeWindows do openIt
+fsExists at probeWindows do invalidCheck
+fsExists at probeWindows branch if invalid goto sharingCheck else goto giveYes
 fsExists at giveYes do closeIt
 fsExists at giveYes do storeYes
 fsExists at giveYes return ok none
@@ -12518,6 +15582,53 @@ storeNo borrows none
 storeNo catch none
 storeNo suppresses none
 
+osCheck is call
+osCheck in fsExists
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+statIt is call
+statIt in fsExists
+statIt invokes statPath
+statIt argument path machine.Address path copy
+statIt argument bytes Int64 bytes copy
+statIt argument follow Bool yes copy
+statIt result statResult Int64
+statIt ownedBy none
+statIt cleanedBy none
+statIt borrows none
+statIt catch none
+statIt suppresses none
+
+statFailed is call
+statFailed in fsExists
+statFailed invokes kernel.failed
+statFailed argument result Int64 statResult copy
+statFailed result missingLinux Bool
+statFailed ownedBy none
+statFailed cleanedBy none
+statFailed borrows none
+statFailed catch none
+statFailed suppresses none
+
+storeYesLinux is call
+storeYesLinux in fsExists
+storeYesLinux invokes machine.storeInt64
+storeYesLinux argument address machine.Address results copy
+storeYesLinux argument value Int64 one copy
+storeYesLinux result none
+storeYesLinux ownedBy none
+storeYesLinux cleanedBy none
+storeYesLinux borrows none
+storeYesLinux catch none
+storeYesLinux suppresses none
+
 openIt is call
 openIt in fsExists
 openIt invokes openPath
@@ -12547,7 +15658,7 @@ invalidCheck suppresses none
 
 closeIt is call
 closeIt in fsExists
-closeIt invokes system.closeHandle
+closeIt invokes closeFile
 closeIt argument handle machine.Address handle copy
 closeIt result closed Int32
 closeIt ownedBy none
@@ -12684,17 +15795,32 @@ fsRemove label refuseBusy loopKind none
 fsRemove label refuseBusy within none
 fsRemove label probe loopKind none
 fsRemove label probe within none
+fsRemove label probeLinux loopKind none
+fsRemove label probeLinux within none
+fsRemove label identifyLinux loopKind none
+fsRemove label identifyLinux within none
+fsRemove label findLinuxIdent loopKind none
+fsRemove label findLinuxIdent within none
+fsRemove label probeWindows loopKind none
+fsRemove label probeWindows within none
 fsRemove label identify loopKind none
 fsRemove label identify within none
 fsRemove label findIdent loopKind none
 fsRemove label findIdent within none
 fsRemove label delete loopKind none
 fsRemove label delete within none
+fsRemove label deleteLinux loopKind none
+fsRemove label deleteLinux within none
+fsRemove label failedUnlink loopKind none
+fsRemove label failedUnlink within none
+fsRemove label deleteWindows loopKind none
+fsRemove label deleteWindows within none
 fsRemove label failedDelete loopKind none
 fsRemove label failedDelete within none
 fsRemove label done loopKind none
 fsRemove label done within none
 fsRemove let ok Int32 0 immutable
+fsRemove let yes Bool true immutable
 fsRemove let zero Int64 0 immutable
 fsRemove let eight Int64 8 immutable
 fsRemove let noAccess Int32 0 immutable
@@ -12711,9 +15837,23 @@ fsRemove at begin branch if isHeld goto refuseBusy else goto probe
 fsRemove at refuseBusy do giveCellBusy
 fsRemove at refuseBusy do busyStatus
 fsRemove at refuseBusy return ok status1
-fsRemove at probe do openIt
-fsRemove at probe do invalidCheck
-fsRemove at probe branch if invalid goto delete else goto identify
+fsRemove at probe do osCheck
+fsRemove at probe branch if onLinux goto probeLinux else goto probeWindows
+fsRemove at probeLinux do statIt
+fsRemove at probeLinux do statFailed
+fsRemove at probeLinux branch if missingLinux goto delete else goto identifyLinux
+fsRemove at identifyLinux do findStatus
+fsRemove at identifyLinux do identityLinux
+fsRemove at identifyLinux do noLinuxIdent
+fsRemove at identifyLinux branch if noIdentLinux goto delete else goto findLinuxIdent
+fsRemove at findLinuxIdent do readLinuxIdentBytes
+fsRemove at findLinuxIdent do findLinuxHeld
+fsRemove at findLinuxIdent do giveLinuxIdent
+fsRemove at findLinuxIdent do linuxHeldCheck
+fsRemove at findLinuxIdent branch if isLinuxHeld goto refuseBusy else goto delete
+fsRemove at probeWindows do openIt
+fsRemove at probeWindows do invalidCheck
+fsRemove at probeWindows branch if invalid goto delete else goto identify
 fsRemove at identify do identityOf
 fsRemove at identify do closeIt
 fsRemove at identify do noIdentCheck
@@ -12724,12 +15864,22 @@ fsRemove at findIdent do giveIdent
 fsRemove at findIdent do identHeldCheck
 fsRemove at findIdent branch if isIdentHeld goto refuseBusy else goto delete
 fsRemove at delete do giveCell
-fsRemove at delete do wideName
-fsRemove at delete do deleteIt
-fsRemove at delete do readError
-fsRemove at delete do giveName
-fsRemove at delete do deletedCheck
-fsRemove at delete branch if refused goto failedDelete else goto done
+fsRemove at delete do osDeleteCheck
+fsRemove at delete branch if deleteOnLinux goto deleteLinux else goto deleteWindows
+fsRemove at deleteLinux do copyPath
+fsRemove at deleteLinux do unlinkIt
+fsRemove at deleteLinux do giveLinuxName
+fsRemove at deleteLinux do unlinkFailed
+fsRemove at deleteLinux branch if refusedLinux goto failedUnlink else goto done
+fsRemove at failedUnlink do unlinkErrno
+fsRemove at failedUnlink do unlinkStatus
+fsRemove at failedUnlink return ok status3
+fsRemove at deleteWindows do wideName
+fsRemove at deleteWindows do deleteIt
+fsRemove at deleteWindows do readError
+fsRemove at deleteWindows do giveName
+fsRemove at deleteWindows do deletedCheck
+fsRemove at deleteWindows branch if refused goto failedDelete else goto done
 fsRemove at failedDelete do mapIt
 fsRemove at failedDelete do status
 fsRemove at failedDelete return ok status2
@@ -12866,6 +16016,122 @@ busyStatus borrows none
 busyStatus catch none
 busyStatus suppresses none
 
+osCheck is call
+osCheck in fsRemove
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+statIt is call
+statIt in fsRemove
+statIt invokes statPath
+statIt argument path machine.Address path copy
+statIt argument bytes Int64 bytes copy
+statIt argument follow Bool yes copy
+statIt result statResult Int64
+statIt ownedBy none
+statIt cleanedBy none
+statIt borrows none
+statIt catch none
+statIt suppresses none
+
+statFailed is call
+statFailed in fsRemove
+statFailed invokes kernel.failed
+statFailed argument result Int64 statResult copy
+statFailed result missingLinux Bool
+statFailed ownedBy none
+statFailed cleanedBy none
+statFailed borrows none
+statFailed catch none
+statFailed suppresses none
+
+findStatus is call
+findStatus in fsRemove
+findStatus invokes stateAt
+findStatus argument offset Int64 statAt copy
+findStatus result linuxStatusBlock machine.Address
+findStatus ownedBy none
+findStatus cleanedBy none
+findStatus borrows none
+findStatus catch none
+findStatus suppresses none
+
+identityLinux is call
+identityLinux in fsRemove
+identityLinux invokes statusIdentity
+identityLinux argument status machine.Address linuxStatusBlock copy
+identityLinux argument lengthAt machine.Address cell copy
+identityLinux result linuxIdent machine.Address
+identityLinux ownedBy none
+identityLinux cleanedBy none
+identityLinux borrows none
+identityLinux catch none
+identityLinux suppresses none
+
+noLinuxIdent is call
+noLinuxIdent in fsRemove
+noLinuxIdent invokes machine.equal
+noLinuxIdent argument left machine.Address linuxIdent copy
+noLinuxIdent argument right machine.Address anywhere copy
+noLinuxIdent result noIdentLinux Bool
+noLinuxIdent ownedBy none
+noLinuxIdent cleanedBy none
+noLinuxIdent borrows none
+noLinuxIdent catch none
+noLinuxIdent suppresses none
+
+readLinuxIdentBytes is call
+readLinuxIdentBytes in fsRemove
+readLinuxIdentBytes invokes machine.loadInt64
+readLinuxIdentBytes argument address machine.Address cell copy
+readLinuxIdentBytes result linuxIdentBytes Int64
+readLinuxIdentBytes ownedBy none
+readLinuxIdentBytes cleanedBy none
+readLinuxIdentBytes borrows none
+readLinuxIdentBytes catch none
+readLinuxIdentBytes suppresses none
+
+findLinuxHeld is call
+findLinuxHeld in fsRemove
+findLinuxHeld invokes findClaim
+findLinuxHeld argument key machine.Address linuxIdent copy
+findLinuxHeld argument bytes Int64 linuxIdentBytes copy
+findLinuxHeld result linuxIdentHeld Int64
+findLinuxHeld ownedBy none
+findLinuxHeld cleanedBy none
+findLinuxHeld borrows none
+findLinuxHeld catch none
+findLinuxHeld suppresses none
+
+giveLinuxIdent is call
+giveLinuxIdent in fsRemove
+giveLinuxIdent invokes heap.give
+giveLinuxIdent argument block machine.Address linuxIdent copy
+giveLinuxIdent result none
+giveLinuxIdent ownedBy none
+giveLinuxIdent cleanedBy none
+giveLinuxIdent borrows none
+giveLinuxIdent catch none
+giveLinuxIdent suppresses none
+
+linuxHeldCheck is call
+linuxHeldCheck in fsRemove
+linuxHeldCheck invokes compare.greaterOrEqualInt64
+linuxHeldCheck argument left Int64 linuxIdentHeld copy
+linuxHeldCheck argument right Int64 zero copy
+linuxHeldCheck result isLinuxHeld Bool
+linuxHeldCheck ownedBy none
+linuxHeldCheck cleanedBy none
+linuxHeldCheck borrows none
+linuxHeldCheck catch none
+linuxHeldCheck suppresses none
+
 openIt is call
 openIt in fsRemove
 openIt invokes openPath
@@ -12907,7 +16173,7 @@ identityOf suppresses none
 
 closeIt is call
 closeIt in fsRemove
-closeIt invokes system.closeHandle
+closeIt invokes closeFile
 closeIt argument handle machine.Address handle copy
 closeIt result closed Int32
 closeIt ownedBy none
@@ -12984,6 +16250,87 @@ giveCell cleanedBy none
 giveCell borrows none
 giveCell catch none
 giveCell suppresses none
+
+osDeleteCheck is call
+osDeleteCheck in fsRemove
+osDeleteCheck invokes system.linux
+osDeleteCheck argument none
+osDeleteCheck result deleteOnLinux Bool
+osDeleteCheck ownedBy none
+osDeleteCheck cleanedBy none
+osDeleteCheck borrows none
+osDeleteCheck catch none
+osDeleteCheck suppresses none
+
+copyPath is call
+copyPath in fsRemove
+copyPath invokes cPath
+copyPath argument path machine.Address path copy
+copyPath argument bytes Int64 bytes copy
+copyPath result linuxName machine.Address
+copyPath ownedBy none
+copyPath cleanedBy none
+copyPath borrows none
+copyPath catch none
+copyPath suppresses none
+
+unlinkIt is call
+unlinkIt in fsRemove
+unlinkIt invokes system.unlinkat
+unlinkIt argument directory Int64 atWorkingDirectory copy
+unlinkIt argument path machine.Address linuxName copy
+unlinkIt argument flags Int64 zero copy
+unlinkIt result unlinked Int64
+unlinkIt ownedBy none
+unlinkIt cleanedBy none
+unlinkIt borrows none
+unlinkIt catch none
+unlinkIt suppresses none
+
+giveLinuxName is call
+giveLinuxName in fsRemove
+giveLinuxName invokes heap.give
+giveLinuxName argument block machine.Address linuxName copy
+giveLinuxName result none
+giveLinuxName ownedBy none
+giveLinuxName cleanedBy none
+giveLinuxName borrows none
+giveLinuxName catch none
+giveLinuxName suppresses none
+
+unlinkFailed is call
+unlinkFailed in fsRemove
+unlinkFailed invokes kernel.failed
+unlinkFailed argument result Int64 unlinked copy
+unlinkFailed result refusedLinux Bool
+unlinkFailed ownedBy none
+unlinkFailed cleanedBy none
+unlinkFailed borrows none
+unlinkFailed catch none
+unlinkFailed suppresses none
+
+unlinkErrno is call
+unlinkErrno in fsRemove
+unlinkErrno invokes kernel.errnoOf
+unlinkErrno argument result Int64 unlinked copy
+unlinkErrno result linuxErrno Int64
+unlinkErrno ownedBy none
+unlinkErrno cleanedBy none
+unlinkErrno borrows none
+unlinkErrno catch none
+unlinkErrno suppresses none
+
+unlinkStatus is call
+unlinkStatus in fsRemove
+unlinkStatus invokes fileError
+unlinkStatus argument payload machine.Address payload copy
+unlinkStatus argument errno Int64 linuxErrno copy
+unlinkStatus result status3 Int32
+unlinkStatus ownedBy none
+unlinkStatus cleanedBy none
+unlinkStatus borrows none
+unlinkStatus catch none
+unlinkStatus suppresses none
 
 wideName is call
 wideName in fsRemove
@@ -13084,21 +16431,38 @@ fsCreateDirectory async false
 fsCreateDirectory maxRecursion none
 fsCreateDirectory label begin loopKind none
 fsCreateDirectory label begin within none
+fsCreateDirectory label makeLinux loopKind none
+fsCreateDirectory label makeLinux within none
+fsCreateDirectory label failedLinux loopKind none
+fsCreateDirectory label failedLinux within none
+fsCreateDirectory label makeWindows loopKind none
+fsCreateDirectory label makeWindows within none
 fsCreateDirectory label failedMake loopKind none
 fsCreateDirectory label failedMake within none
 fsCreateDirectory label done loopKind none
 fsCreateDirectory label done within none
 fsCreateDirectory let ok Int32 0 immutable
 fsCreateDirectory let zero Int64 0 immutable
+fsCreateDirectory let everyone Int64 511 immutable
 fsCreateDirectory at begin do readPath
 fsCreateDirectory at begin do readBytes
-fsCreateDirectory at begin do wideName
-fsCreateDirectory at begin do nowhere
-fsCreateDirectory at begin do makeIt
-fsCreateDirectory at begin do readError
-fsCreateDirectory at begin do giveName
-fsCreateDirectory at begin do madeCheck
-fsCreateDirectory at begin branch if refused goto failedMake else goto done
+fsCreateDirectory at begin do osCheck
+fsCreateDirectory at begin branch if onLinux goto makeLinux else goto makeWindows
+fsCreateDirectory at makeLinux do copyPath
+fsCreateDirectory at makeLinux do mkdirIt
+fsCreateDirectory at makeLinux do giveLinuxName
+fsCreateDirectory at makeLinux do mkdirFailed
+fsCreateDirectory at makeLinux branch if refusedLinux goto failedLinux else goto done
+fsCreateDirectory at failedLinux do mkdirErrno
+fsCreateDirectory at failedLinux do linuxStatus
+fsCreateDirectory at failedLinux return ok status2
+fsCreateDirectory at makeWindows do wideName
+fsCreateDirectory at makeWindows do nowhere
+fsCreateDirectory at makeWindows do makeIt
+fsCreateDirectory at makeWindows do readError
+fsCreateDirectory at makeWindows do giveName
+fsCreateDirectory at makeWindows do madeCheck
+fsCreateDirectory at makeWindows branch if refused goto failedMake else goto done
 fsCreateDirectory at failedMake do mapIt
 fsCreateDirectory at failedMake do status
 fsCreateDirectory at failedMake return ok status1
@@ -13129,6 +16493,87 @@ readBytes cleanedBy none
 readBytes borrows none
 readBytes catch none
 readBytes suppresses none
+
+osCheck is call
+osCheck in fsCreateDirectory
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+copyPath is call
+copyPath in fsCreateDirectory
+copyPath invokes cPath
+copyPath argument path machine.Address path copy
+copyPath argument bytes Int64 bytes copy
+copyPath result linuxName machine.Address
+copyPath ownedBy none
+copyPath cleanedBy none
+copyPath borrows none
+copyPath catch none
+copyPath suppresses none
+
+mkdirIt is call
+mkdirIt in fsCreateDirectory
+mkdirIt invokes system.mkdirat
+mkdirIt argument directory Int64 atWorkingDirectory copy
+mkdirIt argument path machine.Address linuxName copy
+mkdirIt argument mode Int64 everyone copy
+mkdirIt result madeLinux Int64
+mkdirIt ownedBy none
+mkdirIt cleanedBy none
+mkdirIt borrows none
+mkdirIt catch none
+mkdirIt suppresses none
+
+giveLinuxName is call
+giveLinuxName in fsCreateDirectory
+giveLinuxName invokes heap.give
+giveLinuxName argument block machine.Address linuxName copy
+giveLinuxName result none
+giveLinuxName ownedBy none
+giveLinuxName cleanedBy none
+giveLinuxName borrows none
+giveLinuxName catch none
+giveLinuxName suppresses none
+
+mkdirFailed is call
+mkdirFailed in fsCreateDirectory
+mkdirFailed invokes kernel.failed
+mkdirFailed argument result Int64 madeLinux copy
+mkdirFailed result refusedLinux Bool
+mkdirFailed ownedBy none
+mkdirFailed cleanedBy none
+mkdirFailed borrows none
+mkdirFailed catch none
+mkdirFailed suppresses none
+
+mkdirErrno is call
+mkdirErrno in fsCreateDirectory
+mkdirErrno invokes kernel.errnoOf
+mkdirErrno argument result Int64 madeLinux copy
+mkdirErrno result linuxErrno Int64
+mkdirErrno ownedBy none
+mkdirErrno cleanedBy none
+mkdirErrno borrows none
+mkdirErrno catch none
+mkdirErrno suppresses none
+
+linuxStatus is call
+linuxStatus in fsCreateDirectory
+linuxStatus invokes fileError
+linuxStatus argument payload machine.Address payload copy
+linuxStatus argument errno Int64 linuxErrno copy
+linuxStatus result status2 Int32
+linuxStatus ownedBy none
+linuxStatus cleanedBy none
+linuxStatus borrows none
+linuxStatus catch none
+linuxStatus suppresses none
 
 wideName is call
 wideName in fsCreateDirectory
@@ -13241,20 +16686,37 @@ fsRemoveDirectory async false
 fsRemoveDirectory maxRecursion none
 fsRemoveDirectory label begin loopKind none
 fsRemoveDirectory label begin within none
+fsRemoveDirectory label removeLinux loopKind none
+fsRemoveDirectory label removeLinux within none
+fsRemoveDirectory label failedLinux loopKind none
+fsRemoveDirectory label failedLinux within none
+fsRemoveDirectory label removeWindows loopKind none
+fsRemoveDirectory label removeWindows within none
 fsRemoveDirectory label failedRemove loopKind none
 fsRemoveDirectory label failedRemove within none
 fsRemoveDirectory label done loopKind none
 fsRemoveDirectory label done within none
 fsRemoveDirectory let ok Int32 0 immutable
 fsRemoveDirectory let zero Int64 0 immutable
+fsRemoveDirectory let removeDirectoryFlag Int64 512 immutable
 fsRemoveDirectory at begin do readPath
 fsRemoveDirectory at begin do readBytes
-fsRemoveDirectory at begin do wideName
-fsRemoveDirectory at begin do removeIt
-fsRemoveDirectory at begin do readError
-fsRemoveDirectory at begin do giveName
-fsRemoveDirectory at begin do removedCheck
-fsRemoveDirectory at begin branch if refused goto failedRemove else goto done
+fsRemoveDirectory at begin do osCheck
+fsRemoveDirectory at begin branch if onLinux goto removeLinux else goto removeWindows
+fsRemoveDirectory at removeLinux do copyPath
+fsRemoveDirectory at removeLinux do rmdirIt
+fsRemoveDirectory at removeLinux do giveLinuxName
+fsRemoveDirectory at removeLinux do rmdirFailed
+fsRemoveDirectory at removeLinux branch if refusedLinux goto failedLinux else goto done
+fsRemoveDirectory at failedLinux do rmdirErrno
+fsRemoveDirectory at failedLinux do linuxStatus
+fsRemoveDirectory at failedLinux return ok status2
+fsRemoveDirectory at removeWindows do wideName
+fsRemoveDirectory at removeWindows do removeIt
+fsRemoveDirectory at removeWindows do readError
+fsRemoveDirectory at removeWindows do giveName
+fsRemoveDirectory at removeWindows do removedCheck
+fsRemoveDirectory at removeWindows branch if refused goto failedRemove else goto done
 fsRemoveDirectory at failedRemove do mapIt
 fsRemoveDirectory at failedRemove do status
 fsRemoveDirectory at failedRemove return ok status1
@@ -13285,6 +16747,87 @@ readBytes cleanedBy none
 readBytes borrows none
 readBytes catch none
 readBytes suppresses none
+
+osCheck is call
+osCheck in fsRemoveDirectory
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+copyPath is call
+copyPath in fsRemoveDirectory
+copyPath invokes cPath
+copyPath argument path machine.Address path copy
+copyPath argument bytes Int64 bytes copy
+copyPath result linuxName machine.Address
+copyPath ownedBy none
+copyPath cleanedBy none
+copyPath borrows none
+copyPath catch none
+copyPath suppresses none
+
+rmdirIt is call
+rmdirIt in fsRemoveDirectory
+rmdirIt invokes system.unlinkat
+rmdirIt argument directory Int64 atWorkingDirectory copy
+rmdirIt argument path machine.Address linuxName copy
+rmdirIt argument flags Int64 removeDirectoryFlag copy
+rmdirIt result removedLinux Int64
+rmdirIt ownedBy none
+rmdirIt cleanedBy none
+rmdirIt borrows none
+rmdirIt catch none
+rmdirIt suppresses none
+
+giveLinuxName is call
+giveLinuxName in fsRemoveDirectory
+giveLinuxName invokes heap.give
+giveLinuxName argument block machine.Address linuxName copy
+giveLinuxName result none
+giveLinuxName ownedBy none
+giveLinuxName cleanedBy none
+giveLinuxName borrows none
+giveLinuxName catch none
+giveLinuxName suppresses none
+
+rmdirFailed is call
+rmdirFailed in fsRemoveDirectory
+rmdirFailed invokes kernel.failed
+rmdirFailed argument result Int64 removedLinux copy
+rmdirFailed result refusedLinux Bool
+rmdirFailed ownedBy none
+rmdirFailed cleanedBy none
+rmdirFailed borrows none
+rmdirFailed catch none
+rmdirFailed suppresses none
+
+rmdirErrno is call
+rmdirErrno in fsRemoveDirectory
+rmdirErrno invokes kernel.errnoOf
+rmdirErrno argument result Int64 removedLinux copy
+rmdirErrno result linuxErrno Int64
+rmdirErrno ownedBy none
+rmdirErrno cleanedBy none
+rmdirErrno borrows none
+rmdirErrno catch none
+rmdirErrno suppresses none
+
+linuxStatus is call
+linuxStatus in fsRemoveDirectory
+linuxStatus invokes fileError
+linuxStatus argument payload machine.Address payload copy
+linuxStatus argument errno Int64 linuxErrno copy
+linuxStatus result status2 Int32
+linuxStatus ownedBy none
+linuxStatus cleanedBy none
+linuxStatus borrows none
+linuxStatus catch none
+linuxStatus suppresses none
 
 wideName is call
 wideName in fsRemoveDirectory
@@ -13389,6 +16932,14 @@ fsLock label begin within none
 fsLock label eachTry loopKind while
 fsLock label eachTry within none
 fsLock label eachTry maxIterations forever
+fsLock label lockLinux loopKind none
+fsLock label lockLinux within eachTry
+fsLock label heldCheck loopKind none
+fsLock label heldCheck within eachTry
+fsLock label failedLock loopKind none
+fsLock label failedLock within none
+fsLock label lockWindows loopKind none
+fsLock label lockWindows within eachTry
 fsLock label pastCheck loopKind none
 fsLock label pastCheck within eachTry
 fsLock label compareDeadline loopKind none
@@ -13410,6 +16961,8 @@ fsLock let forever Int64 9223372036854775807 immutable
 fsLock let poll Int64 0 mutable
 fsLock let zero Int64 0 immutable
 fsLock let one Int64 1 immutable
+fsLock let exclusiveNow Int64 6 immutable
+fsLock let eagain Int64 11 immutable
 fsLock let oneByte Int32 1 immutable
 fsLock let minusOne Int64 -1 immutable
 fsLock let fifty Int64 50 immutable
@@ -13422,9 +16975,20 @@ fsLock at begin do findFile
 fsLock at begin do readOs
 fsLock at begin do readDeadline
 fsLock at begin goto eachTry
-fsLock at eachTry do lockIt
-fsLock at eachTry do lockedCheck
-fsLock at eachTry branch if gotIt goto done else goto pastCheck
+fsLock at eachTry do osCheck
+fsLock at eachTry branch if onLinux goto lockLinux else goto lockWindows
+fsLock at lockLinux do descriptorOf
+fsLock at lockLinux do flockIt
+fsLock at lockLinux do flockFailed
+fsLock at lockLinux branch if refusedLinux goto heldCheck else goto done
+fsLock at heldCheck do flockErrno
+fsLock at heldCheck do againCheck
+fsLock at heldCheck branch if isAgain goto pastCheck else goto failedLock
+fsLock at failedLock do lockStatus
+fsLock at failedLock return ok status3
+fsLock at lockWindows do lockIt
+fsLock at lockWindows do lockedCheck
+fsLock at lockWindows branch if gotIt goto done else goto pastCheck
 fsLock at pastCheck do readNow
 fsLock at pastCheck do neverCheck
 fsLock at pastCheck branch if isNever goto pause else goto compareDeadline
@@ -13507,6 +17071,86 @@ readDeadline cleanedBy none
 readDeadline borrows none
 readDeadline catch none
 readDeadline suppresses none
+
+osCheck is call
+osCheck in fsLock
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+descriptorOf is call
+descriptorOf in fsLock
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+flockIt is call
+flockIt in fsLock
+flockIt invokes system.flock
+flockIt argument fd Int64 fd copy
+flockIt argument operation Int64 exclusiveNow copy
+flockIt result flocked Int64
+flockIt ownedBy none
+flockIt cleanedBy none
+flockIt borrows none
+flockIt catch none
+flockIt suppresses none
+
+flockFailed is call
+flockFailed in fsLock
+flockFailed invokes kernel.failed
+flockFailed argument result Int64 flocked copy
+flockFailed result refusedLinux Bool
+flockFailed ownedBy none
+flockFailed cleanedBy none
+flockFailed borrows none
+flockFailed catch none
+flockFailed suppresses none
+
+flockErrno is call
+flockErrno in fsLock
+flockErrno invokes kernel.errnoOf
+flockErrno argument result Int64 flocked copy
+flockErrno result linuxErrno Int64
+flockErrno ownedBy none
+flockErrno cleanedBy none
+flockErrno borrows none
+flockErrno catch none
+flockErrno suppresses none
+
+againCheck is call
+againCheck in fsLock
+againCheck invokes compare.equalInt64
+againCheck argument left Int64 linuxErrno copy
+againCheck argument right Int64 eagain copy
+againCheck result isAgain Bool
+againCheck ownedBy none
+againCheck cleanedBy none
+againCheck borrows none
+againCheck catch none
+againCheck suppresses none
+
+lockStatus is call
+lockStatus in fsLock
+lockStatus invokes fileError
+lockStatus argument payload machine.Address payload copy
+lockStatus argument errno Int64 linuxErrno copy
+lockStatus result status3 Int32
+lockStatus ownedBy none
+lockStatus cleanedBy none
+lockStatus borrows none
+lockStatus catch none
+lockStatus suppresses none
 
 lockIt is call
 lockIt in fsLock
@@ -13688,20 +17332,36 @@ fsUnlock async false
 fsUnlock maxRecursion none
 fsUnlock label begin loopKind none
 fsUnlock label begin within none
+fsUnlock label unlockLinux loopKind none
+fsUnlock label unlockLinux within none
+fsUnlock label failedUnlock loopKind none
+fsUnlock label failedUnlock within none
+fsUnlock label unlockWindows loopKind none
+fsUnlock label unlockWindows within none
 fsUnlock label giveDenied loopKind none
 fsUnlock label giveDenied within none
 fsUnlock label done loopKind none
 fsUnlock label done within none
 fsUnlock let ok Int32 0 immutable
 fsUnlock let zero Int64 0 immutable
+fsUnlock let unlockOperation Int64 8 immutable
 fsUnlock let oneByte Int32 1 immutable
 fsUnlock let thirteen Int64 13 immutable
 fsUnlock at begin do readHandle
 fsUnlock at begin do findFile
 fsUnlock at begin do readOs
-fsUnlock at begin do unlockIt
-fsUnlock at begin do unlockedCheck
-fsUnlock at begin branch if refused goto giveDenied else goto done
+fsUnlock at begin do osCheck
+fsUnlock at begin branch if onLinux goto unlockLinux else goto unlockWindows
+fsUnlock at unlockLinux do descriptorOf
+fsUnlock at unlockLinux do flockIt
+fsUnlock at unlockLinux do flockFailed
+fsUnlock at unlockLinux branch if refusedLinux goto failedUnlock else goto done
+fsUnlock at failedUnlock do flockErrno
+fsUnlock at failedUnlock do unlockStatus
+fsUnlock at failedUnlock return ok status2
+fsUnlock at unlockWindows do unlockIt
+fsUnlock at unlockWindows do unlockedCheck
+fsUnlock at unlockWindows branch if refused goto giveDenied else goto done
 fsUnlock at giveDenied do status
 fsUnlock at giveDenied return ok status1
 fsUnlock at done return ok ok
@@ -13742,6 +17402,74 @@ readOs cleanedBy none
 readOs borrows none
 readOs catch none
 readOs suppresses none
+
+osCheck is call
+osCheck in fsUnlock
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+descriptorOf is call
+descriptorOf in fsUnlock
+descriptorOf invokes machine.toInt64
+descriptorOf argument address machine.Address handle copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+flockIt is call
+flockIt in fsUnlock
+flockIt invokes system.flock
+flockIt argument fd Int64 fd copy
+flockIt argument operation Int64 unlockOperation copy
+flockIt result unflocked Int64
+flockIt ownedBy none
+flockIt cleanedBy none
+flockIt borrows none
+flockIt catch none
+flockIt suppresses none
+
+flockFailed is call
+flockFailed in fsUnlock
+flockFailed invokes kernel.failed
+flockFailed argument result Int64 unflocked copy
+flockFailed result refusedLinux Bool
+flockFailed ownedBy none
+flockFailed cleanedBy none
+flockFailed borrows none
+flockFailed catch none
+flockFailed suppresses none
+
+flockErrno is call
+flockErrno in fsUnlock
+flockErrno invokes kernel.errnoOf
+flockErrno argument result Int64 unflocked copy
+flockErrno result linuxErrno Int64
+flockErrno ownedBy none
+flockErrno cleanedBy none
+flockErrno borrows none
+flockErrno catch none
+flockErrno suppresses none
+
+unlockStatus is call
+unlockStatus in fsUnlock
+unlockStatus invokes fileError
+unlockStatus argument payload machine.Address payload copy
+unlockStatus argument errno Int64 linuxErrno copy
+unlockStatus result status2 Int32
+unlockStatus ownedBy none
+unlockStatus cleanedBy none
+unlockStatus borrows none
+unlockStatus catch none
+unlockStatus suppresses none
 
 unlockIt is call
 unlockIt in fsUnlock
@@ -14114,6 +17842,10 @@ fsListDirectory async false
 fsListDirectory maxRecursion none
 fsListDirectory label begin loopKind none
 fsListDirectory label begin within none
+fsListDirectory label listLinux loopKind none
+fsListDirectory label listLinux within none
+fsListDirectory label listWindows loopKind none
+fsListDirectory label listWindows within none
 fsListDirectory label lastCheck loopKind none
 fsListDirectory label lastCheck within none
 fsListDirectory label addSeparator loopKind none
@@ -14146,10 +17878,14 @@ fsListDirectory let eight Int64 8 immutable
 fsListDirectory let fortyFour Int64 44 immutable
 fsListDirectory at begin do readPath
 fsListDirectory at begin do readBytes
-fsListDirectory at begin do makeBuilder
-fsListDirectory at begin do addPath
-fsListDirectory at begin do emptyCheck
-fsListDirectory at begin branch if empty goto addPattern else goto lastCheck
+fsListDirectory at begin do osCheck
+fsListDirectory at begin branch if onLinux goto listLinux else goto listWindows
+fsListDirectory at listLinux do linuxIt
+fsListDirectory at listLinux return ok linuxStatus
+fsListDirectory at listWindows do makeBuilder
+fsListDirectory at listWindows do addPath
+fsListDirectory at listWindows do emptyCheck
+fsListDirectory at listWindows branch if empty goto addPattern else goto lastCheck
 fsListDirectory at lastCheck do lastOf
 fsListDirectory at lastCheck do readLast
 fsListDirectory at lastCheck do separatorCheck
@@ -14222,6 +17958,33 @@ readBytes cleanedBy none
 readBytes borrows none
 readBytes catch none
 readBytes suppresses none
+
+osCheck is call
+osCheck in fsListDirectory
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+linuxIt is call
+linuxIt in fsListDirectory
+linuxIt invokes listDirectoryLinux
+linuxIt argument path machine.Address path copy
+linuxIt argument bytes Int64 bytes copy
+linuxIt argument shape machine.Address shape copy
+linuxIt argument args machine.Address args copy
+linuxIt argument results machine.Address results copy
+linuxIt argument payload machine.Address payload copy
+linuxIt result linuxStatus Int32
+linuxIt ownedBy none
+linuxIt cleanedBy none
+linuxIt borrows none
+linuxIt catch none
+linuxIt suppresses none
 
 makeBuilder is call
 makeBuilder in fsListDirectory
@@ -14688,6 +18451,574 @@ storeListing cleanedBy none
 storeListing borrows none
 storeListing catch none
 storeListing suppresses none
+
+listDirectoryLinux is operation
+listDirectoryLinux purpose "fs.listDirectory on Linux: the names getdents64 gives for a directory, but `.` and `..`, sorted, as a Listing owned by a region"
+listDirectoryLinux invariant none
+listDirectoryLinux typeParameter none
+listDirectoryLinux input path machine.Address copied
+listDirectoryLinux input bytes Int64 copied
+listDirectoryLinux input shape machine.Address copied
+listDirectoryLinux input args machine.Address copied
+listDirectoryLinux input results machine.Address copied
+listDirectoryLinux input payload machine.Address copied
+listDirectoryLinux output Int32
+listDirectoryLinux outputOwnedBy none
+listDirectoryLinux raises none
+listDirectoryLinux effect use machine.memory
+listDirectoryLinux effect use system.calls
+listDirectoryLinux uses memoryAccess
+listDirectoryLinux uses systemCalls
+listDirectoryLinux memoryHeap false
+listDirectoryLinux async false
+listDirectoryLinux maxRecursion none
+listDirectoryLinux label begin loopKind none
+listDirectoryLinux label begin within none
+listDirectoryLinux label failedOpen loopKind none
+listDirectoryLinux label failedOpen within none
+listDirectoryLinux label listIt loopKind none
+listDirectoryLinux label listIt within none
+listDirectoryLinux label eachRead loopKind while
+listDirectoryLinux label eachRead within none
+listDirectoryLinux label eachRead maxIterations forever
+listDirectoryLinux label endCheck loopKind none
+listDirectoryLinux label endCheck within eachRead
+listDirectoryLinux label firstEntry loopKind none
+listDirectoryLinux label firstEntry within eachRead
+listDirectoryLinux label eachEntry loopKind while
+listDirectoryLinux label eachEntry within eachRead
+listDirectoryLinux label eachEntry maxIterations got
+listDirectoryLinux label readEntry loopKind none
+listDirectoryLinux label readEntry within eachEntry
+listDirectoryLinux label add loopKind none
+listDirectoryLinux label add within eachEntry
+listDirectoryLinux label skip loopKind none
+listDirectoryLinux label skip within eachEntry
+listDirectoryLinux label refuseRead loopKind none
+listDirectoryLinux label refuseRead within none
+listDirectoryLinux label finish loopKind none
+listDirectoryLinux label finish within none
+listDirectoryLinux let at Int64 0 mutable
+listDirectoryLinux let ok Int32 0 immutable
+listDirectoryLinux let forever Int64 9223372036854775807 immutable
+listDirectoryLinux let entriesBytes Int64 32768 immutable
+listDirectoryLinux let directoryFlags Int64 589824 immutable
+listDirectoryLinux let zero Int64 0 immutable
+listDirectoryLinux let twentyFour Int64 24 immutable
+listDirectoryLinux let sixteen Int64 16 immutable
+listDirectoryLinux let lowSixteen Int64 65535 immutable
+listDirectoryLinux let nineteen Int64 19 immutable
+listDirectoryLinux let one Int64 1 immutable
+listDirectoryLinux at begin do copyPath
+listDirectoryLinux at begin do openIt
+listDirectoryLinux at begin do giveName
+listDirectoryLinux at begin do openFailed
+listDirectoryLinux at begin branch if refused goto failedOpen else goto listIt
+listDirectoryLinux at failedOpen do openErrno
+listDirectoryLinux at failedOpen do openStatus
+listDirectoryLinux at failedOpen return ok status1
+listDirectoryLinux at listIt do takeNames
+listDirectoryLinux at listIt do takeEntries
+listDirectoryLinux at listIt goto eachRead
+listDirectoryLinux at eachRead do readEntries
+listDirectoryLinux at eachRead do readFailed
+listDirectoryLinux at eachRead branch if failedRead goto refuseRead else goto endCheck
+listDirectoryLinux at endCheck do doneCheck
+listDirectoryLinux at endCheck branch if done goto finish else goto firstEntry
+listDirectoryLinux at firstEntry set at zero
+listDirectoryLinux at firstEntry goto eachEntry
+listDirectoryLinux at eachEntry do entriesDone
+listDirectoryLinux at eachEntry branch if allRead goto eachRead else goto readEntry
+listDirectoryLinux at readEntry do findEntry
+listDirectoryLinux at readEntry do findLength
+listDirectoryLinux at readEntry do readLength
+listDirectoryLinux at readEntry do shortLength
+listDirectoryLinux at readEntry do findEntryName
+listDirectoryLinux at readEntry do measure
+listDirectoryLinux at readEntry do dotCheck
+listDirectoryLinux at readEntry branch if isDot goto skip else goto add
+listDirectoryLinux at add do addName
+listDirectoryLinux at add goto skip
+listDirectoryLinux at skip do nextEntry
+listDirectoryLinux at skip set at after
+listDirectoryLinux at skip goto eachEntry
+listDirectoryLinux at refuseRead do readErrno
+listDirectoryLinux at refuseRead do closeFailed
+listDirectoryLinux at refuseRead do giveEntriesFailed
+listDirectoryLinux at refuseRead do giveNamesFailed
+listDirectoryLinux at refuseRead do readStatus
+listDirectoryLinux at refuseRead return ok status2
+listDirectoryLinux at finish do closeIt
+listDirectoryLinux at finish do giveEntries
+listDirectoryLinux at finish do sortIt
+listDirectoryLinux at finish do readRegion
+listDirectoryLinux at finish do makeHandle
+listDirectoryLinux at finish do storeListing
+listDirectoryLinux at finish return ok ok
+
+copyPath is call
+copyPath in listDirectoryLinux
+copyPath invokes cPath
+copyPath argument path machine.Address path copy
+copyPath argument bytes Int64 bytes copy
+copyPath result name machine.Address
+copyPath ownedBy none
+copyPath cleanedBy none
+copyPath borrows none
+copyPath catch none
+copyPath suppresses none
+
+openIt is call
+openIt in listDirectoryLinux
+openIt invokes system.openat
+openIt argument directory Int64 atWorkingDirectory copy
+openIt argument path machine.Address name copy
+openIt argument flags Int64 directoryFlags copy
+openIt argument mode Int64 zero copy
+openIt result fd Int64
+openIt ownedBy none
+openIt cleanedBy none
+openIt borrows none
+openIt catch none
+openIt suppresses none
+
+giveName is call
+giveName in listDirectoryLinux
+giveName invokes heap.give
+giveName argument block machine.Address name copy
+giveName result none
+giveName ownedBy none
+giveName cleanedBy none
+giveName borrows none
+giveName catch none
+giveName suppresses none
+
+openFailed is call
+openFailed in listDirectoryLinux
+openFailed invokes kernel.failed
+openFailed argument result Int64 fd copy
+openFailed result refused Bool
+openFailed ownedBy none
+openFailed cleanedBy none
+openFailed borrows none
+openFailed catch none
+openFailed suppresses none
+
+openErrno is call
+openErrno in listDirectoryLinux
+openErrno invokes kernel.errnoOf
+openErrno argument result Int64 fd copy
+openErrno result errno Int64
+openErrno ownedBy none
+openErrno cleanedBy none
+openErrno borrows none
+openErrno catch none
+openErrno suppresses none
+
+openStatus is call
+openStatus in listDirectoryLinux
+openStatus invokes fileError
+openStatus argument payload machine.Address payload copy
+openStatus argument errno Int64 errno copy
+openStatus result status1 Int32
+openStatus ownedBy none
+openStatus cleanedBy none
+openStatus borrows none
+openStatus catch none
+openStatus suppresses none
+
+takeNames is call
+takeNames in listDirectoryLinux
+takeNames invokes heap.take
+takeNames argument bytes Int64 twentyFour copy
+takeNames result names machine.Address
+takeNames ownedBy none
+takeNames cleanedBy none
+takeNames borrows none
+takeNames catch none
+takeNames suppresses none
+
+takeEntries is call
+takeEntries in listDirectoryLinux
+takeEntries invokes heap.take
+takeEntries argument bytes Int64 entriesBytes copy
+takeEntries result entries machine.Address
+takeEntries ownedBy none
+takeEntries cleanedBy none
+takeEntries borrows none
+takeEntries catch none
+takeEntries suppresses none
+
+readEntries is call
+readEntries in listDirectoryLinux
+readEntries invokes system.getdents64
+readEntries argument fd Int64 fd copy
+readEntries argument buffer machine.Address entries copy
+readEntries argument bytes Int64 entriesBytes copy
+readEntries result got Int64
+readEntries ownedBy none
+readEntries cleanedBy none
+readEntries borrows none
+readEntries catch none
+readEntries suppresses none
+
+readFailed is call
+readFailed in listDirectoryLinux
+readFailed invokes kernel.failed
+readFailed argument result Int64 got copy
+readFailed result failedRead Bool
+readFailed ownedBy none
+readFailed cleanedBy none
+readFailed borrows none
+readFailed catch none
+readFailed suppresses none
+
+doneCheck is call
+doneCheck in listDirectoryLinux
+doneCheck invokes compare.lessOrEqualInt64
+doneCheck argument left Int64 got copy
+doneCheck argument right Int64 zero copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+entriesDone is call
+entriesDone in listDirectoryLinux
+entriesDone invokes compare.greaterOrEqualInt64
+entriesDone argument left Int64 at copy
+entriesDone argument right Int64 got copy
+entriesDone result allRead Bool
+entriesDone ownedBy none
+entriesDone cleanedBy none
+entriesDone borrows none
+entriesDone catch none
+entriesDone suppresses none
+
+findEntry is call
+findEntry in listDirectoryLinux
+findEntry invokes machine.offset
+findEntry argument address machine.Address entries copy
+findEntry argument bytes Int64 at copy
+findEntry result entry machine.Address
+findEntry ownedBy none
+findEntry cleanedBy none
+findEntry borrows none
+findEntry catch none
+findEntry suppresses none
+
+findLength is call
+findLength in listDirectoryLinux
+findLength invokes machine.offset
+findLength argument address machine.Address entry copy
+findLength argument bytes Int64 sixteen copy
+findLength result lengthAt machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in listDirectoryLinux
+readLength invokes unsignedAt
+readLength argument block machine.Address lengthAt copy
+readLength argument offset Int64 zero copy
+readLength result recordBytes Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+shortLength is call
+shortLength in listDirectoryLinux
+shortLength invokes bits.andInt64
+shortLength argument left Int64 recordBytes copy
+shortLength argument right Int64 lowSixteen copy
+shortLength result recordLength Int64
+shortLength ownedBy none
+shortLength cleanedBy none
+shortLength borrows none
+shortLength catch none
+shortLength suppresses none
+
+findEntryName is call
+findEntryName in listDirectoryLinux
+findEntryName invokes machine.offset
+findEntryName argument address machine.Address entry copy
+findEntryName argument bytes Int64 nineteen copy
+findEntryName result entryName machine.Address
+findEntryName ownedBy none
+findEntryName cleanedBy none
+findEntryName borrows none
+findEntryName catch none
+findEntryName suppresses none
+
+measure is call
+measure in listDirectoryLinux
+measure invokes cLength
+measure argument text machine.Address entryName copy
+measure argument most Int64 recordLength copy
+measure result nameBytes Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+dotCheck is call
+dotCheck in listDirectoryLinux
+dotCheck invokes isDots
+dotCheck argument name machine.Address entryName copy
+dotCheck argument bytes Int64 nameBytes copy
+dotCheck result isDot Bool
+dotCheck ownedBy none
+dotCheck cleanedBy none
+dotCheck borrows none
+dotCheck catch none
+dotCheck suppresses none
+
+addName is call
+addName in listDirectoryLinux
+addName invokes handles.addName
+addName argument names machine.Address names copy
+addName argument data machine.Address entryName copy
+addName argument bytes Int64 nameBytes copy
+addName result none
+addName ownedBy none
+addName cleanedBy none
+addName borrows none
+addName catch none
+addName suppresses none
+
+nextEntry is call
+nextEntry in listDirectoryLinux
+nextEntry invokes math.addInt64
+nextEntry argument left Int64 at copy
+nextEntry argument right Int64 recordLength copy
+nextEntry result after Int64
+nextEntry ownedBy none
+nextEntry cleanedBy none
+nextEntry borrows none
+nextEntry catch none
+nextEntry suppresses none
+
+readErrno is call
+readErrno in listDirectoryLinux
+readErrno invokes kernel.errnoOf
+readErrno argument result Int64 got copy
+readErrno result listErrno Int64
+readErrno ownedBy none
+readErrno cleanedBy none
+readErrno borrows none
+readErrno catch none
+readErrno suppresses none
+
+closeFailed is call
+closeFailed in listDirectoryLinux
+closeFailed invokes system.close
+closeFailed argument fd Int64 fd copy
+closeFailed result closedFailed Int64
+closeFailed ownedBy none
+closeFailed cleanedBy none
+closeFailed borrows none
+closeFailed catch none
+closeFailed suppresses none
+
+giveEntriesFailed is call
+giveEntriesFailed in listDirectoryLinux
+giveEntriesFailed invokes heap.give
+giveEntriesFailed argument block machine.Address entries copy
+giveEntriesFailed result none
+giveEntriesFailed ownedBy none
+giveEntriesFailed cleanedBy none
+giveEntriesFailed borrows none
+giveEntriesFailed catch none
+giveEntriesFailed suppresses none
+
+giveNamesFailed is call
+giveNamesFailed in listDirectoryLinux
+giveNamesFailed invokes heap.give
+giveNamesFailed argument block machine.Address names copy
+giveNamesFailed result none
+giveNamesFailed ownedBy none
+giveNamesFailed cleanedBy none
+giveNamesFailed borrows none
+giveNamesFailed catch none
+giveNamesFailed suppresses none
+
+readStatus is call
+readStatus in listDirectoryLinux
+readStatus invokes fileError
+readStatus argument payload machine.Address payload copy
+readStatus argument errno Int64 listErrno copy
+readStatus result status2 Int32
+readStatus ownedBy none
+readStatus cleanedBy none
+readStatus borrows none
+readStatus catch none
+readStatus suppresses none
+
+closeIt is call
+closeIt in listDirectoryLinux
+closeIt invokes system.close
+closeIt argument fd Int64 fd copy
+closeIt result closed Int64
+closeIt ownedBy none
+closeIt cleanedBy none
+closeIt borrows none
+closeIt catch none
+closeIt suppresses none
+
+giveEntries is call
+giveEntries in listDirectoryLinux
+giveEntries invokes heap.give
+giveEntries argument block machine.Address entries copy
+giveEntries result none
+giveEntries ownedBy none
+giveEntries cleanedBy none
+giveEntries borrows none
+giveEntries catch none
+giveEntries suppresses none
+
+sortIt is call
+sortIt in listDirectoryLinux
+sortIt invokes sortNames
+sortIt argument names machine.Address names copy
+sortIt result none
+sortIt ownedBy none
+sortIt cleanedBy none
+sortIt borrows none
+sortIt catch none
+sortIt suppresses none
+
+readRegion is call
+readRegion in listDirectoryLinux
+readRegion invokes slots.addressArg
+readRegion argument shape machine.Address shape copy
+readRegion argument args machine.Address args copy
+readRegion argument parameter Int64 one copy
+readRegion result region machine.Address
+readRegion ownedBy none
+readRegion cleanedBy none
+readRegion borrows none
+readRegion catch none
+readRegion suppresses none
+
+makeHandle is call
+makeHandle in listDirectoryLinux
+makeHandle invokes handles.newHandle
+makeHandle argument kind Int64 kindListing copy
+makeHandle argument object machine.Address names copy
+makeHandle argument region machine.Address region copy
+makeHandle result listing Int64
+makeHandle ownedBy none
+makeHandle cleanedBy none
+makeHandle borrows none
+makeHandle catch none
+makeHandle suppresses none
+
+storeListing is call
+storeListing in listDirectoryLinux
+storeListing invokes machine.storeInt64
+storeListing argument address machine.Address results copy
+storeListing argument value Int64 listing copy
+storeListing result none
+storeListing ownedBy none
+storeListing cleanedBy none
+storeListing borrows none
+storeListing catch none
+storeListing suppresses none
+
+cLength is operation
+cLength purpose "How many bytes come before the first 0 byte of a text, looking at most at a number of them"
+cLength invariant none
+cLength typeParameter none
+cLength input text machine.Address copied
+cLength input most Int64 copied
+cLength output Int64
+cLength outputOwnedBy none
+cLength raises none
+cLength effect use machine.memory
+cLength uses memoryAccess
+cLength memoryHeap false
+cLength async false
+cLength maxRecursion none
+cLength label begin loopKind none
+cLength label begin within none
+cLength label eachByte loopKind while
+cLength label eachByte within none
+cLength label eachByte maxIterations most
+cLength label readByte loopKind none
+cLength label readByte within eachByte
+cLength label advance loopKind none
+cLength label advance within eachByte
+cLength label give loopKind none
+cLength label give within none
+cLength let at Int64 0 mutable
+cLength let zeroByte Byte 0 immutable
+cLength let one Int64 1 immutable
+cLength at begin goto eachByte
+cLength at eachByte do doneCheck
+cLength at eachByte branch if done goto give else goto readByte
+cLength at readByte do readIt
+cLength at readByte do zeroCheck
+cLength at readByte branch if isZero goto give else goto advance
+cLength at advance do nextByte
+cLength at advance set at after
+cLength at advance goto eachByte
+cLength at give return ok at
+
+doneCheck is call
+doneCheck in cLength
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 most copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+readIt is call
+readIt in cLength
+readIt invokes byteAt
+readIt argument text machine.Address text copy
+readIt argument position Int64 at copy
+readIt result byte Byte
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+zeroCheck is call
+zeroCheck in cLength
+zeroCheck invokes compare.equalByte
+zeroCheck argument left Byte byte copy
+zeroCheck argument right Byte zeroByte copy
+zeroCheck result isZero Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+nextByte is call
+nextByte in cLength
+nextByte invokes math.addInt64
+nextByte argument left Int64 at copy
+nextByte argument right Int64 one copy
+nextByte result after Int64
+nextByte ownedBy none
+nextByte cleanedBy none
+nextByte borrows none
+nextByte catch none
+nextByte suppresses none
 
 isDots is operation
 isDots purpose "Whether a name is `.` or `..`"

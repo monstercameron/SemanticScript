@@ -1,6 +1,6 @@
 module files "Files and directories, paths resolved as Python resolves them, capability scopes on paths at run time, and one writer per file"
   path files
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test memory numbers output frames heap handles regions slots wide tasks
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel memory numbers output frames heap handles regions slots wide tasks
   exports winErrno fileError resolve pathWithin checkScope textAt textBytes copyBytes fsOpenRead fsOpenWrite fsCreate fsOpenAppend fsRead fsWrite fsClose fsExists fsRemove fsCreateDirectory fsRemoveDirectory fsReadAll fsWriteAll fsLock fsUnlock fsListDirectory fsEntryCount fsEntryName
 
 capability memoryAccess "Authority to read a call's paths and data and keep the open files and their claims in memory" use machine.memory none
@@ -16,6 +16,10 @@ capability systemCalls "Authority to open, read, write, lock, list, make, and re
 ## machine.state bytes 704 to 767 belong to this module: 704 the address of the table of claims, 712 how many it
 ## holds, 720 how many it has room for, 728 to 759 a number's digits, 760 a count a system call writes; bytes 49664
 ## to 49727 a file's information (GetFileInformationByHandle), 49728 to 50319 a directory entry (FindFirstFileW).
+## D-138, on Linux: 760 holds the errno of the last file call that failed, 49728 to 49871 a struct stat; a file's
+## handle is its descriptor, paths are resolved as posixpath.realpath resolves them (links followed one component
+## at a time, at most 40 of them), names are compared as they are (normcase changes nothing), and the claims, the
+## scopes, and the errors are the same code as on Windows, with the errno the system call gave.
 ## A claim (32 bytes): the address of its key (a heap block), the key's length, how many read it, how many write it.
 ## A file (a heap block of fileBytes): 0 its handle, 8 its key and 16 the key's length, 24 its identity and 32 its
 ## length (0 when the system gives none), 40 whether it writes, 48 whether it is readable, 56 whether it is
@@ -89,6 +93,37 @@ constant openExisting "OPEN_EXISTING" Int32 3
 constant openAlways "OPEN_ALWAYS" Int32 4
 
 constant chunk "How many bytes one ReadFile asks for" Int64 65536
+
+constant statAt "Where a struct stat is put on Linux, in machine.state" Int64 49728
+
+constant atWorkingDirectory "AT_FDCWD: a path relative to the working directory" Int64 -100
+
+constant closeOnExec "O_CLOEXEC: a child process does not inherit the descriptor" Int64 524288
+
+constant typeMask "S_IFMT: the bits of st_mode that say what a path names" Int64 61440
+
+constant typeDirectory "S_IFDIR: st_mode names a directory" Int64 16384
+
+constant typeRegular "S_IFREG: st_mode names a regular file" Int64 32768
+
+constant typeLink "S_IFLNK: st_mode names a symbolic link" Int64 40960
+
+constant mostLinks "How many symbolic links one path resolves through, as the kernel's limit" Int64 40
+
+op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+  input code Int32 copied
+  effect use system.calls
+  uses systemCalls
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxExit windowsExit
+:linuxExit
+  widenCode: wideCode = convert.int32ToInt64(code)
+  callExit: exitResult = system.exitGroup(wideCode)
+  return
+:windowsExit
+  callExitProcess: system.exitProcess(code)
+  return
 
 ## ---------------------------------------------------------------- small helpers
 
@@ -199,6 +234,87 @@ op copyBytes "A copy of some bytes in a new heap block, with a 0 byte after them
   copyIn: machine.copy(copy, data, bytes)
   return copy
 
+op cPath "A copy of a path's bytes with a 0 after them, for a Linux system call"
+  input path machine.Address copied
+  input bytes Int64 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  copyIt: copied = copyBytes(path, bytes)
+  return copied
+
+op keepErrno "Keep the errno of a Linux system call's result that failed, for keptCode and lastFileError"
+  input result Int64 copied
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  errnoOf: errno = kernel.errnoOf(result)
+  findSlot: slot = stateAt(countedAt)
+  storeIt: machine.storeInt64(slot, errno)
+  return
+
+op linuxMode "The st_mode of a struct stat on Linux, its type bits only"
+  input status machine.Address copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  modeOf: mode = unsignedAt(status, twentyFour=24)
+  typeOf: kind = bits.andInt64(mode, typeMask)
+  return kind
+
+op statPath "newfstatat of a path on Linux into machine.state's struct stat, links followed or not: the kernel's result"
+  input path machine.Address copied
+  input bytes Int64 copied
+  input follow Bool copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let flags Int64 0 mut
+  let noFollowFlag Int64 256
+:begin
+  if follow statIt noFollow
+:noFollow
+  set flags noFollowFlag
+  goto statIt
+:statIt
+  copyPath: name = cPath(path, bytes)
+  findStatus: status = stateAt(statAt)
+  callStat: result = system.newfstatat(atWorkingDirectory, name, status, flags)
+  giveName: heap.give(name)
+  return result
+
+op closeFile "Close a file's handle: CloseHandle on Windows, close on Linux; nonzero when it worked, 0 when it failed (its error kept for lastFileError)"
+  input handle machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let worked Int32 1
+  let refused Int32 0
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxClose windowsClose
+:linuxClose
+  descriptorOf: fd = machine.toInt64(handle)
+  closeIt: closed = system.close(fd)
+  failedCheck: isFailure = kernel.failed(closed)
+  if isFailure keepIt giveWorked
+:keepIt
+  keepCode: keepErrno(closed)
+  return refused
+:giveWorked
+  return worked
+:windowsClose
+  closeHandleIt: closedHandle = system.closeHandle(handle)
+  return closedHandle
+
 op invalidHandle "Whether a handle is INVALID_HANDLE_VALUE (all bits set)"
   input handle machine.Address copied
   output Bool
@@ -219,15 +335,17 @@ op failText "Report a trap with a message and end the process with exit code 70"
   findText: textAt2 = machine.addressOfString(text)
   textLength: bytes = string.byteLength(text)
   writeReport: status = frames.report(textAt2, bytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 ## ---------------------------------------------------------------- errors
 
-op winErrno "A Windows error code as the errno Python's winerror_to_errno makes it, for the errors file and directory calls report"
+op winErrno "A Windows error code as the errno Python's winerror_to_errno makes it, for the errors file and directory calls report; on Linux the code is the errno already"
   invariant mapsErrors "File and path not found are ENOENT (2), access and sharing errors EACCES (13), already exists EEXIST (17), and so on; any other is EINVAL (22)"
   input code Int32 copied
   output Int64
+  effect use system.calls
+  uses systemCalls
   let enoent Int64 2
   let ebadf Int64 9
   let eacces Int64 13
@@ -241,6 +359,11 @@ op winErrno "A Windows error code as the errno Python's winerror_to_errno makes 
   let enotempty Int64 41
 :begin
   widenCode: value = convert.int32ToInt64(code)
+  osCheck: onLinux = system.linux()
+  if onLinux giveErrno mapWindows
+:giveErrno
+  return value
+:mapWindows
   is2: c2 = compare.equalInt64(value, two=2)
   is3: c3 = compare.equalInt64(value, three=3)
   is15: c15 = compare.equalInt64(value, fifteen=15)
@@ -372,6 +495,14 @@ op lastFileError "The system's last error as fs.FileError"
   uses memoryAccess
   uses systemCalls
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxError windowsError
+:linuxError
+  findSlot: slot = stateAt(countedAt)
+  readErrno: linuxErrno = machine.loadInt64(slot)
+  classifyLinux: linuxStatus = fileError(payload, linuxErrno)
+  return linuxStatus
+:windowsError
   readError: code = system.getLastError()
   mapIt: errno = winErrno(code)
   classify: status = fileError(payload, errno)
@@ -582,6 +713,14 @@ op resolve "A path as Python's os.path.normcase(os.path.realpath(path)) gives it
   set sourceBytes bytes
   goto full
 :full
+  osCheck: onLinux = system.linux()
+  if onLinux linuxResolve windowsResolve
+:linuxResolve
+  linuxSource: linuxFrom = machine.fromInt64(sourceValue)
+  realLinux: linuxReal = resolveLinux(linuxFrom, sourceBytes, lengthAt)
+  giveLinuxSource: heap.give(linuxFrom)
+  return linuxReal
+:windowsResolve
   nowhere: anywhere = machine.zero()
   sourceOf: source = machine.fromInt64(sourceValue)
   wideName: name = wide.widen(source, sourceBytes)
@@ -623,12 +762,215 @@ op resolve "A path as Python's os.path.normcase(os.path.realpath(path)) gives it
   giveFinal: heap.give(finalSource)
   return lowered
 
-op isSeparator "Whether a byte is a path separator on Windows, `/` or `\\`"
+op resolveLinux "A path as posixpath.realpath gives it on Linux, as UTF-8 in a new heap block; its length stored at an address: absolute (from the working directory), `.` and empty names dropped, `..` taking off the name before it, each symbolic link replaced by what it holds (an absolute one starting again at `/`), at most 40 of them; names past one that is not there are kept as written"
+  input path machine.Address copied
+  input bytes Int64 copied
+  input lengthAt machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+  let start Int64 0 mut
+  let links Int64 0 mut
+  let resultBytes Int64 0 mut
+  let yes Bool true
+  let no Bool false
+  let slash Byte 47
+  let dot Byte 46
+  let most Int64 1048576
+  let roomBytes Int64 4096
+:begin
+  makeResult: result = wide.builderNew()
+  makeRest: rest = wide.builderNew()
+  addPath: wide.builderAdd(rest, path, bytes)
+  takeBuffer: buffer = heap.take(roomBytes)
+  emptyCheck: empty = compare.equalInt64(bytes, zero=0)
+  if empty fromWorking firstCheck
+:firstCheck
+  readFirst: first = byteAt(path, zero)
+  absoluteCheck: absolute = compare.equalByte(first, slash)
+  if absolute eachName fromWorking
+:fromWorking
+  askCwd: got = system.getcwd(buffer, roomBytes)
+  cwdFailed: noCwd = kernel.failed(got)
+  if noCwd eachName addCwd
+:addCwd
+  withoutEnd: cwdBytes = math.subtractInt64(got, one=1)
+  rootCheck: isRoot = compare.lessOrEqualInt64(cwdBytes, one)
+  if isRoot eachName addWorking
+:addWorking
+  addCwdText: wide.builderAdd(result, buffer, cwdBytes)
+  goto eachName
+:eachName loop=while max=most
+  readRest: restText = wide.builderText(rest)
+  readRestBytes: restBytes = wide.builderLength(rest)
+  endCheck: atEnd = compare.greaterOrEqualInt64(at, restBytes)
+  if atEnd finish skipCheck
+:skipCheck in=eachName
+  readHere: here = byteAt(restText, at)
+  slashCheck: isSlash = compare.equalByte(here, slash)
+  if isSlash skipSlash nameStart
+:skipSlash in=eachName
+  pastSlash: afterSlash = math.addInt64(at, one)
+  set at afterSlash
+  goto eachName
+:nameStart in=eachName
+  set start at
+  goto eachByte
+:eachByte loop=while max=most in=eachName
+  byteEnd: atByteEnd = compare.greaterOrEqualInt64(at, restBytes)
+  if atByteEnd nameFound checkByte
+:checkByte in=eachByte
+  readByte: byte = byteAt(restText, at)
+  byteSlash: byteIsSlash = compare.equalByte(byte, slash)
+  if byteIsSlash nameFound nextByte
+:nextByte in=eachByte
+  pastByte: afterByte = math.addInt64(at, one)
+  set at afterByte
+  goto eachByte
+:nameFound in=eachName
+  lengthOf: nameBytes = math.subtractInt64(at, start)
+  findName: name = machine.offset(restText, start)
+  oneCheck: isOne = compare.equalInt64(nameBytes, one)
+  if isOne dotCheck dotsCheck
+:dotCheck in=eachName
+  readDot: onlyByte = byteAt(name, zero)
+  isDotCheck: isDot = compare.equalByte(onlyByte, dot)
+  if isDot eachName joinName
+:dotsCheck in=eachName
+  twoCheck: isTwo = compare.equalInt64(nameBytes, two=2)
+  if isTwo dotsFirst joinName
+:dotsFirst in=eachName
+  readDotOne: dotOne = byteAt(name, zero)
+  readDotTwo: dotTwo = byteAt(name, one)
+  firstDot: isDotOne = compare.equalByte(dotOne, dot)
+  secondDot: isDotTwo = compare.equalByte(dotTwo, dot)
+  bothDots: isParent = logic.and(isDotOne, isDotTwo)
+  if isParent parent joinName
+:parent in=eachName
+  readResultBytes: haveBytes = wide.builderLength(result)
+  set resultBytes haveBytes
+  goto eachBack
+:eachBack loop=while max=most in=eachName
+  backDone: noneLeft = compare.lessOrEqualInt64(resultBytes, zero)
+  if noneLeft cutParent backByte
+:backByte in=eachBack
+  lastOf: lastAt = math.subtractInt64(resultBytes, one)
+  readResultText: resultText = wide.builderText(result)
+  readLast: last = byteAt(resultText, lastAt)
+  set resultBytes lastAt
+  lastSlash: isLastSlash = compare.equalByte(last, slash)
+  if isLastSlash cutParent eachBack
+:cutParent in=eachName
+  findLength: resultLengthSlot = machine.offset(result, eight=8)
+  storeLength: machine.storeInt64(resultLengthSlot, resultBytes)
+  goto eachName
+:joinName in=eachName
+  readBefore: beforeBytes = wide.builderLength(result)
+  addSlash: wide.builderAddByte(result, slash)
+  addName: wide.builderAdd(result, name, nameBytes)
+  readCandidate: candidate = wide.builderText(result)
+  readCandidateBytes: candidateBytes = wide.builderLength(result)
+  statIt: statResult = statPath(candidate, candidateBytes, no)
+  statFailed: missing = kernel.failed(statResult)
+  if missing eachName linkCheck
+:linkCheck in=eachName
+  findStatus: status = stateAt(statAt)
+  readMode: mode = linuxMode(status)
+  isLinkCheck: isLink = compare.equalInt64(mode, typeLink)
+  tooManyCheck: tooMany = compare.greaterOrEqualInt64(links, mostLinks)
+  notTooMany: underLimit = logic.not(tooMany)
+  followCheck: follow = logic.and(isLink, underLimit)
+  if follow readLink eachName
+:readLink in=eachName
+  copyCandidate: linkName = cPath(candidate, candidateBytes)
+  readIt: linkBytes = system.readlinkat(atWorkingDirectory, linkName, buffer, roomBytes)
+  giveLinkName: heap.give(linkName)
+  linkFailed: noLink = kernel.failed(linkBytes)
+  if noLink eachName expand
+:expand in=eachName
+  moreLinks: linksNow = math.addInt64(links, one)
+  set links linksNow
+  goto expandRest
+:expandRest in=eachName
+  findBeforeLength: beforeSlot = machine.offset(result, eight)
+  storeBefore: machine.storeInt64(beforeSlot, beforeBytes)
+  makeNewRest: newRest = wide.builderNew()
+  addTarget: wide.builderAdd(newRest, buffer, linkBytes)
+  addRestSlash: wide.builderAddByte(newRest, slash)
+  tailOf: tailBytes = math.subtractInt64(restBytes, at)
+  findTail: tail = machine.offset(restText, at)
+  addTail: wide.builderAdd(newRest, tail, tailBytes)
+  readOldRest: oldRestText = wide.builderText(rest)
+  giveOldRestText: heap.give(oldRestText)
+  readNewText: newText = wide.builderText(newRest)
+  storeNewText: machine.storeAddress(rest, newText)
+  findNewLength: newLengthSlot = machine.offset(newRest, eight)
+  readNewLength: newLength = machine.loadInt64(newLengthSlot)
+  findRestLength: restLengthSlot = machine.offset(rest, eight)
+  storeRestLength: machine.storeInt64(restLengthSlot, newLength)
+  findNewRoom: newRoomSlot = machine.offset(newRest, sixteen=16)
+  readNewRoom: newRoom = machine.loadInt64(newRoomSlot)
+  findRestRoom: restRoomSlot = machine.offset(rest, sixteen)
+  storeRestRoom: machine.storeInt64(restRoomSlot, newRoom)
+  giveNewRest: heap.give(newRest)
+  set at zero
+  readTargetFirst: targetFirst = byteAt(buffer, zero)
+  absoluteTarget: targetAbsolute = compare.equalByte(targetFirst, slash)
+  if targetAbsolute restartRoot eachName
+:restartRoot in=eachName
+  findRootLength: rootLengthSlot = machine.offset(result, eight)
+  storeRoot: machine.storeInt64(rootLengthSlot, zero)
+  goto eachName
+:finish
+  readFinal: finalBytes = wide.builderLength(result)
+  emptyResult: noBytes = compare.equalInt64(finalBytes, zero)
+  if noBytes giveRoot giveResult
+:giveRoot
+  addRoot: wide.builderAddByte(result, slash)
+  goto giveResult
+:giveResult
+  readResultFinal: resultFinal = wide.builderText(result)
+  readResultFinalBytes: resultFinalBytes = wide.builderLength(result)
+  copyResult: resolved = copyBytes(resultFinal, resultFinalBytes)
+  storeResolvedLength: machine.storeInt64(lengthAt, resultFinalBytes)
+  giveResultText: heap.give(resultFinal)
+  giveResultBuilder: heap.give(result)
+  readRestFinal: restFinal = wide.builderText(rest)
+  giveRestText: heap.give(restFinal)
+  giveRestBuilder: heap.give(rest)
+  giveBuffer: heap.give(buffer)
+  return resolved
+
+op pathSeparator "The path separator: `\\` on Windows, `/` on Linux"
+  output Byte
+  effect use system.calls
+  uses systemCalls
+  let slashByte Byte 47
+  let backslashByte Byte 92
+:begin
+  osCheck: onLinux = system.linux()
+  if onLinux giveSlash giveBackslash
+:giveSlash
+  return slashByte
+:giveBackslash
+  return backslashByte
+
+op isSeparator "Whether a byte is a path separator: on Windows `/` or `\\`, on Linux `/`"
   input byte Byte copied
   output Bool
+  effect use system.calls
+  uses systemCalls
 :begin
   slashCheck: isSlash = compare.equalByte(byte, slash=47)
   backslashCheck: isBackslash = compare.equalByte(byte, backslash=92)
+  osCheck: onLinux = system.linux()
+  if onLinux giveSlash giveEither
+:giveSlash
+  return isSlash
+:giveEither
   eitherCheck: either = logic.or(isSlash, isBackslash)
   return either
 
@@ -642,8 +984,8 @@ op asPrefix "A resolved path with its trailing separators taken off and one `\\`
   uses memoryAccess
   uses systemCalls
   let at Int64 0 mut
-  let backslash Byte 92
 :begin
+  findSeparator: backslash = pathSeparator()
   set at bytes
   goto eachByte
 :eachByte loop=while max=bytes
@@ -703,8 +1045,8 @@ op pathWithin "library.path_within with links resolved: whether a path lies in a
   let no Bool false
   let slash Byte 47
   let star Byte 42
-  let backslash Byte 92
 :begin
+  findSeparator: backslash = pathSeparator()
   emptyCheck: empty = compare.equalInt64(scopeBytes, zero=0)
   if empty notIt readLast
 :notIt
@@ -1126,7 +1468,7 @@ op checkScope "host._check_scope: a scoped argument must fall inside a scope of 
   readMessage: messageText = wide.builderText(message)
   readMessageLength: messageBytes = wide.builderLength(message)
   writeReport: status = frames.report(messageText, messageBytes)
-  exit: system.exitProcess(trapCode=70)
+  exit: endProcess(trapCode=70)
   return
 
 op addString "Add a text to a builder"
@@ -1345,6 +1687,18 @@ op identityKey "D-109: the file itself, `#<volume>:<index high>:<index low>`, in
   uses systemCalls
 :begin
   nowhere: anywhere = machine.zero()
+  osCheck: onLinux = system.linux()
+  if onLinux linuxIdentity windowsIdentity
+:linuxIdentity
+  descriptorOf: fd = machine.toInt64(handle)
+  findStatus: status = stateAt(statAt)
+  statIt: statResult = system.fstat(fd, status)
+  statFailed: noStatus = kernel.failed(statResult)
+  if noStatus giveNothing linuxKey
+:linuxKey
+  keyOf: linuxKeyText = statusIdentity(status, lengthAt)
+  return linuxKeyText
+:windowsIdentity
   findInfo: info = stateAt(infoAt)
   readInfo: got = system.getFileInformationByHandle(handle, info)
   failedCheck: notRead = compare.equalInt32(got, zero32=0)
@@ -1372,7 +1726,36 @@ op identityKey "D-109: the file itself, `#<volume>:<index high>:<index low>`, in
   giveBuilder: heap.give(builder)
   return key
 
-op isRegularFile "Whether a path names something that is not a directory"
+op statusIdentity "D-109 on Linux: the file a struct stat describes, `#<st_dev>:<st_ino>` as host.py writes it, in a new heap block (its length stored at an address); the address 0 when st_ino is 0"
+  input status machine.Address copied
+  input lengthAt machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  readDevice: device = machine.loadInt64(status)
+  findInode: inodeSlot = machine.offset(status, eight=8)
+  readInode: inode = machine.loadInt64(inodeSlot)
+  zeroCheck: noInode = compare.equalInt64(inode, zero=0)
+  if noInode giveNothing format
+:giveNothing
+  nowhere: anywhere = machine.zero()
+  return anywhere
+:format
+  makeKey: builder = wide.builderNew()
+  addHash: wide.builderAddByte(builder, hash=35)
+  addDevice: addNumber(builder, device)
+  addColon: wide.builderAddByte(builder, colon=58)
+  addInode: addNumber(builder, inode)
+  readKey: key = wide.builderText(builder)
+  readLength: length = wide.builderLength(builder)
+  storeLength: machine.storeInt64(lengthAt, length)
+  giveBuilder: heap.give(builder)
+  return key
+
+op isRegularFile "Whether a path names something that is not a directory (on Linux, a regular file, as os.path.isfile has it)"
   input path machine.Address copied
   input bytes Int64 copied
   output Bool
@@ -1380,7 +1763,23 @@ op isRegularFile "Whether a path names something that is not a directory"
   effect use system.calls
   uses memoryAccess
   uses systemCalls
+  let no Bool false
+  let yes Bool true
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxCheck windowsCheck
+:linuxCheck
+  statIt: statResult = statPath(path, bytes, yes)
+  statFailed: missing = kernel.failed(statResult)
+  if missing giveNo modeCheck
+:giveNo
+  return no
+:modeCheck
+  findStatus: status = stateAt(statAt)
+  readMode: mode = linuxMode(status)
+  regularMode: isRegular = compare.equalInt64(mode, typeRegular)
+  return isRegular
+:windowsCheck
   wideName: name = wide.widen(path, bytes)
   readAttributes: attributes = system.getFileAttributesW(name)
   giveName: heap.give(name)
@@ -1424,6 +1823,26 @@ op readUpTo "Read up to a number of bytes from a handle, as a buffered read does
   set want chunk
   goto readSome
 :readSome in=eachRead
+  osCheck: onLinux = system.linux()
+  if onLinux readLinux readWindows
+:readLinux in=eachRead
+  descriptorOf: fd = machine.toInt64(handle)
+  readFd: gotLinux = system.read(fd, buffer, want)
+  linuxFailed: refusedLinux = kernel.failed(gotLinux)
+  if refusedLinux linuxReadFailed linuxCount
+:linuxReadFailed
+  errnoOf: readErrno = kernel.errnoOf(gotLinux)
+  storeErrno: machine.storeInt64(errorAt, readErrno)
+  goto finish
+:linuxCount in=eachRead
+  linuxEnd: atLinuxEnd = compare.equalInt64(gotLinux, zero)
+  if atLinuxEnd finish keepLinux
+:keepLinux in=eachRead
+  addLinux: wide.builderAdd(builder, buffer, gotLinux)
+  moreLinux: afterLinux = math.addInt64(length, gotLinux)
+  set length afterLinux
+  goto eachRead
+:readWindows in=eachRead
   narrowWant: want32 = convert.int64ToInt32(want)
   readIt: ok = system.readFile(handle, buffer, want32, counted, anywhere)
   failedCheck: refused = compare.equalInt32(ok, zero32=0)
@@ -1460,6 +1879,21 @@ op seekTo "Move a handle's position: method 0 from the start, 2 from the end; gi
   uses memoryAccess
   uses systemCalls
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux seekLinux seekWindows
+:seekLinux
+  descriptorOf: fd = machine.toInt64(handle)
+  widenMethod: whence = convert.int32ToInt64(method)
+  seekIt: position = system.lseek(fd, distance, whence)
+  seekFailed: refused = kernel.failed(position)
+  if refused keepIt giveMoved
+:keepIt
+  keepCode: keepErrno(position)
+  goto giveMoved
+:giveMoved
+  movedLinux: linuxOk = logic.not(refused)
+  return linuxOk
+:seekWindows
   nowhere: anywhere = machine.zero()
   moveIt: moved = system.setFilePointerEx(handle, distance, anywhere, method)
   movedCheck: ok = compare.notEqualInt32(moved, zero32=0)
@@ -1474,6 +1908,18 @@ op emptyFile "Empty an open file: its position to the start and its end there; g
   uses systemCalls
 :begin
   toStart: moved = seekTo(handle, zero=0, fromStart=0)
+  osCheck: onLinux = system.linux()
+  if onLinux truncateLinux windowsEmpty
+:truncateLinux
+  descriptorOf: fd = machine.toInt64(handle)
+  truncateIt: truncated = system.ftruncate(fd, zero)
+  truncateFailed: refused = kernel.failed(truncated)
+  if refused giveErrno worked
+:giveErrno
+  errnoOf: errno = kernel.errnoOf(truncated)
+  narrowErrno: code32 = convert.int64ToInt32(errno)
+  return code32
+:windowsEmpty
   if moved cut failedEmpty
 :cut
   cutIt: cut32 = system.setEndOfFile(handle)
@@ -1498,6 +1944,12 @@ op openPath "CreateFileW of a UTF-8 path with an access, a share mode, a disposi
   uses memoryAccess
   uses systemCalls
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxOpen windowsOpen
+:linuxOpen
+  linuxIt: linuxHandle = openPathLinux(path, bytes, access, disposition)
+  return linuxHandle
+:windowsOpen
   wideName: name = wide.widen(path, bytes)
   nowhere: anywhere = machine.zero()
   openIt: handle = system.createFileW(name, access, share, anywhere, disposition, flags, anywhere)
@@ -1507,12 +1959,79 @@ op openPath "CreateFileW of a UTF-8 path with an access, a share mode, a disposi
   storeCode: machine.storeInt32(counted, code)
   return handle
 
-op keptCode "The error code openPath kept"
+op openPathLinux "openat of a path on Linux for the access and disposition openPath names (read: O_RDONLY; read and write: O_RDWR; a new file: O_WRONLY, O_CREAT, O_EXCL; at the end: O_WRONLY, O_CREAT, O_APPEND), never inherited; a directory opened for reading is EISDIR, as Python's open gives it; -1 when it fails, its errno kept"
+  input path machine.Address copied
+  input bytes Int64 copied
+  input access Int32 copied
+  input disposition Int32 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let flags Int64 0 mut
+  let readWriteFlags Int64 2
+  let createFlags Int64 193
+  let appendFlags Int64 1089
+  let eisdirResult Int64 -21
+:begin
+  failedValue: invalid = machine.fromInt64(minusOne=-1)
+  readWriteCheck: isReadWrite = compare.equalInt32(access, genericReadWrite)
+  if isReadWrite useReadWrite createCheck
+:useReadWrite
+  set flags readWriteFlags
+  goto open
+:createCheck
+  newCheck: isNew = compare.equalInt32(disposition, createNew)
+  if isNew useCreate appendCheck
+:useCreate
+  set flags createFlags
+  goto open
+:appendCheck
+  alwaysCheck: isAlways = compare.equalInt32(disposition, openAlways)
+  if isAlways useAppend open
+:useAppend
+  set flags appendFlags
+  goto open
+:open
+  withClose: allFlags = bits.orInt64(flags, closeOnExec)
+  copyPath: name = cPath(path, bytes)
+  openIt: fd = system.openat(atWorkingDirectory, name, allFlags, readWriteAll=438)
+  giveName: heap.give(name)
+  openFailed: refused = kernel.failed(fd)
+  if refused keepFailure statIt
+:keepFailure
+  keepCode: keepErrno(fd)
+  return invalid
+:statIt
+  findStatus: status = stateAt(statAt)
+  statFd: statResult = system.fstat(fd, status)
+  readMode: mode = linuxMode(status)
+  directoryCheck: isDirectory = compare.equalInt64(mode, typeDirectory)
+  if isDirectory refuseDirectory giveFd
+:refuseDirectory
+  closeIt: closed = system.close(fd)
+  keepDirectory: keepErrno(eisdirResult)
+  return invalid
+:giveFd
+  handleOf: handle = machine.fromInt64(fd)
+  return handle
+
+op keptCode "The error code openPath kept (on Linux, the errno)"
   output Int32
   effect use machine.memory
+  effect use system.calls
   uses memoryAccess
+  uses systemCalls
 :begin
   findCounted: counted = stateAt(countedAt)
+  osCheck: onLinux = system.linux()
+  if onLinux linuxCode windowsCode
+:linuxCode
+  readErrno: errno = machine.loadInt64(counted)
+  narrowErrno: errno32 = convert.int64ToInt32(errno)
+  return errno32
+:windowsCode
   readCode: code = machine.loadInt32(counted)
   return code
 
@@ -1615,7 +2134,7 @@ op openFile "fs.openRead, openWrite, create, openAppend: claim the path, open it
   claimIdent: identClaimed = claim(ident, identBytes, writes)
   if identClaimed emptyCheck identityBusy
 :identityBusy
-  closeBusy: closedBusy = system.closeHandle(handle)
+  closeBusy: closedBusy = closeFile(handle)
   unclaimBusy: unclaim(key, keyBytes, writes)
   giveKeyTaken: heap.give(key)
   giveIdentTaken: heap.give(ident)
@@ -1631,7 +2150,7 @@ op openFile "fs.openRead, openWrite, create, openAppend: claim the path, open it
 :emptyRefused
   mapEmpty: emptyErrno = winErrno(emptyCode)
   set errno emptyErrno
-  closeEmpty: closedEmpty = system.closeHandle(handle)
+  closeEmpty: closedEmpty = closeFile(handle)
   readKeptBytes: keptBytes = machine.loadInt64(identityCell)
   unclaimIdent: unclaim(ident, keptBytes, writes)
   giveIdentEmpty: heap.give(ident)
@@ -1751,7 +2270,7 @@ op fsClose "fs.close: give back the file's claims and close it"
   giveIdent: heap.give(ident)
   giveFile: heap.give(file)
   letGo: frames.letGoResource(handle)
-  closeIt: closed = system.closeHandle(handle)
+  closeIt: closed = closeFile(handle)
   closedCheck: refused = compare.equalInt32(closed, zero32=0)
   if refused failed2 done
 :failed2
@@ -1947,7 +2466,7 @@ op fsReadAll "fs.readAll: a whole file into a region, at most a number of bytes 
   claimIdent: identClaimed = claim(ident, identBytes, zero)
   if identClaimed sizeLimit identityBusy
 :identityBusy
-  closeBusy: closedBusy = system.closeHandle(handle)
+  closeBusy: closedBusy = closeFile(handle)
   unclaimBusy: unclaim(key, keyBytes, zero)
   giveKeyTaken: heap.give(key)
   giveIdentTaken: heap.give(ident)
@@ -1972,7 +2491,7 @@ op fsReadAll "fs.readAll: a whole file into a region, at most a number of bytes 
   readAll: builder = readUpTo(handle, want, errorAt)
   readError: errorCode = machine.loadInt64(errorAt)
   giveErrorCell: heap.give(errorAt)
-  closeIt: closed = system.closeHandle(handle)
+  closeIt: closed = closeFile(handle)
   unclaimKey: unclaim(key, keyBytes, zero)
   readFinalIdentBytes: finalIdentBytes = machine.loadInt64(identityCell)
   unclaimIdent: unclaim(ident, finalIdentBytes, zero)
@@ -2064,7 +2583,7 @@ op fsWriteAll "fs.writeAll: a file's whole content, the file made if missing and
   claimIdent: identClaimed = claim(ident, identBytes, one)
   if identClaimed emptyIt identityBusy
 :identityBusy
-  closeBusy: closedBusy = system.closeHandle(handle)
+  closeBusy: closedBusy = closeFile(handle)
   unclaimBusy: unclaim(key, keyBytes, one)
   giveKeyTaken: heap.give(key)
   giveIdentTaken: heap.give(ident)
@@ -2090,7 +2609,7 @@ op fsWriteAll "fs.writeAll: a file's whole content, the file made if missing and
   set errno writeErrno
   goto finish
 :finish
-  closeIt: closed = system.closeHandle(handle)
+  closeIt: closed = closeFile(handle)
   unclaimKey: unclaim(key, keyBytes, one)
   readFinalIdentBytes: finalIdentBytes = machine.loadInt64(identityCell)
   unclaimIdent: unclaim(ident, finalIdentBytes, one)
@@ -2116,6 +2635,7 @@ op fsExists "fs.exists: whether a path names something, links followed; an empty
   effect use system.calls
   uses memoryAccess
   uses systemCalls
+  let yes Bool true
 :begin
   readPath: path = textAt(shape, args, zero=0)
   readBytes: bytes = textBytes(shape, args, zero)
@@ -2125,12 +2645,22 @@ op fsExists "fs.exists: whether a path names something, links followed; an empty
   storeNo: machine.storeInt64(results, zero)
   return
 :probe
+  osCheck: onLinux = system.linux()
+  if onLinux probeLinux probeWindows
+:probeLinux
+  statIt: statResult = statPath(path, bytes, yes)
+  statFailed: missingLinux = kernel.failed(statResult)
+  if missingLinux giveNo giveYesLinux
+:giveYesLinux
+  storeYesLinux: machine.storeInt64(results, one=1)
+  return
+:probeWindows
   openIt: handle = openPath(path, bytes, noAccess=0, shareAll, openExisting, backupSemantics)
   invalidCheck: invalid = invalidHandle(handle)
   if invalid sharingCheck giveYes
 :giveYes
-  closeIt: closed = system.closeHandle(handle)
-  storeYes: machine.storeInt64(results, one=1)
+  closeIt: closed = closeFile(handle)
+  storeYes: machine.storeInt64(results, one)
   return
 :sharingCheck
   readCode: code = keptCode()
@@ -2158,6 +2688,7 @@ op fsRemove "fs.remove: delete a file; busy while it is open under this or anoth
   uses memoryAccess
   uses systemCalls
   let ok Int32 0
+  let yes Bool true
 :begin
   nowhere: anywhere = machine.zero()
   readPath: path = textAt(shape, args, zero=0)
@@ -2174,12 +2705,30 @@ op fsRemove "fs.remove: delete a file; busy while it is open under this or anoth
   busyStatus: status1 = slots.failWith(payload, busy, zero)
   return status1
 :probe
+  osCheck: onLinux = system.linux()
+  if onLinux probeLinux probeWindows
+:probeLinux
+  statIt: statResult = statPath(path, bytes, yes)
+  statFailed: missingLinux = kernel.failed(statResult)
+  if missingLinux delete identifyLinux
+:identifyLinux
+  findStatus: linuxStatusBlock = stateAt(statAt)
+  identityLinux: linuxIdent = statusIdentity(linuxStatusBlock, cell)
+  noLinuxIdent: noIdentLinux = machine.equal(linuxIdent, anywhere)
+  if noIdentLinux delete findLinuxIdent
+:findLinuxIdent
+  readLinuxIdentBytes: linuxIdentBytes = machine.loadInt64(cell)
+  findLinuxHeld: linuxIdentHeld = findClaim(linuxIdent, linuxIdentBytes)
+  giveLinuxIdent: heap.give(linuxIdent)
+  linuxHeldCheck: isLinuxHeld = compare.greaterOrEqualInt64(linuxIdentHeld, zero)
+  if isLinuxHeld refuseBusy delete
+:probeWindows
   openIt: handle = openPath(path, bytes, noAccess=0, shareAll, openExisting, backupSemantics)
   invalidCheck: invalid = invalidHandle(handle)
   if invalid delete identify
 :identify
   identityOf: ident = identityKey(handle, cell)
-  closeIt: closed = system.closeHandle(handle)
+  closeIt: closed = closeFile(handle)
   noIdentCheck: noIdent = machine.equal(ident, anywhere)
   if noIdent delete findIdent
 :findIdent
@@ -2190,6 +2739,19 @@ op fsRemove "fs.remove: delete a file; busy while it is open under this or anoth
   if isIdentHeld refuseBusy delete
 :delete
   giveCell: heap.give(cell)
+  osDeleteCheck: deleteOnLinux = system.linux()
+  if deleteOnLinux deleteLinux deleteWindows
+:deleteLinux
+  copyPath: linuxName = cPath(path, bytes)
+  unlinkIt: unlinked = system.unlinkat(atWorkingDirectory, linuxName, zero)
+  giveLinuxName: heap.give(linuxName)
+  unlinkFailed: refusedLinux = kernel.failed(unlinked)
+  if refusedLinux failedUnlink done
+:failedUnlink
+  unlinkErrno: linuxErrno = kernel.errnoOf(unlinked)
+  unlinkStatus: status3 = fileError(payload, linuxErrno)
+  return status3
+:deleteWindows
   wideName: name = wide.widen(path, bytes)
   deleteIt: deleted = system.deleteFileW(name)
   readError: code = system.getLastError()
@@ -2217,6 +2779,19 @@ op fsCreateDirectory "fs.createDirectory: make a directory"
 :begin
   readPath: path = textAt(shape, args, zero=0)
   readBytes: bytes = textBytes(shape, args, zero)
+  osCheck: onLinux = system.linux()
+  if onLinux makeLinux makeWindows
+:makeLinux
+  copyPath: linuxName = cPath(path, bytes)
+  mkdirIt: madeLinux = system.mkdirat(atWorkingDirectory, linuxName, everyone=511)
+  giveLinuxName: heap.give(linuxName)
+  mkdirFailed: refusedLinux = kernel.failed(madeLinux)
+  if refusedLinux failedLinux done
+:failedLinux
+  mkdirErrno: linuxErrno = kernel.errnoOf(madeLinux)
+  linuxStatus: status2 = fileError(payload, linuxErrno)
+  return status2
+:makeWindows
   wideName: name = wide.widen(path, bytes)
   nowhere: anywhere = machine.zero()
   makeIt: made = system.createDirectoryW(name, anywhere)
@@ -2245,6 +2820,19 @@ op fsRemoveDirectory "fs.removeDirectory: remove an empty directory"
 :begin
   readPath: path = textAt(shape, args, zero=0)
   readBytes: bytes = textBytes(shape, args, zero)
+  osCheck: onLinux = system.linux()
+  if onLinux removeLinux removeWindows
+:removeLinux
+  copyPath: linuxName = cPath(path, bytes)
+  rmdirIt: removedLinux = system.unlinkat(atWorkingDirectory, linuxName, removeDirectoryFlag=512)
+  giveLinuxName: heap.give(linuxName)
+  rmdirFailed: refusedLinux = kernel.failed(removedLinux)
+  if refusedLinux failedLinux done
+:failedLinux
+  rmdirErrno: linuxErrno = kernel.errnoOf(removedLinux)
+  linuxStatus: status2 = fileError(payload, linuxErrno)
+  return status2
+:removeWindows
   wideName: name = wide.widen(path, bytes)
   removeIt: removed = system.removeDirectoryW(name)
   readError: code = system.getLastError()
@@ -2281,6 +2869,21 @@ op fsLock "fs.lock: take an exclusive lock on a file, trying every 50 ms until t
   readDeadline: deadline = slots.argOf(shape, args, one=1)
   goto eachTry
 :eachTry loop=while max=forever
+  osCheck: onLinux = system.linux()
+  if onLinux lockLinux lockWindows
+:lockLinux in=eachTry
+  descriptorOf: fd = machine.toInt64(handle)
+  flockIt: flocked = system.flock(fd, exclusiveNow=6)
+  flockFailed: refusedLinux = kernel.failed(flocked)
+  if refusedLinux heldCheck done
+:heldCheck in=eachTry
+  flockErrno: linuxErrno = kernel.errnoOf(flocked)
+  againCheck: isAgain = compare.equalInt64(linuxErrno, eagain=11)
+  if isAgain pastCheck failedLock
+:failedLock
+  lockStatus: status3 = fileError(payload, linuxErrno)
+  return status3
+:lockWindows in=eachTry
   lockIt: locked = system.lockFile(handle, ok, ok, oneByte=1, ok)
   lockedCheck: gotIt = compare.notEqualInt32(locked, ok)
   if gotIt done pastCheck
@@ -2329,6 +2932,18 @@ op fsUnlock "fs.unlock: give back a file's lock; one not held is denied, as the 
   readHandle: fileHandle = slots.argOf(shape, args, zero=0)
   findFile: file = handles.objectOf(fileHandle, kindFile)
   readOs: handle = link(file, zero)
+  osCheck: onLinux = system.linux()
+  if onLinux unlockLinux unlockWindows
+:unlockLinux
+  descriptorOf: fd = machine.toInt64(handle)
+  flockIt: unflocked = system.flock(fd, unlockOperation=8)
+  flockFailed: refusedLinux = kernel.failed(unflocked)
+  if refusedLinux failedUnlock done
+:failedUnlock
+  flockErrno: linuxErrno = kernel.errnoOf(unflocked)
+  unlockStatus: status2 = fileError(payload, linuxErrno)
+  return status2
+:unlockWindows
   unlockIt: unlocked = system.unlockFile(handle, ok, ok, oneByte=1, ok)
   unlockedCheck: refused = compare.equalInt32(unlocked, ok)
   if refused giveDenied done
@@ -2406,6 +3021,12 @@ op fsListDirectory "fs.listDirectory: the names in a directory, but `.` and `..`
 :begin
   readPath: path = textAt(shape, args, zero=0)
   readBytes: bytes = textBytes(shape, args, zero)
+  osCheck: onLinux = system.linux()
+  if onLinux listLinux listWindows
+:listLinux
+  linuxIt: linuxStatus = listDirectoryLinux(path, bytes, shape, args, results, payload)
+  return linuxStatus
+:listWindows
   makeBuilder: builder = wide.builderNew()
   addPath: wide.builderAdd(builder, path, bytes)
   emptyCheck: empty = compare.equalInt64(bytes, zero)
@@ -2465,6 +3086,105 @@ op fsListDirectory "fs.listDirectory: the names in a directory, but `.` and `..`
   makeHandle: listing = handles.newHandle(kindListing, names, region)
   storeListing: machine.storeInt64(results, listing)
   return ok
+
+op listDirectoryLinux "fs.listDirectory on Linux: the names getdents64 gives for a directory, but `.` and `..`, sorted, as a Listing owned by a region"
+  input path machine.Address copied
+  input bytes Int64 copied
+  input shape machine.Address copied
+  input args machine.Address copied
+  input results machine.Address copied
+  input payload machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+  let ok Int32 0
+  let forever Int64 9223372036854775807
+  let entriesBytes Int64 32768
+  let directoryFlags Int64 589824
+:begin
+  copyPath: name = cPath(path, bytes)
+  openIt: fd = system.openat(atWorkingDirectory, name, directoryFlags, zero=0)
+  giveName: heap.give(name)
+  openFailed: refused = kernel.failed(fd)
+  if refused failedOpen listIt
+:failedOpen
+  openErrno: errno = kernel.errnoOf(fd)
+  openStatus: status1 = fileError(payload, errno)
+  return status1
+:listIt
+  takeNames: names = heap.take(twentyFour=24)
+  takeEntries: entries = heap.take(entriesBytes)
+  goto eachRead
+:eachRead loop=while max=forever
+  readEntries: got = system.getdents64(fd, entries, entriesBytes)
+  readFailed: failedRead = kernel.failed(got)
+  if failedRead refuseRead endCheck
+:endCheck in=eachRead
+  doneCheck: done = compare.lessOrEqualInt64(got, zero)
+  if done finish firstEntry
+:firstEntry in=eachRead
+  set at zero
+  goto eachEntry
+:eachEntry loop=while max=got in=eachRead
+  entriesDone: allRead = compare.greaterOrEqualInt64(at, got)
+  if allRead eachRead readEntry
+:readEntry in=eachEntry
+  findEntry: entry = machine.offset(entries, at)
+  findLength: lengthAt = machine.offset(entry, sixteen=16)
+  readLength: recordBytes = unsignedAt(lengthAt, zero)
+  shortLength: recordLength = bits.andInt64(recordBytes, lowSixteen=65535)
+  findEntryName: entryName = machine.offset(entry, nineteen=19)
+  measure: nameBytes = cLength(entryName, recordLength)
+  dotCheck: isDot = isDots(entryName, nameBytes)
+  if isDot skip add
+:add in=eachEntry
+  addName: handles.addName(names, entryName, nameBytes)
+  goto skip
+:skip in=eachEntry
+  nextEntry: after = math.addInt64(at, recordLength)
+  set at after
+  goto eachEntry
+:refuseRead
+  readErrno: listErrno = kernel.errnoOf(got)
+  closeFailed: closedFailed = system.close(fd)
+  giveEntriesFailed: heap.give(entries)
+  giveNamesFailed: heap.give(names)
+  readStatus: status2 = fileError(payload, listErrno)
+  return status2
+:finish
+  closeIt: closed = system.close(fd)
+  giveEntries: heap.give(entries)
+  sortIt: sortNames(names)
+  readRegion: region = slots.addressArg(shape, args, one=1)
+  makeHandle: listing = handles.newHandle(kindListing, names, region)
+  storeListing: machine.storeInt64(results, listing)
+  return ok
+
+op cLength "How many bytes come before the first 0 byte of a text, looking at most at a number of them"
+  input text machine.Address copied
+  input most Int64 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  let at Int64 0 mut
+:begin
+  goto eachByte
+:eachByte loop=while max=most
+  doneCheck: done = compare.greaterOrEqualInt64(at, most)
+  if done give readByte
+:readByte in=eachByte
+  readIt: byte = byteAt(text, at)
+  zeroCheck: isZero = compare.equalByte(byte, zeroByte=0)
+  if isZero give advance
+:advance in=eachByte
+  nextByte: after = math.addInt64(at, one=1)
+  set at after
+  goto eachByte
+:give
+  return at
 
 op isDots "Whether a name is `.` or `..`"
   input name machine.Address copied
@@ -2757,6 +3477,15 @@ op cleanUp "Remove a file or an empty directory a test may have left, whatever i
 :begin
   findPath: pathAt = machine.addressOfString(path)
   pathLength: bytes = string.byteLength(path)
+  osCheck: onLinux = system.linux()
+  if onLinux cleanLinux cleanWindows
+:cleanLinux
+  copyPath: linuxName = cPath(pathAt, bytes)
+  unlinkIt: unlinked = system.unlinkat(atWorkingDirectory, linuxName, zero=0)
+  rmdirIt: removedLinux = system.unlinkat(atWorkingDirectory, linuxName, removeDirectoryFlag=512)
+  giveLinuxName: heap.give(linuxName)
+  return
+:cleanWindows
   wideName: name = wide.widen(pathAt, bytes)
   deleteIt: deleted = system.deleteFileW(name)
   removeIt: removed = system.removeDirectoryW(name)
@@ -2859,7 +3588,15 @@ test fileTest "Files are made, written, read, appended, emptied, locked, listed 
   unlockIt: unlocked = fsUnlock(shape13, args, payload)
   expectUnlocked: expectStatus(zero, unlocked)
   unlockAgain: notLocked = fsUnlock(shape13, args, payload)
+  unlockOs: unlockOnLinux = system.linux()
+  if unlockOnLinux linuxUnlocked windowsUnlocked
+:linuxUnlocked
+  expectLinuxUnlocked: expectStatus(zero32Status=0, notLocked)
+  goto afterUnlock
+:windowsUnlocked
   expectNotLocked: expectStatus(two=2, notLocked)
+  goto afterUnlock
+:afterUnlock
   writeShape3: shape14 = prepareWrite(appender, bang="!")
   appendIt: appended = fsWrite(shape14, args, payload)
   expectAppended: expectStatus(zero, appended)
@@ -2943,6 +3680,9 @@ test pathTest "Paths resolve as Python's normcase(realpath()) does, scopes take 
   uses memoryAccess
   uses systemCalls
   let plain String "Some/Name"
+  let plainLinux String "some/name"
+  let plainValue Int64 0 mut
+  let plainLength Int64 0 mut
   let roundabout String "some/other/../name"
   let inside String "data/x.txt"
   let outside String "other/x.txt"
@@ -2955,8 +3695,22 @@ test pathTest "Paths resolve as Python's normcase(realpath()) does, scopes take 
 :begin
   takeCell: cell = heap.take(eight=8)
   findPlain: plainAt = machine.addressOfString(plain)
-  plainLength: plainBytes = string.byteLength(plain)
-  resolvePlain: first = resolve(plainAt, plainBytes, cell)
+  plainOf: plainBytes = string.byteLength(plain)
+  plainAddress: plainAtValue = machine.toInt64(plainAt)
+  set plainValue plainAtValue
+  set plainLength plainBytes
+  osCheck: onLinux = system.linux()
+  if onLinux linuxPlain resolveIt
+:linuxPlain
+  findLinuxPlain: linuxPlainAt = machine.addressOfString(plainLinux)
+  linuxPlainLength: linuxPlainBytes = string.byteLength(plainLinux)
+  linuxPlainAddress: linuxPlainValue = machine.toInt64(linuxPlainAt)
+  set plainValue linuxPlainValue
+  set plainLength linuxPlainBytes
+  goto resolveIt
+:resolveIt
+  chosenPlain: chosenAt = machine.fromInt64(plainValue)
+  resolvePlain: first = resolve(chosenAt, plainLength, cell)
   readFirst: firstBytes = machine.loadInt64(cell)
   findRoundabout: roundaboutAt = machine.addressOfString(roundabout)
   roundaboutLength: roundaboutBytes = string.byteLength(roundabout)
@@ -2994,11 +3748,20 @@ test pathTest "Paths resolve as Python's normcase(realpath()) does, scopes take 
   mapMissing: missingErrno = winErrno(two32=2)
   expectMissing: test.assertEqualInt64(two=2, missingErrno)
   mapDenied: deniedErrno = winErrno(five32=5)
-  expectDenied: test.assertEqualInt64(thirteen=13, deniedErrno)
   mapExists: existsErrno = winErrno(eighty32=80)
-  expectExists: test.assertEqualInt64(seventeen=17, existsErrno)
   mapNotEmpty: notEmptyErrno = winErrno(oneFortyFive32=145)
+  if onLinux linuxErrnos windowsErrnos
+:linuxErrnos
+  expectSameDenied: test.assertEqualInt64(five=5, deniedErrno)
+  expectSameExists: test.assertEqualInt64(eighty=80, existsErrno)
+  expectSameNotEmpty: test.assertEqualInt64(oneFortyFive=145, notEmptyErrno)
+  goto classifyIt
+:windowsErrnos
+  expectDenied: test.assertEqualInt64(thirteen=13, deniedErrno)
+  expectExists: test.assertEqualInt64(seventeen=17, existsErrno)
   expectNotEmpty: test.assertEqualInt64(fortyOne=41, notEmptyErrno)
+  goto classifyIt
+:classifyIt
   findPayload: payload = payloadAt()
   classify: classified = fileError(payload, twentyTwo=22)
   expectFailed: expectStatus(eight=8, classified)

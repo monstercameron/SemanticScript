@@ -15,6 +15,7 @@ processes imports standard.convert
 processes imports standard.bits
 processes imports standard.logic
 processes imports standard.test
+processes imports kernel
 processes imports memory
 processes imports heap
 processes imports handles
@@ -59,6 +60,15 @@ systemCalls grants use system.calls none
 # machine.state bytes 768 to 831 belong to this module: 768 the list of the program's arguments (0 until it is
 # first asked for), 776 the builder of standard input read but not yet taken, 784 whether standard input has
 # ended, 792 a count a system call writes, 800 how many bytes a pipe has to read.
+# D-138, on Linux: the arguments are argv after its first word and the environment is envp, as the kernel started
+# the process (a Python child sees the same: posix.environ is read from envp); standard input is descriptor 0; a
+# child is started as _posixsubprocess starts one: the program, or each of PATH's directories with it (/bin and
+# /usr/bin when PATH is not set) found and the arguments and environment made ready before fork, then in the child
+# SIGPIPE back to its default, the pipes made its standard streams, and execve tried with each name in turn; the
+# first error that is not ENOENT or ENOTDIR (or the last error) comes back on a pipe that closes when execve
+# succeeds. A child's exit is waited for on its pidfd; a child ended by a signal exits with minus the signal, as
+# Popen.returncode has it. This program's ends of a captured child's pipes are non-blocking, so they are written
+# and read a piece at a time between other tasks, as on Windows.
 argumentsAt is constant
 argumentsAt purpose "Where the list of the program's arguments is kept, in machine.state"
 argumentsAt type Int64
@@ -1504,6 +1514,10 @@ programArguments label give loopKind none
 programArguments label give within none
 programArguments label split loopKind none
 programArguments label split within none
+programArguments label splitLinux loopKind none
+programArguments label splitLinux within none
+programArguments label splitWindows loopKind none
+programArguments label splitWindows within none
 programArguments let twentyFour Int64 24 immutable
 programArguments let eight Int64 8 immutable
 programArguments at begin do findList
@@ -1513,16 +1527,21 @@ programArguments at begin do missingCheck
 programArguments at begin branch if missing goto split else goto give
 programArguments at give return ok list
 programArguments at split do takeList
-programArguments at split do fetchLine
-programArguments at split do countUnits
-programArguments at split do takeCell
-programArguments at split do narrowLine
-programArguments at split do readBytes
-programArguments at split do splitIt
-programArguments at split do giveLine
-programArguments at split do giveCell
-programArguments at split do storeList
-programArguments at split return ok names
+programArguments at split do osCheck
+programArguments at split branch if onLinux goto splitLinux else goto splitWindows
+programArguments at splitLinux do addLinux
+programArguments at splitLinux do storeLinuxList
+programArguments at splitLinux return ok names
+programArguments at splitWindows do fetchLine
+programArguments at splitWindows do countUnits
+programArguments at splitWindows do takeCell
+programArguments at splitWindows do narrowLine
+programArguments at splitWindows do readBytes
+programArguments at splitWindows do splitIt
+programArguments at splitWindows do giveLine
+programArguments at splitWindows do giveCell
+programArguments at splitWindows do storeList
+programArguments at splitWindows return ok names
 
 findList is call
 findList in programArguments
@@ -1579,6 +1598,40 @@ takeList cleanedBy none
 takeList borrows none
 takeList catch none
 takeList suppresses none
+
+osCheck is call
+osCheck in programArguments
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+addLinux is call
+addLinux in programArguments
+addLinux invokes linuxArguments
+addLinux argument names machine.Address names copy
+addLinux result none
+addLinux ownedBy none
+addLinux cleanedBy none
+addLinux borrows none
+addLinux catch none
+addLinux suppresses none
+
+storeLinuxList is call
+storeLinuxList in programArguments
+storeLinuxList invokes machine.storeAddress
+storeLinuxList argument address machine.Address listSlot copy
+storeLinuxList argument value machine.Address names copy
+storeLinuxList result none
+storeLinuxList ownedBy none
+storeLinuxList cleanedBy none
+storeLinuxList borrows none
+storeLinuxList catch none
+storeLinuxList suppresses none
 
 fetchLine is call
 fetchLine in programArguments
@@ -1683,6 +1736,513 @@ storeList cleanedBy none
 storeList borrows none
 storeList catch none
 storeList suppresses none
+
+cStringLength is operation
+cStringLength purpose "How many bytes a C string has before its 0"
+cStringLength invariant none
+cStringLength typeParameter none
+cStringLength input text machine.Address copied
+cStringLength output Int64
+cStringLength outputOwnedBy none
+cStringLength raises none
+cStringLength effect use machine.memory
+cStringLength uses memoryAccess
+cStringLength memoryHeap false
+cStringLength async false
+cStringLength maxRecursion none
+cStringLength label begin loopKind none
+cStringLength label begin within none
+cStringLength label eachByte loopKind while
+cStringLength label eachByte within none
+cStringLength label eachByte maxIterations forever
+cStringLength label advance loopKind none
+cStringLength label advance within eachByte
+cStringLength label give loopKind none
+cStringLength label give within none
+cStringLength let at Int64 0 mutable
+cStringLength let zeroByte Byte 0 immutable
+cStringLength let one Int64 1 immutable
+cStringLength at begin goto eachByte
+cStringLength at eachByte do readIt
+cStringLength at eachByte do zeroCheck
+cStringLength at eachByte branch if isZero goto give else goto advance
+cStringLength at advance do nextByte
+cStringLength at advance set at after
+cStringLength at advance goto eachByte
+cStringLength at give return ok at
+
+readIt is call
+readIt in cStringLength
+readIt invokes byteAt
+readIt argument text machine.Address text copy
+readIt argument position Int64 at copy
+readIt result byte Byte
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+zeroCheck is call
+zeroCheck in cStringLength
+zeroCheck invokes compare.equalByte
+zeroCheck argument left Byte byte copy
+zeroCheck argument right Byte zeroByte copy
+zeroCheck result isZero Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+nextByte is call
+nextByte in cStringLength
+nextByte invokes math.addInt64
+nextByte argument left Int64 at copy
+nextByte argument right Int64 one copy
+nextByte result after Int64
+nextByte ownedBy none
+nextByte cleanedBy none
+nextByte borrows none
+nextByte catch none
+nextByte suppresses none
+
+linuxArguments is operation
+linuxArguments purpose "Add the program's arguments on Linux, argv after its first word, to a list of names"
+linuxArguments invariant none
+linuxArguments typeParameter none
+linuxArguments input names machine.Address copied
+linuxArguments output none
+linuxArguments outputOwnedBy none
+linuxArguments raises none
+linuxArguments effect use machine.memory
+linuxArguments effect use system.calls
+linuxArguments uses memoryAccess
+linuxArguments uses systemCalls
+linuxArguments memoryHeap false
+linuxArguments async false
+linuxArguments maxRecursion none
+linuxArguments label begin loopKind none
+linuxArguments label begin within none
+linuxArguments label eachArgument loopKind while
+linuxArguments label eachArgument within none
+linuxArguments label eachArgument maxIterations count
+linuxArguments label addOne loopKind none
+linuxArguments label addOne within eachArgument
+linuxArguments label finish loopKind none
+linuxArguments label finish within none
+linuxArguments let at Int64 1 mutable
+linuxArguments let eight Int64 8 immutable
+linuxArguments let one Int64 1 immutable
+linuxArguments at begin do readCount
+linuxArguments at begin do readVector
+linuxArguments at begin goto eachArgument
+linuxArguments at eachArgument do doneCheck
+linuxArguments at eachArgument branch if done goto finish else goto addOne
+linuxArguments at addOne do offsetOf
+linuxArguments at addOne do findWord
+linuxArguments at addOne do readWord
+linuxArguments at addOne do measure
+linuxArguments at addOne do addIt
+linuxArguments at addOne do nextArgument
+linuxArguments at addOne set at after
+linuxArguments at addOne goto eachArgument
+linuxArguments at finish return ok none
+
+readCount is call
+readCount in linuxArguments
+readCount invokes kernel.argumentCount
+readCount argument none
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readVector is call
+readVector in linuxArguments
+readVector invokes kernel.argumentVector
+readVector argument none
+readVector result vector machine.Address
+readVector ownedBy none
+readVector cleanedBy none
+readVector borrows none
+readVector catch none
+readVector suppresses none
+
+doneCheck is call
+doneCheck in linuxArguments
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 count copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+offsetOf is call
+offsetOf in linuxArguments
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 at copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findWord is call
+findWord in linuxArguments
+findWord invokes machine.offset
+findWord argument address machine.Address vector copy
+findWord argument bytes Int64 offset copy
+findWord result wordSlot machine.Address
+findWord ownedBy none
+findWord cleanedBy none
+findWord borrows none
+findWord catch none
+findWord suppresses none
+
+readWord is call
+readWord in linuxArguments
+readWord invokes machine.loadAddress
+readWord argument address machine.Address wordSlot copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+measure is call
+measure in linuxArguments
+measure invokes cStringLength
+measure argument text machine.Address word copy
+measure result wordBytes Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+addIt is call
+addIt in linuxArguments
+addIt invokes handles.addName
+addIt argument names machine.Address names copy
+addIt argument data machine.Address word copy
+addIt argument bytes Int64 wordBytes copy
+addIt result none
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+nextArgument is call
+nextArgument in linuxArguments
+nextArgument invokes math.addInt64
+nextArgument argument left Int64 at copy
+nextArgument argument right Int64 one copy
+nextArgument result after Int64
+nextArgument ownedBy none
+nextArgument cleanedBy none
+nextArgument borrows none
+nextArgument catch none
+nextArgument suppresses none
+
+linuxVariable is operation
+linuxVariable purpose "The value of an environment variable on Linux, the first `NAME=` of envp: its address, its length stored at an address; the address 0 when it is not set"
+linuxVariable invariant none
+linuxVariable typeParameter none
+linuxVariable input name machine.Address copied
+linuxVariable input bytes Int64 copied
+linuxVariable input lengthAt machine.Address copied
+linuxVariable output machine.Address
+linuxVariable outputOwnedBy none
+linuxVariable raises none
+linuxVariable effect use machine.memory
+linuxVariable uses memoryAccess
+linuxVariable memoryHeap false
+linuxVariable async false
+linuxVariable maxRecursion none
+linuxVariable label begin loopKind none
+linuxVariable label begin within none
+linuxVariable label eachVariable loopKind while
+linuxVariable label eachVariable within none
+linuxVariable label eachVariable maxIterations forever
+linuxVariable label compareName loopKind none
+linuxVariable label compareName within eachVariable
+linuxVariable label compareBytes loopKind none
+linuxVariable label compareBytes within eachVariable
+linuxVariable label equalsCheck loopKind none
+linuxVariable label equalsCheck within eachVariable
+linuxVariable label nextVariable loopKind none
+linuxVariable label nextVariable within eachVariable
+linuxVariable label found loopKind none
+linuxVariable label found within none
+linuxVariable label missing loopKind none
+linuxVariable label missing within none
+linuxVariable let at Int64 0 mutable
+linuxVariable let eight Int64 8 immutable
+linuxVariable let zero32 Int32 0 immutable
+linuxVariable let equalsByte Byte 61 immutable
+linuxVariable let one Int64 1 immutable
+linuxVariable at begin do nowhere
+linuxVariable at begin do readEnvironment
+linuxVariable at begin do noneCheck
+linuxVariable at begin branch if noEnvironment goto missing else goto eachVariable
+linuxVariable at eachVariable do offsetOf
+linuxVariable at eachVariable do findWord
+linuxVariable at eachVariable do readWord
+linuxVariable at eachVariable do endCheck
+linuxVariable at eachVariable branch if atEnd goto missing else goto compareName
+linuxVariable at compareName do measure
+linuxVariable at compareName do longEnough
+linuxVariable at compareName branch if fits goto compareBytes else goto nextVariable
+linuxVariable at compareBytes do sameName
+linuxVariable at compareBytes do sameCheck
+linuxVariable at compareBytes branch if same goto equalsCheck else goto nextVariable
+linuxVariable at equalsCheck do findEquals
+linuxVariable at equalsCheck do readEquals
+linuxVariable at equalsCheck do isEquals
+linuxVariable at equalsCheck branch if hasEquals goto found else goto nextVariable
+linuxVariable at nextVariable do nextAt
+linuxVariable at nextVariable set at after
+linuxVariable at nextVariable goto eachVariable
+linuxVariable at found do findValue
+linuxVariable at found do withEquals
+linuxVariable at found do valueOf
+linuxVariable at found do storeLength
+linuxVariable at found return ok value
+linuxVariable at missing return ok anywhere
+
+nowhere is call
+nowhere in linuxVariable
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+readEnvironment is call
+readEnvironment in linuxVariable
+readEnvironment invokes kernel.environmentVector
+readEnvironment argument none
+readEnvironment result environment machine.Address
+readEnvironment ownedBy none
+readEnvironment cleanedBy none
+readEnvironment borrows none
+readEnvironment catch none
+readEnvironment suppresses none
+
+noneCheck is call
+noneCheck in linuxVariable
+noneCheck invokes machine.equal
+noneCheck argument left machine.Address environment copy
+noneCheck argument right machine.Address anywhere copy
+noneCheck result noEnvironment Bool
+noneCheck ownedBy none
+noneCheck cleanedBy none
+noneCheck borrows none
+noneCheck catch none
+noneCheck suppresses none
+
+offsetOf is call
+offsetOf in linuxVariable
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 at copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findWord is call
+findWord in linuxVariable
+findWord invokes machine.offset
+findWord argument address machine.Address environment copy
+findWord argument bytes Int64 offset copy
+findWord result wordSlot machine.Address
+findWord ownedBy none
+findWord cleanedBy none
+findWord borrows none
+findWord catch none
+findWord suppresses none
+
+readWord is call
+readWord in linuxVariable
+readWord invokes machine.loadAddress
+readWord argument address machine.Address wordSlot copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+endCheck is call
+endCheck in linuxVariable
+endCheck invokes machine.equal
+endCheck argument left machine.Address word copy
+endCheck argument right machine.Address anywhere copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+measure is call
+measure in linuxVariable
+measure invokes cStringLength
+measure argument text machine.Address word copy
+measure result wordBytes Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+longEnough is call
+longEnough in linuxVariable
+longEnough invokes compare.greaterThanInt64
+longEnough argument left Int64 wordBytes copy
+longEnough argument right Int64 bytes copy
+longEnough result fits Bool
+longEnough ownedBy none
+longEnough cleanedBy none
+longEnough borrows none
+longEnough catch none
+longEnough suppresses none
+
+sameName is call
+sameName in linuxVariable
+sameName invokes machine.compare
+sameName argument left machine.Address word copy
+sameName argument right machine.Address name copy
+sameName argument bytes Int64 bytes copy
+sameName result order Int32
+sameName ownedBy none
+sameName cleanedBy none
+sameName borrows none
+sameName catch none
+sameName suppresses none
+
+sameCheck is call
+sameCheck in linuxVariable
+sameCheck invokes compare.equalInt32
+sameCheck argument left Int32 order copy
+sameCheck argument right Int32 zero32 copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+findEquals is call
+findEquals in linuxVariable
+findEquals invokes machine.offset
+findEquals argument address machine.Address word copy
+findEquals argument bytes Int64 bytes copy
+findEquals result equalsAt machine.Address
+findEquals ownedBy none
+findEquals cleanedBy none
+findEquals borrows none
+findEquals catch none
+findEquals suppresses none
+
+readEquals is call
+readEquals in linuxVariable
+readEquals invokes machine.loadByte
+readEquals argument address machine.Address equalsAt copy
+readEquals result equals Byte
+readEquals ownedBy none
+readEquals cleanedBy none
+readEquals borrows none
+readEquals catch none
+readEquals suppresses none
+
+isEquals is call
+isEquals in linuxVariable
+isEquals invokes compare.equalByte
+isEquals argument left Byte equals copy
+isEquals argument right Byte equalsByte copy
+isEquals result hasEquals Bool
+isEquals ownedBy none
+isEquals cleanedBy none
+isEquals borrows none
+isEquals catch none
+isEquals suppresses none
+
+nextAt is call
+nextAt in linuxVariable
+nextAt invokes math.addInt64
+nextAt argument left Int64 at copy
+nextAt argument right Int64 one copy
+nextAt result after Int64
+nextAt ownedBy none
+nextAt cleanedBy none
+nextAt borrows none
+nextAt catch none
+nextAt suppresses none
+
+findValue is call
+findValue in linuxVariable
+findValue invokes machine.offset
+findValue argument address machine.Address equalsAt copy
+findValue argument bytes Int64 one copy
+findValue result value machine.Address
+findValue ownedBy none
+findValue cleanedBy none
+findValue borrows none
+findValue catch none
+findValue suppresses none
+
+withEquals is call
+withEquals in linuxVariable
+withEquals invokes math.addInt64
+withEquals argument left Int64 bytes copy
+withEquals argument right Int64 one copy
+withEquals result nameAndEquals Int64
+withEquals ownedBy none
+withEquals cleanedBy none
+withEquals borrows none
+withEquals catch none
+withEquals suppresses none
+
+valueOf is call
+valueOf in linuxVariable
+valueOf invokes math.subtractInt64
+valueOf argument left Int64 wordBytes copy
+valueOf argument right Int64 nameAndEquals copy
+valueOf result valueBytes Int64
+valueOf ownedBy none
+valueOf cleanedBy none
+valueOf borrows none
+valueOf catch none
+valueOf suppresses none
+
+storeLength is call
+storeLength in linuxVariable
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthAt copy
+storeLength argument value Int64 valueBytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
 
 argumentCount is operation
 argumentCount purpose "process.argumentCount: how many words follow the program's name on its command line"
@@ -1972,6 +2532,12 @@ environmentGet label zeroCheck loopKind none
 environmentGet label zeroCheck within none
 environmentGet label lookUp loopKind none
 environmentGet label lookUp within none
+environmentGet label lookUpLinux loopKind none
+environmentGet label lookUpLinux within none
+environmentGet label putLinux loopKind none
+environmentGet label putLinux within none
+environmentGet label lookUpWindows loopKind none
+environmentGet label lookUpWindows within none
 environmentGet label refuseMissing loopKind none
 environmentGet label refuseMissing within none
 environmentGet label read loopKind none
@@ -1980,9 +2546,9 @@ environmentGet let ok Int32 0 immutable
 environmentGet let equalsText String "=" immutable
 environmentGet let zero Int64 0 immutable
 environmentGet let one Int64 1 immutable
+environmentGet let eight Int64 8 immutable
 environmentGet let zero32 Int32 0 immutable
 environmentGet let two Int64 2 immutable
-environmentGet let eight Int64 8 immutable
 environmentGet at begin do readName
 environmentGet at begin do readBytes
 environmentGet at begin do emptyCheck
@@ -1996,12 +2562,24 @@ environmentGet at equalsCheck branch if withEquals goto refuse else goto zeroChe
 environmentGet at zeroCheck do nulFound
 environmentGet at zeroCheck do hasNul
 environmentGet at zeroCheck branch if withNul goto refuse else goto lookUp
-environmentGet at lookUp do wideName
-environmentGet at lookUp do nowhere
-environmentGet at lookUp do measure
-environmentGet at lookUp do unitsOf
-environmentGet at lookUp do missingCheck
-environmentGet at lookUp branch if missing goto refuseMissing else goto read
+environmentGet at lookUp do osCheck
+environmentGet at lookUp branch if onLinux goto lookUpLinux else goto lookUpWindows
+environmentGet at lookUpLinux do takeLength
+environmentGet at lookUpLinux do findVariable
+environmentGet at lookUpLinux do readLinuxLength
+environmentGet at lookUpLinux do giveLinuxCell
+environmentGet at lookUpLinux do noValue
+environmentGet at lookUpLinux do missingLinuxCheck
+environmentGet at lookUpLinux branch if missingLinux goto refuse else goto putLinux
+environmentGet at putLinux do readLinuxRegion
+environmentGet at putLinux do putLinuxValue
+environmentGet at putLinux return ok ok
+environmentGet at lookUpWindows do wideName
+environmentGet at lookUpWindows do nowhere
+environmentGet at lookUpWindows do measure
+environmentGet at lookUpWindows do unitsOf
+environmentGet at lookUpWindows do missingCheck
+environmentGet at lookUpWindows branch if missing goto refuseMissing else goto read
 environmentGet at refuseMissing do giveNameMissing
 environmentGet at refuseMissing do status2
 environmentGet at refuseMissing return ok missingStatus
@@ -2133,6 +2711,113 @@ hasNul cleanedBy none
 hasNul borrows none
 hasNul catch none
 hasNul suppresses none
+
+osCheck is call
+osCheck in environmentGet
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+takeLength is call
+takeLength in environmentGet
+takeLength invokes heap.take
+takeLength argument bytes Int64 eight copy
+takeLength result linuxCell machine.Address
+takeLength ownedBy none
+takeLength cleanedBy none
+takeLength borrows none
+takeLength catch none
+takeLength suppresses none
+
+findVariable is call
+findVariable in environmentGet
+findVariable invokes linuxVariable
+findVariable argument name machine.Address name copy
+findVariable argument bytes Int64 bytes copy
+findVariable argument lengthAt machine.Address linuxCell copy
+findVariable result linuxValue machine.Address
+findVariable ownedBy none
+findVariable cleanedBy none
+findVariable borrows none
+findVariable catch none
+findVariable suppresses none
+
+readLinuxLength is call
+readLinuxLength in environmentGet
+readLinuxLength invokes machine.loadInt64
+readLinuxLength argument address machine.Address linuxCell copy
+readLinuxLength result linuxBytes Int64
+readLinuxLength ownedBy none
+readLinuxLength cleanedBy none
+readLinuxLength borrows none
+readLinuxLength catch none
+readLinuxLength suppresses none
+
+giveLinuxCell is call
+giveLinuxCell in environmentGet
+giveLinuxCell invokes heap.give
+giveLinuxCell argument block machine.Address linuxCell copy
+giveLinuxCell result none
+giveLinuxCell ownedBy none
+giveLinuxCell cleanedBy none
+giveLinuxCell borrows none
+giveLinuxCell catch none
+giveLinuxCell suppresses none
+
+noValue is call
+noValue in environmentGet
+noValue invokes machine.zero
+noValue argument none
+noValue result nothing machine.Address
+noValue ownedBy none
+noValue cleanedBy none
+noValue borrows none
+noValue catch none
+noValue suppresses none
+
+missingLinuxCheck is call
+missingLinuxCheck in environmentGet
+missingLinuxCheck invokes machine.equal
+missingLinuxCheck argument left machine.Address linuxValue copy
+missingLinuxCheck argument right machine.Address nothing copy
+missingLinuxCheck result missingLinux Bool
+missingLinuxCheck ownedBy none
+missingLinuxCheck cleanedBy none
+missingLinuxCheck borrows none
+missingLinuxCheck catch none
+missingLinuxCheck suppresses none
+
+readLinuxRegion is call
+readLinuxRegion in environmentGet
+readLinuxRegion invokes slots.addressArg
+readLinuxRegion argument shape machine.Address shape copy
+readLinuxRegion argument args machine.Address args copy
+readLinuxRegion argument parameter Int64 one copy
+readLinuxRegion result linuxRegion machine.Address
+readLinuxRegion ownedBy none
+readLinuxRegion cleanedBy none
+readLinuxRegion borrows none
+readLinuxRegion catch none
+readLinuxRegion suppresses none
+
+putLinuxValue is call
+putLinuxValue in environmentGet
+putLinuxValue invokes slots.putText
+putLinuxValue argument region machine.Address linuxRegion copy
+putLinuxValue argument data machine.Address linuxValue copy
+putLinuxValue argument bytes Int64 linuxBytes copy
+putLinuxValue argument out machine.Address results copy
+putLinuxValue result none
+putLinuxValue ownedBy none
+putLinuxValue cleanedBy none
+putLinuxValue borrows none
+putLinuxValue catch none
+putLinuxValue suppresses none
 
 wideName is call
 wideName in environmentGet
@@ -2602,6 +3287,18 @@ stdinFill async false
 stdinFill maxRecursion none
 stdinFill label begin loopKind none
 stdinFill label begin within none
+stdinFill label fillLinux loopKind none
+stdinFill label fillLinux within none
+stdinFill label linuxFailure loopKind none
+stdinFill label linuxFailure within none
+stdinFill label linuxCounted loopKind none
+stdinFill label linuxCounted within none
+stdinFill label linuxKeep loopKind none
+stdinFill label linuxKeep within none
+stdinFill label linuxEnd loopKind none
+stdinFill label linuxEnd within none
+stdinFill label fillWindows loopKind none
+stdinFill label fillWindows within none
 stdinFill label failure loopKind none
 stdinFill label failure within none
 stdinFill label mapError loopKind none
@@ -2613,22 +3310,40 @@ stdinFill label keep within none
 stdinFill label noteEnd loopKind none
 stdinFill label noteEnd within none
 stdinFill let ok Int64 0 immutable
+stdinFill let zero Int64 0 immutable
+stdinFill let one Int64 1 immutable
 stdinFill let stdInput Int32 -10 immutable
 stdinFill let zero32 Int32 0 immutable
 stdinFill let brokenPipe Int32 109 immutable
 stdinFill let handleEof Int32 38 immutable
-stdinFill let zero Int64 0 immutable
-stdinFill let one Int64 1 immutable
 stdinFill at begin do readBuffer
-stdinFill at begin do findInput
-stdinFill at begin do takeChunk
-stdinFill at begin do findCounted
-stdinFill at begin do storeNone
-stdinFill at begin do nowhere
-stdinFill at begin do narrowChunk
-stdinFill at begin do readIt
-stdinFill at begin do failedCheck
-stdinFill at begin branch if refused goto failure else goto counted2
+stdinFill at begin do osCheck
+stdinFill at begin branch if onLinux goto fillLinux else goto fillWindows
+stdinFill at fillLinux do takeLinuxChunk
+stdinFill at fillLinux do readLinux
+stdinFill at fillLinux do readLinuxFailed
+stdinFill at fillLinux branch if refusedLinux goto linuxFailure else goto linuxCounted
+stdinFill at linuxFailure do giveLinuxFailed
+stdinFill at linuxFailure do errnoOf
+stdinFill at linuxFailure return ok linuxErrno
+stdinFill at linuxCounted do linuxNothing
+stdinFill at linuxCounted branch if linuxEnded goto linuxEnd else goto linuxKeep
+stdinFill at linuxKeep do addLinux
+stdinFill at linuxKeep do giveLinuxBlock
+stdinFill at linuxKeep return ok ok
+stdinFill at linuxEnd do findLinuxDone
+stdinFill at linuxEnd do storeLinuxDone
+stdinFill at linuxEnd do giveLinuxEnd
+stdinFill at linuxEnd return ok ok
+stdinFill at fillWindows do findInput
+stdinFill at fillWindows do takeChunk
+stdinFill at fillWindows do findCounted
+stdinFill at fillWindows do storeNone
+stdinFill at fillWindows do nowhere
+stdinFill at fillWindows do narrowChunk
+stdinFill at fillWindows do readIt
+stdinFill at fillWindows do failedCheck
+stdinFill at fillWindows branch if refused goto failure else goto counted2
 stdinFill at failure do readError
 stdinFill at failure do brokenCheck
 stdinFill at failure do endCheck
@@ -2659,6 +3374,144 @@ readBuffer cleanedBy none
 readBuffer borrows none
 readBuffer catch none
 readBuffer suppresses none
+
+osCheck is call
+osCheck in stdinFill
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+takeLinuxChunk is call
+takeLinuxChunk in stdinFill
+takeLinuxChunk invokes heap.take
+takeLinuxChunk argument bytes Int64 chunk copy
+takeLinuxChunk result linuxBlock machine.Address
+takeLinuxChunk ownedBy none
+takeLinuxChunk cleanedBy none
+takeLinuxChunk borrows none
+takeLinuxChunk catch none
+takeLinuxChunk suppresses none
+
+readLinux is call
+readLinux in stdinFill
+readLinux invokes system.read
+readLinux argument fd Int64 zero copy
+readLinux argument buffer machine.Address linuxBlock copy
+readLinux argument bytes Int64 chunk copy
+readLinux result gotLinux Int64
+readLinux ownedBy none
+readLinux cleanedBy none
+readLinux borrows none
+readLinux catch none
+readLinux suppresses none
+
+readLinuxFailed is call
+readLinuxFailed in stdinFill
+readLinuxFailed invokes kernel.failed
+readLinuxFailed argument result Int64 gotLinux copy
+readLinuxFailed result refusedLinux Bool
+readLinuxFailed ownedBy none
+readLinuxFailed cleanedBy none
+readLinuxFailed borrows none
+readLinuxFailed catch none
+readLinuxFailed suppresses none
+
+giveLinuxFailed is call
+giveLinuxFailed in stdinFill
+giveLinuxFailed invokes heap.give
+giveLinuxFailed argument block machine.Address linuxBlock copy
+giveLinuxFailed result none
+giveLinuxFailed ownedBy none
+giveLinuxFailed cleanedBy none
+giveLinuxFailed borrows none
+giveLinuxFailed catch none
+giveLinuxFailed suppresses none
+
+errnoOf is call
+errnoOf in stdinFill
+errnoOf invokes kernel.errnoOf
+errnoOf argument result Int64 gotLinux copy
+errnoOf result linuxErrno Int64
+errnoOf ownedBy none
+errnoOf cleanedBy none
+errnoOf borrows none
+errnoOf catch none
+errnoOf suppresses none
+
+linuxNothing is call
+linuxNothing in stdinFill
+linuxNothing invokes compare.equalInt64
+linuxNothing argument left Int64 gotLinux copy
+linuxNothing argument right Int64 zero copy
+linuxNothing result linuxEnded Bool
+linuxNothing ownedBy none
+linuxNothing cleanedBy none
+linuxNothing borrows none
+linuxNothing catch none
+linuxNothing suppresses none
+
+addLinux is call
+addLinux in stdinFill
+addLinux invokes wide.builderAdd
+addLinux argument builder machine.Address buffer copy
+addLinux argument data machine.Address linuxBlock copy
+addLinux argument bytes Int64 gotLinux copy
+addLinux result none
+addLinux ownedBy none
+addLinux cleanedBy none
+addLinux borrows none
+addLinux catch none
+addLinux suppresses none
+
+giveLinuxBlock is call
+giveLinuxBlock in stdinFill
+giveLinuxBlock invokes heap.give
+giveLinuxBlock argument block machine.Address linuxBlock copy
+giveLinuxBlock result none
+giveLinuxBlock ownedBy none
+giveLinuxBlock cleanedBy none
+giveLinuxBlock borrows none
+giveLinuxBlock catch none
+giveLinuxBlock suppresses none
+
+findLinuxDone is call
+findLinuxDone in stdinFill
+findLinuxDone invokes stateAt
+findLinuxDone argument offset Int64 stdinDoneAt copy
+findLinuxDone result linuxDoneSlot machine.Address
+findLinuxDone ownedBy none
+findLinuxDone cleanedBy none
+findLinuxDone borrows none
+findLinuxDone catch none
+findLinuxDone suppresses none
+
+storeLinuxDone is call
+storeLinuxDone in stdinFill
+storeLinuxDone invokes machine.storeInt64
+storeLinuxDone argument address machine.Address linuxDoneSlot copy
+storeLinuxDone argument value Int64 one copy
+storeLinuxDone result none
+storeLinuxDone ownedBy none
+storeLinuxDone cleanedBy none
+storeLinuxDone borrows none
+storeLinuxDone catch none
+storeLinuxDone suppresses none
+
+giveLinuxEnd is call
+giveLinuxEnd in stdinFill
+giveLinuxEnd invokes heap.give
+giveLinuxEnd argument block machine.Address linuxBlock copy
+giveLinuxEnd result none
+giveLinuxEnd ownedBy none
+giveLinuxEnd cleanedBy none
+giveLinuxEnd borrows none
+giveLinuxEnd catch none
+giveLinuxEnd suppresses none
 
 findInput is call
 findInput in stdinFill
@@ -2932,6 +3785,10 @@ stdinWait async false
 stdinWait maxRecursion none
 stdinWait label begin loopKind none
 stdinWait label begin within none
+stdinWait label waitLinux loopKind none
+stdinWait label waitLinux within none
+stdinWait label waitWindows loopKind none
+stdinWait label waitWindows within none
 stdinWait label eachTry loopKind while
 stdinWait label eachTry within none
 stdinWait label eachTry maxIterations forever
@@ -2971,13 +3828,17 @@ stdinWait let ten Int64 10 immutable
 stdinWait let readText String "a read of standard input" immutable
 stdinWait let one Int64 1 immutable
 stdinWait let two Int64 2 immutable
-stdinWait at begin do findInput
-stdinWait at begin do readType
-stdinWait at begin do pipeCheck
-stdinWait at begin do charCheck
-stdinWait at begin do nowhere
-stdinWait at begin do findAvailable
-stdinWait at begin goto eachTry
+stdinWait at begin do osCheck
+stdinWait at begin branch if onLinux goto waitLinux else goto waitWindows
+stdinWait at waitLinux do linuxIt
+stdinWait at waitLinux return ok linuxOutcome
+stdinWait at waitWindows do findInput
+stdinWait at waitWindows do readType
+stdinWait at waitWindows do pipeCheck
+stdinWait at waitWindows do charCheck
+stdinWait at waitWindows do nowhere
+stdinWait at waitWindows do findAvailable
+stdinWait at waitWindows goto eachTry
 stdinWait at eachTry branch if isPipe goto peek else goto charTry
 stdinWait at peek do storeNone
 stdinWait at peek do peekIt
@@ -3014,6 +3875,28 @@ stdinWait at comparePast branch if past goto giveLate else goto eachTry
 stdinWait at giveReady return ok ready
 stdinWait at giveLate return ok late
 stdinWait at giveStopped return ok stopped
+
+osCheck is call
+osCheck in stdinWait
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+linuxIt is call
+linuxIt in stdinWait
+linuxIt invokes stdinWaitLinux
+linuxIt argument deadline Int64 deadline copy
+linuxIt result linuxOutcome Int64
+linuxIt ownedBy none
+linuxIt cleanedBy none
+linuxIt borrows none
+linuxIt catch none
+linuxIt suppresses none
 
 findInput is call
 findInput in stdinWait
@@ -3338,6 +4221,184 @@ pastNow cleanedBy none
 pastNow borrows none
 pastNow catch none
 pastNow suppresses none
+
+stdinWaitLinux is operation
+stdinWaitLinux purpose "Wait on Linux until standard input has something to read or has ended (poll on descriptor 0), letting other tasks run: 0 when it may be read, 1 at the deadline, 2 when the task is cancelled"
+stdinWaitLinux invariant none
+stdinWaitLinux typeParameter none
+stdinWaitLinux input deadline Int64 copied
+stdinWaitLinux output Int64
+stdinWaitLinux outputOwnedBy none
+stdinWaitLinux raises none
+stdinWaitLinux effect use machine.memory
+stdinWaitLinux effect use system.calls
+stdinWaitLinux uses memoryAccess
+stdinWaitLinux uses systemCalls
+stdinWaitLinux memoryHeap false
+stdinWaitLinux async false
+stdinWaitLinux maxRecursion none
+stdinWaitLinux label begin loopKind none
+stdinWaitLinux label begin within none
+stdinWaitLinux label eachTry loopKind while
+stdinWaitLinux label eachTry within none
+stdinWaitLinux label eachTry maxIterations forever
+stdinWaitLinux label waitIt loopKind none
+stdinWaitLinux label waitIt within eachTry
+stdinWaitLinux label lateCheck loopKind none
+stdinWaitLinux label lateCheck within eachTry
+stdinWaitLinux label giveReady loopKind none
+stdinWaitLinux label giveReady within none
+stdinWaitLinux label giveLate loopKind none
+stdinWaitLinux label giveLate within none
+stdinWaitLinux label giveStopped loopKind none
+stdinWaitLinux label giveStopped within none
+stdinWaitLinux let ready Int64 0 immutable
+stdinWaitLinux let late Int64 1 immutable
+stdinWaitLinux let stopped Int64 2 immutable
+stdinWaitLinux let one Int64 1 immutable
+stdinWaitLinux let zero Int64 0 immutable
+stdinWaitLinux let four Int64 4 immutable
+stdinWaitLinux let pollIn Int32 1 immutable
+stdinWaitLinux let readText String "a read of standard input" immutable
+stdinWaitLinux let two Int64 2 immutable
+stdinWaitLinux at begin do findPoll
+stdinWaitLinux at begin do inputHandle
+stdinWaitLinux at begin goto eachTry
+stdinWaitLinux at eachTry do storeFd
+stdinWaitLinux at eachTry do findEvents
+stdinWaitLinux at eachTry do storeEvents
+stdinWaitLinux at eachTry do pollIt
+stdinWaitLinux at eachTry do readyCheck
+stdinWaitLinux at eachTry branch if isReady goto giveReady else goto waitIt
+stdinWaitLinux at waitIt do waitOnce
+stdinWaitLinux at waitIt do cancelledCheck
+stdinWaitLinux at waitIt branch if isCancelled goto giveStopped else goto lateCheck
+stdinWaitLinux at lateCheck do lateOutcome
+stdinWaitLinux at lateCheck branch if isLate goto giveLate else goto eachTry
+stdinWaitLinux at giveReady return ok ready
+stdinWaitLinux at giveLate return ok late
+stdinWaitLinux at giveStopped return ok stopped
+
+findPoll is call
+findPoll in stdinWaitLinux
+findPoll invokes stateAt
+findPoll argument offset Int64 availableAt copy
+findPoll result pollAt machine.Address
+findPoll ownedBy none
+findPoll cleanedBy none
+findPoll borrows none
+findPoll catch none
+findPoll suppresses none
+
+inputHandle is call
+inputHandle in stdinWaitLinux
+inputHandle invokes machine.fromInt64
+inputHandle argument value Int64 one copy
+inputHandle result waitHandle machine.Address
+inputHandle ownedBy none
+inputHandle cleanedBy none
+inputHandle borrows none
+inputHandle catch none
+inputHandle suppresses none
+
+storeFd is call
+storeFd in stdinWaitLinux
+storeFd invokes machine.storeInt64
+storeFd argument address machine.Address pollAt copy
+storeFd argument value Int64 zero copy
+storeFd result none
+storeFd ownedBy none
+storeFd cleanedBy none
+storeFd borrows none
+storeFd catch none
+storeFd suppresses none
+
+findEvents is call
+findEvents in stdinWaitLinux
+findEvents invokes machine.offset
+findEvents argument address machine.Address pollAt copy
+findEvents argument bytes Int64 four copy
+findEvents result eventsAt machine.Address
+findEvents ownedBy none
+findEvents cleanedBy none
+findEvents borrows none
+findEvents catch none
+findEvents suppresses none
+
+storeEvents is call
+storeEvents in stdinWaitLinux
+storeEvents invokes machine.storeInt32
+storeEvents argument address machine.Address eventsAt copy
+storeEvents argument value Int32 pollIn copy
+storeEvents result none
+storeEvents ownedBy none
+storeEvents cleanedBy none
+storeEvents borrows none
+storeEvents catch none
+storeEvents suppresses none
+
+pollIt is call
+pollIt in stdinWaitLinux
+pollIt invokes system.poll
+pollIt argument fds machine.Address pollAt copy
+pollIt argument count Int64 one copy
+pollIt argument milliseconds Int64 zero copy
+pollIt result polled Int64
+pollIt ownedBy none
+pollIt cleanedBy none
+pollIt borrows none
+pollIt catch none
+pollIt suppresses none
+
+readyCheck is call
+readyCheck in stdinWaitLinux
+readyCheck invokes compare.greaterThanInt64
+readyCheck argument left Int64 polled copy
+readyCheck argument right Int64 zero copy
+readyCheck result isReady Bool
+readyCheck ownedBy none
+readyCheck cleanedBy none
+readyCheck borrows none
+readyCheck catch none
+readyCheck suppresses none
+
+waitOnce is call
+waitOnce in stdinWaitLinux
+waitOnce invokes tasks.wait
+waitOnce argument what String readText lend
+waitOnce argument deadline Int64 deadline copy
+waitOnce argument cancellable Int64 one copy
+waitOnce argument external machine.Address waitHandle copy
+waitOnce result outcome Int64
+waitOnce ownedBy none
+waitOnce cleanedBy none
+waitOnce borrows none
+waitOnce catch none
+waitOnce suppresses none
+
+cancelledCheck is call
+cancelledCheck in stdinWaitLinux
+cancelledCheck invokes compare.equalInt64
+cancelledCheck argument left Int64 outcome copy
+cancelledCheck argument right Int64 two copy
+cancelledCheck result isCancelled Bool
+cancelledCheck ownedBy none
+cancelledCheck cleanedBy none
+cancelledCheck borrows none
+cancelledCheck catch none
+cancelledCheck suppresses none
+
+lateOutcome is call
+lateOutcome in stdinWaitLinux
+lateOutcome invokes compare.equalInt64
+lateOutcome argument left Int64 outcome copy
+lateOutcome argument right Int64 one copy
+lateOutcome result isLate Bool
+lateOutcome ownedBy none
+lateOutcome cleanedBy none
+lateOutcome borrows none
+lateOutcome catch none
+lateOutcome suppresses none
 
 readLine is operation
 readLine purpose "console.readLine: the next line of standard input without its line end (`\\n`, and `\\r` before it), into a region; endOfInput, tooLong (the line is still taken), timedOut, cancelled, or failed"
@@ -5514,6 +6575,10 @@ runChild async false
 runChild maxRecursion none
 runChild label begin loopKind none
 runChild label begin within none
+runChild label runLinux loopKind none
+runChild label runLinux within none
+runChild label runWindows loopKind none
+runChild label runWindows within none
 runChild label pipes loopKind none
 runChild label pipes within none
 runChild label inherit loopKind none
@@ -5639,29 +6704,33 @@ runChild let three32 Int32 3 immutable
 runChild let zero Int64 0 immutable
 runChild let two Int64 2 immutable
 runChild let one Int64 1 immutable
-runChild at begin do nowhere
-runChild at begin do makeLine
-runChild at begin do fetchLineText
-runChild at begin do readLineBytes
-runChild at begin do wideLine
-runChild at begin do giveLine
-runChild at begin do takeSecurity
-runChild at begin do storeSecurityLength
-runChild at begin do findInherit
-runChild at begin do storeInherit
-runChild at begin do takeStartup
-runChild at begin do storeStartupLength
-runChild at begin do findFlags
-runChild at begin do storeFlags
-runChild at begin do findInputSlot
-runChild at begin do findOutputSlot
-runChild at begin do findErrorSlot
-runChild at begin do takeInformation
-runChild at begin do takeEnds
-runChild at begin do findOutEnds
-runChild at begin do findErrorEnds
-runChild at begin do findPeek
-runChild at begin branch if captured goto pipes else goto inherit
+runChild at begin do osCheck
+runChild at begin branch if onLinux goto runLinux else goto runWindows
+runChild at runLinux do linuxIt
+runChild at runLinux return ok linuxStatus
+runChild at runWindows do nowhere
+runChild at runWindows do makeLine
+runChild at runWindows do fetchLineText
+runChild at runWindows do readLineBytes
+runChild at runWindows do wideLine
+runChild at runWindows do giveLine
+runChild at runWindows do takeSecurity
+runChild at runWindows do storeSecurityLength
+runChild at runWindows do findInherit
+runChild at runWindows do storeInherit
+runChild at runWindows do takeStartup
+runChild at runWindows do storeStartupLength
+runChild at runWindows do findFlags
+runChild at runWindows do storeFlags
+runChild at runWindows do findInputSlot
+runChild at runWindows do findOutputSlot
+runChild at runWindows do findErrorSlot
+runChild at runWindows do takeInformation
+runChild at runWindows do takeEnds
+runChild at runWindows do findOutEnds
+runChild at runWindows do findErrorEnds
+runChild at runWindows do findPeek
+runChild at runWindows branch if captured goto pipes else goto inherit
 runChild at pipes do inputPipe
 runChild at pipes do outputPipe
 runChild at pipes do errorPipe
@@ -5854,6 +6923,38 @@ runChild at finished do giveStartup
 runChild at finished do giveInformation
 runChild at finished do giveEnds
 runChild at finished return ok ok
+
+osCheck is call
+osCheck in runChild
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+linuxIt is call
+linuxIt in runChild
+linuxIt invokes runChildLinux
+linuxIt argument program machine.Address program copy
+linuxIt argument programBytes Int64 programBytes copy
+linuxIt argument names machine.Address names copy
+linuxIt argument deadline Int64 deadline copy
+linuxIt argument captured Bool captured copy
+linuxIt argument input machine.Address input copy
+linuxIt argument inputBytes Int64 inputBytes copy
+linuxIt argument out machine.Address out copy
+linuxIt argument errors machine.Address errors copy
+linuxIt argument codeAt machine.Address codeAt copy
+linuxIt argument payload machine.Address payload copy
+linuxIt result linuxStatus Int32
+linuxIt ownedBy none
+linuxIt cleanedBy none
+linuxIt borrows none
+linuxIt catch none
+linuxIt suppresses none
 
 nowhere is call
 nowhere in runChild
@@ -7642,6 +8743,3910 @@ giveEnds cleanedBy none
 giveEnds borrows none
 giveEnds catch none
 giveEnds suppresses none
+
+closeDescriptor is operation
+closeDescriptor purpose "Close a Linux descriptor unless it is -1"
+closeDescriptor invariant none
+closeDescriptor typeParameter none
+closeDescriptor input fd Int64 copied
+closeDescriptor output none
+closeDescriptor outputOwnedBy none
+closeDescriptor raises none
+closeDescriptor effect use system.calls
+closeDescriptor uses systemCalls
+closeDescriptor memoryHeap false
+closeDescriptor async false
+closeDescriptor maxRecursion none
+closeDescriptor label begin loopKind none
+closeDescriptor label begin within none
+closeDescriptor label closeIt loopKind none
+closeDescriptor label closeIt within none
+closeDescriptor label done loopKind none
+closeDescriptor label done within none
+closeDescriptor let zero Int64 0 immutable
+closeDescriptor at begin do noneCheck
+closeDescriptor at begin branch if isNone goto done else goto closeIt
+closeDescriptor at closeIt do closeFd
+closeDescriptor at closeIt goto done
+closeDescriptor at done return ok none
+
+noneCheck is call
+noneCheck in closeDescriptor
+noneCheck invokes compare.lessThanInt64
+noneCheck argument left Int64 fd copy
+noneCheck argument right Int64 zero copy
+noneCheck result isNone Bool
+noneCheck ownedBy none
+noneCheck cleanedBy none
+noneCheck borrows none
+noneCheck catch none
+noneCheck suppresses none
+
+closeFd is call
+closeFd in closeDescriptor
+closeFd invokes system.close
+closeFd argument fd Int64 fd copy
+closeFd result closed Int64
+closeFd ownedBy none
+closeFd cleanedBy none
+closeFd borrows none
+closeFd catch none
+closeFd suppresses none
+
+pipeEnd is operation
+pipeEnd purpose "One end of a pipe pipe2 made, from the two 32-bit descriptors at an address: 0 the read end, 1 the write end"
+pipeEnd invariant none
+pipeEnd typeParameter none
+pipeEnd input fds machine.Address copied
+pipeEnd input which Int64 copied
+pipeEnd output Int64
+pipeEnd outputOwnedBy none
+pipeEnd raises none
+pipeEnd effect use machine.memory
+pipeEnd uses memoryAccess
+pipeEnd memoryHeap false
+pipeEnd async false
+pipeEnd maxRecursion none
+pipeEnd label begin loopKind none
+pipeEnd label begin within none
+pipeEnd let four Int64 4 immutable
+pipeEnd at begin do offsetOf
+pipeEnd at begin do findEnd
+pipeEnd at begin do readEnd
+pipeEnd at begin do widenEnd
+pipeEnd at begin return ok fd
+
+offsetOf is call
+offsetOf in pipeEnd
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 which copy
+offsetOf argument right Int64 four copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findEnd is call
+findEnd in pipeEnd
+findEnd invokes machine.offset
+findEnd argument address machine.Address fds copy
+findEnd argument bytes Int64 offset copy
+findEnd result endAt machine.Address
+findEnd ownedBy none
+findEnd cleanedBy none
+findEnd borrows none
+findEnd catch none
+findEnd suppresses none
+
+readEnd is call
+readEnd in pipeEnd
+readEnd invokes machine.loadInt32
+readEnd argument address machine.Address endAt copy
+readEnd result fd32 Int32
+readEnd ownedBy none
+readEnd cleanedBy none
+readEnd borrows none
+readEnd catch none
+readEnd suppresses none
+
+widenEnd is call
+widenEnd in pipeEnd
+widenEnd invokes convert.int32ToInt64
+widenEnd argument value Int32 fd32 copy
+widenEnd result fd Int64
+widenEnd ownedBy none
+widenEnd cleanedBy none
+widenEnd borrows none
+widenEnd catch none
+widenEnd suppresses none
+
+nonBlocking is operation
+nonBlocking purpose "Make a Linux descriptor non-blocking (O_NONBLOCK), so a read or write that would wait gives EAGAIN instead"
+nonBlocking invariant none
+nonBlocking typeParameter none
+nonBlocking input fd Int64 copied
+nonBlocking output none
+nonBlocking outputOwnedBy none
+nonBlocking raises none
+nonBlocking effect use system.calls
+nonBlocking uses systemCalls
+nonBlocking memoryHeap false
+nonBlocking async false
+nonBlocking maxRecursion none
+nonBlocking label begin loopKind none
+nonBlocking label begin within none
+nonBlocking let setFlags Int64 4 immutable
+nonBlocking let nonBlock Int64 2048 immutable
+nonBlocking at begin do setIt
+nonBlocking at begin return ok none
+
+setIt is call
+setIt in nonBlocking
+setIt invokes system.fcntl
+setIt argument fd Int64 fd copy
+setIt argument command Int64 setFlags copy
+setIt argument argument Int64 nonBlock copy
+setIt result set Int64
+setIt ownedBy none
+setIt cleanedBy none
+setIt borrows none
+setIt catch none
+setIt suppresses none
+
+readPipeLinux is operation
+readPipeLinux purpose "Read what a pipe from a child has into a builder on Linux: 1 when it gave something, 0 when it had nothing yet, -1 when it has ended"
+readPipeLinux invariant none
+readPipeLinux typeParameter none
+readPipeLinux input fd Int64 copied
+readPipeLinux input into machine.Address copied
+readPipeLinux output Int64
+readPipeLinux outputOwnedBy none
+readPipeLinux raises none
+readPipeLinux effect use machine.memory
+readPipeLinux effect use system.calls
+readPipeLinux uses memoryAccess
+readPipeLinux uses systemCalls
+readPipeLinux memoryHeap false
+readPipeLinux async false
+readPipeLinux maxRecursion none
+readPipeLinux label begin loopKind none
+readPipeLinux label begin within none
+readPipeLinux label keep loopKind none
+readPipeLinux label keep within none
+readPipeLinux label noneCheck loopKind none
+readPipeLinux label noneCheck within none
+readPipeLinux label giveNothing loopKind none
+readPipeLinux label giveNothing within none
+readPipeLinux label giveEnded loopKind none
+readPipeLinux label giveEnded within none
+readPipeLinux let gave Int64 1 immutable
+readPipeLinux let nothing Int64 0 immutable
+readPipeLinux let ended Int64 -1 immutable
+readPipeLinux let zero Int64 0 immutable
+readPipeLinux let eagainResult Int64 -11 immutable
+readPipeLinux at begin do takeBlock
+readPipeLinux at begin do readIt
+readPipeLinux at begin do someCheck
+readPipeLinux at begin branch if some goto keep else goto noneCheck
+readPipeLinux at keep do addIt
+readPipeLinux at keep do giveBlock
+readPipeLinux at keep return ok gave
+readPipeLinux at noneCheck do giveEmpty
+readPipeLinux at noneCheck do againCheck
+readPipeLinux at noneCheck branch if isAgain goto giveNothing else goto giveEnded
+readPipeLinux at giveNothing return ok nothing
+readPipeLinux at giveEnded return ok ended
+
+takeBlock is call
+takeBlock in readPipeLinux
+takeBlock invokes heap.take
+takeBlock argument bytes Int64 chunk copy
+takeBlock result block machine.Address
+takeBlock ownedBy none
+takeBlock cleanedBy none
+takeBlock borrows none
+takeBlock catch none
+takeBlock suppresses none
+
+readIt is call
+readIt in readPipeLinux
+readIt invokes system.read
+readIt argument fd Int64 fd copy
+readIt argument buffer machine.Address block copy
+readIt argument bytes Int64 chunk copy
+readIt result got Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+someCheck is call
+someCheck in readPipeLinux
+someCheck invokes compare.greaterThanInt64
+someCheck argument left Int64 got copy
+someCheck argument right Int64 zero copy
+someCheck result some Bool
+someCheck ownedBy none
+someCheck cleanedBy none
+someCheck borrows none
+someCheck catch none
+someCheck suppresses none
+
+addIt is call
+addIt in readPipeLinux
+addIt invokes wide.builderAdd
+addIt argument builder machine.Address into copy
+addIt argument data machine.Address block copy
+addIt argument bytes Int64 got copy
+addIt result none
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+giveBlock is call
+giveBlock in readPipeLinux
+giveBlock invokes heap.give
+giveBlock argument block machine.Address block copy
+giveBlock result none
+giveBlock ownedBy none
+giveBlock cleanedBy none
+giveBlock borrows none
+giveBlock catch none
+giveBlock suppresses none
+
+giveEmpty is call
+giveEmpty in readPipeLinux
+giveEmpty invokes heap.give
+giveEmpty argument block machine.Address block copy
+giveEmpty result none
+giveEmpty ownedBy none
+giveEmpty cleanedBy none
+giveEmpty borrows none
+giveEmpty catch none
+giveEmpty suppresses none
+
+againCheck is call
+againCheck in readPipeLinux
+againCheck invokes compare.equalInt64
+againCheck argument left Int64 got copy
+againCheck argument right Int64 eagainResult copy
+againCheck result isAgain Bool
+againCheck ownedBy none
+againCheck cleanedBy none
+againCheck borrows none
+againCheck catch none
+againCheck suppresses none
+
+childNames is operation
+childNames purpose "The names execve is tried with for a program on Linux, as _posixsubprocess has them: the program alone when it holds a `/`, otherwise each directory of PATH (/bin:/usr/bin when it is not set) with `/` and the program, an empty directory giving the program alone; a list of 0-ended copies"
+childNames invariant none
+childNames typeParameter none
+childNames input program machine.Address copied
+childNames input programBytes Int64 copied
+childNames output machine.Address
+childNames outputOwnedBy none
+childNames raises none
+childNames effect use machine.memory
+childNames effect use system.calls
+childNames uses memoryAccess
+childNames uses systemCalls
+childNames memoryHeap false
+childNames async false
+childNames maxRecursion none
+childNames label begin loopKind none
+childNames label begin within none
+childNames label alone loopKind none
+childNames label alone within none
+childNames label lookPath loopKind none
+childNames label lookPath within none
+childNames label useDefault loopKind none
+childNames label useDefault within none
+childNames label usePath loopKind none
+childNames label usePath within none
+childNames label split loopKind none
+childNames label split within none
+childNames label eachByte loopKind while
+childNames label eachByte within none
+childNames label eachByte maxIterations textBytes
+childNames label readByte loopKind none
+childNames label readByte within eachByte
+childNames label addOne loopKind none
+childNames label addOne within eachByte
+childNames label advance loopKind none
+childNames label advance within eachByte
+childNames label addLast loopKind none
+childNames label addLast within none
+childNames let start Int64 0 mutable
+childNames let at Int64 0 mutable
+childNames let pathText String "PATH" immutable
+childNames let defaultPath String "/bin:/usr/bin" immutable
+childNames let slashText String "/" immutable
+childNames let twentyFour Int64 24 immutable
+childNames let one Int64 1 immutable
+childNames let zero Int64 0 immutable
+childNames let eight Int64 8 immutable
+childNames let four Int64 4 immutable
+childNames let colon Byte 58 immutable
+childNames at begin do takeList
+childNames at begin do findSlash
+childNames at begin do searchSlash
+childNames at begin do slashCheck
+childNames at begin branch if hasSlash goto alone else goto lookPath
+childNames at alone do addAlone
+childNames at alone return ok names
+childNames at lookPath do takeCell
+childNames at lookPath do findPathName
+childNames at lookPath do findPath
+childNames at lookPath do readPathBytes
+childNames at lookPath do giveCell
+childNames at lookPath do nowhere
+childNames at lookPath do unsetCheck
+childNames at lookPath do findDefault
+childNames at lookPath do defaultLength
+childNames at lookPath branch if isUnset goto useDefault else goto usePath
+childNames at useDefault do copyDefault
+childNames at useDefault do defaultValue
+childNames at useDefault set start copyValue
+childNames at useDefault set at defaultBytes
+childNames at useDefault goto split
+childNames at usePath do copyPath
+childNames at usePath do pathCopyValue
+childNames at usePath set start copyValueFound
+childNames at usePath set at foundBytes
+childNames at usePath goto split
+childNames at split do textOf
+childNames at split do keepBytes
+childNames at split set start zero
+childNames at split set at zero
+childNames at split goto eachByte
+childNames at eachByte do endCheck
+childNames at eachByte branch if atEnd goto addLast else goto readByte
+childNames at readByte do readIt
+childNames at readByte do colonCheck
+childNames at readByte branch if isColon goto addOne else goto advance
+childNames at addOne do addDirectory
+childNames at addOne do afterColon
+childNames at addOne set start next
+childNames at addOne goto advance
+childNames at advance do nextByte
+childNames at advance set at after
+childNames at advance goto eachByte
+childNames at addLast do addFinal
+childNames at addLast do giveText
+childNames at addLast return ok names
+
+takeList is call
+takeList in childNames
+takeList invokes heap.take
+takeList argument bytes Int64 twentyFour copy
+takeList result names machine.Address
+takeList ownedBy none
+takeList cleanedBy none
+takeList borrows none
+takeList catch none
+takeList suppresses none
+
+findSlash is call
+findSlash in childNames
+findSlash invokes machine.addressOfString
+findSlash argument text String slashText lend
+findSlash result slashAt machine.Address
+findSlash ownedBy none
+findSlash cleanedBy none
+findSlash borrows none
+findSlash catch none
+findSlash suppresses none
+
+searchSlash is call
+searchSlash in childNames
+searchSlash invokes memory.findBytes
+searchSlash argument haystack machine.Address program copy
+searchSlash argument haystackBytes Int64 programBytes copy
+searchSlash argument needle machine.Address slashAt copy
+searchSlash argument needleBytes Int64 one copy
+searchSlash result slashFound Int64
+searchSlash ownedBy none
+searchSlash cleanedBy none
+searchSlash borrows none
+searchSlash catch none
+searchSlash suppresses none
+
+slashCheck is call
+slashCheck in childNames
+slashCheck invokes compare.greaterOrEqualInt64
+slashCheck argument left Int64 slashFound copy
+slashCheck argument right Int64 zero copy
+slashCheck result hasSlash Bool
+slashCheck ownedBy none
+slashCheck cleanedBy none
+slashCheck borrows none
+slashCheck catch none
+slashCheck suppresses none
+
+addAlone is call
+addAlone in childNames
+addAlone invokes handles.addName
+addAlone argument names machine.Address names copy
+addAlone argument data machine.Address program copy
+addAlone argument bytes Int64 programBytes copy
+addAlone result none
+addAlone ownedBy none
+addAlone cleanedBy none
+addAlone borrows none
+addAlone catch none
+addAlone suppresses none
+
+takeCell is call
+takeCell in childNames
+takeCell invokes heap.take
+takeCell argument bytes Int64 eight copy
+takeCell result cell machine.Address
+takeCell ownedBy none
+takeCell cleanedBy none
+takeCell borrows none
+takeCell catch none
+takeCell suppresses none
+
+findPathName is call
+findPathName in childNames
+findPathName invokes machine.addressOfString
+findPathName argument text String pathText lend
+findPathName result pathNameAt machine.Address
+findPathName ownedBy none
+findPathName cleanedBy none
+findPathName borrows none
+findPathName catch none
+findPathName suppresses none
+
+findPath is call
+findPath in childNames
+findPath invokes linuxVariable
+findPath argument name machine.Address pathNameAt copy
+findPath argument bytes Int64 four copy
+findPath argument lengthAt machine.Address cell copy
+findPath result pathValue machine.Address
+findPath ownedBy none
+findPath cleanedBy none
+findPath borrows none
+findPath catch none
+findPath suppresses none
+
+readPathBytes is call
+readPathBytes in childNames
+readPathBytes invokes machine.loadInt64
+readPathBytes argument address machine.Address cell copy
+readPathBytes result foundBytes Int64
+readPathBytes ownedBy none
+readPathBytes cleanedBy none
+readPathBytes borrows none
+readPathBytes catch none
+readPathBytes suppresses none
+
+giveCell is call
+giveCell in childNames
+giveCell invokes heap.give
+giveCell argument block machine.Address cell copy
+giveCell result none
+giveCell ownedBy none
+giveCell cleanedBy none
+giveCell borrows none
+giveCell catch none
+giveCell suppresses none
+
+nowhere is call
+nowhere in childNames
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+unsetCheck is call
+unsetCheck in childNames
+unsetCheck invokes machine.equal
+unsetCheck argument left machine.Address pathValue copy
+unsetCheck argument right machine.Address anywhere copy
+unsetCheck result isUnset Bool
+unsetCheck ownedBy none
+unsetCheck cleanedBy none
+unsetCheck borrows none
+unsetCheck catch none
+unsetCheck suppresses none
+
+findDefault is call
+findDefault in childNames
+findDefault invokes machine.addressOfString
+findDefault argument text String defaultPath lend
+findDefault result defaultAt machine.Address
+findDefault ownedBy none
+findDefault cleanedBy none
+findDefault borrows none
+findDefault catch none
+findDefault suppresses none
+
+defaultLength is call
+defaultLength in childNames
+defaultLength invokes string.byteLength
+defaultLength argument text String defaultPath lend
+defaultLength result defaultBytes Int64
+defaultLength ownedBy none
+defaultLength cleanedBy none
+defaultLength borrows none
+defaultLength catch none
+defaultLength suppresses none
+
+copyDefault is call
+copyDefault in childNames
+copyDefault invokes files.copyBytes
+copyDefault argument data machine.Address defaultAt copy
+copyDefault argument bytes Int64 defaultBytes copy
+copyDefault result defaultCopy machine.Address
+copyDefault ownedBy none
+copyDefault cleanedBy none
+copyDefault borrows none
+copyDefault catch none
+copyDefault suppresses none
+
+defaultValue is call
+defaultValue in childNames
+defaultValue invokes machine.toInt64
+defaultValue argument address machine.Address defaultCopy copy
+defaultValue result copyValue Int64
+defaultValue ownedBy none
+defaultValue cleanedBy none
+defaultValue borrows none
+defaultValue catch none
+defaultValue suppresses none
+
+copyPath is call
+copyPath in childNames
+copyPath invokes files.copyBytes
+copyPath argument data machine.Address pathValue copy
+copyPath argument bytes Int64 foundBytes copy
+copyPath result pathCopy machine.Address
+copyPath ownedBy none
+copyPath cleanedBy none
+copyPath borrows none
+copyPath catch none
+copyPath suppresses none
+
+pathCopyValue is call
+pathCopyValue in childNames
+pathCopyValue invokes machine.toInt64
+pathCopyValue argument address machine.Address pathCopy copy
+pathCopyValue result copyValueFound Int64
+pathCopyValue ownedBy none
+pathCopyValue cleanedBy none
+pathCopyValue borrows none
+pathCopyValue catch none
+pathCopyValue suppresses none
+
+textOf is call
+textOf in childNames
+textOf invokes machine.fromInt64
+textOf argument value Int64 start copy
+textOf result text machine.Address
+textOf ownedBy none
+textOf cleanedBy none
+textOf borrows none
+textOf catch none
+textOf suppresses none
+
+keepBytes is call
+keepBytes in childNames
+keepBytes invokes math.addInt64
+keepBytes argument left Int64 at copy
+keepBytes argument right Int64 zero copy
+keepBytes result textBytes Int64
+keepBytes ownedBy none
+keepBytes cleanedBy none
+keepBytes borrows none
+keepBytes catch none
+keepBytes suppresses none
+
+endCheck is call
+endCheck in childNames
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 at copy
+endCheck argument right Int64 textBytes copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+readIt is call
+readIt in childNames
+readIt invokes byteAt
+readIt argument text machine.Address text copy
+readIt argument position Int64 at copy
+readIt result byte Byte
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+colonCheck is call
+colonCheck in childNames
+colonCheck invokes compare.equalByte
+colonCheck argument left Byte byte copy
+colonCheck argument right Byte colon copy
+colonCheck result isColon Bool
+colonCheck ownedBy none
+colonCheck cleanedBy none
+colonCheck borrows none
+colonCheck catch none
+colonCheck suppresses none
+
+addDirectory is call
+addDirectory in childNames
+addDirectory invokes addCandidate
+addDirectory argument names machine.Address names copy
+addDirectory argument text machine.Address text copy
+addDirectory argument start Int64 start copy
+addDirectory argument end Int64 at copy
+addDirectory argument program machine.Address program copy
+addDirectory argument programBytes Int64 programBytes copy
+addDirectory result none
+addDirectory ownedBy none
+addDirectory cleanedBy none
+addDirectory borrows none
+addDirectory catch none
+addDirectory suppresses none
+
+afterColon is call
+afterColon in childNames
+afterColon invokes math.addInt64
+afterColon argument left Int64 at copy
+afterColon argument right Int64 one copy
+afterColon result next Int64
+afterColon ownedBy none
+afterColon cleanedBy none
+afterColon borrows none
+afterColon catch none
+afterColon suppresses none
+
+nextByte is call
+nextByte in childNames
+nextByte invokes math.addInt64
+nextByte argument left Int64 at copy
+nextByte argument right Int64 one copy
+nextByte result after Int64
+nextByte ownedBy none
+nextByte cleanedBy none
+nextByte borrows none
+nextByte catch none
+nextByte suppresses none
+
+addFinal is call
+addFinal in childNames
+addFinal invokes addCandidate
+addFinal argument names machine.Address names copy
+addFinal argument text machine.Address text copy
+addFinal argument start Int64 start copy
+addFinal argument end Int64 at copy
+addFinal argument program machine.Address program copy
+addFinal argument programBytes Int64 programBytes copy
+addFinal result none
+addFinal ownedBy none
+addFinal cleanedBy none
+addFinal borrows none
+addFinal catch none
+addFinal suppresses none
+
+giveText is call
+giveText in childNames
+giveText invokes heap.give
+giveText argument block machine.Address text copy
+giveText result none
+giveText ownedBy none
+giveText cleanedBy none
+giveText borrows none
+giveText catch none
+giveText suppresses none
+
+addCandidate is operation
+addCandidate purpose "Add one name execve is tried with: a directory of PATH (the bytes from start to end of a text), `/`, and the program; the program alone for an empty directory"
+addCandidate invariant none
+addCandidate typeParameter none
+addCandidate input names machine.Address copied
+addCandidate input text machine.Address copied
+addCandidate input start Int64 copied
+addCandidate input end Int64 copied
+addCandidate input program machine.Address copied
+addCandidate input programBytes Int64 copied
+addCandidate output none
+addCandidate outputOwnedBy none
+addCandidate raises none
+addCandidate effect use machine.memory
+addCandidate effect use system.calls
+addCandidate uses memoryAccess
+addCandidate uses systemCalls
+addCandidate memoryHeap false
+addCandidate async false
+addCandidate maxRecursion none
+addCandidate label begin loopKind none
+addCandidate label begin within none
+addCandidate label alone loopKind none
+addCandidate label alone within none
+addCandidate label join loopKind none
+addCandidate label join within none
+addCandidate let zero Int64 0 immutable
+addCandidate let slash Byte 47 immutable
+addCandidate at begin do lengthOf
+addCandidate at begin do emptyCheck
+addCandidate at begin branch if empty goto alone else goto join
+addCandidate at alone do addAlone
+addCandidate at alone return ok none
+addCandidate at join do makeBuilder
+addCandidate at join do findDirectory
+addCandidate at join do addDirectory
+addCandidate at join do addSlash
+addCandidate at join do addProgram
+addCandidate at join do readJoined
+addCandidate at join do readJoinedBytes
+addCandidate at join do addJoined
+addCandidate at join do giveJoined
+addCandidate at join return ok none
+
+lengthOf is call
+lengthOf in addCandidate
+lengthOf invokes math.subtractInt64
+lengthOf argument left Int64 end copy
+lengthOf argument right Int64 start copy
+lengthOf result directoryBytes Int64
+lengthOf ownedBy none
+lengthOf cleanedBy none
+lengthOf borrows none
+lengthOf catch none
+lengthOf suppresses none
+
+emptyCheck is call
+emptyCheck in addCandidate
+emptyCheck invokes compare.lessOrEqualInt64
+emptyCheck argument left Int64 directoryBytes copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+addAlone is call
+addAlone in addCandidate
+addAlone invokes handles.addName
+addAlone argument names machine.Address names copy
+addAlone argument data machine.Address program copy
+addAlone argument bytes Int64 programBytes copy
+addAlone result none
+addAlone ownedBy none
+addAlone cleanedBy none
+addAlone borrows none
+addAlone catch none
+addAlone suppresses none
+
+makeBuilder is call
+makeBuilder in addCandidate
+makeBuilder invokes wide.builderNew
+makeBuilder argument none
+makeBuilder result builder machine.Address
+makeBuilder ownedBy none
+makeBuilder cleanedBy none
+makeBuilder borrows none
+makeBuilder catch none
+makeBuilder suppresses none
+
+findDirectory is call
+findDirectory in addCandidate
+findDirectory invokes machine.offset
+findDirectory argument address machine.Address text copy
+findDirectory argument bytes Int64 start copy
+findDirectory result directory machine.Address
+findDirectory ownedBy none
+findDirectory cleanedBy none
+findDirectory borrows none
+findDirectory catch none
+findDirectory suppresses none
+
+addDirectory is call
+addDirectory in addCandidate
+addDirectory invokes wide.builderAdd
+addDirectory argument builder machine.Address builder copy
+addDirectory argument data machine.Address directory copy
+addDirectory argument bytes Int64 directoryBytes copy
+addDirectory result none
+addDirectory ownedBy none
+addDirectory cleanedBy none
+addDirectory borrows none
+addDirectory catch none
+addDirectory suppresses none
+
+addSlash is call
+addSlash in addCandidate
+addSlash invokes wide.builderAddByte
+addSlash argument builder machine.Address builder copy
+addSlash argument byte Byte slash copy
+addSlash result none
+addSlash ownedBy none
+addSlash cleanedBy none
+addSlash borrows none
+addSlash catch none
+addSlash suppresses none
+
+addProgram is call
+addProgram in addCandidate
+addProgram invokes wide.builderAdd
+addProgram argument builder machine.Address builder copy
+addProgram argument data machine.Address program copy
+addProgram argument bytes Int64 programBytes copy
+addProgram result none
+addProgram ownedBy none
+addProgram cleanedBy none
+addProgram borrows none
+addProgram catch none
+addProgram suppresses none
+
+readJoined is call
+readJoined in addCandidate
+readJoined invokes wide.builderText
+readJoined argument builder machine.Address builder copy
+readJoined result joined machine.Address
+readJoined ownedBy none
+readJoined cleanedBy none
+readJoined borrows none
+readJoined catch none
+readJoined suppresses none
+
+readJoinedBytes is call
+readJoinedBytes in addCandidate
+readJoinedBytes invokes wide.builderLength
+readJoinedBytes argument builder machine.Address builder copy
+readJoinedBytes result joinedBytes Int64
+readJoinedBytes ownedBy none
+readJoinedBytes cleanedBy none
+readJoinedBytes borrows none
+readJoinedBytes catch none
+readJoinedBytes suppresses none
+
+addJoined is call
+addJoined in addCandidate
+addJoined invokes handles.addName
+addJoined argument names machine.Address names copy
+addJoined argument data machine.Address joined copy
+addJoined argument bytes Int64 joinedBytes copy
+addJoined result none
+addJoined ownedBy none
+addJoined cleanedBy none
+addJoined borrows none
+addJoined catch none
+addJoined suppresses none
+
+giveJoined is call
+giveJoined in addCandidate
+giveJoined invokes giveBuilder
+giveJoined argument builder machine.Address builder copy
+giveJoined result none
+giveJoined ownedBy none
+giveJoined cleanedBy none
+giveJoined borrows none
+giveJoined catch none
+giveJoined suppresses none
+
+giveNameList is operation
+giveNameList purpose "Give back a list of names: each name's bytes, its block of names, and the list"
+giveNameList invariant none
+giveNameList typeParameter none
+giveNameList input names machine.Address copied
+giveNameList output none
+giveNameList outputOwnedBy none
+giveNameList raises none
+giveNameList effect use machine.memory
+giveNameList effect use system.calls
+giveNameList uses memoryAccess
+giveNameList uses systemCalls
+giveNameList memoryHeap false
+giveNameList async false
+giveNameList maxRecursion none
+giveNameList label begin loopKind none
+giveNameList label begin within none
+giveNameList label eachName loopKind while
+giveNameList label eachName within none
+giveNameList label eachName maxIterations count
+giveNameList label giveOne loopKind none
+giveNameList label giveOne within eachName
+giveNameList label finish loopKind none
+giveNameList label finish within none
+giveNameList let at Int64 0 mutable
+giveNameList let one Int64 1 immutable
+giveNameList let sixteen Int64 16 immutable
+giveNameList at begin do readCount
+giveNameList at begin goto eachName
+giveNameList at eachName do doneCheck
+giveNameList at eachName branch if done goto finish else goto giveOne
+giveNameList at giveOne do findName
+giveNameList at giveOne do readName
+giveNameList at giveOne do giveName
+giveNameList at giveOne do nextName
+giveNameList at giveOne set at after
+giveNameList at giveOne goto eachName
+giveNameList at finish do findBlock
+giveNameList at finish do readBlock
+giveNameList at finish do giveBlock
+giveNameList at finish do giveList
+giveNameList at finish return ok none
+
+readCount is call
+readCount in giveNameList
+readCount invokes handles.nameCount
+readCount argument names machine.Address names copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+doneCheck is call
+doneCheck in giveNameList
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 count copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+findName is call
+findName in giveNameList
+findName invokes handles.nameAt
+findName argument names machine.Address names copy
+findName argument position Int64 at copy
+findName result nameSlot machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+readName is call
+readName in giveNameList
+readName invokes machine.loadAddress
+readName argument address machine.Address nameSlot copy
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+giveName is call
+giveName in giveNameList
+giveName invokes heap.give
+giveName argument block machine.Address name copy
+giveName result none
+giveName ownedBy none
+giveName cleanedBy none
+giveName borrows none
+giveName catch none
+giveName suppresses none
+
+nextName is call
+nextName in giveNameList
+nextName invokes math.addInt64
+nextName argument left Int64 at copy
+nextName argument right Int64 one copy
+nextName result after Int64
+nextName ownedBy none
+nextName cleanedBy none
+nextName borrows none
+nextName catch none
+nextName suppresses none
+
+findBlock is call
+findBlock in giveNameList
+findBlock invokes machine.offset
+findBlock argument address machine.Address names copy
+findBlock argument bytes Int64 sixteen copy
+findBlock result blockSlot machine.Address
+findBlock ownedBy none
+findBlock cleanedBy none
+findBlock borrows none
+findBlock catch none
+findBlock suppresses none
+
+readBlock is call
+readBlock in giveNameList
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address blockSlot copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+giveBlock is call
+giveBlock in giveNameList
+giveBlock invokes heap.give
+giveBlock argument block machine.Address block copy
+giveBlock result none
+giveBlock ownedBy none
+giveBlock cleanedBy none
+giveBlock borrows none
+giveBlock catch none
+giveBlock suppresses none
+
+giveList is call
+giveList in giveNameList
+giveList invokes heap.give
+giveList argument block machine.Address names copy
+giveList result none
+giveList ownedBy none
+giveList cleanedBy none
+giveList borrows none
+giveList catch none
+giveList suppresses none
+
+cVector is operation
+cVector purpose "A 0-ended array of 0-ended copies of a list of names, with a first word before them when one is given (the address 0 for none)"
+cVector invariant none
+cVector typeParameter none
+cVector input first machine.Address copied
+cVector input firstBytes Int64 copied
+cVector input names machine.Address copied
+cVector output machine.Address
+cVector outputOwnedBy none
+cVector raises none
+cVector effect use machine.memory
+cVector effect use system.calls
+cVector uses memoryAccess
+cVector uses systemCalls
+cVector memoryHeap false
+cVector async false
+cVector maxRecursion none
+cVector label begin loopKind none
+cVector label begin within none
+cVector label addFirst loopKind none
+cVector label addFirst within none
+cVector label eachName loopKind while
+cVector label eachName within none
+cVector label eachName maxIterations count
+cVector label addName loopKind none
+cVector label addName within eachName
+cVector label finish loopKind none
+cVector label finish within none
+cVector let at Int64 0 mutable
+cVector let slot Int64 0 mutable
+cVector let firstSlot Int64 1 immutable
+cVector let two Int64 2 immutable
+cVector let eight Int64 8 immutable
+cVector let one Int64 1 immutable
+cVector at begin do readCount
+cVector at begin do withFirst
+cVector at begin do wordBytes
+cVector at begin do takeVector
+cVector at begin do nowhere
+cVector at begin do firstCheck
+cVector at begin branch if noFirst goto eachName else goto addFirst
+cVector at addFirst do copyFirst
+cVector at addFirst do storeFirst
+cVector at addFirst set slot firstSlot
+cVector at addFirst goto eachName
+cVector at eachName do doneCheck
+cVector at eachName branch if done goto finish else goto addName
+cVector at addName do findName
+cVector at addName do readName
+cVector at addName do findLength
+cVector at addName do readLength
+cVector at addName do copyName
+cVector at addName do slotOffset
+cVector at addName do findSlot
+cVector at addName do storeName
+cVector at addName do nextSlot
+cVector at addName set slot afterSlot
+cVector at addName do nextName
+cVector at addName set at after
+cVector at addName goto eachName
+cVector at finish return ok vector
+
+readCount is call
+readCount in cVector
+readCount invokes handles.nameCount
+readCount argument names machine.Address names copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+withFirst is call
+withFirst in cVector
+withFirst invokes math.addInt64
+withFirst argument left Int64 count copy
+withFirst argument right Int64 two copy
+withFirst result words Int64
+withFirst ownedBy none
+withFirst cleanedBy none
+withFirst borrows none
+withFirst catch none
+withFirst suppresses none
+
+wordBytes is call
+wordBytes in cVector
+wordBytes invokes math.multiplyInt64
+wordBytes argument left Int64 words copy
+wordBytes argument right Int64 eight copy
+wordBytes result size Int64
+wordBytes ownedBy none
+wordBytes cleanedBy none
+wordBytes borrows none
+wordBytes catch none
+wordBytes suppresses none
+
+takeVector is call
+takeVector in cVector
+takeVector invokes heap.take
+takeVector argument bytes Int64 size copy
+takeVector result vector machine.Address
+takeVector ownedBy none
+takeVector cleanedBy none
+takeVector borrows none
+takeVector catch none
+takeVector suppresses none
+
+nowhere is call
+nowhere in cVector
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+firstCheck is call
+firstCheck in cVector
+firstCheck invokes machine.equal
+firstCheck argument left machine.Address first copy
+firstCheck argument right machine.Address anywhere copy
+firstCheck result noFirst Bool
+firstCheck ownedBy none
+firstCheck cleanedBy none
+firstCheck borrows none
+firstCheck catch none
+firstCheck suppresses none
+
+copyFirst is call
+copyFirst in cVector
+copyFirst invokes files.copyBytes
+copyFirst argument data machine.Address first copy
+copyFirst argument bytes Int64 firstBytes copy
+copyFirst result firstCopy machine.Address
+copyFirst ownedBy none
+copyFirst cleanedBy none
+copyFirst borrows none
+copyFirst catch none
+copyFirst suppresses none
+
+storeFirst is call
+storeFirst in cVector
+storeFirst invokes machine.storeAddress
+storeFirst argument address machine.Address vector copy
+storeFirst argument value machine.Address firstCopy copy
+storeFirst result none
+storeFirst ownedBy none
+storeFirst cleanedBy none
+storeFirst borrows none
+storeFirst catch none
+storeFirst suppresses none
+
+doneCheck is call
+doneCheck in cVector
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 count copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+findName is call
+findName in cVector
+findName invokes handles.nameAt
+findName argument names machine.Address names copy
+findName argument position Int64 at copy
+findName result nameSlot machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+readName is call
+readName in cVector
+readName invokes machine.loadAddress
+readName argument address machine.Address nameSlot copy
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+findLength is call
+findLength in cVector
+findLength invokes machine.offset
+findLength argument address machine.Address nameSlot copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in cVector
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+copyName is call
+copyName in cVector
+copyName invokes files.copyBytes
+copyName argument data machine.Address name copy
+copyName argument bytes Int64 length copy
+copyName result copied machine.Address
+copyName ownedBy none
+copyName cleanedBy none
+copyName borrows none
+copyName catch none
+copyName suppresses none
+
+slotOffset is call
+slotOffset in cVector
+slotOffset invokes math.multiplyInt64
+slotOffset argument left Int64 slot copy
+slotOffset argument right Int64 eight copy
+slotOffset result offset Int64
+slotOffset ownedBy none
+slotOffset cleanedBy none
+slotOffset borrows none
+slotOffset catch none
+slotOffset suppresses none
+
+findSlot is call
+findSlot in cVector
+findSlot invokes machine.offset
+findSlot argument address machine.Address vector copy
+findSlot argument bytes Int64 offset copy
+findSlot result target machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeName is call
+storeName in cVector
+storeName invokes machine.storeAddress
+storeName argument address machine.Address target copy
+storeName argument value machine.Address copied copy
+storeName result none
+storeName ownedBy none
+storeName cleanedBy none
+storeName borrows none
+storeName catch none
+storeName suppresses none
+
+nextSlot is call
+nextSlot in cVector
+nextSlot invokes math.addInt64
+nextSlot argument left Int64 slot copy
+nextSlot argument right Int64 one copy
+nextSlot result afterSlot Int64
+nextSlot ownedBy none
+nextSlot cleanedBy none
+nextSlot borrows none
+nextSlot catch none
+nextSlot suppresses none
+
+nextName is call
+nextName in cVector
+nextName invokes math.addInt64
+nextName argument left Int64 at copy
+nextName argument right Int64 one copy
+nextName result after Int64
+nextName ownedBy none
+nextName cleanedBy none
+nextName borrows none
+nextName catch none
+nextName suppresses none
+
+giveVector is operation
+giveVector purpose "Give back a 0-ended array of heap blocks and the blocks"
+giveVector invariant none
+giveVector typeParameter none
+giveVector input vector machine.Address copied
+giveVector output none
+giveVector outputOwnedBy none
+giveVector raises none
+giveVector effect use machine.memory
+giveVector effect use system.calls
+giveVector uses memoryAccess
+giveVector uses systemCalls
+giveVector memoryHeap false
+giveVector async false
+giveVector maxRecursion none
+giveVector label begin loopKind none
+giveVector label begin within none
+giveVector label eachWord loopKind while
+giveVector label eachWord within none
+giveVector label eachWord maxIterations forever
+giveVector label giveWord loopKind none
+giveVector label giveWord within eachWord
+giveVector label finish loopKind none
+giveVector label finish within none
+giveVector let at Int64 0 mutable
+giveVector let eight Int64 8 immutable
+giveVector let one Int64 1 immutable
+giveVector at begin goto eachWord
+giveVector at eachWord do offsetOf
+giveVector at eachWord do findWord
+giveVector at eachWord do readWord
+giveVector at eachWord do nowhere
+giveVector at eachWord do endCheck
+giveVector at eachWord branch if atEnd goto finish else goto giveWord
+giveVector at giveWord do giveIt
+giveVector at giveWord do nextWord
+giveVector at giveWord set at after
+giveVector at giveWord goto eachWord
+giveVector at finish do giveBlock
+giveVector at finish return ok none
+
+offsetOf is call
+offsetOf in giveVector
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 at copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findWord is call
+findWord in giveVector
+findWord invokes machine.offset
+findWord argument address machine.Address vector copy
+findWord argument bytes Int64 offset copy
+findWord result slot machine.Address
+findWord ownedBy none
+findWord cleanedBy none
+findWord borrows none
+findWord catch none
+findWord suppresses none
+
+readWord is call
+readWord in giveVector
+readWord invokes machine.loadAddress
+readWord argument address machine.Address slot copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+nowhere is call
+nowhere in giveVector
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+endCheck is call
+endCheck in giveVector
+endCheck invokes machine.equal
+endCheck argument left machine.Address word copy
+endCheck argument right machine.Address anywhere copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+giveIt is call
+giveIt in giveVector
+giveIt invokes heap.give
+giveIt argument block machine.Address word copy
+giveIt result none
+giveIt ownedBy none
+giveIt cleanedBy none
+giveIt borrows none
+giveIt catch none
+giveIt suppresses none
+
+nextWord is call
+nextWord in giveVector
+nextWord invokes math.addInt64
+nextWord argument left Int64 at copy
+nextWord argument right Int64 one copy
+nextWord result after Int64
+nextWord ownedBy none
+nextWord cleanedBy none
+nextWord borrows none
+nextWord catch none
+nextWord suppresses none
+
+giveBlock is call
+giveBlock in giveVector
+giveBlock invokes heap.give
+giveBlock argument block machine.Address vector copy
+giveBlock result none
+giveBlock ownedBy none
+giveBlock cleanedBy none
+giveBlock borrows none
+giveBlock catch none
+giveBlock suppresses none
+
+execChild is operation
+execChild purpose "In a forked child on Linux: SIGPIPE back to its default, the captured streams as standard input, output, and error, then execve with each name in turn; when none starts, the errno goes to the report pipe and the child exits with 127. It never returns"
+execChild invariant none
+execChild typeParameter none
+execChild input candidates machine.Address copied
+execChild input arguments machine.Address copied
+execChild input fds machine.Address copied
+execChild input captured Bool copied
+execChild input action machine.Address copied
+execChild output none
+execChild outputOwnedBy none
+execChild raises none
+execChild effect use machine.memory
+execChild effect use system.calls
+execChild uses memoryAccess
+execChild uses systemCalls
+execChild memoryHeap false
+execChild async false
+execChild maxRecursion none
+execChild label begin loopKind none
+execChild label begin within none
+execChild label redirect loopKind none
+execChild label redirect within none
+execChild label tryNames loopKind none
+execChild label tryNames within none
+execChild label eachName loopKind while
+execChild label eachName within none
+execChild label eachName maxIterations count
+execChild label tryOne loopKind none
+execChild label tryOne within eachName
+execChild label keepErrno loopKind none
+execChild label keepErrno within eachName
+execChild label nextName loopKind none
+execChild label nextName within eachName
+execChild label report loopKind none
+execChild label report within none
+execChild label writeSaved loopKind none
+execChild label writeSaved within none
+execChild label writeLast loopKind none
+execChild label writeLast within none
+execChild let saved Int64 0 mutable
+execChild let last Int64 2 mutable
+execChild let at Int64 0 mutable
+execChild let brokenPipeSignal Int64 13 immutable
+execChild let maskBytes Int64 8 immutable
+execChild let zero Int64 0 immutable
+execChild let eight Int64 8 immutable
+execChild let one Int64 1 immutable
+execChild let sixteen Int64 16 immutable
+execChild let two Int64 2 immutable
+execChild let twenty Int64 20 immutable
+execChild let twentyFour Int64 24 immutable
+execChild let thirtyTwo Int64 32 immutable
+execChild let childFailed Int64 127 immutable
+execChild at begin do nowhere
+execChild at begin do defaultPipe
+execChild at begin branch if captured goto redirect else goto tryNames
+execChild at redirect do inputEnd
+execChild at redirect do dupInput
+execChild at redirect do findOutputPipe
+execChild at redirect do outputEnd
+execChild at redirect do dupOutput
+execChild at redirect do findErrorPipe
+execChild at redirect do errorEnd
+execChild at redirect do dupError
+execChild at redirect goto tryNames
+execChild at tryNames do readCount
+execChild at tryNames do environmentOf
+execChild at tryNames goto eachName
+execChild at eachName do doneCheck
+execChild at eachName branch if done goto report else goto tryOne
+execChild at tryOne do findName
+execChild at tryOne do readName
+execChild at tryOne do findLength
+execChild at tryOne do readLength
+execChild at tryOne do copyName
+execChild at tryOne do execIt
+execChild at tryOne do errnoOf
+execChild at tryOne set last errno
+execChild at tryOne do missingCheck
+execChild at tryOne do notDirectoryCheck
+execChild at tryOne do passCheck
+execChild at tryOne do noneSavedCheck
+execChild at tryOne do keepCheck
+execChild at tryOne do keepNow
+execChild at tryOne branch if keepIt goto keepErrno else goto nextName
+execChild at keepErrno set saved errno
+execChild at keepErrno goto nextName
+execChild at nextName do nextAt
+execChild at nextName set at after
+execChild at nextName goto eachName
+execChild at report do anySaved
+execChild at report branch if haveSaved goto writeSaved else goto writeLast
+execChild at writeSaved set last saved
+execChild at writeSaved goto writeLast
+execChild at writeLast do findReport
+execChild at writeLast do reportEnd
+execChild at writeLast do findErrno
+execChild at writeLast do storeErrno
+execChild at writeLast do writeIt
+execChild at writeLast do exitIt
+execChild at writeLast return ok none
+
+nowhere is call
+nowhere in execChild
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+defaultPipe is call
+defaultPipe in execChild
+defaultPipe invokes system.rtSigaction
+defaultPipe argument signal Int64 brokenPipeSignal copy
+defaultPipe argument action machine.Address action copy
+defaultPipe argument old machine.Address anywhere copy
+defaultPipe argument maskBytes Int64 maskBytes copy
+defaultPipe result reset Int64
+defaultPipe ownedBy none
+defaultPipe cleanedBy none
+defaultPipe borrows none
+defaultPipe catch none
+defaultPipe suppresses none
+
+inputEnd is call
+inputEnd in execChild
+inputEnd invokes pipeEnd
+inputEnd argument fds machine.Address fds copy
+inputEnd argument which Int64 zero copy
+inputEnd result childInput Int64
+inputEnd ownedBy none
+inputEnd cleanedBy none
+inputEnd borrows none
+inputEnd catch none
+inputEnd suppresses none
+
+dupInput is call
+dupInput in execChild
+dupInput invokes system.dup2
+dupInput argument fd Int64 childInput copy
+dupInput argument target Int64 zero copy
+dupInput result dupedInput Int64
+dupInput ownedBy none
+dupInput cleanedBy none
+dupInput borrows none
+dupInput catch none
+dupInput suppresses none
+
+findOutputPipe is call
+findOutputPipe in execChild
+findOutputPipe invokes machine.offset
+findOutputPipe argument address machine.Address fds copy
+findOutputPipe argument bytes Int64 eight copy
+findOutputPipe result outputFds machine.Address
+findOutputPipe ownedBy none
+findOutputPipe cleanedBy none
+findOutputPipe borrows none
+findOutputPipe catch none
+findOutputPipe suppresses none
+
+outputEnd is call
+outputEnd in execChild
+outputEnd invokes pipeEnd
+outputEnd argument fds machine.Address outputFds copy
+outputEnd argument which Int64 one copy
+outputEnd result childOutput Int64
+outputEnd ownedBy none
+outputEnd cleanedBy none
+outputEnd borrows none
+outputEnd catch none
+outputEnd suppresses none
+
+dupOutput is call
+dupOutput in execChild
+dupOutput invokes system.dup2
+dupOutput argument fd Int64 childOutput copy
+dupOutput argument target Int64 one copy
+dupOutput result dupedOutput Int64
+dupOutput ownedBy none
+dupOutput cleanedBy none
+dupOutput borrows none
+dupOutput catch none
+dupOutput suppresses none
+
+findErrorPipe is call
+findErrorPipe in execChild
+findErrorPipe invokes machine.offset
+findErrorPipe argument address machine.Address fds copy
+findErrorPipe argument bytes Int64 sixteen copy
+findErrorPipe result errorFds machine.Address
+findErrorPipe ownedBy none
+findErrorPipe cleanedBy none
+findErrorPipe borrows none
+findErrorPipe catch none
+findErrorPipe suppresses none
+
+errorEnd is call
+errorEnd in execChild
+errorEnd invokes pipeEnd
+errorEnd argument fds machine.Address errorFds copy
+errorEnd argument which Int64 one copy
+errorEnd result childError Int64
+errorEnd ownedBy none
+errorEnd cleanedBy none
+errorEnd borrows none
+errorEnd catch none
+errorEnd suppresses none
+
+dupError is call
+dupError in execChild
+dupError invokes system.dup2
+dupError argument fd Int64 childError copy
+dupError argument target Int64 two copy
+dupError result dupedError Int64
+dupError ownedBy none
+dupError cleanedBy none
+dupError borrows none
+dupError catch none
+dupError suppresses none
+
+readCount is call
+readCount in execChild
+readCount invokes handles.nameCount
+readCount argument names machine.Address candidates copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+environmentOf is call
+environmentOf in execChild
+environmentOf invokes kernel.environmentVector
+environmentOf argument none
+environmentOf result environment machine.Address
+environmentOf ownedBy none
+environmentOf cleanedBy none
+environmentOf borrows none
+environmentOf catch none
+environmentOf suppresses none
+
+doneCheck is call
+doneCheck in execChild
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 count copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+findName is call
+findName in execChild
+findName invokes handles.nameAt
+findName argument names machine.Address candidates copy
+findName argument position Int64 at copy
+findName result nameSlot machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+readName is call
+readName in execChild
+readName invokes machine.loadAddress
+readName argument address machine.Address nameSlot copy
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+findLength is call
+findLength in execChild
+findLength invokes machine.offset
+findLength argument address machine.Address nameSlot copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in execChild
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+copyName is call
+copyName in execChild
+copyName invokes files.copyBytes
+copyName argument data machine.Address name copy
+copyName argument bytes Int64 length copy
+copyName result path machine.Address
+copyName ownedBy none
+copyName cleanedBy none
+copyName borrows none
+copyName catch none
+copyName suppresses none
+
+execIt is call
+execIt in execChild
+execIt invokes system.execve
+execIt argument path machine.Address path copy
+execIt argument arguments machine.Address arguments copy
+execIt argument environment machine.Address environment copy
+execIt result execResult Int64
+execIt ownedBy none
+execIt cleanedBy none
+execIt borrows none
+execIt catch none
+execIt suppresses none
+
+errnoOf is call
+errnoOf in execChild
+errnoOf invokes kernel.errnoOf
+errnoOf argument result Int64 execResult copy
+errnoOf result errno Int64
+errnoOf ownedBy none
+errnoOf cleanedBy none
+errnoOf borrows none
+errnoOf catch none
+errnoOf suppresses none
+
+missingCheck is call
+missingCheck in execChild
+missingCheck invokes compare.equalInt64
+missingCheck argument left Int64 errno copy
+missingCheck argument right Int64 two copy
+missingCheck result isMissing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+notDirectoryCheck is call
+notDirectoryCheck in execChild
+notDirectoryCheck invokes compare.equalInt64
+notDirectoryCheck argument left Int64 errno copy
+notDirectoryCheck argument right Int64 twenty copy
+notDirectoryCheck result isNotDirectory Bool
+notDirectoryCheck ownedBy none
+notDirectoryCheck cleanedBy none
+notDirectoryCheck borrows none
+notDirectoryCheck catch none
+notDirectoryCheck suppresses none
+
+passCheck is call
+passCheck in execChild
+passCheck invokes logic.or
+passCheck argument left Bool isMissing copy
+passCheck argument right Bool isNotDirectory copy
+passCheck result passOver Bool
+passCheck ownedBy none
+passCheck cleanedBy none
+passCheck borrows none
+passCheck catch none
+passCheck suppresses none
+
+noneSavedCheck is call
+noneSavedCheck in execChild
+noneSavedCheck invokes compare.equalInt64
+noneSavedCheck argument left Int64 saved copy
+noneSavedCheck argument right Int64 zero copy
+noneSavedCheck result noneSaved Bool
+noneSavedCheck ownedBy none
+noneSavedCheck cleanedBy none
+noneSavedCheck borrows none
+noneSavedCheck catch none
+noneSavedCheck suppresses none
+
+keepCheck is call
+keepCheck in execChild
+keepCheck invokes logic.not
+keepCheck argument value Bool passOver copy
+keepCheck result notPassed Bool
+keepCheck ownedBy none
+keepCheck cleanedBy none
+keepCheck borrows none
+keepCheck catch none
+keepCheck suppresses none
+
+keepNow is call
+keepNow in execChild
+keepNow invokes logic.and
+keepNow argument left Bool notPassed copy
+keepNow argument right Bool noneSaved copy
+keepNow result keepIt Bool
+keepNow ownedBy none
+keepNow cleanedBy none
+keepNow borrows none
+keepNow catch none
+keepNow suppresses none
+
+nextAt is call
+nextAt in execChild
+nextAt invokes math.addInt64
+nextAt argument left Int64 at copy
+nextAt argument right Int64 one copy
+nextAt result after Int64
+nextAt ownedBy none
+nextAt cleanedBy none
+nextAt borrows none
+nextAt catch none
+nextAt suppresses none
+
+anySaved is call
+anySaved in execChild
+anySaved invokes compare.notEqualInt64
+anySaved argument left Int64 saved copy
+anySaved argument right Int64 zero copy
+anySaved result haveSaved Bool
+anySaved ownedBy none
+anySaved cleanedBy none
+anySaved borrows none
+anySaved catch none
+anySaved suppresses none
+
+findReport is call
+findReport in execChild
+findReport invokes machine.offset
+findReport argument address machine.Address fds copy
+findReport argument bytes Int64 twentyFour copy
+findReport result reportFds machine.Address
+findReport ownedBy none
+findReport cleanedBy none
+findReport borrows none
+findReport catch none
+findReport suppresses none
+
+reportEnd is call
+reportEnd in execChild
+reportEnd invokes pipeEnd
+reportEnd argument fds machine.Address reportFds copy
+reportEnd argument which Int64 one copy
+reportEnd result reportWrite Int64
+reportEnd ownedBy none
+reportEnd cleanedBy none
+reportEnd borrows none
+reportEnd catch none
+reportEnd suppresses none
+
+findErrno is call
+findErrno in execChild
+findErrno invokes machine.offset
+findErrno argument address machine.Address fds copy
+findErrno argument bytes Int64 thirtyTwo copy
+findErrno result errnoAt machine.Address
+findErrno ownedBy none
+findErrno cleanedBy none
+findErrno borrows none
+findErrno catch none
+findErrno suppresses none
+
+storeErrno is call
+storeErrno in execChild
+storeErrno invokes machine.storeInt64
+storeErrno argument address machine.Address errnoAt copy
+storeErrno argument value Int64 last copy
+storeErrno result none
+storeErrno ownedBy none
+storeErrno cleanedBy none
+storeErrno borrows none
+storeErrno catch none
+storeErrno suppresses none
+
+writeIt is call
+writeIt in execChild
+writeIt invokes system.write
+writeIt argument fd Int64 reportWrite copy
+writeIt argument buffer machine.Address errnoAt copy
+writeIt argument bytes Int64 eight copy
+writeIt result wrote Int64
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch none
+writeIt suppresses none
+
+exitIt is call
+exitIt in execChild
+exitIt invokes system.exitGroup
+exitIt argument code Int64 childFailed copy
+exitIt result exited Int64
+exitIt ownedBy none
+exitIt cleanedBy none
+exitIt borrows none
+exitIt catch none
+exitIt suppresses none
+
+runChildLinux is operation
+runChildLinux purpose "runChild on Linux: fork, execve in the child, and wait for it on its pidfd; with `captured`, its streams are non-blocking pipes on this side, pumped between other tasks. Gives 0 with the exit code at an address, or an error's number with its payload stored"
+runChildLinux invariant none
+runChildLinux typeParameter none
+runChildLinux input program machine.Address copied
+runChildLinux input programBytes Int64 copied
+runChildLinux input names machine.Address copied
+runChildLinux input deadline Int64 copied
+runChildLinux input captured Bool copied
+runChildLinux input input machine.Address copied
+runChildLinux input inputBytes Int64 copied
+runChildLinux input out machine.Address copied
+runChildLinux input errors machine.Address copied
+runChildLinux input codeAt machine.Address copied
+runChildLinux input payload machine.Address copied
+runChildLinux output Int32
+runChildLinux outputOwnedBy none
+runChildLinux raises none
+runChildLinux effect use machine.memory
+runChildLinux effect use system.calls
+runChildLinux uses memoryAccess
+runChildLinux uses systemCalls
+runChildLinux memoryHeap false
+runChildLinux async false
+runChildLinux maxRecursion none
+runChildLinux label begin loopKind none
+runChildLinux label begin within none
+runChildLinux label pipes loopKind none
+runChildLinux label pipes within none
+runChildLinux label start loopKind none
+runChildLinux label start within none
+runChildLinux label child loopKind none
+runChildLinux label child within none
+runChildLinux label parent loopKind none
+runChildLinux label parent within none
+runChildLinux label closeTheirs loopKind none
+runChildLinux label closeTheirs within none
+runChildLinux label forkCheck loopKind none
+runChildLinux label forkCheck within none
+runChildLinux label refuseFork loopKind none
+runChildLinux label refuseFork within none
+runChildLinux label readReport loopKind none
+runChildLinux label readReport within none
+runChildLinux label refuseStart loopKind none
+runChildLinux label refuseStart within none
+runChildLinux label giveNotFound loopKind none
+runChildLinux label giveNotFound within none
+runChildLinux label giveFailed loopKind none
+runChildLinux label giveFailed within none
+runChildLinux label running loopKind none
+runChildLinux label running within none
+runChildLinux label withPidfd loopKind none
+runChildLinux label withPidfd within none
+runChildLinux label pollOnly loopKind none
+runChildLinux label pollOnly within none
+runChildLinux label pumpStart loopKind none
+runChildLinux label pumpStart within none
+runChildLinux label startPump loopKind none
+runChildLinux label startPump within none
+runChildLinux label keepInput loopKind none
+runChildLinux label keepInput within none
+runChildLinux label closeInput loopKind none
+runChildLinux label closeInput within none
+runChildLinux label eachPump loopKind while
+runChildLinux label eachPump within none
+runChildLinux label eachPump maxIterations forever
+runChildLinux label writeInput loopKind none
+runChildLinux label writeInput within eachPump
+runChildLinux label notWritten loopKind none
+runChildLinux label notWritten within eachPump
+runChildLinux label inputBroken loopKind none
+runChildLinux label inputBroken within eachPump
+runChildLinux label countWritten loopKind none
+runChildLinux label countWritten within eachPump
+runChildLinux label inputDoneCheck loopKind none
+runChildLinux label inputDoneCheck within eachPump
+runChildLinux label finishInput loopKind none
+runChildLinux label finishInput within eachPump
+runChildLinux label readOut loopKind none
+runChildLinux label readOut within eachPump
+runChildLinux label pumpOut loopKind none
+runChildLinux label pumpOut within eachPump
+runChildLinux label endOut loopKind none
+runChildLinux label endOut within eachPump
+runChildLinux label outGaveCheck loopKind none
+runChildLinux label outGaveCheck within eachPump
+runChildLinux label outProgress loopKind none
+runChildLinux label outProgress within eachPump
+runChildLinux label readErrors loopKind none
+runChildLinux label readErrors within eachPump
+runChildLinux label pumpErrors loopKind none
+runChildLinux label pumpErrors within eachPump
+runChildLinux label endErrors loopKind none
+runChildLinux label endErrors within eachPump
+runChildLinux label errorGaveCheck loopKind none
+runChildLinux label errorGaveCheck within eachPump
+runChildLinux label errorProgress loopKind none
+runChildLinux label errorProgress within eachPump
+runChildLinux label pumpCheck loopKind none
+runChildLinux label pumpCheck within eachPump
+runChildLinux label pumpDeadline loopKind none
+runChildLinux label pumpDeadline within eachPump
+runChildLinux label pumpPast loopKind none
+runChildLinux label pumpPast within eachPump
+runChildLinux label pumpPause loopKind none
+runChildLinux label pumpPause within eachPump
+runChildLinux label pumpWait loopKind none
+runChildLinux label pumpWait within eachPump
+runChildLinux label useDeadlineTime loopKind none
+runChildLinux label useDeadlineTime within eachPump
+runChildLinux label waitPump loopKind none
+runChildLinux label waitPump within eachPump
+runChildLinux label pumpDone loopKind none
+runChildLinux label pumpDone within none
+runChildLinux label eachWait loopKind while
+runChildLinux label eachWait within none
+runChildLinux label eachWait maxIterations forever
+runChildLinux label waitDeadline loopKind none
+runChildLinux label waitDeadline within eachWait
+runChildLinux label waitPast loopKind none
+runChildLinux label waitPast within eachWait
+runChildLinux label waitPoll loopKind none
+runChildLinux label waitPoll within eachWait
+runChildLinux label pollSoonWait loopKind none
+runChildLinux label pollSoonWait within eachWait
+runChildLinux label useTen loopKind none
+runChildLinux label useTen within eachWait
+runChildLinux label waitMore loopKind none
+runChildLinux label waitMore within eachWait
+runChildLinux label stopLate loopKind none
+runChildLinux label stopLate within none
+runChildLinux label stopCancelled loopKind none
+runChildLinux label stopCancelled within none
+runChildLinux label finished loopKind none
+runChildLinux label finished within none
+runChildLinux label exitCode loopKind none
+runChildLinux label exitCode within none
+runChildLinux label signalCode loopKind none
+runChildLinux label signalCode within none
+runChildLinux label childExited loopKind none
+runChildLinux label childExited within none
+runChildLinux label closeAll loopKind none
+runChildLinux label closeAll within none
+runChildLinux label giveAll loopKind none
+runChildLinux label giveAll within none
+runChildLinux let written Int64 0 mutable
+runChildLinux let inputOpen Bool false mutable
+runChildLinux let outOpen Bool false mutable
+runChildLinux let errorsOpen Bool false mutable
+runChildLinux let progress Bool false mutable
+runChildLinux let poll Int64 0 mutable
+runChildLinux let waitValue Int64 0 mutable
+runChildLinux let ourInput Int64 -1 mutable
+runChildLinux let ourOut Int64 -1 mutable
+runChildLinux let ourErrors Int64 -1 mutable
+runChildLinux let yes Bool true immutable
+runChildLinux let no Bool false immutable
+runChildLinux let ok Int32 0 immutable
+runChildLinux let closedFd Int64 -1 immutable
+runChildLinux let result Int32 0 mutable
+runChildLinux let childText String "a wait for a child process" immutable
+runChildLinux let thirtyTwo Int64 32 immutable
+runChildLinux let sixtyFour Int64 64 immutable
+runChildLinux let eight Int64 8 immutable
+runChildLinux let sixteen Int64 16 immutable
+runChildLinux let twentyFour Int64 24 immutable
+runChildLinux let closeOnExec Int64 524288 immutable
+runChildLinux let zero Int64 0 immutable
+runChildLinux let one Int64 1 immutable
+runChildLinux let forty Int64 40 immutable
+runChildLinux let two Int64 2 immutable
+runChildLinux let eagainResult Int64 -11 immutable
+runChildLinux let noHang Int64 1 immutable
+runChildLinux let ten Int64 10 immutable
+runChildLinux let killSignal Int64 9 immutable
+runChildLinux let signalMask Int64 127 immutable
+runChildLinux let byteMask Int64 255 immutable
+runChildLinux at begin do nowhere
+runChildLinux at begin do makeCandidates
+runChildLinux at begin do makeArguments
+runChildLinux at begin do takeAction
+runChildLinux at begin do takeFds
+runChildLinux at begin do findOutFds
+runChildLinux at begin do findErrorFds
+runChildLinux at begin do findReportFds
+runChildLinux at begin do makeReport
+runChildLinux at begin branch if captured goto pipes else goto start
+runChildLinux at pipes do makeInput
+runChildLinux at pipes do makeOutput
+runChildLinux at pipes do makeErrors
+runChildLinux at pipes goto start
+runChildLinux at start do forkIt
+runChildLinux at start do childCheck
+runChildLinux at start branch if inChild goto child else goto parent
+runChildLinux at child do runIt
+runChildLinux at child return ok ok
+runChildLinux at parent do readReportRead
+runChildLinux at parent do readReportWrite
+runChildLinux at parent do closeReportWrite
+runChildLinux at parent branch if captured goto closeTheirs else goto forkCheck
+runChildLinux at closeTheirs do theirInput
+runChildLinux at closeTheirs do closeTheirInput
+runChildLinux at closeTheirs do theirOutput
+runChildLinux at closeTheirs do closeTheirOutput
+runChildLinux at closeTheirs do theirError
+runChildLinux at closeTheirs do closeTheirError
+runChildLinux at closeTheirs do oursInput
+runChildLinux at closeTheirs set ourInput ourInputFd
+runChildLinux at closeTheirs do oursOutput
+runChildLinux at closeTheirs set ourOut ourOutFd
+runChildLinux at closeTheirs do oursErrors
+runChildLinux at closeTheirs set ourErrors ourErrorsFd
+runChildLinux at closeTheirs do blockInput
+runChildLinux at closeTheirs do blockOutput
+runChildLinux at closeTheirs do blockErrors
+runChildLinux at closeTheirs goto forkCheck
+runChildLinux at forkCheck do forkFailed
+runChildLinux at forkCheck branch if noFork goto refuseFork else goto readReport
+runChildLinux at refuseFork do forkErrno
+runChildLinux at refuseFork do closeReportFork
+runChildLinux at refuseFork do closeInputFork
+runChildLinux at refuseFork do closeOutFork
+runChildLinux at refuseFork do closeErrorsFork
+runChildLinux at refuseFork do failedFork
+runChildLinux at refuseFork set result status0
+runChildLinux at refuseFork goto giveAll
+runChildLinux at readReport do findErrno
+runChildLinux at readReport do storeNoErrno
+runChildLinux at readReport do readIt
+runChildLinux at readReport do closeReportRead
+runChildLinux at readReport do reportedCheck
+runChildLinux at readReport branch if execFailed goto refuseStart else goto running
+runChildLinux at refuseStart do readErrno
+runChildLinux at refuseStart do findStatusFailed
+runChildLinux at refuseStart do reapIt
+runChildLinux at refuseStart do closeInputFailed
+runChildLinux at refuseStart do closeOutFailed
+runChildLinux at refuseStart do closeErrorsFailed
+runChildLinux at refuseStart do missingCheck
+runChildLinux at refuseStart branch if isMissing goto giveNotFound else goto giveFailed
+runChildLinux at giveNotFound do notFoundStatus
+runChildLinux at giveNotFound set result status1
+runChildLinux at giveNotFound goto giveAll
+runChildLinux at giveFailed do failedStatus
+runChildLinux at giveFailed set result status2
+runChildLinux at giveFailed goto giveAll
+runChildLinux at running do pidAddress
+runChildLinux at running do holdIt
+runChildLinux at running do openPidfd
+runChildLinux at running do pidfdFailed
+runChildLinux at running branch if noPidfd goto pollOnly else goto withPidfd
+runChildLinux at withPidfd do plusOne
+runChildLinux at withPidfd set waitValue pidfdValue
+runChildLinux at withPidfd goto pumpStart
+runChildLinux at pollOnly set waitValue zero
+runChildLinux at pollOnly goto pumpStart
+runChildLinux at pumpStart do waitHandleOf
+runChildLinux at pumpStart branch if captured goto startPump else goto eachWait
+runChildLinux at startPump set outOpen yes
+runChildLinux at startPump set errorsOpen yes
+runChildLinux at startPump do anyInput
+runChildLinux at startPump branch if hasInput goto keepInput else goto closeInput
+runChildLinux at keepInput set inputOpen yes
+runChildLinux at keepInput goto eachPump
+runChildLinux at closeInput do closeInputNow
+runChildLinux at closeInput set ourInput closedFd
+runChildLinux at closeInput goto eachPump
+runChildLinux at eachPump set progress no
+runChildLinux at eachPump branch if inputOpen goto writeInput else goto readOut
+runChildLinux at writeInput do leftOf
+runChildLinux at writeInput do findFrom
+runChildLinux at writeInput do writeIt
+runChildLinux at writeInput do wroteCheck
+runChildLinux at writeInput branch if wroteSome goto countWritten else goto notWritten
+runChildLinux at notWritten do againCheck
+runChildLinux at notWritten branch if isAgain goto inputDoneCheck else goto inputBroken
+runChildLinux at inputBroken set written inputBytes
+runChildLinux at inputBroken goto inputDoneCheck
+runChildLinux at countWritten do addWritten
+runChildLinux at countWritten set written moreWritten
+runChildLinux at countWritten set progress yes
+runChildLinux at countWritten goto inputDoneCheck
+runChildLinux at inputDoneCheck do allCheck
+runChildLinux at inputDoneCheck branch if allWritten goto finishInput else goto readOut
+runChildLinux at finishInput do closeInputEnd
+runChildLinux at finishInput set ourInput closedFd
+runChildLinux at finishInput set inputOpen no
+runChildLinux at finishInput set progress yes
+runChildLinux at finishInput goto readOut
+runChildLinux at readOut branch if outOpen goto pumpOut else goto readErrors
+runChildLinux at pumpOut do readOutPipe
+runChildLinux at pumpOut do outEndCheck
+runChildLinux at pumpOut branch if outEnded goto endOut else goto outGaveCheck
+runChildLinux at endOut do closeOut
+runChildLinux at endOut set ourOut closedFd
+runChildLinux at endOut set outOpen no
+runChildLinux at endOut set progress yes
+runChildLinux at endOut goto readErrors
+runChildLinux at outGaveCheck do outGave
+runChildLinux at outGaveCheck branch if gotOut goto outProgress else goto readErrors
+runChildLinux at outProgress set progress yes
+runChildLinux at outProgress goto readErrors
+runChildLinux at readErrors branch if errorsOpen goto pumpErrors else goto pumpCheck
+runChildLinux at pumpErrors do readErrorPipe
+runChildLinux at pumpErrors do errorEndCheck
+runChildLinux at pumpErrors branch if errorEnded goto endErrors else goto errorGaveCheck
+runChildLinux at endErrors do closeErrors
+runChildLinux at endErrors set ourErrors closedFd
+runChildLinux at endErrors set errorsOpen no
+runChildLinux at endErrors set progress yes
+runChildLinux at endErrors goto pumpCheck
+runChildLinux at errorGaveCheck do errorGave
+runChildLinux at errorGaveCheck branch if gotError goto errorProgress else goto pumpCheck
+runChildLinux at errorProgress set progress yes
+runChildLinux at errorProgress goto pumpCheck
+runChildLinux at pumpCheck do bothOpen
+runChildLinux at pumpCheck branch if streamsOpen goto pumpDeadline else goto pumpDone
+runChildLinux at pumpDeadline do readPumpNow
+runChildLinux at pumpDeadline do pumpNever
+runChildLinux at pumpDeadline branch if pumpNoDeadline goto pumpPause else goto pumpPast
+runChildLinux at pumpPast do pumpPastCheck
+runChildLinux at pumpPast branch if pumpLate goto stopLate else goto pumpPause
+runChildLinux at pumpPause branch if progress goto eachPump else goto pumpWait
+runChildLinux at pumpWait do pollSoon
+runChildLinux at pumpWait set poll soon
+runChildLinux at pumpWait do earlierCheck
+runChildLinux at pumpWait do notNever
+runChildLinux at pumpWait do useCheck
+runChildLinux at pumpWait branch if useDeadline goto useDeadlineTime else goto waitPump
+runChildLinux at useDeadlineTime set poll deadline
+runChildLinux at useDeadlineTime goto waitPump
+runChildLinux at waitPump do waitIt
+runChildLinux at waitPump do cancelledCheck
+runChildLinux at waitPump branch if isCancelled goto stopCancelled else goto eachPump
+runChildLinux at pumpDone do closeLeft
+runChildLinux at pumpDone set ourInput closedFd
+runChildLinux at pumpDone goto eachWait
+runChildLinux at eachWait do findStatus
+runChildLinux at eachWait do storeNoStatus
+runChildLinux at eachWait do pollChild
+runChildLinux at eachWait do exitedCheck
+runChildLinux at eachWait branch if hasExited goto finished else goto waitDeadline
+runChildLinux at waitDeadline do readWaitNow
+runChildLinux at waitDeadline do waitNever
+runChildLinux at waitDeadline branch if waitNoDeadline goto waitPoll else goto waitPast
+runChildLinux at waitPast do waitPastCheck
+runChildLinux at waitPast branch if waitLate goto stopLate else goto waitPoll
+runChildLinux at waitPoll set poll deadline
+runChildLinux at waitPoll do pidfdCheck
+runChildLinux at waitPoll branch if hasPidfd goto waitMore else goto pollSoonWait
+runChildLinux at pollSoonWait do tenLater
+runChildLinux at pollSoonWait do laterCheck
+runChildLinux at pollSoonWait do noDeadlineCheck
+runChildLinux at pollSoonWait branch if tenAlways goto useTen else goto waitMore
+runChildLinux at useTen set poll pollTen
+runChildLinux at useTen goto waitMore
+runChildLinux at waitMore do waitOnce
+runChildLinux at waitMore do waitCancelledCheck
+runChildLinux at waitMore branch if waitCancelled goto stopCancelled else goto eachWait
+runChildLinux at stopLate do killLate
+runChildLinux at stopLate do findLateStatus
+runChildLinux at stopLate do reapLate
+runChildLinux at stopLate do letGoLate
+runChildLinux at stopLate do lateStatus
+runChildLinux at stopLate set result status3
+runChildLinux at stopLate goto closeAll
+runChildLinux at stopCancelled do killCancel
+runChildLinux at stopCancelled do findCancelStatus
+runChildLinux at stopCancelled do reapCancel
+runChildLinux at stopCancelled do letGoCancel
+runChildLinux at stopCancelled do cancelStatus
+runChildLinux at stopCancelled set result status4
+runChildLinux at stopCancelled goto closeAll
+runChildLinux at finished do readStatus
+runChildLinux at finished do lowOf
+runChildLinux at finished do exitCheck
+runChildLinux at finished branch if normalExit goto exitCode else goto signalCode
+runChildLinux at exitCode do shiftIt
+runChildLinux at exitCode do maskIt
+runChildLinux at exitCode do narrowCode
+runChildLinux at exitCode do storeCode
+runChildLinux at exitCode goto childExited
+runChildLinux at signalCode do negateIt
+runChildLinux at signalCode do narrowSignal
+runChildLinux at signalCode do storeSignal
+runChildLinux at signalCode goto childExited
+runChildLinux at childExited do letGo
+runChildLinux at childExited goto closeAll
+runChildLinux at closeAll do closeInputAll
+runChildLinux at closeAll do closeOutAll
+runChildLinux at closeAll do closeErrorsAll
+runChildLinux at closeAll do pidfdOf
+runChildLinux at closeAll do closePidfd
+runChildLinux at closeAll goto giveAll
+runChildLinux at giveAll do giveCandidates
+runChildLinux at giveAll do giveArguments
+runChildLinux at giveAll do giveAction
+runChildLinux at giveAll do giveFds
+runChildLinux at giveAll return ok result
+
+nowhere is call
+nowhere in runChildLinux
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+makeCandidates is call
+makeCandidates in runChildLinux
+makeCandidates invokes childNames
+makeCandidates argument program machine.Address program copy
+makeCandidates argument programBytes Int64 programBytes copy
+makeCandidates result candidates machine.Address
+makeCandidates ownedBy none
+makeCandidates cleanedBy none
+makeCandidates borrows none
+makeCandidates catch none
+makeCandidates suppresses none
+
+makeArguments is call
+makeArguments in runChildLinux
+makeArguments invokes cVector
+makeArguments argument first machine.Address program copy
+makeArguments argument firstBytes Int64 programBytes copy
+makeArguments argument names machine.Address names copy
+makeArguments result arguments machine.Address
+makeArguments ownedBy none
+makeArguments cleanedBy none
+makeArguments borrows none
+makeArguments catch none
+makeArguments suppresses none
+
+takeAction is call
+takeAction in runChildLinux
+takeAction invokes heap.take
+takeAction argument bytes Int64 thirtyTwo copy
+takeAction result action machine.Address
+takeAction ownedBy none
+takeAction cleanedBy none
+takeAction borrows none
+takeAction catch none
+takeAction suppresses none
+
+takeFds is call
+takeFds in runChildLinux
+takeFds invokes heap.take
+takeFds argument bytes Int64 sixtyFour copy
+takeFds result fds machine.Address
+takeFds ownedBy none
+takeFds cleanedBy none
+takeFds borrows none
+takeFds catch none
+takeFds suppresses none
+
+findOutFds is call
+findOutFds in runChildLinux
+findOutFds invokes machine.offset
+findOutFds argument address machine.Address fds copy
+findOutFds argument bytes Int64 eight copy
+findOutFds result outFds machine.Address
+findOutFds ownedBy none
+findOutFds cleanedBy none
+findOutFds borrows none
+findOutFds catch none
+findOutFds suppresses none
+
+findErrorFds is call
+findErrorFds in runChildLinux
+findErrorFds invokes machine.offset
+findErrorFds argument address machine.Address fds copy
+findErrorFds argument bytes Int64 sixteen copy
+findErrorFds result errorFds machine.Address
+findErrorFds ownedBy none
+findErrorFds cleanedBy none
+findErrorFds borrows none
+findErrorFds catch none
+findErrorFds suppresses none
+
+findReportFds is call
+findReportFds in runChildLinux
+findReportFds invokes machine.offset
+findReportFds argument address machine.Address fds copy
+findReportFds argument bytes Int64 twentyFour copy
+findReportFds result reportFds machine.Address
+findReportFds ownedBy none
+findReportFds cleanedBy none
+findReportFds borrows none
+findReportFds catch none
+findReportFds suppresses none
+
+makeReport is call
+makeReport in runChildLinux
+makeReport invokes system.pipe2
+makeReport argument fds machine.Address reportFds copy
+makeReport argument flags Int64 closeOnExec copy
+makeReport result reportMade Int64
+makeReport ownedBy none
+makeReport cleanedBy none
+makeReport borrows none
+makeReport catch none
+makeReport suppresses none
+
+makeInput is call
+makeInput in runChildLinux
+makeInput invokes system.pipe2
+makeInput argument fds machine.Address fds copy
+makeInput argument flags Int64 closeOnExec copy
+makeInput result inputMade Int64
+makeInput ownedBy none
+makeInput cleanedBy none
+makeInput borrows none
+makeInput catch none
+makeInput suppresses none
+
+makeOutput is call
+makeOutput in runChildLinux
+makeOutput invokes system.pipe2
+makeOutput argument fds machine.Address outFds copy
+makeOutput argument flags Int64 closeOnExec copy
+makeOutput result outputMade Int64
+makeOutput ownedBy none
+makeOutput cleanedBy none
+makeOutput borrows none
+makeOutput catch none
+makeOutput suppresses none
+
+makeErrors is call
+makeErrors in runChildLinux
+makeErrors invokes system.pipe2
+makeErrors argument fds machine.Address errorFds copy
+makeErrors argument flags Int64 closeOnExec copy
+makeErrors result errorsMade Int64
+makeErrors ownedBy none
+makeErrors cleanedBy none
+makeErrors borrows none
+makeErrors catch none
+makeErrors suppresses none
+
+forkIt is call
+forkIt in runChildLinux
+forkIt invokes system.fork
+forkIt argument none
+forkIt result pid Int64
+forkIt ownedBy none
+forkIt cleanedBy none
+forkIt borrows none
+forkIt catch none
+forkIt suppresses none
+
+childCheck is call
+childCheck in runChildLinux
+childCheck invokes compare.equalInt64
+childCheck argument left Int64 pid copy
+childCheck argument right Int64 zero copy
+childCheck result inChild Bool
+childCheck ownedBy none
+childCheck cleanedBy none
+childCheck borrows none
+childCheck catch none
+childCheck suppresses none
+
+runIt is call
+runIt in runChildLinux
+runIt invokes execChild
+runIt argument candidates machine.Address candidates copy
+runIt argument arguments machine.Address arguments copy
+runIt argument fds machine.Address fds copy
+runIt argument captured Bool captured copy
+runIt argument action machine.Address action copy
+runIt result none
+runIt ownedBy none
+runIt cleanedBy none
+runIt borrows none
+runIt catch none
+runIt suppresses none
+
+readReportRead is call
+readReportRead in runChildLinux
+readReportRead invokes pipeEnd
+readReportRead argument fds machine.Address reportFds copy
+readReportRead argument which Int64 zero copy
+readReportRead result reportRead Int64
+readReportRead ownedBy none
+readReportRead cleanedBy none
+readReportRead borrows none
+readReportRead catch none
+readReportRead suppresses none
+
+readReportWrite is call
+readReportWrite in runChildLinux
+readReportWrite invokes pipeEnd
+readReportWrite argument fds machine.Address reportFds copy
+readReportWrite argument which Int64 one copy
+readReportWrite result reportWrite Int64
+readReportWrite ownedBy none
+readReportWrite cleanedBy none
+readReportWrite borrows none
+readReportWrite catch none
+readReportWrite suppresses none
+
+closeReportWrite is call
+closeReportWrite in runChildLinux
+closeReportWrite invokes closeDescriptor
+closeReportWrite argument fd Int64 reportWrite copy
+closeReportWrite result none
+closeReportWrite ownedBy none
+closeReportWrite cleanedBy none
+closeReportWrite borrows none
+closeReportWrite catch none
+closeReportWrite suppresses none
+
+theirInput is call
+theirInput in runChildLinux
+theirInput invokes pipeEnd
+theirInput argument fds machine.Address fds copy
+theirInput argument which Int64 zero copy
+theirInput result theirInputFd Int64
+theirInput ownedBy none
+theirInput cleanedBy none
+theirInput borrows none
+theirInput catch none
+theirInput suppresses none
+
+closeTheirInput is call
+closeTheirInput in runChildLinux
+closeTheirInput invokes closeDescriptor
+closeTheirInput argument fd Int64 theirInputFd copy
+closeTheirInput result none
+closeTheirInput ownedBy none
+closeTheirInput cleanedBy none
+closeTheirInput borrows none
+closeTheirInput catch none
+closeTheirInput suppresses none
+
+theirOutput is call
+theirOutput in runChildLinux
+theirOutput invokes pipeEnd
+theirOutput argument fds machine.Address outFds copy
+theirOutput argument which Int64 one copy
+theirOutput result theirOutputFd Int64
+theirOutput ownedBy none
+theirOutput cleanedBy none
+theirOutput borrows none
+theirOutput catch none
+theirOutput suppresses none
+
+closeTheirOutput is call
+closeTheirOutput in runChildLinux
+closeTheirOutput invokes closeDescriptor
+closeTheirOutput argument fd Int64 theirOutputFd copy
+closeTheirOutput result none
+closeTheirOutput ownedBy none
+closeTheirOutput cleanedBy none
+closeTheirOutput borrows none
+closeTheirOutput catch none
+closeTheirOutput suppresses none
+
+theirError is call
+theirError in runChildLinux
+theirError invokes pipeEnd
+theirError argument fds machine.Address errorFds copy
+theirError argument which Int64 one copy
+theirError result theirErrorFd Int64
+theirError ownedBy none
+theirError cleanedBy none
+theirError borrows none
+theirError catch none
+theirError suppresses none
+
+closeTheirError is call
+closeTheirError in runChildLinux
+closeTheirError invokes closeDescriptor
+closeTheirError argument fd Int64 theirErrorFd copy
+closeTheirError result none
+closeTheirError ownedBy none
+closeTheirError cleanedBy none
+closeTheirError borrows none
+closeTheirError catch none
+closeTheirError suppresses none
+
+oursInput is call
+oursInput in runChildLinux
+oursInput invokes pipeEnd
+oursInput argument fds machine.Address fds copy
+oursInput argument which Int64 one copy
+oursInput result ourInputFd Int64
+oursInput ownedBy none
+oursInput cleanedBy none
+oursInput borrows none
+oursInput catch none
+oursInput suppresses none
+
+oursOutput is call
+oursOutput in runChildLinux
+oursOutput invokes pipeEnd
+oursOutput argument fds machine.Address outFds copy
+oursOutput argument which Int64 zero copy
+oursOutput result ourOutFd Int64
+oursOutput ownedBy none
+oursOutput cleanedBy none
+oursOutput borrows none
+oursOutput catch none
+oursOutput suppresses none
+
+oursErrors is call
+oursErrors in runChildLinux
+oursErrors invokes pipeEnd
+oursErrors argument fds machine.Address errorFds copy
+oursErrors argument which Int64 zero copy
+oursErrors result ourErrorsFd Int64
+oursErrors ownedBy none
+oursErrors cleanedBy none
+oursErrors borrows none
+oursErrors catch none
+oursErrors suppresses none
+
+blockInput is call
+blockInput in runChildLinux
+blockInput invokes nonBlocking
+blockInput argument fd Int64 ourInput copy
+blockInput result none
+blockInput ownedBy none
+blockInput cleanedBy none
+blockInput borrows none
+blockInput catch none
+blockInput suppresses none
+
+blockOutput is call
+blockOutput in runChildLinux
+blockOutput invokes nonBlocking
+blockOutput argument fd Int64 ourOut copy
+blockOutput result none
+blockOutput ownedBy none
+blockOutput cleanedBy none
+blockOutput borrows none
+blockOutput catch none
+blockOutput suppresses none
+
+blockErrors is call
+blockErrors in runChildLinux
+blockErrors invokes nonBlocking
+blockErrors argument fd Int64 ourErrors copy
+blockErrors result none
+blockErrors ownedBy none
+blockErrors cleanedBy none
+blockErrors borrows none
+blockErrors catch none
+blockErrors suppresses none
+
+forkFailed is call
+forkFailed in runChildLinux
+forkFailed invokes kernel.failed
+forkFailed argument result Int64 pid copy
+forkFailed result noFork Bool
+forkFailed ownedBy none
+forkFailed cleanedBy none
+forkFailed borrows none
+forkFailed catch none
+forkFailed suppresses none
+
+forkErrno is call
+forkErrno in runChildLinux
+forkErrno invokes kernel.errnoOf
+forkErrno argument result Int64 pid copy
+forkErrno result forkCode Int64
+forkErrno ownedBy none
+forkErrno cleanedBy none
+forkErrno borrows none
+forkErrno catch none
+forkErrno suppresses none
+
+closeReportFork is call
+closeReportFork in runChildLinux
+closeReportFork invokes closeDescriptor
+closeReportFork argument fd Int64 reportRead copy
+closeReportFork result none
+closeReportFork ownedBy none
+closeReportFork cleanedBy none
+closeReportFork borrows none
+closeReportFork catch none
+closeReportFork suppresses none
+
+closeInputFork is call
+closeInputFork in runChildLinux
+closeInputFork invokes closeDescriptor
+closeInputFork argument fd Int64 ourInput copy
+closeInputFork result none
+closeInputFork ownedBy none
+closeInputFork cleanedBy none
+closeInputFork borrows none
+closeInputFork catch none
+closeInputFork suppresses none
+
+closeOutFork is call
+closeOutFork in runChildLinux
+closeOutFork invokes closeDescriptor
+closeOutFork argument fd Int64 ourOut copy
+closeOutFork result none
+closeOutFork ownedBy none
+closeOutFork cleanedBy none
+closeOutFork borrows none
+closeOutFork catch none
+closeOutFork suppresses none
+
+closeErrorsFork is call
+closeErrorsFork in runChildLinux
+closeErrorsFork invokes closeDescriptor
+closeErrorsFork argument fd Int64 ourErrors copy
+closeErrorsFork result none
+closeErrorsFork ownedBy none
+closeErrorsFork cleanedBy none
+closeErrorsFork borrows none
+closeErrorsFork catch none
+closeErrorsFork suppresses none
+
+failedFork is call
+failedFork in runChildLinux
+failedFork invokes slots.failWith
+failedFork argument payload machine.Address payload copy
+failedFork argument status Int32 runFailed copy
+failedFork argument value Int64 forkCode copy
+failedFork result status0 Int32
+failedFork ownedBy none
+failedFork cleanedBy none
+failedFork borrows none
+failedFork catch none
+failedFork suppresses none
+
+findErrno is call
+findErrno in runChildLinux
+findErrno invokes machine.offset
+findErrno argument address machine.Address fds copy
+findErrno argument bytes Int64 thirtyTwo copy
+findErrno result errnoAt machine.Address
+findErrno ownedBy none
+findErrno cleanedBy none
+findErrno borrows none
+findErrno catch none
+findErrno suppresses none
+
+storeNoErrno is call
+storeNoErrno in runChildLinux
+storeNoErrno invokes machine.storeInt64
+storeNoErrno argument address machine.Address errnoAt copy
+storeNoErrno argument value Int64 zero copy
+storeNoErrno result none
+storeNoErrno ownedBy none
+storeNoErrno cleanedBy none
+storeNoErrno borrows none
+storeNoErrno catch none
+storeNoErrno suppresses none
+
+readIt is call
+readIt in runChildLinux
+readIt invokes system.read
+readIt argument fd Int64 reportRead copy
+readIt argument buffer machine.Address errnoAt copy
+readIt argument bytes Int64 eight copy
+readIt result reported Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+closeReportRead is call
+closeReportRead in runChildLinux
+closeReportRead invokes closeDescriptor
+closeReportRead argument fd Int64 reportRead copy
+closeReportRead result none
+closeReportRead ownedBy none
+closeReportRead cleanedBy none
+closeReportRead borrows none
+closeReportRead catch none
+closeReportRead suppresses none
+
+reportedCheck is call
+reportedCheck in runChildLinux
+reportedCheck invokes compare.equalInt64
+reportedCheck argument left Int64 reported copy
+reportedCheck argument right Int64 eight copy
+reportedCheck result execFailed Bool
+reportedCheck ownedBy none
+reportedCheck cleanedBy none
+reportedCheck borrows none
+reportedCheck catch none
+reportedCheck suppresses none
+
+readErrno is call
+readErrno in runChildLinux
+readErrno invokes machine.loadInt64
+readErrno argument address machine.Address errnoAt copy
+readErrno result startErrno Int64
+readErrno ownedBy none
+readErrno cleanedBy none
+readErrno borrows none
+readErrno catch none
+readErrno suppresses none
+
+findStatusFailed is call
+findStatusFailed in runChildLinux
+findStatusFailed invokes machine.offset
+findStatusFailed argument address machine.Address fds copy
+findStatusFailed argument bytes Int64 forty copy
+findStatusFailed result reapStatus machine.Address
+findStatusFailed ownedBy none
+findStatusFailed cleanedBy none
+findStatusFailed borrows none
+findStatusFailed catch none
+findStatusFailed suppresses none
+
+reapIt is call
+reapIt in runChildLinux
+reapIt invokes system.wait4
+reapIt argument pid Int64 pid copy
+reapIt argument status machine.Address reapStatus copy
+reapIt argument options Int64 zero copy
+reapIt argument usage machine.Address anywhere copy
+reapIt result reaped Int64
+reapIt ownedBy none
+reapIt cleanedBy none
+reapIt borrows none
+reapIt catch none
+reapIt suppresses none
+
+closeInputFailed is call
+closeInputFailed in runChildLinux
+closeInputFailed invokes closeDescriptor
+closeInputFailed argument fd Int64 ourInput copy
+closeInputFailed result none
+closeInputFailed ownedBy none
+closeInputFailed cleanedBy none
+closeInputFailed borrows none
+closeInputFailed catch none
+closeInputFailed suppresses none
+
+closeOutFailed is call
+closeOutFailed in runChildLinux
+closeOutFailed invokes closeDescriptor
+closeOutFailed argument fd Int64 ourOut copy
+closeOutFailed result none
+closeOutFailed ownedBy none
+closeOutFailed cleanedBy none
+closeOutFailed borrows none
+closeOutFailed catch none
+closeOutFailed suppresses none
+
+closeErrorsFailed is call
+closeErrorsFailed in runChildLinux
+closeErrorsFailed invokes closeDescriptor
+closeErrorsFailed argument fd Int64 ourErrors copy
+closeErrorsFailed result none
+closeErrorsFailed ownedBy none
+closeErrorsFailed cleanedBy none
+closeErrorsFailed borrows none
+closeErrorsFailed catch none
+closeErrorsFailed suppresses none
+
+missingCheck is call
+missingCheck in runChildLinux
+missingCheck invokes compare.equalInt64
+missingCheck argument left Int64 startErrno copy
+missingCheck argument right Int64 two copy
+missingCheck result isMissing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+notFoundStatus is call
+notFoundStatus in runChildLinux
+notFoundStatus invokes slots.failWith
+notFoundStatus argument payload machine.Address payload copy
+notFoundStatus argument status Int32 runNotFound copy
+notFoundStatus argument value Int64 zero copy
+notFoundStatus result status1 Int32
+notFoundStatus ownedBy none
+notFoundStatus cleanedBy none
+notFoundStatus borrows none
+notFoundStatus catch none
+notFoundStatus suppresses none
+
+failedStatus is call
+failedStatus in runChildLinux
+failedStatus invokes slots.failWith
+failedStatus argument payload machine.Address payload copy
+failedStatus argument status Int32 runFailed copy
+failedStatus argument value Int64 startErrno copy
+failedStatus result status2 Int32
+failedStatus ownedBy none
+failedStatus cleanedBy none
+failedStatus borrows none
+failedStatus catch none
+failedStatus suppresses none
+
+pidAddress is call
+pidAddress in runChildLinux
+pidAddress invokes machine.fromInt64
+pidAddress argument value Int64 pid copy
+pidAddress result process machine.Address
+pidAddress ownedBy none
+pidAddress cleanedBy none
+pidAddress borrows none
+pidAddress catch none
+pidAddress suppresses none
+
+holdIt is call
+holdIt in runChildLinux
+holdIt invokes frames.holdResource
+holdIt argument kind Int64 two copy
+holdIt argument handle machine.Address process copy
+holdIt result none
+holdIt ownedBy none
+holdIt cleanedBy none
+holdIt borrows none
+holdIt catch none
+holdIt suppresses none
+
+openPidfd is call
+openPidfd in runChildLinux
+openPidfd invokes system.pidfdOpen
+openPidfd argument pid Int64 pid copy
+openPidfd argument flags Int64 zero copy
+openPidfd result pidfd Int64
+openPidfd ownedBy none
+openPidfd cleanedBy none
+openPidfd borrows none
+openPidfd catch none
+openPidfd suppresses none
+
+pidfdFailed is call
+pidfdFailed in runChildLinux
+pidfdFailed invokes kernel.failed
+pidfdFailed argument result Int64 pidfd copy
+pidfdFailed result noPidfd Bool
+pidfdFailed ownedBy none
+pidfdFailed cleanedBy none
+pidfdFailed borrows none
+pidfdFailed catch none
+pidfdFailed suppresses none
+
+plusOne is call
+plusOne in runChildLinux
+plusOne invokes math.addInt64
+plusOne argument left Int64 pidfd copy
+plusOne argument right Int64 one copy
+plusOne result pidfdValue Int64
+plusOne ownedBy none
+plusOne cleanedBy none
+plusOne borrows none
+plusOne catch none
+plusOne suppresses none
+
+waitHandleOf is call
+waitHandleOf in runChildLinux
+waitHandleOf invokes machine.fromInt64
+waitHandleOf argument value Int64 waitValue copy
+waitHandleOf result waitHandle machine.Address
+waitHandleOf ownedBy none
+waitHandleOf cleanedBy none
+waitHandleOf borrows none
+waitHandleOf catch none
+waitHandleOf suppresses none
+
+anyInput is call
+anyInput in runChildLinux
+anyInput invokes compare.greaterThanInt64
+anyInput argument left Int64 inputBytes copy
+anyInput argument right Int64 zero copy
+anyInput result hasInput Bool
+anyInput ownedBy none
+anyInput cleanedBy none
+anyInput borrows none
+anyInput catch none
+anyInput suppresses none
+
+closeInputNow is call
+closeInputNow in runChildLinux
+closeInputNow invokes closeDescriptor
+closeInputNow argument fd Int64 ourInput copy
+closeInputNow result none
+closeInputNow ownedBy none
+closeInputNow cleanedBy none
+closeInputNow borrows none
+closeInputNow catch none
+closeInputNow suppresses none
+
+leftOf is call
+leftOf in runChildLinux
+leftOf invokes math.subtractInt64
+leftOf argument left Int64 inputBytes copy
+leftOf argument right Int64 written copy
+leftOf result left Int64
+leftOf ownedBy none
+leftOf cleanedBy none
+leftOf borrows none
+leftOf catch none
+leftOf suppresses none
+
+findFrom is call
+findFrom in runChildLinux
+findFrom invokes machine.offset
+findFrom argument address machine.Address input copy
+findFrom argument bytes Int64 written copy
+findFrom result from machine.Address
+findFrom ownedBy none
+findFrom cleanedBy none
+findFrom borrows none
+findFrom catch none
+findFrom suppresses none
+
+writeIt is call
+writeIt in runChildLinux
+writeIt invokes system.write
+writeIt argument fd Int64 ourInput copy
+writeIt argument buffer machine.Address from copy
+writeIt argument bytes Int64 left copy
+writeIt result wrote Int64
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch none
+writeIt suppresses none
+
+wroteCheck is call
+wroteCheck in runChildLinux
+wroteCheck invokes compare.greaterThanInt64
+wroteCheck argument left Int64 wrote copy
+wroteCheck argument right Int64 zero copy
+wroteCheck result wroteSome Bool
+wroteCheck ownedBy none
+wroteCheck cleanedBy none
+wroteCheck borrows none
+wroteCheck catch none
+wroteCheck suppresses none
+
+againCheck is call
+againCheck in runChildLinux
+againCheck invokes compare.equalInt64
+againCheck argument left Int64 wrote copy
+againCheck argument right Int64 eagainResult copy
+againCheck result isAgain Bool
+againCheck ownedBy none
+againCheck cleanedBy none
+againCheck borrows none
+againCheck catch none
+againCheck suppresses none
+
+addWritten is call
+addWritten in runChildLinux
+addWritten invokes math.addInt64
+addWritten argument left Int64 written copy
+addWritten argument right Int64 wrote copy
+addWritten result moreWritten Int64
+addWritten ownedBy none
+addWritten cleanedBy none
+addWritten borrows none
+addWritten catch none
+addWritten suppresses none
+
+allCheck is call
+allCheck in runChildLinux
+allCheck invokes compare.greaterOrEqualInt64
+allCheck argument left Int64 written copy
+allCheck argument right Int64 inputBytes copy
+allCheck result allWritten Bool
+allCheck ownedBy none
+allCheck cleanedBy none
+allCheck borrows none
+allCheck catch none
+allCheck suppresses none
+
+closeInputEnd is call
+closeInputEnd in runChildLinux
+closeInputEnd invokes closeDescriptor
+closeInputEnd argument fd Int64 ourInput copy
+closeInputEnd result none
+closeInputEnd ownedBy none
+closeInputEnd cleanedBy none
+closeInputEnd borrows none
+closeInputEnd catch none
+closeInputEnd suppresses none
+
+readOutPipe is call
+readOutPipe in runChildLinux
+readOutPipe invokes readPipeLinux
+readOutPipe argument fd Int64 ourOut copy
+readOutPipe argument into machine.Address out copy
+readOutPipe result outResult Int64
+readOutPipe ownedBy none
+readOutPipe cleanedBy none
+readOutPipe borrows none
+readOutPipe catch none
+readOutPipe suppresses none
+
+outEndCheck is call
+outEndCheck in runChildLinux
+outEndCheck invokes compare.lessThanInt64
+outEndCheck argument left Int64 outResult copy
+outEndCheck argument right Int64 zero copy
+outEndCheck result outEnded Bool
+outEndCheck ownedBy none
+outEndCheck cleanedBy none
+outEndCheck borrows none
+outEndCheck catch none
+outEndCheck suppresses none
+
+closeOut is call
+closeOut in runChildLinux
+closeOut invokes closeDescriptor
+closeOut argument fd Int64 ourOut copy
+closeOut result none
+closeOut ownedBy none
+closeOut cleanedBy none
+closeOut borrows none
+closeOut catch none
+closeOut suppresses none
+
+outGave is call
+outGave in runChildLinux
+outGave invokes compare.greaterThanInt64
+outGave argument left Int64 outResult copy
+outGave argument right Int64 zero copy
+outGave result gotOut Bool
+outGave ownedBy none
+outGave cleanedBy none
+outGave borrows none
+outGave catch none
+outGave suppresses none
+
+readErrorPipe is call
+readErrorPipe in runChildLinux
+readErrorPipe invokes readPipeLinux
+readErrorPipe argument fd Int64 ourErrors copy
+readErrorPipe argument into machine.Address errors copy
+readErrorPipe result errorResult Int64
+readErrorPipe ownedBy none
+readErrorPipe cleanedBy none
+readErrorPipe borrows none
+readErrorPipe catch none
+readErrorPipe suppresses none
+
+errorEndCheck is call
+errorEndCheck in runChildLinux
+errorEndCheck invokes compare.lessThanInt64
+errorEndCheck argument left Int64 errorResult copy
+errorEndCheck argument right Int64 zero copy
+errorEndCheck result errorEnded Bool
+errorEndCheck ownedBy none
+errorEndCheck cleanedBy none
+errorEndCheck borrows none
+errorEndCheck catch none
+errorEndCheck suppresses none
+
+closeErrors is call
+closeErrors in runChildLinux
+closeErrors invokes closeDescriptor
+closeErrors argument fd Int64 ourErrors copy
+closeErrors result none
+closeErrors ownedBy none
+closeErrors cleanedBy none
+closeErrors borrows none
+closeErrors catch none
+closeErrors suppresses none
+
+errorGave is call
+errorGave in runChildLinux
+errorGave invokes compare.greaterThanInt64
+errorGave argument left Int64 errorResult copy
+errorGave argument right Int64 zero copy
+errorGave result gotError Bool
+errorGave ownedBy none
+errorGave cleanedBy none
+errorGave borrows none
+errorGave catch none
+errorGave suppresses none
+
+bothOpen is call
+bothOpen in runChildLinux
+bothOpen invokes logic.or
+bothOpen argument left Bool outOpen copy
+bothOpen argument right Bool errorsOpen copy
+bothOpen result streamsOpen Bool
+bothOpen ownedBy none
+bothOpen cleanedBy none
+bothOpen borrows none
+bothOpen catch none
+bothOpen suppresses none
+
+readPumpNow is call
+readPumpNow in runChildLinux
+readPumpNow invokes tasks.now
+readPumpNow argument none
+readPumpNow result pumpMoment Int64
+readPumpNow ownedBy none
+readPumpNow cleanedBy none
+readPumpNow borrows none
+readPumpNow catch none
+readPumpNow suppresses none
+
+pumpNever is call
+pumpNever in runChildLinux
+pumpNever invokes compare.equalInt64
+pumpNever argument left Int64 deadline copy
+pumpNever argument right Int64 never copy
+pumpNever result pumpNoDeadline Bool
+pumpNever ownedBy none
+pumpNever cleanedBy none
+pumpNever borrows none
+pumpNever catch none
+pumpNever suppresses none
+
+pumpPastCheck is call
+pumpPastCheck in runChildLinux
+pumpPastCheck invokes compare.greaterOrEqualInt64
+pumpPastCheck argument left Int64 pumpMoment copy
+pumpPastCheck argument right Int64 deadline copy
+pumpPastCheck result pumpLate Bool
+pumpPastCheck ownedBy none
+pumpPastCheck cleanedBy none
+pumpPastCheck borrows none
+pumpPastCheck catch none
+pumpPastCheck suppresses none
+
+pollSoon is call
+pollSoon in runChildLinux
+pollSoon invokes math.addInt64
+pollSoon argument left Int64 pumpMoment copy
+pollSoon argument right Int64 one copy
+pollSoon result soon Int64
+pollSoon ownedBy none
+pollSoon cleanedBy none
+pollSoon borrows none
+pollSoon catch none
+pollSoon suppresses none
+
+earlierCheck is call
+earlierCheck in runChildLinux
+earlierCheck invokes compare.lessThanInt64
+earlierCheck argument left Int64 deadline copy
+earlierCheck argument right Int64 soon copy
+earlierCheck result deadlineFirst Bool
+earlierCheck ownedBy none
+earlierCheck cleanedBy none
+earlierCheck borrows none
+earlierCheck catch none
+earlierCheck suppresses none
+
+notNever is call
+notNever in runChildLinux
+notNever invokes logic.not
+notNever argument value Bool pumpNoDeadline copy
+notNever result hasDeadline Bool
+notNever ownedBy none
+notNever cleanedBy none
+notNever borrows none
+notNever catch none
+notNever suppresses none
+
+useCheck is call
+useCheck in runChildLinux
+useCheck invokes logic.and
+useCheck argument left Bool hasDeadline copy
+useCheck argument right Bool deadlineFirst copy
+useCheck result useDeadline Bool
+useCheck ownedBy none
+useCheck cleanedBy none
+useCheck borrows none
+useCheck catch none
+useCheck suppresses none
+
+waitIt is call
+waitIt in runChildLinux
+waitIt invokes tasks.wait
+waitIt argument what String childText lend
+waitIt argument deadline Int64 poll copy
+waitIt argument cancellable Int64 one copy
+waitIt argument external machine.Address waitHandle copy
+waitIt result outcome Int64
+waitIt ownedBy none
+waitIt cleanedBy none
+waitIt borrows none
+waitIt catch none
+waitIt suppresses none
+
+cancelledCheck is call
+cancelledCheck in runChildLinux
+cancelledCheck invokes compare.equalInt64
+cancelledCheck argument left Int64 outcome copy
+cancelledCheck argument right Int64 two copy
+cancelledCheck result isCancelled Bool
+cancelledCheck ownedBy none
+cancelledCheck cleanedBy none
+cancelledCheck borrows none
+cancelledCheck catch none
+cancelledCheck suppresses none
+
+closeLeft is call
+closeLeft in runChildLinux
+closeLeft invokes closeDescriptor
+closeLeft argument fd Int64 ourInput copy
+closeLeft result none
+closeLeft ownedBy none
+closeLeft cleanedBy none
+closeLeft borrows none
+closeLeft catch none
+closeLeft suppresses none
+
+findStatus is call
+findStatus in runChildLinux
+findStatus invokes machine.offset
+findStatus argument address machine.Address fds copy
+findStatus argument bytes Int64 forty copy
+findStatus result statusAt machine.Address
+findStatus ownedBy none
+findStatus cleanedBy none
+findStatus borrows none
+findStatus catch none
+findStatus suppresses none
+
+storeNoStatus is call
+storeNoStatus in runChildLinux
+storeNoStatus invokes machine.storeInt64
+storeNoStatus argument address machine.Address statusAt copy
+storeNoStatus argument value Int64 zero copy
+storeNoStatus result none
+storeNoStatus ownedBy none
+storeNoStatus cleanedBy none
+storeNoStatus borrows none
+storeNoStatus catch none
+storeNoStatus suppresses none
+
+pollChild is call
+pollChild in runChildLinux
+pollChild invokes system.wait4
+pollChild argument pid Int64 pid copy
+pollChild argument status machine.Address statusAt copy
+pollChild argument options Int64 noHang copy
+pollChild argument usage machine.Address anywhere copy
+pollChild result exited Int64
+pollChild ownedBy none
+pollChild cleanedBy none
+pollChild borrows none
+pollChild catch none
+pollChild suppresses none
+
+exitedCheck is call
+exitedCheck in runChildLinux
+exitedCheck invokes compare.equalInt64
+exitedCheck argument left Int64 exited copy
+exitedCheck argument right Int64 pid copy
+exitedCheck result hasExited Bool
+exitedCheck ownedBy none
+exitedCheck cleanedBy none
+exitedCheck borrows none
+exitedCheck catch none
+exitedCheck suppresses none
+
+readWaitNow is call
+readWaitNow in runChildLinux
+readWaitNow invokes tasks.now
+readWaitNow argument none
+readWaitNow result waitMoment Int64
+readWaitNow ownedBy none
+readWaitNow cleanedBy none
+readWaitNow borrows none
+readWaitNow catch none
+readWaitNow suppresses none
+
+waitNever is call
+waitNever in runChildLinux
+waitNever invokes compare.equalInt64
+waitNever argument left Int64 deadline copy
+waitNever argument right Int64 never copy
+waitNever result waitNoDeadline Bool
+waitNever ownedBy none
+waitNever cleanedBy none
+waitNever borrows none
+waitNever catch none
+waitNever suppresses none
+
+waitPastCheck is call
+waitPastCheck in runChildLinux
+waitPastCheck invokes compare.greaterOrEqualInt64
+waitPastCheck argument left Int64 waitMoment copy
+waitPastCheck argument right Int64 deadline copy
+waitPastCheck result waitLate Bool
+waitPastCheck ownedBy none
+waitPastCheck cleanedBy none
+waitPastCheck borrows none
+waitPastCheck catch none
+waitPastCheck suppresses none
+
+pidfdCheck is call
+pidfdCheck in runChildLinux
+pidfdCheck invokes compare.greaterThanInt64
+pidfdCheck argument left Int64 waitValue copy
+pidfdCheck argument right Int64 zero copy
+pidfdCheck result hasPidfd Bool
+pidfdCheck ownedBy none
+pidfdCheck cleanedBy none
+pidfdCheck borrows none
+pidfdCheck catch none
+pidfdCheck suppresses none
+
+tenLater is call
+tenLater in runChildLinux
+tenLater invokes math.addInt64
+tenLater argument left Int64 waitMoment copy
+tenLater argument right Int64 ten copy
+tenLater result pollTen Int64
+tenLater ownedBy none
+tenLater cleanedBy none
+tenLater borrows none
+tenLater catch none
+tenLater suppresses none
+
+laterCheck is call
+laterCheck in runChildLinux
+laterCheck invokes compare.lessThanInt64
+laterCheck argument left Int64 pollTen copy
+laterCheck argument right Int64 deadline copy
+laterCheck result tenFirst Bool
+laterCheck ownedBy none
+laterCheck cleanedBy none
+laterCheck borrows none
+laterCheck catch none
+laterCheck suppresses none
+
+noDeadlineCheck is call
+noDeadlineCheck in runChildLinux
+noDeadlineCheck invokes logic.or
+noDeadlineCheck argument left Bool waitNoDeadline copy
+noDeadlineCheck argument right Bool tenFirst copy
+noDeadlineCheck result tenAlways Bool
+noDeadlineCheck ownedBy none
+noDeadlineCheck cleanedBy none
+noDeadlineCheck borrows none
+noDeadlineCheck catch none
+noDeadlineCheck suppresses none
+
+waitOnce is call
+waitOnce in runChildLinux
+waitOnce invokes tasks.wait
+waitOnce argument what String childText lend
+waitOnce argument deadline Int64 poll copy
+waitOnce argument cancellable Int64 one copy
+waitOnce argument external machine.Address waitHandle copy
+waitOnce result waitOutcome Int64
+waitOnce ownedBy none
+waitOnce cleanedBy none
+waitOnce borrows none
+waitOnce catch none
+waitOnce suppresses none
+
+waitCancelledCheck is call
+waitCancelledCheck in runChildLinux
+waitCancelledCheck invokes compare.equalInt64
+waitCancelledCheck argument left Int64 waitOutcome copy
+waitCancelledCheck argument right Int64 two copy
+waitCancelledCheck result waitCancelled Bool
+waitCancelledCheck ownedBy none
+waitCancelledCheck cleanedBy none
+waitCancelledCheck borrows none
+waitCancelledCheck catch none
+waitCancelledCheck suppresses none
+
+killLate is call
+killLate in runChildLinux
+killLate invokes system.kill
+killLate argument pid Int64 pid copy
+killLate argument signal Int64 killSignal copy
+killLate result killedLate Int64
+killLate ownedBy none
+killLate cleanedBy none
+killLate borrows none
+killLate catch none
+killLate suppresses none
+
+findLateStatus is call
+findLateStatus in runChildLinux
+findLateStatus invokes machine.offset
+findLateStatus argument address machine.Address fds copy
+findLateStatus argument bytes Int64 forty copy
+findLateStatus result lateStatusAt machine.Address
+findLateStatus ownedBy none
+findLateStatus cleanedBy none
+findLateStatus borrows none
+findLateStatus catch none
+findLateStatus suppresses none
+
+reapLate is call
+reapLate in runChildLinux
+reapLate invokes system.wait4
+reapLate argument pid Int64 pid copy
+reapLate argument status machine.Address lateStatusAt copy
+reapLate argument options Int64 zero copy
+reapLate argument usage machine.Address anywhere copy
+reapLate result reapedLate Int64
+reapLate ownedBy none
+reapLate cleanedBy none
+reapLate borrows none
+reapLate catch none
+reapLate suppresses none
+
+letGoLate is call
+letGoLate in runChildLinux
+letGoLate invokes frames.letGoResource
+letGoLate argument handle machine.Address process copy
+letGoLate result none
+letGoLate ownedBy none
+letGoLate cleanedBy none
+letGoLate borrows none
+letGoLate catch none
+letGoLate suppresses none
+
+lateStatus is call
+lateStatus in runChildLinux
+lateStatus invokes slots.failWith
+lateStatus argument payload machine.Address payload copy
+lateStatus argument status Int32 runTimedOut copy
+lateStatus argument value Int64 zero copy
+lateStatus result status3 Int32
+lateStatus ownedBy none
+lateStatus cleanedBy none
+lateStatus borrows none
+lateStatus catch none
+lateStatus suppresses none
+
+killCancel is call
+killCancel in runChildLinux
+killCancel invokes system.kill
+killCancel argument pid Int64 pid copy
+killCancel argument signal Int64 killSignal copy
+killCancel result killedCancel Int64
+killCancel ownedBy none
+killCancel cleanedBy none
+killCancel borrows none
+killCancel catch none
+killCancel suppresses none
+
+findCancelStatus is call
+findCancelStatus in runChildLinux
+findCancelStatus invokes machine.offset
+findCancelStatus argument address machine.Address fds copy
+findCancelStatus argument bytes Int64 forty copy
+findCancelStatus result cancelStatusAt machine.Address
+findCancelStatus ownedBy none
+findCancelStatus cleanedBy none
+findCancelStatus borrows none
+findCancelStatus catch none
+findCancelStatus suppresses none
+
+reapCancel is call
+reapCancel in runChildLinux
+reapCancel invokes system.wait4
+reapCancel argument pid Int64 pid copy
+reapCancel argument status machine.Address cancelStatusAt copy
+reapCancel argument options Int64 zero copy
+reapCancel argument usage machine.Address anywhere copy
+reapCancel result reapedCancel Int64
+reapCancel ownedBy none
+reapCancel cleanedBy none
+reapCancel borrows none
+reapCancel catch none
+reapCancel suppresses none
+
+letGoCancel is call
+letGoCancel in runChildLinux
+letGoCancel invokes frames.letGoResource
+letGoCancel argument handle machine.Address process copy
+letGoCancel result none
+letGoCancel ownedBy none
+letGoCancel cleanedBy none
+letGoCancel borrows none
+letGoCancel catch none
+letGoCancel suppresses none
+
+cancelStatus is call
+cancelStatus in runChildLinux
+cancelStatus invokes slots.failWith
+cancelStatus argument payload machine.Address payload copy
+cancelStatus argument status Int32 runCancelled copy
+cancelStatus argument value Int64 zero copy
+cancelStatus result status4 Int32
+cancelStatus ownedBy none
+cancelStatus cleanedBy none
+cancelStatus borrows none
+cancelStatus catch none
+cancelStatus suppresses none
+
+readStatus is call
+readStatus in runChildLinux
+readStatus invokes machine.loadInt64
+readStatus argument address machine.Address statusAt copy
+readStatus result waitStatus Int64
+readStatus ownedBy none
+readStatus cleanedBy none
+readStatus borrows none
+readStatus catch none
+readStatus suppresses none
+
+lowOf is call
+lowOf in runChildLinux
+lowOf invokes bits.andInt64
+lowOf argument left Int64 waitStatus copy
+lowOf argument right Int64 signalMask copy
+lowOf result signalled Int64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+exitCheck is call
+exitCheck in runChildLinux
+exitCheck invokes compare.equalInt64
+exitCheck argument left Int64 signalled copy
+exitCheck argument right Int64 zero copy
+exitCheck result normalExit Bool
+exitCheck ownedBy none
+exitCheck cleanedBy none
+exitCheck borrows none
+exitCheck catch none
+exitCheck suppresses none
+
+shiftIt is call
+shiftIt in runChildLinux
+shiftIt invokes bits.shiftRightInt64
+shiftIt argument value Int64 waitStatus copy
+shiftIt argument amount Int64 eight copy
+shiftIt result shifted Int64
+shiftIt ownedBy none
+shiftIt cleanedBy none
+shiftIt borrows none
+shiftIt catch none
+shiftIt suppresses none
+
+maskIt is call
+maskIt in runChildLinux
+maskIt invokes bits.andInt64
+maskIt argument left Int64 shifted copy
+maskIt argument right Int64 byteMask copy
+maskIt result code Int64
+maskIt ownedBy none
+maskIt cleanedBy none
+maskIt borrows none
+maskIt catch none
+maskIt suppresses none
+
+narrowCode is call
+narrowCode in runChildLinux
+narrowCode invokes convert.int64ToInt32
+narrowCode argument value Int64 code copy
+narrowCode result code32 Int32
+narrowCode ownedBy none
+narrowCode cleanedBy none
+narrowCode borrows none
+narrowCode catch none
+narrowCode suppresses none
+
+storeCode is call
+storeCode in runChildLinux
+storeCode invokes machine.storeInt32
+storeCode argument address machine.Address codeAt copy
+storeCode argument value Int32 code32 copy
+storeCode result none
+storeCode ownedBy none
+storeCode cleanedBy none
+storeCode borrows none
+storeCode catch none
+storeCode suppresses none
+
+negateIt is call
+negateIt in runChildLinux
+negateIt invokes math.negateInt64
+negateIt argument value Int64 signalled copy
+negateIt result minusSignal Int64
+negateIt ownedBy none
+negateIt cleanedBy none
+negateIt borrows none
+negateIt catch none
+negateIt suppresses none
+
+narrowSignal is call
+narrowSignal in runChildLinux
+narrowSignal invokes convert.int64ToInt32
+narrowSignal argument value Int64 minusSignal copy
+narrowSignal result signal32 Int32
+narrowSignal ownedBy none
+narrowSignal cleanedBy none
+narrowSignal borrows none
+narrowSignal catch none
+narrowSignal suppresses none
+
+storeSignal is call
+storeSignal in runChildLinux
+storeSignal invokes machine.storeInt32
+storeSignal argument address machine.Address codeAt copy
+storeSignal argument value Int32 signal32 copy
+storeSignal result none
+storeSignal ownedBy none
+storeSignal cleanedBy none
+storeSignal borrows none
+storeSignal catch none
+storeSignal suppresses none
+
+letGo is call
+letGo in runChildLinux
+letGo invokes frames.letGoResource
+letGo argument handle machine.Address process copy
+letGo result none
+letGo ownedBy none
+letGo cleanedBy none
+letGo borrows none
+letGo catch none
+letGo suppresses none
+
+closeInputAll is call
+closeInputAll in runChildLinux
+closeInputAll invokes closeDescriptor
+closeInputAll argument fd Int64 ourInput copy
+closeInputAll result none
+closeInputAll ownedBy none
+closeInputAll cleanedBy none
+closeInputAll borrows none
+closeInputAll catch none
+closeInputAll suppresses none
+
+closeOutAll is call
+closeOutAll in runChildLinux
+closeOutAll invokes closeDescriptor
+closeOutAll argument fd Int64 ourOut copy
+closeOutAll result none
+closeOutAll ownedBy none
+closeOutAll cleanedBy none
+closeOutAll borrows none
+closeOutAll catch none
+closeOutAll suppresses none
+
+closeErrorsAll is call
+closeErrorsAll in runChildLinux
+closeErrorsAll invokes closeDescriptor
+closeErrorsAll argument fd Int64 ourErrors copy
+closeErrorsAll result none
+closeErrorsAll ownedBy none
+closeErrorsAll cleanedBy none
+closeErrorsAll borrows none
+closeErrorsAll catch none
+closeErrorsAll suppresses none
+
+pidfdOf is call
+pidfdOf in runChildLinux
+pidfdOf invokes math.subtractInt64
+pidfdOf argument left Int64 waitValue copy
+pidfdOf argument right Int64 one copy
+pidfdOf result pidfdAgain Int64
+pidfdOf ownedBy none
+pidfdOf cleanedBy none
+pidfdOf borrows none
+pidfdOf catch none
+pidfdOf suppresses none
+
+closePidfd is call
+closePidfd in runChildLinux
+closePidfd invokes closeDescriptor
+closePidfd argument fd Int64 pidfdAgain copy
+closePidfd result none
+closePidfd ownedBy none
+closePidfd cleanedBy none
+closePidfd borrows none
+closePidfd catch none
+closePidfd suppresses none
+
+giveCandidates is call
+giveCandidates in runChildLinux
+giveCandidates invokes giveNameList
+giveCandidates argument names machine.Address candidates copy
+giveCandidates result none
+giveCandidates ownedBy none
+giveCandidates cleanedBy none
+giveCandidates borrows none
+giveCandidates catch none
+giveCandidates suppresses none
+
+giveArguments is call
+giveArguments in runChildLinux
+giveArguments invokes giveVector
+giveArguments argument vector machine.Address arguments copy
+giveArguments result none
+giveArguments ownedBy none
+giveArguments cleanedBy none
+giveArguments borrows none
+giveArguments catch none
+giveArguments suppresses none
+
+giveAction is call
+giveAction in runChildLinux
+giveAction invokes heap.give
+giveAction argument block machine.Address action copy
+giveAction result none
+giveAction ownedBy none
+giveAction cleanedBy none
+giveAction borrows none
+giveAction catch none
+giveAction suppresses none
+
+giveFds is call
+giveFds in runChildLinux
+giveFds invokes heap.give
+giveFds argument block machine.Address fds copy
+giveFds result none
+giveFds ownedBy none
+giveFds cleanedBy none
+giveFds borrows none
+giveFds catch none
+giveFds suppresses none
 
 processRun is operation
 processRun purpose "process.run: run a program with arguments to its end, sharing this program's streams; its exit code, or notFound, timedOut, cancelled, failed"

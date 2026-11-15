@@ -1,6 +1,6 @@
 module output "Write text and numbers to standard output and standard error"
   path output
-  imports standard.machine standard.system standard.math standard.compare standard.convert standard.test numbers
+  imports standard.machine standard.system standard.math standard.compare standard.convert standard.test kernel numbers
   exports standardHandle writeAll
 
 capability memoryAccess "Authority to read the text to write and to keep the count written in machine.state" use machine.memory none
@@ -13,14 +13,27 @@ constant writtenAt "Where WriteFile puts the count of bytes it wrote, in machine
 
 constant digitsAt "Where a number's text is put together before it is written, in machine.state" Int64 16
 
-op standardHandle "The operating system's handle of standard error for stream 2, and of standard output for any other stream"
-  invariant namesStream "Stream 2 is standard error (STD_ERROR_HANDLE, -12); every other stream is standard output (STD_OUTPUT_HANDLE, -11)"
+op standardHandle "The operating system's handle of standard error for stream 2, and of standard output for any other stream; on Linux the descriptor, 2 or 1"
+  invariant namesStream "Stream 2 is standard error (STD_ERROR_HANDLE, -12; descriptor 2 on Linux); every other stream is standard output (STD_OUTPUT_HANDLE, -11; descriptor 1)"
   input stream Int32 copied
   output machine.Address
+  effect use machine.memory
   effect use system.calls
+  uses memoryAccess
   uses systemCalls
 :begin
   errorCheck: isError = compare.equalInt32(stream, two=2)
+  osCheck: onLinux = system.linux()
+  if onLinux linuxStream windowsStream
+:linuxStream
+  if isError linuxError linuxOutput
+:linuxError
+  errorDescriptor: errorFd = machine.fromInt64(twoFd=2)
+  return errorFd
+:linuxOutput
+  outputDescriptor: outputFd = machine.fromInt64(oneFd=1)
+  return outputFd
+:windowsStream
   if isError errorStream outputStream
 :errorStream
   findError: errorHandle = system.getStdHandle(stdError=-12)
@@ -46,6 +59,12 @@ op writeAll "Write a range of bytes to a handle, as many WriteFile calls as it t
   let okStatus Int32 0
   let unknownStatus Int32 1
 :begin
+  osCheck: onLinux = system.linux()
+  if onLinux linuxWrite windowsWrite
+:linuxWrite
+  linuxIt: linuxStatus = writeAllLinux(handle, text, bytes)
+  return linuxStatus
+:windowsWrite
   findState: state = machine.state()
   findWritten: written = machine.offset(state, writtenAt)
   noOverlap: nowhere = machine.zero()
@@ -88,6 +107,46 @@ op writeAll "Write a range of bytes to a handle, as many WriteFile calls as it t
   zeroCheck: noCode = compare.equalInt32(code, failed)
   if noCode stalled reportCode
 :reportCode
+  return code
+:stalled
+  return unknownStatus
+
+op writeAllLinux "Write a range of bytes to a Linux descriptor, as many write calls as it takes; gives 0, or the errno when a write fails"
+  input handle machine.Address copied
+  input text machine.Address copied
+  input bytes Int64 copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let done Int64 0 mut
+  let okStatus Int32 0
+  let unknownStatus Int32 1
+:begin
+  descriptorOf: fd = machine.toInt64(handle)
+  goto eachWrite
+:eachWrite loop=while max=bytes
+  leftOf: left = math.subtractInt64(bytes, done)
+  finishedCheck: finished = compare.lessOrEqualInt64(left, zero=0)
+  if finished succeeded writeSome
+:writeSome in=eachWrite
+  findFrom: from = machine.offset(text, done)
+  callWrite: wrote = system.write(fd, from, left)
+  failedCheck: refused = kernel.failed(wrote)
+  if refused failure progressCheck
+:progressCheck in=eachWrite
+  stuckCheck: stuck = compare.lessOrEqualInt64(wrote, zero)
+  if stuck stalled advance
+:advance in=eachWrite
+  addCount: nextDone = math.addInt64(done, wrote)
+  set done nextDone
+  goto eachWrite
+:succeeded
+  return okStatus
+:failure
+  errnoOf: errno = kernel.errnoOf(wrote)
+  narrowErrno: code = convert.int64ToInt32(errno)
   return code
 :stalled
   return unknownStatus
@@ -160,10 +219,19 @@ test standardHandleTest "Stream 2 is standard error and every other stream stand
   uses systemCalls
 :begin
   findError: errorHandle = standardHandle(two=2)
+  findOutput: outputHandle = standardHandle(one=1)
+  osCheck: onLinux = system.linux()
+  if onLinux linuxHandles windowsHandles
+:linuxHandles
+  errorDescriptor: errorFd = machine.toInt64(errorHandle)
+  expectErrorFd: test.assertEqualInt64(twoFd=2, errorFd)
+  outputDescriptor: outputFd = machine.toInt64(outputHandle)
+  expectOutputFd: test.assertEqualInt64(oneFd=1, outputFd)
+  return
+:windowsHandles
   findSystemError: systemError = system.getStdHandle(stdError=-12)
   sameError: errorSame = machine.equal(errorHandle, systemError)
   expectError: test.assertTrue(errorSame)
-  findOutput: outputHandle = standardHandle(one=1)
   findSystemOutput: systemOutput = system.getStdHandle(stdOutput=-11)
   sameOutput: outputSame = machine.equal(outputHandle, systemOutput)
   expectOutput: test.assertTrue(outputSame)
@@ -176,13 +244,21 @@ test writeAllTest "Writing nothing succeeds; writing to no handle at all reports
   uses memoryAccess
   uses systemCalls
   let text String "never written"
+  let nowhereValue Int64 0 mut
+  let minusOne Int64 -1
 :begin
   findError: errorHandle = standardHandle(two=2)
   findText: textAt = machine.addressOfString(text)
   writeNothing: nothingStatus = writeAll(errorHandle, textAt, zero=0)
   nothingWide: nothingValue = convert.int32ToInt64(nothingStatus)
   expectNothing: test.assertEqualInt64(zero, nothingValue)
-  findNowhere: nowhere = machine.zero()
+  osCheck: onLinux = system.linux()
+  if onLinux noDescriptor writeNowhereStep
+:noDescriptor
+  set nowhereValue minusOne
+  goto writeNowhereStep
+:writeNowhereStep
+  findNowhere: nowhere = machine.fromInt64(nowhereValue)
   writeNowhere: nowhereStatus = writeAll(nowhere, textAt, thirteen=13)
   refusedCheck: refused = compare.notEqualInt32(nowhereStatus, ok=0)
   expectRefused: test.assertTrue(refused)
