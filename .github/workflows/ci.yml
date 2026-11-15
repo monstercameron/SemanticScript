@@ -74,9 +74,10 @@ jobs:
 
   macos:
     # D-189: executables for macOS on Apple silicon with no C library (no libSystem), reaching the kernel through
-    # its system calls; only tests/test_macos_nolibc.py runs here, the rest of the suite being Windows's and Linux's
+    # its system calls; only tests/test_macos_nolibc.py runs here, the rest of the suite being Windows's and Linux's.
+    # macos-15 is GitHub's arm64 image (macos-14 is retired)
     name: macOS executables with no C library (arm64, Python 3.12)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
