@@ -1,0 +1,5739 @@
+# Tests of the `cmathtrig` module; generated from tools/cmathtrig.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+sameBits is operation
+sameBits purpose "Whether a double has the expected bits"
+sameBits invariant none
+sameBits typeParameter none
+sameBits input expectedBits UInt64 copied
+sameBits input actual Float64 copied
+sameBits output Bool
+sameBits outputOwnedBy none
+sameBits raises none
+sameBits effect none
+sameBits uses none
+sameBits memoryHeap false
+sameBits async false
+sameBits maxRecursion none
+sameBits label begin loopKind none
+sameBits label begin within none
+sameBits let none
+sameBits at begin do findActualBits1
+sameBits at begin do findSame1
+sameBits at begin return ok same
+
+findActualBits1 is call
+findActualBits1 in sameBits
+findActualBits1 invokes convert.float64BitsToUInt64
+findActualBits1 argument value Float64 actual copy
+findActualBits1 result actualBits UInt64
+findActualBits1 ownedBy none
+findActualBits1 cleanedBy none
+findActualBits1 borrows none
+findActualBits1 catch none
+findActualBits1 suppresses none
+
+findSame1 is call
+findSame1 in sameBits
+findSame1 invokes compare.equalUInt64
+findSame1 argument left UInt64 expectedBits copy
+findSame1 argument right UInt64 actualBits copy
+findSame1 result same Bool
+findSame1 ownedBy none
+findSame1 cleanedBy none
+findSame1 borrows none
+findSame1 catch none
+findSame1 suppresses none
+
+closeBits is operation
+closeBits purpose "Whether a double is the expected one or the neighbor of it (the bits of two positive or two negative doubles differ by 1)"
+closeBits invariant none
+closeBits typeParameter none
+closeBits input expectedBits UInt64 copied
+closeBits input actual Float64 copied
+closeBits output Bool
+closeBits outputOwnedBy none
+closeBits raises none
+closeBits effect none
+closeBits uses none
+closeBits memoryHeap false
+closeBits async false
+closeBits maxRecursion none
+closeBits label begin loopKind none
+closeBits label begin within none
+closeBits label above loopKind none
+closeBits label above within none
+closeBits label below loopKind none
+closeBits label below within none
+closeBits let uInt641 UInt64 1 immutable
+closeBits at begin do findActualBits1
+closeBits at begin do findCheck11
+closeBits at begin branch if check1 goto above else goto below
+closeBits at above do aboveCloseStep1
+closeBits at above do findAboveClose1
+closeBits at above return ok aboveClose
+closeBits at below do belowCloseStep1
+closeBits at below do findBelowClose1
+closeBits at below return ok belowClose
+
+findActualBits1 is call
+findActualBits1 in closeBits
+findActualBits1 invokes convert.float64BitsToUInt64
+findActualBits1 argument value Float64 actual copy
+findActualBits1 result actualBits UInt64
+findActualBits1 ownedBy none
+findActualBits1 cleanedBy none
+findActualBits1 borrows none
+findActualBits1 catch none
+findActualBits1 suppresses none
+
+findCheck11 is call
+findCheck11 in closeBits
+findCheck11 invokes compare.greaterOrEqualUInt64
+findCheck11 argument left UInt64 actualBits copy
+findCheck11 argument right UInt64 expectedBits copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+aboveCloseStep1 is call
+aboveCloseStep1 in closeBits
+aboveCloseStep1 invokes math.subtractUInt64
+aboveCloseStep1 argument left UInt64 actualBits copy
+aboveCloseStep1 argument right UInt64 expectedBits copy
+aboveCloseStep1 result aboveClosePart1 UInt64
+aboveCloseStep1 ownedBy none
+aboveCloseStep1 cleanedBy none
+aboveCloseStep1 borrows none
+aboveCloseStep1 catch none
+aboveCloseStep1 suppresses none
+
+findAboveClose1 is call
+findAboveClose1 in closeBits
+findAboveClose1 invokes compare.lessOrEqualUInt64
+findAboveClose1 argument left UInt64 aboveClosePart1 copy
+findAboveClose1 argument right UInt64 uInt641 copy
+findAboveClose1 result aboveClose Bool
+findAboveClose1 ownedBy none
+findAboveClose1 cleanedBy none
+findAboveClose1 borrows none
+findAboveClose1 catch none
+findAboveClose1 suppresses none
+
+belowCloseStep1 is call
+belowCloseStep1 in closeBits
+belowCloseStep1 invokes math.subtractUInt64
+belowCloseStep1 argument left UInt64 expectedBits copy
+belowCloseStep1 argument right UInt64 actualBits copy
+belowCloseStep1 result belowClosePart1 UInt64
+belowCloseStep1 ownedBy none
+belowCloseStep1 cleanedBy none
+belowCloseStep1 borrows none
+belowCloseStep1 catch none
+belowCloseStep1 suppresses none
+
+findBelowClose1 is call
+findBelowClose1 in closeBits
+findBelowClose1 invokes compare.lessOrEqualUInt64
+findBelowClose1 argument left UInt64 belowClosePart1 copy
+findBelowClose1 argument right UInt64 uInt641 copy
+findBelowClose1 result belowClose Bool
+findBelowClose1 ownedBy none
+findBelowClose1 cleanedBy none
+findBelowClose1 borrows none
+findBelowClose1 catch none
+findBelowClose1 suppresses none
+
+# @generated tests
+sineTest is test
+sineTest purpose "sineOf: the correctly rounded result or a neighbor of it, and exact special values"
+sineTest verifies sineOf sineWithin
+sineTest typeParameter none
+sineTest input none
+sineTest output none
+sineTest outputOwnedBy none
+sineTest raises none
+sineTest effect use machine.memory
+sineTest uses memoryAccess
+sineTest memoryHeap false
+sineTest async false
+sineTest maxRecursion none
+sineTest label begin loopKind none
+sineTest label begin within none
+sineTest let uInt644602678819172646912 UInt64 4602678819172646912 immutable
+sineTest let uInt644602308182625945072 UInt64 4602308182625945072 immutable
+sineTest let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+sineTest let uInt644605754516372524270 UInt64 4605754516372524270 immutable
+sineTest let uInt6413837309855095848960 UInt64 13837309855095848960 immutable
+sineTest let uInt6413817624441271014747 UInt64 13817624441271014747 immutable
+sineTest let uInt644636737291354636288 UInt64 4636737291354636288 immutable
+sineTest let uInt6413826108192625282488 UInt64 13826108192625282488 immutable
+sineTest let uInt644609753056924675352 UInt64 4609753056924675352 immutable
+sineTest let uInt644614256656552045848 UInt64 4614256656552045848 immutable
+sineTest let uInt644368955796522032135 UInt64 4368955796522032135 immutable
+sineTest let uInt644936209963552724370 UInt64 4936209963552724370 immutable
+sineTest let uInt6413829223199258964887 UInt64 13829223199258964887 immutable
+sineTest let uInt649218868437227405311 UInt64 9218868437227405311 immutable
+sineTest let uInt644572370766535020183 UInt64 4572370766535020183 immutable
+sineTest let uInt640 UInt64 0 immutable
+sineTest let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+sineTest let uInt649218868437227405312 UInt64 9218868437227405312 immutable
+sineTest let uInt6418442240474082181120 UInt64 18442240474082181120 immutable
+sineTest at begin do r0Step1
+sineTest at begin do findR01
+sineTest at begin do findOk01
+sineTest at begin do expect0
+sineTest at begin do r1Step1
+sineTest at begin do findR11
+sineTest at begin do findOk11
+sineTest at begin do expect1
+sineTest at begin do r2Step1
+sineTest at begin do findR21
+sineTest at begin do findOk21
+sineTest at begin do expect2
+sineTest at begin do r3Step1
+sineTest at begin do findR31
+sineTest at begin do findOk31
+sineTest at begin do expect3
+sineTest at begin do r4Step1
+sineTest at begin do findR41
+sineTest at begin do findOk41
+sineTest at begin do expect4
+sineTest at begin do r5Step1
+sineTest at begin do findR51
+sineTest at begin do findOk51
+sineTest at begin do expect5
+sineTest at begin do r6Step1
+sineTest at begin do findR61
+sineTest at begin do findOk61
+sineTest at begin do expect6
+sineTest at begin do r7Step1
+sineTest at begin do findR71
+sineTest at begin do findOk71
+sineTest at begin do expect7
+sineTest at begin do r8Step1
+sineTest at begin do findR81
+sineTest at begin do findOk81
+sineTest at begin do expect8
+sineTest at begin do r9Step1
+sineTest at begin do findR91
+sineTest at begin do findOk91
+sineTest at begin do expect9
+sineTest at begin do r10Step1
+sineTest at begin do findR101
+sineTest at begin do ok10Step1
+sineTest at begin do findOk101
+sineTest at begin do expect10
+sineTest at begin do r11Step1
+sineTest at begin do findR111
+sineTest at begin do ok11Step1
+sineTest at begin do findOk111
+sineTest at begin do expect11
+sineTest at begin return ok none
+
+r0Step1 is call
+r0Step1 in sineTest
+r0Step1 invokes convert.uint64BitsToFloat64
+r0Step1 argument value UInt64 uInt644602678819172646912 copy
+r0Step1 result r0Part1 Float64
+r0Step1 ownedBy none
+r0Step1 cleanedBy none
+r0Step1 borrows none
+r0Step1 catch none
+r0Step1 suppresses none
+
+findR01 is call
+findR01 in sineTest
+findR01 invokes sineOf
+findR01 argument x Float64 r0Part1 copy
+findR01 result r0 Float64
+findR01 ownedBy none
+findR01 cleanedBy none
+findR01 borrows none
+findR01 catch none
+findR01 suppresses none
+
+findOk01 is call
+findOk01 in sineTest
+findOk01 invokes closeBits
+findOk01 argument expectedBits UInt64 uInt644602308182625945072 copy
+findOk01 argument actual Float64 r0 copy
+findOk01 result ok0 Bool
+findOk01 ownedBy none
+findOk01 cleanedBy none
+findOk01 borrows none
+findOk01 catch none
+findOk01 suppresses none
+
+expect0 is call
+expect0 in sineTest
+expect0 invokes test.assertTrue
+expect0 argument value Bool ok0 copy
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+r1Step1 is call
+r1Step1 in sineTest
+r1Step1 invokes convert.uint64BitsToFloat64
+r1Step1 argument value UInt64 uInt644607182418800017408 copy
+r1Step1 result r1Part1 Float64
+r1Step1 ownedBy none
+r1Step1 cleanedBy none
+r1Step1 borrows none
+r1Step1 catch none
+r1Step1 suppresses none
+
+findR11 is call
+findR11 in sineTest
+findR11 invokes sineOf
+findR11 argument x Float64 r1Part1 copy
+findR11 result r1 Float64
+findR11 ownedBy none
+findR11 cleanedBy none
+findR11 borrows none
+findR11 catch none
+findR11 suppresses none
+
+findOk11 is call
+findOk11 in sineTest
+findOk11 invokes closeBits
+findOk11 argument expectedBits UInt64 uInt644605754516372524270 copy
+findOk11 argument actual Float64 r1 copy
+findOk11 result ok1 Bool
+findOk11 ownedBy none
+findOk11 cleanedBy none
+findOk11 borrows none
+findOk11 catch none
+findOk11 suppresses none
+
+expect1 is call
+expect1 in sineTest
+expect1 invokes test.assertTrue
+expect1 argument value Bool ok1 copy
+expect1 result none
+expect1 ownedBy none
+expect1 cleanedBy none
+expect1 borrows none
+expect1 catch none
+expect1 suppresses none
+
+r2Step1 is call
+r2Step1 in sineTest
+r2Step1 invokes convert.uint64BitsToFloat64
+r2Step1 argument value UInt64 uInt6413837309855095848960 copy
+r2Step1 result r2Part1 Float64
+r2Step1 ownedBy none
+r2Step1 cleanedBy none
+r2Step1 borrows none
+r2Step1 catch none
+r2Step1 suppresses none
+
+findR21 is call
+findR21 in sineTest
+findR21 invokes sineOf
+findR21 argument x Float64 r2Part1 copy
+findR21 result r2 Float64
+findR21 ownedBy none
+findR21 cleanedBy none
+findR21 borrows none
+findR21 catch none
+findR21 suppresses none
+
+findOk21 is call
+findOk21 in sineTest
+findOk21 invokes closeBits
+findOk21 argument expectedBits UInt64 uInt6413817624441271014747 copy
+findOk21 argument actual Float64 r2 copy
+findOk21 result ok2 Bool
+findOk21 ownedBy none
+findOk21 cleanedBy none
+findOk21 borrows none
+findOk21 catch none
+findOk21 suppresses none
+
+expect2 is call
+expect2 in sineTest
+expect2 invokes test.assertTrue
+expect2 argument value Bool ok2 copy
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+r3Step1 is call
+r3Step1 in sineTest
+r3Step1 invokes convert.uint64BitsToFloat64
+r3Step1 argument value UInt64 uInt644636737291354636288 copy
+r3Step1 result r3Part1 Float64
+r3Step1 ownedBy none
+r3Step1 cleanedBy none
+r3Step1 borrows none
+r3Step1 catch none
+r3Step1 suppresses none
+
+findR31 is call
+findR31 in sineTest
+findR31 invokes sineOf
+findR31 argument x Float64 r3Part1 copy
+findR31 result r3 Float64
+findR31 ownedBy none
+findR31 cleanedBy none
+findR31 borrows none
+findR31 catch none
+findR31 suppresses none
+
+findOk31 is call
+findOk31 in sineTest
+findOk31 invokes closeBits
+findOk31 argument expectedBits UInt64 uInt6413826108192625282488 copy
+findOk31 argument actual Float64 r3 copy
+findOk31 result ok3 Bool
+findOk31 ownedBy none
+findOk31 cleanedBy none
+findOk31 borrows none
+findOk31 catch none
+findOk31 suppresses none
+
+expect3 is call
+expect3 in sineTest
+expect3 invokes test.assertTrue
+expect3 argument value Bool ok3 copy
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+r4Step1 is call
+r4Step1 in sineTest
+r4Step1 invokes convert.uint64BitsToFloat64
+r4Step1 argument value UInt64 uInt644609753056924675352 copy
+r4Step1 result r4Part1 Float64
+r4Step1 ownedBy none
+r4Step1 cleanedBy none
+r4Step1 borrows none
+r4Step1 catch none
+r4Step1 suppresses none
+
+findR41 is call
+findR41 in sineTest
+findR41 invokes sineOf
+findR41 argument x Float64 r4Part1 copy
+findR41 result r4 Float64
+findR41 ownedBy none
+findR41 cleanedBy none
+findR41 borrows none
+findR41 catch none
+findR41 suppresses none
+
+findOk41 is call
+findOk41 in sineTest
+findOk41 invokes closeBits
+findOk41 argument expectedBits UInt64 uInt644607182418800017408 copy
+findOk41 argument actual Float64 r4 copy
+findOk41 result ok4 Bool
+findOk41 ownedBy none
+findOk41 cleanedBy none
+findOk41 borrows none
+findOk41 catch none
+findOk41 suppresses none
+
+expect4 is call
+expect4 in sineTest
+expect4 invokes test.assertTrue
+expect4 argument value Bool ok4 copy
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+r5Step1 is call
+r5Step1 in sineTest
+r5Step1 invokes convert.uint64BitsToFloat64
+r5Step1 argument value UInt64 uInt644614256656552045848 copy
+r5Step1 result r5Part1 Float64
+r5Step1 ownedBy none
+r5Step1 cleanedBy none
+r5Step1 borrows none
+r5Step1 catch none
+r5Step1 suppresses none
+
+findR51 is call
+findR51 in sineTest
+findR51 invokes sineOf
+findR51 argument x Float64 r5Part1 copy
+findR51 result r5 Float64
+findR51 ownedBy none
+findR51 cleanedBy none
+findR51 borrows none
+findR51 catch none
+findR51 suppresses none
+
+findOk51 is call
+findOk51 in sineTest
+findOk51 invokes closeBits
+findOk51 argument expectedBits UInt64 uInt644368955796522032135 copy
+findOk51 argument actual Float64 r5 copy
+findOk51 result ok5 Bool
+findOk51 ownedBy none
+findOk51 cleanedBy none
+findOk51 borrows none
+findOk51 catch none
+findOk51 suppresses none
+
+expect5 is call
+expect5 in sineTest
+expect5 invokes test.assertTrue
+expect5 argument value Bool ok5 copy
+expect5 result none
+expect5 ownedBy none
+expect5 cleanedBy none
+expect5 borrows none
+expect5 catch none
+expect5 suppresses none
+
+r6Step1 is call
+r6Step1 in sineTest
+r6Step1 invokes convert.uint64BitsToFloat64
+r6Step1 argument value UInt64 uInt644936209963552724370 copy
+r6Step1 result r6Part1 Float64
+r6Step1 ownedBy none
+r6Step1 cleanedBy none
+r6Step1 borrows none
+r6Step1 catch none
+r6Step1 suppresses none
+
+findR61 is call
+findR61 in sineTest
+findR61 invokes sineOf
+findR61 argument x Float64 r6Part1 copy
+findR61 result r6 Float64
+findR61 ownedBy none
+findR61 cleanedBy none
+findR61 borrows none
+findR61 catch none
+findR61 suppresses none
+
+findOk61 is call
+findOk61 in sineTest
+findOk61 invokes closeBits
+findOk61 argument expectedBits UInt64 uInt6413829223199258964887 copy
+findOk61 argument actual Float64 r6 copy
+findOk61 result ok6 Bool
+findOk61 ownedBy none
+findOk61 cleanedBy none
+findOk61 borrows none
+findOk61 catch none
+findOk61 suppresses none
+
+expect6 is call
+expect6 in sineTest
+expect6 invokes test.assertTrue
+expect6 argument value Bool ok6 copy
+expect6 result none
+expect6 ownedBy none
+expect6 cleanedBy none
+expect6 borrows none
+expect6 catch none
+expect6 suppresses none
+
+r7Step1 is call
+r7Step1 in sineTest
+r7Step1 invokes convert.uint64BitsToFloat64
+r7Step1 argument value UInt64 uInt649218868437227405311 copy
+r7Step1 result r7Part1 Float64
+r7Step1 ownedBy none
+r7Step1 cleanedBy none
+r7Step1 borrows none
+r7Step1 catch none
+r7Step1 suppresses none
+
+findR71 is call
+findR71 in sineTest
+findR71 invokes sineOf
+findR71 argument x Float64 r7Part1 copy
+findR71 result r7 Float64
+findR71 ownedBy none
+findR71 cleanedBy none
+findR71 borrows none
+findR71 catch none
+findR71 suppresses none
+
+findOk71 is call
+findOk71 in sineTest
+findOk71 invokes closeBits
+findOk71 argument expectedBits UInt64 uInt644572370766535020183 copy
+findOk71 argument actual Float64 r7 copy
+findOk71 result ok7 Bool
+findOk71 ownedBy none
+findOk71 cleanedBy none
+findOk71 borrows none
+findOk71 catch none
+findOk71 suppresses none
+
+expect7 is call
+expect7 in sineTest
+expect7 invokes test.assertTrue
+expect7 argument value Bool ok7 copy
+expect7 result none
+expect7 ownedBy none
+expect7 cleanedBy none
+expect7 borrows none
+expect7 catch none
+expect7 suppresses none
+
+r8Step1 is call
+r8Step1 in sineTest
+r8Step1 invokes convert.uint64BitsToFloat64
+r8Step1 argument value UInt64 uInt640 copy
+r8Step1 result r8Part1 Float64
+r8Step1 ownedBy none
+r8Step1 cleanedBy none
+r8Step1 borrows none
+r8Step1 catch none
+r8Step1 suppresses none
+
+findR81 is call
+findR81 in sineTest
+findR81 invokes sineOf
+findR81 argument x Float64 r8Part1 copy
+findR81 result r8 Float64
+findR81 ownedBy none
+findR81 cleanedBy none
+findR81 borrows none
+findR81 catch none
+findR81 suppresses none
+
+findOk81 is call
+findOk81 in sineTest
+findOk81 invokes sameBits
+findOk81 argument expectedBits UInt64 uInt640 copy
+findOk81 argument actual Float64 r8 copy
+findOk81 result ok8 Bool
+findOk81 ownedBy none
+findOk81 cleanedBy none
+findOk81 borrows none
+findOk81 catch none
+findOk81 suppresses none
+
+expect8 is call
+expect8 in sineTest
+expect8 invokes test.assertTrue
+expect8 argument value Bool ok8 copy
+expect8 result none
+expect8 ownedBy none
+expect8 cleanedBy none
+expect8 borrows none
+expect8 catch none
+expect8 suppresses none
+
+r9Step1 is call
+r9Step1 in sineTest
+r9Step1 invokes convert.uint64BitsToFloat64
+r9Step1 argument value UInt64 uInt649223372036854775808 copy
+r9Step1 result r9Part1 Float64
+r9Step1 ownedBy none
+r9Step1 cleanedBy none
+r9Step1 borrows none
+r9Step1 catch none
+r9Step1 suppresses none
+
+findR91 is call
+findR91 in sineTest
+findR91 invokes sineOf
+findR91 argument x Float64 r9Part1 copy
+findR91 result r9 Float64
+findR91 ownedBy none
+findR91 cleanedBy none
+findR91 borrows none
+findR91 catch none
+findR91 suppresses none
+
+findOk91 is call
+findOk91 in sineTest
+findOk91 invokes sameBits
+findOk91 argument expectedBits UInt64 uInt649223372036854775808 copy
+findOk91 argument actual Float64 r9 copy
+findOk91 result ok9 Bool
+findOk91 ownedBy none
+findOk91 cleanedBy none
+findOk91 borrows none
+findOk91 catch none
+findOk91 suppresses none
+
+expect9 is call
+expect9 in sineTest
+expect9 invokes test.assertTrue
+expect9 argument value Bool ok9 copy
+expect9 result none
+expect9 ownedBy none
+expect9 cleanedBy none
+expect9 borrows none
+expect9 catch none
+expect9 suppresses none
+
+r10Step1 is call
+r10Step1 in sineTest
+r10Step1 invokes convert.uint64BitsToFloat64
+r10Step1 argument value UInt64 uInt649218868437227405312 copy
+r10Step1 result r10Part1 Float64
+r10Step1 ownedBy none
+r10Step1 cleanedBy none
+r10Step1 borrows none
+r10Step1 catch none
+r10Step1 suppresses none
+
+findR101 is call
+findR101 in sineTest
+findR101 invokes sineOf
+findR101 argument x Float64 r10Part1 copy
+findR101 result r10 Float64
+findR101 ownedBy none
+findR101 cleanedBy none
+findR101 borrows none
+findR101 catch none
+findR101 suppresses none
+
+ok10Step1 is call
+ok10Step1 in sineTest
+ok10Step1 invokes compare.equalFloat64
+ok10Step1 argument left Float64 r10 copy
+ok10Step1 argument right Float64 r10 copy
+ok10Step1 result ok10Part1 Bool
+ok10Step1 ownedBy none
+ok10Step1 cleanedBy none
+ok10Step1 borrows none
+ok10Step1 catch none
+ok10Step1 suppresses none
+
+findOk101 is call
+findOk101 in sineTest
+findOk101 invokes logic.not
+findOk101 argument value Bool ok10Part1 copy
+findOk101 result ok10 Bool
+findOk101 ownedBy none
+findOk101 cleanedBy none
+findOk101 borrows none
+findOk101 catch none
+findOk101 suppresses none
+
+expect10 is call
+expect10 in sineTest
+expect10 invokes test.assertTrue
+expect10 argument value Bool ok10 copy
+expect10 result none
+expect10 ownedBy none
+expect10 cleanedBy none
+expect10 borrows none
+expect10 catch none
+expect10 suppresses none
+
+r11Step1 is call
+r11Step1 in sineTest
+r11Step1 invokes convert.uint64BitsToFloat64
+r11Step1 argument value UInt64 uInt6418442240474082181120 copy
+r11Step1 result r11Part1 Float64
+r11Step1 ownedBy none
+r11Step1 cleanedBy none
+r11Step1 borrows none
+r11Step1 catch none
+r11Step1 suppresses none
+
+findR111 is call
+findR111 in sineTest
+findR111 invokes sineOf
+findR111 argument x Float64 r11Part1 copy
+findR111 result r11 Float64
+findR111 ownedBy none
+findR111 cleanedBy none
+findR111 borrows none
+findR111 catch none
+findR111 suppresses none
+
+ok11Step1 is call
+ok11Step1 in sineTest
+ok11Step1 invokes compare.equalFloat64
+ok11Step1 argument left Float64 r11 copy
+ok11Step1 argument right Float64 r11 copy
+ok11Step1 result ok11Part1 Bool
+ok11Step1 ownedBy none
+ok11Step1 cleanedBy none
+ok11Step1 borrows none
+ok11Step1 catch none
+ok11Step1 suppresses none
+
+findOk111 is call
+findOk111 in sineTest
+findOk111 invokes logic.not
+findOk111 argument value Bool ok11Part1 copy
+findOk111 result ok11 Bool
+findOk111 ownedBy none
+findOk111 cleanedBy none
+findOk111 borrows none
+findOk111 catch none
+findOk111 suppresses none
+
+expect11 is call
+expect11 in sineTest
+expect11 invokes test.assertTrue
+expect11 argument value Bool ok11 copy
+expect11 result none
+expect11 ownedBy none
+expect11 cleanedBy none
+expect11 borrows none
+expect11 catch none
+expect11 suppresses none
+
+cosineTest is test
+cosineTest purpose "cosineOf: the correctly rounded result or a neighbor of it, and exact special values"
+cosineTest verifies cosineOf cosineWithin
+cosineTest typeParameter none
+cosineTest input none
+cosineTest output none
+cosineTest outputOwnedBy none
+cosineTest raises none
+cosineTest effect use machine.memory
+cosineTest uses memoryAccess
+cosineTest memoryHeap false
+cosineTest async false
+cosineTest maxRecursion none
+cosineTest label begin loopKind none
+cosineTest label begin within none
+cosineTest let uInt644602678819172646912 UInt64 4602678819172646912 immutable
+cosineTest let uInt644606079780542709072 UInt64 4606079780542709072 immutable
+cosineTest let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+cosineTest let uInt644603041830072026764 UInt64 4603041830072026764 immutable
+cosineTest let uInt6413837309855095848960 UInt64 13837309855095848960 immutable
+cosineTest let uInt6413830464316077630930 UInt64 13830464316077630930 immutable
+cosineTest let uInt644636737291354636288 UInt64 4636737291354636288 immutable
+cosineTest let uInt644605942297449095135 UInt64 4605942297449095135 immutable
+cosineTest let uInt644609753056924675352 UInt64 4609753056924675352 immutable
+cosineTest let uInt644364452196894661639 UInt64 4364452196894661639 immutable
+cosineTest let uInt644614256656552045848 UInt64 4614256656552045848 immutable
+cosineTest let uInt6413830554455654793216 UInt64 13830554455654793216 immutable
+cosineTest let uInt644936209963552724370 UInt64 4936209963552724370 immutable
+cosineTest let uInt644602887919370356980 UInt64 4602887919370356980 immutable
+cosineTest let uInt649218868437227405311 UInt64 9218868437227405311 immutable
+cosineTest let uInt6413830554344771005301 UInt64 13830554344771005301 immutable
+cosineTest let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+cosineTest let uInt6418442240474082181120 UInt64 18442240474082181120 immutable
+cosineTest at begin do r0Step1
+cosineTest at begin do findR01
+cosineTest at begin do findOk01
+cosineTest at begin do expect0
+cosineTest at begin do r1Step1
+cosineTest at begin do findR11
+cosineTest at begin do findOk11
+cosineTest at begin do expect1
+cosineTest at begin do r2Step1
+cosineTest at begin do findR21
+cosineTest at begin do findOk21
+cosineTest at begin do expect2
+cosineTest at begin do r3Step1
+cosineTest at begin do findR31
+cosineTest at begin do findOk31
+cosineTest at begin do expect3
+cosineTest at begin do r4Step1
+cosineTest at begin do findR41
+cosineTest at begin do findOk41
+cosineTest at begin do expect4
+cosineTest at begin do r5Step1
+cosineTest at begin do findR51
+cosineTest at begin do findOk51
+cosineTest at begin do expect5
+cosineTest at begin do r6Step1
+cosineTest at begin do findR61
+cosineTest at begin do findOk61
+cosineTest at begin do expect6
+cosineTest at begin do r7Step1
+cosineTest at begin do findR71
+cosineTest at begin do findOk71
+cosineTest at begin do expect7
+cosineTest at begin do r8Step1
+cosineTest at begin do findR81
+cosineTest at begin do findOk81
+cosineTest at begin do expect8
+cosineTest at begin do r9Step1
+cosineTest at begin do findR91
+cosineTest at begin do ok9Step1
+cosineTest at begin do findOk91
+cosineTest at begin do expect9
+cosineTest at begin return ok none
+
+r0Step1 is call
+r0Step1 in cosineTest
+r0Step1 invokes convert.uint64BitsToFloat64
+r0Step1 argument value UInt64 uInt644602678819172646912 copy
+r0Step1 result r0Part1 Float64
+r0Step1 ownedBy none
+r0Step1 cleanedBy none
+r0Step1 borrows none
+r0Step1 catch none
+r0Step1 suppresses none
+
+findR01 is call
+findR01 in cosineTest
+findR01 invokes cosineOf
+findR01 argument x Float64 r0Part1 copy
+findR01 result r0 Float64
+findR01 ownedBy none
+findR01 cleanedBy none
+findR01 borrows none
+findR01 catch none
+findR01 suppresses none
+
+findOk01 is call
+findOk01 in cosineTest
+findOk01 invokes closeBits
+findOk01 argument expectedBits UInt64 uInt644606079780542709072 copy
+findOk01 argument actual Float64 r0 copy
+findOk01 result ok0 Bool
+findOk01 ownedBy none
+findOk01 cleanedBy none
+findOk01 borrows none
+findOk01 catch none
+findOk01 suppresses none
+
+expect0 is call
+expect0 in cosineTest
+expect0 invokes test.assertTrue
+expect0 argument value Bool ok0 copy
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+r1Step1 is call
+r1Step1 in cosineTest
+r1Step1 invokes convert.uint64BitsToFloat64
+r1Step1 argument value UInt64 uInt644607182418800017408 copy
+r1Step1 result r1Part1 Float64
+r1Step1 ownedBy none
+r1Step1 cleanedBy none
+r1Step1 borrows none
+r1Step1 catch none
+r1Step1 suppresses none
+
+findR11 is call
+findR11 in cosineTest
+findR11 invokes cosineOf
+findR11 argument x Float64 r1Part1 copy
+findR11 result r1 Float64
+findR11 ownedBy none
+findR11 cleanedBy none
+findR11 borrows none
+findR11 catch none
+findR11 suppresses none
+
+findOk11 is call
+findOk11 in cosineTest
+findOk11 invokes closeBits
+findOk11 argument expectedBits UInt64 uInt644603041830072026764 copy
+findOk11 argument actual Float64 r1 copy
+findOk11 result ok1 Bool
+findOk11 ownedBy none
+findOk11 cleanedBy none
+findOk11 borrows none
+findOk11 catch none
+findOk11 suppresses none
+
+expect1 is call
+expect1 in cosineTest
+expect1 invokes test.assertTrue
+expect1 argument value Bool ok1 copy
+expect1 result none
+expect1 ownedBy none
+expect1 cleanedBy none
+expect1 borrows none
+expect1 catch none
+expect1 suppresses none
+
+r2Step1 is call
+r2Step1 in cosineTest
+r2Step1 invokes convert.uint64BitsToFloat64
+r2Step1 argument value UInt64 uInt6413837309855095848960 copy
+r2Step1 result r2Part1 Float64
+r2Step1 ownedBy none
+r2Step1 cleanedBy none
+r2Step1 borrows none
+r2Step1 catch none
+r2Step1 suppresses none
+
+findR21 is call
+findR21 in cosineTest
+findR21 invokes cosineOf
+findR21 argument x Float64 r2Part1 copy
+findR21 result r2 Float64
+findR21 ownedBy none
+findR21 cleanedBy none
+findR21 borrows none
+findR21 catch none
+findR21 suppresses none
+
+findOk21 is call
+findOk21 in cosineTest
+findOk21 invokes closeBits
+findOk21 argument expectedBits UInt64 uInt6413830464316077630930 copy
+findOk21 argument actual Float64 r2 copy
+findOk21 result ok2 Bool
+findOk21 ownedBy none
+findOk21 cleanedBy none
+findOk21 borrows none
+findOk21 catch none
+findOk21 suppresses none
+
+expect2 is call
+expect2 in cosineTest
+expect2 invokes test.assertTrue
+expect2 argument value Bool ok2 copy
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+r3Step1 is call
+r3Step1 in cosineTest
+r3Step1 invokes convert.uint64BitsToFloat64
+r3Step1 argument value UInt64 uInt644636737291354636288 copy
+r3Step1 result r3Part1 Float64
+r3Step1 ownedBy none
+r3Step1 cleanedBy none
+r3Step1 borrows none
+r3Step1 catch none
+r3Step1 suppresses none
+
+findR31 is call
+findR31 in cosineTest
+findR31 invokes cosineOf
+findR31 argument x Float64 r3Part1 copy
+findR31 result r3 Float64
+findR31 ownedBy none
+findR31 cleanedBy none
+findR31 borrows none
+findR31 catch none
+findR31 suppresses none
+
+findOk31 is call
+findOk31 in cosineTest
+findOk31 invokes closeBits
+findOk31 argument expectedBits UInt64 uInt644605942297449095135 copy
+findOk31 argument actual Float64 r3 copy
+findOk31 result ok3 Bool
+findOk31 ownedBy none
+findOk31 cleanedBy none
+findOk31 borrows none
+findOk31 catch none
+findOk31 suppresses none
+
+expect3 is call
+expect3 in cosineTest
+expect3 invokes test.assertTrue
+expect3 argument value Bool ok3 copy
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+r4Step1 is call
+r4Step1 in cosineTest
+r4Step1 invokes convert.uint64BitsToFloat64
+r4Step1 argument value UInt64 uInt644609753056924675352 copy
+r4Step1 result r4Part1 Float64
+r4Step1 ownedBy none
+r4Step1 cleanedBy none
+r4Step1 borrows none
+r4Step1 catch none
+r4Step1 suppresses none
+
+findR41 is call
+findR41 in cosineTest
+findR41 invokes cosineOf
+findR41 argument x Float64 r4Part1 copy
+findR41 result r4 Float64
+findR41 ownedBy none
+findR41 cleanedBy none
+findR41 borrows none
+findR41 catch none
+findR41 suppresses none
+
+findOk41 is call
+findOk41 in cosineTest
+findOk41 invokes closeBits
+findOk41 argument expectedBits UInt64 uInt644364452196894661639 copy
+findOk41 argument actual Float64 r4 copy
+findOk41 result ok4 Bool
+findOk41 ownedBy none
+findOk41 cleanedBy none
+findOk41 borrows none
+findOk41 catch none
+findOk41 suppresses none
+
+expect4 is call
+expect4 in cosineTest
+expect4 invokes test.assertTrue
+expect4 argument value Bool ok4 copy
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+r5Step1 is call
+r5Step1 in cosineTest
+r5Step1 invokes convert.uint64BitsToFloat64
+r5Step1 argument value UInt64 uInt644614256656552045848 copy
+r5Step1 result r5Part1 Float64
+r5Step1 ownedBy none
+r5Step1 cleanedBy none
+r5Step1 borrows none
+r5Step1 catch none
+r5Step1 suppresses none
+
+findR51 is call
+findR51 in cosineTest
+findR51 invokes cosineOf
+findR51 argument x Float64 r5Part1 copy
+findR51 result r5 Float64
+findR51 ownedBy none
+findR51 cleanedBy none
+findR51 borrows none
+findR51 catch none
+findR51 suppresses none
+
+findOk51 is call
+findOk51 in cosineTest
+findOk51 invokes closeBits
+findOk51 argument expectedBits UInt64 uInt6413830554455654793216 copy
+findOk51 argument actual Float64 r5 copy
+findOk51 result ok5 Bool
+findOk51 ownedBy none
+findOk51 cleanedBy none
+findOk51 borrows none
+findOk51 catch none
+findOk51 suppresses none
+
+expect5 is call
+expect5 in cosineTest
+expect5 invokes test.assertTrue
+expect5 argument value Bool ok5 copy
+expect5 result none
+expect5 ownedBy none
+expect5 cleanedBy none
+expect5 borrows none
+expect5 catch none
+expect5 suppresses none
+
+r6Step1 is call
+r6Step1 in cosineTest
+r6Step1 invokes convert.uint64BitsToFloat64
+r6Step1 argument value UInt64 uInt644936209963552724370 copy
+r6Step1 result r6Part1 Float64
+r6Step1 ownedBy none
+r6Step1 cleanedBy none
+r6Step1 borrows none
+r6Step1 catch none
+r6Step1 suppresses none
+
+findR61 is call
+findR61 in cosineTest
+findR61 invokes cosineOf
+findR61 argument x Float64 r6Part1 copy
+findR61 result r6 Float64
+findR61 ownedBy none
+findR61 cleanedBy none
+findR61 borrows none
+findR61 catch none
+findR61 suppresses none
+
+findOk61 is call
+findOk61 in cosineTest
+findOk61 invokes closeBits
+findOk61 argument expectedBits UInt64 uInt644602887919370356980 copy
+findOk61 argument actual Float64 r6 copy
+findOk61 result ok6 Bool
+findOk61 ownedBy none
+findOk61 cleanedBy none
+findOk61 borrows none
+findOk61 catch none
+findOk61 suppresses none
+
+expect6 is call
+expect6 in cosineTest
+expect6 invokes test.assertTrue
+expect6 argument value Bool ok6 copy
+expect6 result none
+expect6 ownedBy none
+expect6 cleanedBy none
+expect6 borrows none
+expect6 catch none
+expect6 suppresses none
+
+r7Step1 is call
+r7Step1 in cosineTest
+r7Step1 invokes convert.uint64BitsToFloat64
+r7Step1 argument value UInt64 uInt649218868437227405311 copy
+r7Step1 result r7Part1 Float64
+r7Step1 ownedBy none
+r7Step1 cleanedBy none
+r7Step1 borrows none
+r7Step1 catch none
+r7Step1 suppresses none
+
+findR71 is call
+findR71 in cosineTest
+findR71 invokes cosineOf
+findR71 argument x Float64 r7Part1 copy
+findR71 result r7 Float64
+findR71 ownedBy none
+findR71 cleanedBy none
+findR71 borrows none
+findR71 catch none
+findR71 suppresses none
+
+findOk71 is call
+findOk71 in cosineTest
+findOk71 invokes closeBits
+findOk71 argument expectedBits UInt64 uInt6413830554344771005301 copy
+findOk71 argument actual Float64 r7 copy
+findOk71 result ok7 Bool
+findOk71 ownedBy none
+findOk71 cleanedBy none
+findOk71 borrows none
+findOk71 catch none
+findOk71 suppresses none
+
+expect7 is call
+expect7 in cosineTest
+expect7 invokes test.assertTrue
+expect7 argument value Bool ok7 copy
+expect7 result none
+expect7 ownedBy none
+expect7 cleanedBy none
+expect7 borrows none
+expect7 catch none
+expect7 suppresses none
+
+r8Step1 is call
+r8Step1 in cosineTest
+r8Step1 invokes convert.uint64BitsToFloat64
+r8Step1 argument value UInt64 uInt649223372036854775808 copy
+r8Step1 result r8Part1 Float64
+r8Step1 ownedBy none
+r8Step1 cleanedBy none
+r8Step1 borrows none
+r8Step1 catch none
+r8Step1 suppresses none
+
+findR81 is call
+findR81 in cosineTest
+findR81 invokes cosineOf
+findR81 argument x Float64 r8Part1 copy
+findR81 result r8 Float64
+findR81 ownedBy none
+findR81 cleanedBy none
+findR81 borrows none
+findR81 catch none
+findR81 suppresses none
+
+findOk81 is call
+findOk81 in cosineTest
+findOk81 invokes sameBits
+findOk81 argument expectedBits UInt64 uInt644607182418800017408 copy
+findOk81 argument actual Float64 r8 copy
+findOk81 result ok8 Bool
+findOk81 ownedBy none
+findOk81 cleanedBy none
+findOk81 borrows none
+findOk81 catch none
+findOk81 suppresses none
+
+expect8 is call
+expect8 in cosineTest
+expect8 invokes test.assertTrue
+expect8 argument value Bool ok8 copy
+expect8 result none
+expect8 ownedBy none
+expect8 cleanedBy none
+expect8 borrows none
+expect8 catch none
+expect8 suppresses none
+
+r9Step1 is call
+r9Step1 in cosineTest
+r9Step1 invokes convert.uint64BitsToFloat64
+r9Step1 argument value UInt64 uInt6418442240474082181120 copy
+r9Step1 result r9Part1 Float64
+r9Step1 ownedBy none
+r9Step1 cleanedBy none
+r9Step1 borrows none
+r9Step1 catch none
+r9Step1 suppresses none
+
+findR91 is call
+findR91 in cosineTest
+findR91 invokes cosineOf
+findR91 argument x Float64 r9Part1 copy
+findR91 result r9 Float64
+findR91 ownedBy none
+findR91 cleanedBy none
+findR91 borrows none
+findR91 catch none
+findR91 suppresses none
+
+ok9Step1 is call
+ok9Step1 in cosineTest
+ok9Step1 invokes compare.equalFloat64
+ok9Step1 argument left Float64 r9 copy
+ok9Step1 argument right Float64 r9 copy
+ok9Step1 result ok9Part1 Bool
+ok9Step1 ownedBy none
+ok9Step1 cleanedBy none
+ok9Step1 borrows none
+ok9Step1 catch none
+ok9Step1 suppresses none
+
+findOk91 is call
+findOk91 in cosineTest
+findOk91 invokes logic.not
+findOk91 argument value Bool ok9Part1 copy
+findOk91 result ok9 Bool
+findOk91 ownedBy none
+findOk91 cleanedBy none
+findOk91 borrows none
+findOk91 catch none
+findOk91 suppresses none
+
+expect9 is call
+expect9 in cosineTest
+expect9 invokes test.assertTrue
+expect9 argument value Bool ok9 copy
+expect9 result none
+expect9 ownedBy none
+expect9 cleanedBy none
+expect9 borrows none
+expect9 catch none
+expect9 suppresses none
+
+tangentTest is test
+tangentTest purpose "tangentOf: the correctly rounded result or a neighbor of it, and exact special values"
+tangentTest verifies tangentOf tangentWithin
+tangentTest typeParameter none
+tangentTest input none
+tangentTest output none
+tangentTest outputOwnedBy none
+tangentTest raises none
+tangentTest effect use machine.memory
+tangentTest uses memoryAccess
+tangentTest memoryHeap false
+tangentTest async false
+tangentTest maxRecursion none
+tangentTest label begin loopKind none
+tangentTest label begin within none
+tangentTest let uInt644602678819172646912 UInt64 4602678819172646912 immutable
+tangentTest let uInt644603095874924660554 UInt64 4603095874924660554 immutable
+tangentTest let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+tangentTest let uInt644609692760021066662 UInt64 4609692760021066662 immutable
+tangentTest let uInt6413837309855095848960 UInt64 13837309855095848960 immutable
+tangentTest let uInt644594303800756713583 UInt64 4594303800756713583 immutable
+tangentTest let uInt644636737291354636288 UInt64 4636737291354636288 immutable
+tangentTest let uInt6413826836409139027256 UInt64 13826836409139027256 immutable
+tangentTest let uInt644609753056924675352 UInt64 4609753056924675352 immutable
+tangentTest let uInt644849535219099880885 UInt64 4849535219099880885 immutable
+tangentTest let uInt644936209963552724370 UInt64 4936209963552724370 immutable
+tangentTest let uInt6413833386221037335127 UInt64 13833386221037335127 immutable
+tangentTest let uInt649218868437227405311 UInt64 9218868437227405311 immutable
+tangentTest let uInt6413795742873816306820 UInt64 13795742873816306820 immutable
+tangentTest let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+tangentTest let uInt649218868437227405312 UInt64 9218868437227405312 immutable
+tangentTest at begin do r0Step1
+tangentTest at begin do findR01
+tangentTest at begin do findOk01
+tangentTest at begin do expect0
+tangentTest at begin do r1Step1
+tangentTest at begin do findR11
+tangentTest at begin do findOk11
+tangentTest at begin do expect1
+tangentTest at begin do r2Step1
+tangentTest at begin do findR21
+tangentTest at begin do findOk21
+tangentTest at begin do expect2
+tangentTest at begin do r3Step1
+tangentTest at begin do findR31
+tangentTest at begin do findOk31
+tangentTest at begin do expect3
+tangentTest at begin do r4Step1
+tangentTest at begin do findR41
+tangentTest at begin do findOk41
+tangentTest at begin do expect4
+tangentTest at begin do r5Step1
+tangentTest at begin do findR51
+tangentTest at begin do findOk51
+tangentTest at begin do expect5
+tangentTest at begin do r6Step1
+tangentTest at begin do findR61
+tangentTest at begin do findOk61
+tangentTest at begin do expect6
+tangentTest at begin do r7Step1
+tangentTest at begin do findR71
+tangentTest at begin do findOk71
+tangentTest at begin do expect7
+tangentTest at begin do r8Step1
+tangentTest at begin do findR81
+tangentTest at begin do ok8Step1
+tangentTest at begin do findOk81
+tangentTest at begin do expect8
+tangentTest at begin return ok none
+
+r0Step1 is call
+r0Step1 in tangentTest
+r0Step1 invokes convert.uint64BitsToFloat64
+r0Step1 argument value UInt64 uInt644602678819172646912 copy
+r0Step1 result r0Part1 Float64
+r0Step1 ownedBy none
+r0Step1 cleanedBy none
+r0Step1 borrows none
+r0Step1 catch none
+r0Step1 suppresses none
+
+findR01 is call
+findR01 in tangentTest
+findR01 invokes tangentOf
+findR01 argument x Float64 r0Part1 copy
+findR01 result r0 Float64
+findR01 ownedBy none
+findR01 cleanedBy none
+findR01 borrows none
+findR01 catch none
+findR01 suppresses none
+
+findOk01 is call
+findOk01 in tangentTest
+findOk01 invokes closeBits
+findOk01 argument expectedBits UInt64 uInt644603095874924660554 copy
+findOk01 argument actual Float64 r0 copy
+findOk01 result ok0 Bool
+findOk01 ownedBy none
+findOk01 cleanedBy none
+findOk01 borrows none
+findOk01 catch none
+findOk01 suppresses none
+
+expect0 is call
+expect0 in tangentTest
+expect0 invokes test.assertTrue
+expect0 argument value Bool ok0 copy
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+r1Step1 is call
+r1Step1 in tangentTest
+r1Step1 invokes convert.uint64BitsToFloat64
+r1Step1 argument value UInt64 uInt644607182418800017408 copy
+r1Step1 result r1Part1 Float64
+r1Step1 ownedBy none
+r1Step1 cleanedBy none
+r1Step1 borrows none
+r1Step1 catch none
+r1Step1 suppresses none
+
+findR11 is call
+findR11 in tangentTest
+findR11 invokes tangentOf
+findR11 argument x Float64 r1Part1 copy
+findR11 result r1 Float64
+findR11 ownedBy none
+findR11 cleanedBy none
+findR11 borrows none
+findR11 catch none
+findR11 suppresses none
+
+findOk11 is call
+findOk11 in tangentTest
+findOk11 invokes closeBits
+findOk11 argument expectedBits UInt64 uInt644609692760021066662 copy
+findOk11 argument actual Float64 r1 copy
+findOk11 result ok1 Bool
+findOk11 ownedBy none
+findOk11 cleanedBy none
+findOk11 borrows none
+findOk11 catch none
+findOk11 suppresses none
+
+expect1 is call
+expect1 in tangentTest
+expect1 invokes test.assertTrue
+expect1 argument value Bool ok1 copy
+expect1 result none
+expect1 ownedBy none
+expect1 cleanedBy none
+expect1 borrows none
+expect1 catch none
+expect1 suppresses none
+
+r2Step1 is call
+r2Step1 in tangentTest
+r2Step1 invokes convert.uint64BitsToFloat64
+r2Step1 argument value UInt64 uInt6413837309855095848960 copy
+r2Step1 result r2Part1 Float64
+r2Step1 ownedBy none
+r2Step1 cleanedBy none
+r2Step1 borrows none
+r2Step1 catch none
+r2Step1 suppresses none
+
+findR21 is call
+findR21 in tangentTest
+findR21 invokes tangentOf
+findR21 argument x Float64 r2Part1 copy
+findR21 result r2 Float64
+findR21 ownedBy none
+findR21 cleanedBy none
+findR21 borrows none
+findR21 catch none
+findR21 suppresses none
+
+findOk21 is call
+findOk21 in tangentTest
+findOk21 invokes closeBits
+findOk21 argument expectedBits UInt64 uInt644594303800756713583 copy
+findOk21 argument actual Float64 r2 copy
+findOk21 result ok2 Bool
+findOk21 ownedBy none
+findOk21 cleanedBy none
+findOk21 borrows none
+findOk21 catch none
+findOk21 suppresses none
+
+expect2 is call
+expect2 in tangentTest
+expect2 invokes test.assertTrue
+expect2 argument value Bool ok2 copy
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+r3Step1 is call
+r3Step1 in tangentTest
+r3Step1 invokes convert.uint64BitsToFloat64
+r3Step1 argument value UInt64 uInt644636737291354636288 copy
+r3Step1 result r3Part1 Float64
+r3Step1 ownedBy none
+r3Step1 cleanedBy none
+r3Step1 borrows none
+r3Step1 catch none
+r3Step1 suppresses none
+
+findR31 is call
+findR31 in tangentTest
+findR31 invokes tangentOf
+findR31 argument x Float64 r3Part1 copy
+findR31 result r3 Float64
+findR31 ownedBy none
+findR31 cleanedBy none
+findR31 borrows none
+findR31 catch none
+findR31 suppresses none
+
+findOk31 is call
+findOk31 in tangentTest
+findOk31 invokes closeBits
+findOk31 argument expectedBits UInt64 uInt6413826836409139027256 copy
+findOk31 argument actual Float64 r3 copy
+findOk31 result ok3 Bool
+findOk31 ownedBy none
+findOk31 cleanedBy none
+findOk31 borrows none
+findOk31 catch none
+findOk31 suppresses none
+
+expect3 is call
+expect3 in tangentTest
+expect3 invokes test.assertTrue
+expect3 argument value Bool ok3 copy
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+r4Step1 is call
+r4Step1 in tangentTest
+r4Step1 invokes convert.uint64BitsToFloat64
+r4Step1 argument value UInt64 uInt644609753056924675352 copy
+r4Step1 result r4Part1 Float64
+r4Step1 ownedBy none
+r4Step1 cleanedBy none
+r4Step1 borrows none
+r4Step1 catch none
+r4Step1 suppresses none
+
+findR41 is call
+findR41 in tangentTest
+findR41 invokes tangentOf
+findR41 argument x Float64 r4Part1 copy
+findR41 result r4 Float64
+findR41 ownedBy none
+findR41 cleanedBy none
+findR41 borrows none
+findR41 catch none
+findR41 suppresses none
+
+findOk41 is call
+findOk41 in tangentTest
+findOk41 invokes closeBits
+findOk41 argument expectedBits UInt64 uInt644849535219099880885 copy
+findOk41 argument actual Float64 r4 copy
+findOk41 result ok4 Bool
+findOk41 ownedBy none
+findOk41 cleanedBy none
+findOk41 borrows none
+findOk41 catch none
+findOk41 suppresses none
+
+expect4 is call
+expect4 in tangentTest
+expect4 invokes test.assertTrue
+expect4 argument value Bool ok4 copy
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+r5Step1 is call
+r5Step1 in tangentTest
+r5Step1 invokes convert.uint64BitsToFloat64
+r5Step1 argument value UInt64 uInt644936209963552724370 copy
+r5Step1 result r5Part1 Float64
+r5Step1 ownedBy none
+r5Step1 cleanedBy none
+r5Step1 borrows none
+r5Step1 catch none
+r5Step1 suppresses none
+
+findR51 is call
+findR51 in tangentTest
+findR51 invokes tangentOf
+findR51 argument x Float64 r5Part1 copy
+findR51 result r5 Float64
+findR51 ownedBy none
+findR51 cleanedBy none
+findR51 borrows none
+findR51 catch none
+findR51 suppresses none
+
+findOk51 is call
+findOk51 in tangentTest
+findOk51 invokes closeBits
+findOk51 argument expectedBits UInt64 uInt6413833386221037335127 copy
+findOk51 argument actual Float64 r5 copy
+findOk51 result ok5 Bool
+findOk51 ownedBy none
+findOk51 cleanedBy none
+findOk51 borrows none
+findOk51 catch none
+findOk51 suppresses none
+
+expect5 is call
+expect5 in tangentTest
+expect5 invokes test.assertTrue
+expect5 argument value Bool ok5 copy
+expect5 result none
+expect5 ownedBy none
+expect5 cleanedBy none
+expect5 borrows none
+expect5 catch none
+expect5 suppresses none
+
+r6Step1 is call
+r6Step1 in tangentTest
+r6Step1 invokes convert.uint64BitsToFloat64
+r6Step1 argument value UInt64 uInt649218868437227405311 copy
+r6Step1 result r6Part1 Float64
+r6Step1 ownedBy none
+r6Step1 cleanedBy none
+r6Step1 borrows none
+r6Step1 catch none
+r6Step1 suppresses none
+
+findR61 is call
+findR61 in tangentTest
+findR61 invokes tangentOf
+findR61 argument x Float64 r6Part1 copy
+findR61 result r6 Float64
+findR61 ownedBy none
+findR61 cleanedBy none
+findR61 borrows none
+findR61 catch none
+findR61 suppresses none
+
+findOk61 is call
+findOk61 in tangentTest
+findOk61 invokes closeBits
+findOk61 argument expectedBits UInt64 uInt6413795742873816306820 copy
+findOk61 argument actual Float64 r6 copy
+findOk61 result ok6 Bool
+findOk61 ownedBy none
+findOk61 cleanedBy none
+findOk61 borrows none
+findOk61 catch none
+findOk61 suppresses none
+
+expect6 is call
+expect6 in tangentTest
+expect6 invokes test.assertTrue
+expect6 argument value Bool ok6 copy
+expect6 result none
+expect6 ownedBy none
+expect6 cleanedBy none
+expect6 borrows none
+expect6 catch none
+expect6 suppresses none
+
+r7Step1 is call
+r7Step1 in tangentTest
+r7Step1 invokes convert.uint64BitsToFloat64
+r7Step1 argument value UInt64 uInt649223372036854775808 copy
+r7Step1 result r7Part1 Float64
+r7Step1 ownedBy none
+r7Step1 cleanedBy none
+r7Step1 borrows none
+r7Step1 catch none
+r7Step1 suppresses none
+
+findR71 is call
+findR71 in tangentTest
+findR71 invokes tangentOf
+findR71 argument x Float64 r7Part1 copy
+findR71 result r7 Float64
+findR71 ownedBy none
+findR71 cleanedBy none
+findR71 borrows none
+findR71 catch none
+findR71 suppresses none
+
+findOk71 is call
+findOk71 in tangentTest
+findOk71 invokes sameBits
+findOk71 argument expectedBits UInt64 uInt649223372036854775808 copy
+findOk71 argument actual Float64 r7 copy
+findOk71 result ok7 Bool
+findOk71 ownedBy none
+findOk71 cleanedBy none
+findOk71 borrows none
+findOk71 catch none
+findOk71 suppresses none
+
+expect7 is call
+expect7 in tangentTest
+expect7 invokes test.assertTrue
+expect7 argument value Bool ok7 copy
+expect7 result none
+expect7 ownedBy none
+expect7 cleanedBy none
+expect7 borrows none
+expect7 catch none
+expect7 suppresses none
+
+r8Step1 is call
+r8Step1 in tangentTest
+r8Step1 invokes convert.uint64BitsToFloat64
+r8Step1 argument value UInt64 uInt649218868437227405312 copy
+r8Step1 result r8Part1 Float64
+r8Step1 ownedBy none
+r8Step1 cleanedBy none
+r8Step1 borrows none
+r8Step1 catch none
+r8Step1 suppresses none
+
+findR81 is call
+findR81 in tangentTest
+findR81 invokes tangentOf
+findR81 argument x Float64 r8Part1 copy
+findR81 result r8 Float64
+findR81 ownedBy none
+findR81 cleanedBy none
+findR81 borrows none
+findR81 catch none
+findR81 suppresses none
+
+ok8Step1 is call
+ok8Step1 in tangentTest
+ok8Step1 invokes compare.equalFloat64
+ok8Step1 argument left Float64 r8 copy
+ok8Step1 argument right Float64 r8 copy
+ok8Step1 result ok8Part1 Bool
+ok8Step1 ownedBy none
+ok8Step1 cleanedBy none
+ok8Step1 borrows none
+ok8Step1 catch none
+ok8Step1 suppresses none
+
+findOk81 is call
+findOk81 in tangentTest
+findOk81 invokes logic.not
+findOk81 argument value Bool ok8Part1 copy
+findOk81 result ok8 Bool
+findOk81 ownedBy none
+findOk81 cleanedBy none
+findOk81 borrows none
+findOk81 catch none
+findOk81 suppresses none
+
+expect8 is call
+expect8 in tangentTest
+expect8 invokes test.assertTrue
+expect8 argument value Bool ok8 copy
+expect8 result none
+expect8 ownedBy none
+expect8 cleanedBy none
+expect8 borrows none
+expect8 catch none
+expect8 suppresses none
+
+arcSineTest is test
+arcSineTest purpose "arcSineOf: the correctly rounded result or a neighbor of it, and exact special values"
+arcSineTest verifies arcSineOf arcSineWithin
+arcSineTest typeParameter none
+arcSineTest input none
+arcSineTest output none
+arcSineTest outputOwnedBy none
+arcSineTest raises none
+arcSineTest effect use machine.memory
+arcSineTest uses memoryAccess
+arcSineTest memoryHeap false
+arcSineTest async false
+arcSineTest maxRecursion none
+arcSineTest label begin loopKind none
+arcSineTest label begin within none
+arcSineTest let uInt644602678819172646912 UInt64 4602678819172646912 immutable
+arcSineTest let uInt644602891378046628710 UInt64 4602891378046628710 immutable
+arcSineTest let uInt6413821547256400052224 UInt64 13821547256400052224 immutable
+arcSineTest let uInt6413821595539584288717 UInt64 13821595539584288717 immutable
+arcSineTest let uInt644607182418800017407 UInt64 4607182418800017407 immutable
+arcSineTest let uInt644609753056857566488 UInt64 4609753056857566488 immutable
+arcSineTest let uInt6413755392620465711345 UInt64 13755392620465711345 immutable
+arcSineTest let uInt6413755392620465809728 UInt64 13755392620465809728 immutable
+arcSineTest let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+arcSineTest let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+arcSineTest let uInt644609753056924675352 UInt64 4609753056924675352 immutable
+arcSineTest let uInt6413830554455654793216 UInt64 13830554455654793216 immutable
+arcSineTest let uInt6413833125093779451160 UInt64 13833125093779451160 immutable
+arcSineTest let uInt644609434218613702656 UInt64 4609434218613702656 immutable
+arcSineTest let uInt649221120237041090560 UInt64 9221120237041090560 immutable
+arcSineTest at begin do r0Step1
+arcSineTest at begin do findR01
+arcSineTest at begin do findOk01
+arcSineTest at begin do expect0
+arcSineTest at begin do r1Step1
+arcSineTest at begin do findR11
+arcSineTest at begin do findOk11
+arcSineTest at begin do expect1
+arcSineTest at begin do r2Step1
+arcSineTest at begin do findR21
+arcSineTest at begin do findOk21
+arcSineTest at begin do expect2
+arcSineTest at begin do r3Step1
+arcSineTest at begin do findR31
+arcSineTest at begin do findOk31
+arcSineTest at begin do expect3
+arcSineTest at begin do r4Step1
+arcSineTest at begin do findR41
+arcSineTest at begin do findOk41
+arcSineTest at begin do expect4
+arcSineTest at begin do r5Step1
+arcSineTest at begin do findR51
+arcSineTest at begin do findOk51
+arcSineTest at begin do expect5
+arcSineTest at begin do r6Step1
+arcSineTest at begin do findR61
+arcSineTest at begin do findOk61
+arcSineTest at begin do expect6
+arcSineTest at begin do r7Step1
+arcSineTest at begin do findR71
+arcSineTest at begin do ok7Step1
+arcSineTest at begin do findOk71
+arcSineTest at begin do expect7
+arcSineTest at begin do r8Step1
+arcSineTest at begin do findR81
+arcSineTest at begin do ok8Step1
+arcSineTest at begin do findOk81
+arcSineTest at begin do expect8
+arcSineTest at begin return ok none
+
+r0Step1 is call
+r0Step1 in arcSineTest
+r0Step1 invokes convert.uint64BitsToFloat64
+r0Step1 argument value UInt64 uInt644602678819172646912 copy
+r0Step1 result r0Part1 Float64
+r0Step1 ownedBy none
+r0Step1 cleanedBy none
+r0Step1 borrows none
+r0Step1 catch none
+r0Step1 suppresses none
+
+findR01 is call
+findR01 in arcSineTest
+findR01 invokes arcSineOf
+findR01 argument x Float64 r0Part1 copy
+findR01 result r0 Float64
+findR01 ownedBy none
+findR01 cleanedBy none
+findR01 borrows none
+findR01 catch none
+findR01 suppresses none
+
+findOk01 is call
+findOk01 in arcSineTest
+findOk01 invokes closeBits
+findOk01 argument expectedBits UInt64 uInt644602891378046628710 copy
+findOk01 argument actual Float64 r0 copy
+findOk01 result ok0 Bool
+findOk01 ownedBy none
+findOk01 cleanedBy none
+findOk01 borrows none
+findOk01 catch none
+findOk01 suppresses none
+
+expect0 is call
+expect0 in arcSineTest
+expect0 invokes test.assertTrue
+expect0 argument value Bool ok0 copy
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+r1Step1 is call
+r1Step1 in arcSineTest
+r1Step1 invokes convert.uint64BitsToFloat64
+r1Step1 argument value UInt64 uInt6413821547256400052224 copy
+r1Step1 result r1Part1 Float64
+r1Step1 ownedBy none
+r1Step1 cleanedBy none
+r1Step1 borrows none
+r1Step1 catch none
+r1Step1 suppresses none
+
+findR11 is call
+findR11 in arcSineTest
+findR11 invokes arcSineOf
+findR11 argument x Float64 r1Part1 copy
+findR11 result r1 Float64
+findR11 ownedBy none
+findR11 cleanedBy none
+findR11 borrows none
+findR11 catch none
+findR11 suppresses none
+
+findOk11 is call
+findOk11 in arcSineTest
+findOk11 invokes closeBits
+findOk11 argument expectedBits UInt64 uInt6413821595539584288717 copy
+findOk11 argument actual Float64 r1 copy
+findOk11 result ok1 Bool
+findOk11 ownedBy none
+findOk11 cleanedBy none
+findOk11 borrows none
+findOk11 catch none
+findOk11 suppresses none
+
+expect1 is call
+expect1 in arcSineTest
+expect1 invokes test.assertTrue
+expect1 argument value Bool ok1 copy
+expect1 result none
+expect1 ownedBy none
+expect1 cleanedBy none
+expect1 borrows none
+expect1 catch none
+expect1 suppresses none
+
+r2Step1 is call
+r2Step1 in arcSineTest
+r2Step1 invokes convert.uint64BitsToFloat64
+r2Step1 argument value UInt64 uInt644607182418800017407 copy
+r2Step1 result r2Part1 Float64
+r2Step1 ownedBy none
+r2Step1 cleanedBy none
+r2Step1 borrows none
+r2Step1 catch none
+r2Step1 suppresses none
+
+findR21 is call
+findR21 in arcSineTest
+findR21 invokes arcSineOf
+findR21 argument x Float64 r2Part1 copy
+findR21 result r2 Float64
+findR21 ownedBy none
+findR21 cleanedBy none
+findR21 borrows none
+findR21 catch none
+findR21 suppresses none
+
+findOk21 is call
+findOk21 in arcSineTest
+findOk21 invokes closeBits
+findOk21 argument expectedBits UInt64 uInt644609753056857566488 copy
+findOk21 argument actual Float64 r2 copy
+findOk21 result ok2 Bool
+findOk21 ownedBy none
+findOk21 cleanedBy none
+findOk21 borrows none
+findOk21 catch none
+findOk21 suppresses none
+
+expect2 is call
+expect2 in arcSineTest
+expect2 invokes test.assertTrue
+expect2 argument value Bool ok2 copy
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+r3Step1 is call
+r3Step1 in arcSineTest
+r3Step1 invokes convert.uint64BitsToFloat64
+r3Step1 argument value UInt64 uInt6413755392620465711345 copy
+r3Step1 result r3Part1 Float64
+r3Step1 ownedBy none
+r3Step1 cleanedBy none
+r3Step1 borrows none
+r3Step1 catch none
+r3Step1 suppresses none
+
+findR31 is call
+findR31 in arcSineTest
+findR31 invokes arcSineOf
+findR31 argument x Float64 r3Part1 copy
+findR31 result r3 Float64
+findR31 ownedBy none
+findR31 cleanedBy none
+findR31 borrows none
+findR31 catch none
+findR31 suppresses none
+
+findOk31 is call
+findOk31 in arcSineTest
+findOk31 invokes closeBits
+findOk31 argument expectedBits UInt64 uInt6413755392620465809728 copy
+findOk31 argument actual Float64 r3 copy
+findOk31 result ok3 Bool
+findOk31 ownedBy none
+findOk31 cleanedBy none
+findOk31 borrows none
+findOk31 catch none
+findOk31 suppresses none
+
+expect3 is call
+expect3 in arcSineTest
+expect3 invokes test.assertTrue
+expect3 argument value Bool ok3 copy
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+r4Step1 is call
+r4Step1 in arcSineTest
+r4Step1 invokes convert.uint64BitsToFloat64
+r4Step1 argument value UInt64 uInt649223372036854775808 copy
+r4Step1 result r4Part1 Float64
+r4Step1 ownedBy none
+r4Step1 cleanedBy none
+r4Step1 borrows none
+r4Step1 catch none
+r4Step1 suppresses none
+
+findR41 is call
+findR41 in arcSineTest
+findR41 invokes arcSineOf
+findR41 argument x Float64 r4Part1 copy
+findR41 result r4 Float64
+findR41 ownedBy none
+findR41 cleanedBy none
+findR41 borrows none
+findR41 catch none
+findR41 suppresses none
+
+findOk41 is call
+findOk41 in arcSineTest
+findOk41 invokes sameBits
+findOk41 argument expectedBits UInt64 uInt649223372036854775808 copy
+findOk41 argument actual Float64 r4 copy
+findOk41 result ok4 Bool
+findOk41 ownedBy none
+findOk41 cleanedBy none
+findOk41 borrows none
+findOk41 catch none
+findOk41 suppresses none
+
+expect4 is call
+expect4 in arcSineTest
+expect4 invokes test.assertTrue
+expect4 argument value Bool ok4 copy
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+r5Step1 is call
+r5Step1 in arcSineTest
+r5Step1 invokes convert.uint64BitsToFloat64
+r5Step1 argument value UInt64 uInt644607182418800017408 copy
+r5Step1 result r5Part1 Float64
+r5Step1 ownedBy none
+r5Step1 cleanedBy none
+r5Step1 borrows none
+r5Step1 catch none
+r5Step1 suppresses none
+
+findR51 is call
+findR51 in arcSineTest
+findR51 invokes arcSineOf
+findR51 argument x Float64 r5Part1 copy
+findR51 result r5 Float64
+findR51 ownedBy none
+findR51 cleanedBy none
+findR51 borrows none
+findR51 catch none
+findR51 suppresses none
+
+findOk51 is call
+findOk51 in arcSineTest
+findOk51 invokes sameBits
+findOk51 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk51 argument actual Float64 r5 copy
+findOk51 result ok5 Bool
+findOk51 ownedBy none
+findOk51 cleanedBy none
+findOk51 borrows none
+findOk51 catch none
+findOk51 suppresses none
+
+expect5 is call
+expect5 in arcSineTest
+expect5 invokes test.assertTrue
+expect5 argument value Bool ok5 copy
+expect5 result none
+expect5 ownedBy none
+expect5 cleanedBy none
+expect5 borrows none
+expect5 catch none
+expect5 suppresses none
+
+r6Step1 is call
+r6Step1 in arcSineTest
+r6Step1 invokes convert.uint64BitsToFloat64
+r6Step1 argument value UInt64 uInt6413830554455654793216 copy
+r6Step1 result r6Part1 Float64
+r6Step1 ownedBy none
+r6Step1 cleanedBy none
+r6Step1 borrows none
+r6Step1 catch none
+r6Step1 suppresses none
+
+findR61 is call
+findR61 in arcSineTest
+findR61 invokes arcSineOf
+findR61 argument x Float64 r6Part1 copy
+findR61 result r6 Float64
+findR61 ownedBy none
+findR61 cleanedBy none
+findR61 borrows none
+findR61 catch none
+findR61 suppresses none
+
+findOk61 is call
+findOk61 in arcSineTest
+findOk61 invokes sameBits
+findOk61 argument expectedBits UInt64 uInt6413833125093779451160 copy
+findOk61 argument actual Float64 r6 copy
+findOk61 result ok6 Bool
+findOk61 ownedBy none
+findOk61 cleanedBy none
+findOk61 borrows none
+findOk61 catch none
+findOk61 suppresses none
+
+expect6 is call
+expect6 in arcSineTest
+expect6 invokes test.assertTrue
+expect6 argument value Bool ok6 copy
+expect6 result none
+expect6 ownedBy none
+expect6 cleanedBy none
+expect6 borrows none
+expect6 catch none
+expect6 suppresses none
+
+r7Step1 is call
+r7Step1 in arcSineTest
+r7Step1 invokes convert.uint64BitsToFloat64
+r7Step1 argument value UInt64 uInt644609434218613702656 copy
+r7Step1 result r7Part1 Float64
+r7Step1 ownedBy none
+r7Step1 cleanedBy none
+r7Step1 borrows none
+r7Step1 catch none
+r7Step1 suppresses none
+
+findR71 is call
+findR71 in arcSineTest
+findR71 invokes arcSineOf
+findR71 argument x Float64 r7Part1 copy
+findR71 result r7 Float64
+findR71 ownedBy none
+findR71 cleanedBy none
+findR71 borrows none
+findR71 catch none
+findR71 suppresses none
+
+ok7Step1 is call
+ok7Step1 in arcSineTest
+ok7Step1 invokes compare.equalFloat64
+ok7Step1 argument left Float64 r7 copy
+ok7Step1 argument right Float64 r7 copy
+ok7Step1 result ok7Part1 Bool
+ok7Step1 ownedBy none
+ok7Step1 cleanedBy none
+ok7Step1 borrows none
+ok7Step1 catch none
+ok7Step1 suppresses none
+
+findOk71 is call
+findOk71 in arcSineTest
+findOk71 invokes logic.not
+findOk71 argument value Bool ok7Part1 copy
+findOk71 result ok7 Bool
+findOk71 ownedBy none
+findOk71 cleanedBy none
+findOk71 borrows none
+findOk71 catch none
+findOk71 suppresses none
+
+expect7 is call
+expect7 in arcSineTest
+expect7 invokes test.assertTrue
+expect7 argument value Bool ok7 copy
+expect7 result none
+expect7 ownedBy none
+expect7 cleanedBy none
+expect7 borrows none
+expect7 catch none
+expect7 suppresses none
+
+r8Step1 is call
+r8Step1 in arcSineTest
+r8Step1 invokes convert.uint64BitsToFloat64
+r8Step1 argument value UInt64 uInt649221120237041090560 copy
+r8Step1 result r8Part1 Float64
+r8Step1 ownedBy none
+r8Step1 cleanedBy none
+r8Step1 borrows none
+r8Step1 catch none
+r8Step1 suppresses none
+
+findR81 is call
+findR81 in arcSineTest
+findR81 invokes arcSineOf
+findR81 argument x Float64 r8Part1 copy
+findR81 result r8 Float64
+findR81 ownedBy none
+findR81 cleanedBy none
+findR81 borrows none
+findR81 catch none
+findR81 suppresses none
+
+ok8Step1 is call
+ok8Step1 in arcSineTest
+ok8Step1 invokes compare.equalFloat64
+ok8Step1 argument left Float64 r8 copy
+ok8Step1 argument right Float64 r8 copy
+ok8Step1 result ok8Part1 Bool
+ok8Step1 ownedBy none
+ok8Step1 cleanedBy none
+ok8Step1 borrows none
+ok8Step1 catch none
+ok8Step1 suppresses none
+
+findOk81 is call
+findOk81 in arcSineTest
+findOk81 invokes logic.not
+findOk81 argument value Bool ok8Part1 copy
+findOk81 result ok8 Bool
+findOk81 ownedBy none
+findOk81 cleanedBy none
+findOk81 borrows none
+findOk81 catch none
+findOk81 suppresses none
+
+expect8 is call
+expect8 in arcSineTest
+expect8 invokes test.assertTrue
+expect8 argument value Bool ok8 copy
+expect8 result none
+expect8 ownedBy none
+expect8 cleanedBy none
+expect8 borrows none
+expect8 catch none
+expect8 suppresses none
+
+arcCosineTest is test
+arcCosineTest purpose "arcCosineOf: the correctly rounded result or a neighbor of it, and exact special values"
+arcCosineTest verifies arcCosineOf arcCosineWithin
+arcCosineTest typeParameter none
+arcCosineTest input none
+arcCosineTest output none
+arcCosineTest outputOwnedBy none
+arcCosineTest raises none
+arcCosineTest effect use machine.memory
+arcCosineTest uses memoryAccess
+arcCosineTest memoryHeap false
+arcCosineTest async false
+arcCosineTest maxRecursion none
+arcCosineTest label begin loopKind none
+arcCosineTest label begin within none
+arcCosineTest let uInt644602678819172646912 UInt64 4602678819172646912 immutable
+arcCosineTest let uInt644607394977673999206 UInt64 4607394977673999206 immutable
+arcCosineTest let uInt6413826050856027422720 UInt64 13826050856027422720 immutable
+arcCosineTest let uInt644611898577301369702 UInt64 4611898577301369702 immutable
+arcCosineTest let uInt644607182418800017407 UInt64 4607182418800017407 immutable
+arcCosineTest let uInt644490088828488384512 UInt64 4490088828488384512 immutable
+arcCosineTest let uInt6413830554455654793215 UInt64 13830554455654793215 immutable
+arcCosineTest let uInt644614256656518491416 UInt64 4614256656518491416 immutable
+arcCosineTest let uInt644472406533629990549 UInt64 4472406533629990549 immutable
+arcCosineTest let uInt644609753056920171753 UInt64 4609753056920171753 immutable
+arcCosineTest let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+arcCosineTest let uInt640 UInt64 0 immutable
+arcCosineTest let uInt6413830554455654793216 UInt64 13830554455654793216 immutable
+arcCosineTest let uInt644614256656552045848 UInt64 4614256656552045848 immutable
+arcCosineTest let uInt644609753056924675352 UInt64 4609753056924675352 immutable
+arcCosineTest let uInt6418442240474082181120 UInt64 18442240474082181120 immutable
+arcCosineTest at begin do r0Step1
+arcCosineTest at begin do findR01
+arcCosineTest at begin do findOk01
+arcCosineTest at begin do expect0
+arcCosineTest at begin do r1Step1
+arcCosineTest at begin do findR11
+arcCosineTest at begin do findOk11
+arcCosineTest at begin do expect1
+arcCosineTest at begin do r2Step1
+arcCosineTest at begin do findR21
+arcCosineTest at begin do findOk21
+arcCosineTest at begin do expect2
+arcCosineTest at begin do r3Step1
+arcCosineTest at begin do findR31
+arcCosineTest at begin do findOk31
+arcCosineTest at begin do expect3
+arcCosineTest at begin do r4Step1
+arcCosineTest at begin do findR41
+arcCosineTest at begin do findOk41
+arcCosineTest at begin do expect4
+arcCosineTest at begin do r5Step1
+arcCosineTest at begin do findR51
+arcCosineTest at begin do findOk51
+arcCosineTest at begin do expect5
+arcCosineTest at begin do r6Step1
+arcCosineTest at begin do findR61
+arcCosineTest at begin do findOk61
+arcCosineTest at begin do expect6
+arcCosineTest at begin do r7Step1
+arcCosineTest at begin do findR71
+arcCosineTest at begin do findOk71
+arcCosineTest at begin do expect7
+arcCosineTest at begin do r8Step1
+arcCosineTest at begin do findR81
+arcCosineTest at begin do ok8Step1
+arcCosineTest at begin do findOk81
+arcCosineTest at begin do expect8
+arcCosineTest at begin return ok none
+
+r0Step1 is call
+r0Step1 in arcCosineTest
+r0Step1 invokes convert.uint64BitsToFloat64
+r0Step1 argument value UInt64 uInt644602678819172646912 copy
+r0Step1 result r0Part1 Float64
+r0Step1 ownedBy none
+r0Step1 cleanedBy none
+r0Step1 borrows none
+r0Step1 catch none
+r0Step1 suppresses none
+
+findR01 is call
+findR01 in arcCosineTest
+findR01 invokes arcCosineOf
+findR01 argument x Float64 r0Part1 copy
+findR01 result r0 Float64
+findR01 ownedBy none
+findR01 cleanedBy none
+findR01 borrows none
+findR01 catch none
+findR01 suppresses none
+
+findOk01 is call
+findOk01 in arcCosineTest
+findOk01 invokes closeBits
+findOk01 argument expectedBits UInt64 uInt644607394977673999206 copy
+findOk01 argument actual Float64 r0 copy
+findOk01 result ok0 Bool
+findOk01 ownedBy none
+findOk01 cleanedBy none
+findOk01 borrows none
+findOk01 catch none
+findOk01 suppresses none
+
+expect0 is call
+expect0 in arcCosineTest
+expect0 invokes test.assertTrue
+expect0 argument value Bool ok0 copy
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+r1Step1 is call
+r1Step1 in arcCosineTest
+r1Step1 invokes convert.uint64BitsToFloat64
+r1Step1 argument value UInt64 uInt6413826050856027422720 copy
+r1Step1 result r1Part1 Float64
+r1Step1 ownedBy none
+r1Step1 cleanedBy none
+r1Step1 borrows none
+r1Step1 catch none
+r1Step1 suppresses none
+
+findR11 is call
+findR11 in arcCosineTest
+findR11 invokes arcCosineOf
+findR11 argument x Float64 r1Part1 copy
+findR11 result r1 Float64
+findR11 ownedBy none
+findR11 cleanedBy none
+findR11 borrows none
+findR11 catch none
+findR11 suppresses none
+
+findOk11 is call
+findOk11 in arcCosineTest
+findOk11 invokes closeBits
+findOk11 argument expectedBits UInt64 uInt644611898577301369702 copy
+findOk11 argument actual Float64 r1 copy
+findOk11 result ok1 Bool
+findOk11 ownedBy none
+findOk11 cleanedBy none
+findOk11 borrows none
+findOk11 catch none
+findOk11 suppresses none
+
+expect1 is call
+expect1 in arcCosineTest
+expect1 invokes test.assertTrue
+expect1 argument value Bool ok1 copy
+expect1 result none
+expect1 ownedBy none
+expect1 cleanedBy none
+expect1 borrows none
+expect1 catch none
+expect1 suppresses none
+
+r2Step1 is call
+r2Step1 in arcCosineTest
+r2Step1 invokes convert.uint64BitsToFloat64
+r2Step1 argument value UInt64 uInt644607182418800017407 copy
+r2Step1 result r2Part1 Float64
+r2Step1 ownedBy none
+r2Step1 cleanedBy none
+r2Step1 borrows none
+r2Step1 catch none
+r2Step1 suppresses none
+
+findR21 is call
+findR21 in arcCosineTest
+findR21 invokes arcCosineOf
+findR21 argument x Float64 r2Part1 copy
+findR21 result r2 Float64
+findR21 ownedBy none
+findR21 cleanedBy none
+findR21 borrows none
+findR21 catch none
+findR21 suppresses none
+
+findOk21 is call
+findOk21 in arcCosineTest
+findOk21 invokes closeBits
+findOk21 argument expectedBits UInt64 uInt644490088828488384512 copy
+findOk21 argument actual Float64 r2 copy
+findOk21 result ok2 Bool
+findOk21 ownedBy none
+findOk21 cleanedBy none
+findOk21 borrows none
+findOk21 catch none
+findOk21 suppresses none
+
+expect2 is call
+expect2 in arcCosineTest
+expect2 invokes test.assertTrue
+expect2 argument value Bool ok2 copy
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+r3Step1 is call
+r3Step1 in arcCosineTest
+r3Step1 invokes convert.uint64BitsToFloat64
+r3Step1 argument value UInt64 uInt6413830554455654793215 copy
+r3Step1 result r3Part1 Float64
+r3Step1 ownedBy none
+r3Step1 cleanedBy none
+r3Step1 borrows none
+r3Step1 catch none
+r3Step1 suppresses none
+
+findR31 is call
+findR31 in arcCosineTest
+findR31 invokes arcCosineOf
+findR31 argument x Float64 r3Part1 copy
+findR31 result r3 Float64
+findR31 ownedBy none
+findR31 cleanedBy none
+findR31 borrows none
+findR31 catch none
+findR31 suppresses none
+
+findOk31 is call
+findOk31 in arcCosineTest
+findOk31 invokes closeBits
+findOk31 argument expectedBits UInt64 uInt644614256656518491416 copy
+findOk31 argument actual Float64 r3 copy
+findOk31 result ok3 Bool
+findOk31 ownedBy none
+findOk31 cleanedBy none
+findOk31 borrows none
+findOk31 catch none
+findOk31 suppresses none
+
+expect3 is call
+expect3 in arcCosineTest
+expect3 invokes test.assertTrue
+expect3 argument value Bool ok3 copy
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+r4Step1 is call
+r4Step1 in arcCosineTest
+r4Step1 invokes convert.uint64BitsToFloat64
+r4Step1 argument value UInt64 uInt644472406533629990549 copy
+r4Step1 result r4Part1 Float64
+r4Step1 ownedBy none
+r4Step1 cleanedBy none
+r4Step1 borrows none
+r4Step1 catch none
+r4Step1 suppresses none
+
+findR41 is call
+findR41 in arcCosineTest
+findR41 invokes arcCosineOf
+findR41 argument x Float64 r4Part1 copy
+findR41 result r4 Float64
+findR41 ownedBy none
+findR41 cleanedBy none
+findR41 borrows none
+findR41 catch none
+findR41 suppresses none
+
+findOk41 is call
+findOk41 in arcCosineTest
+findOk41 invokes closeBits
+findOk41 argument expectedBits UInt64 uInt644609753056920171753 copy
+findOk41 argument actual Float64 r4 copy
+findOk41 result ok4 Bool
+findOk41 ownedBy none
+findOk41 cleanedBy none
+findOk41 borrows none
+findOk41 catch none
+findOk41 suppresses none
+
+expect4 is call
+expect4 in arcCosineTest
+expect4 invokes test.assertTrue
+expect4 argument value Bool ok4 copy
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+r5Step1 is call
+r5Step1 in arcCosineTest
+r5Step1 invokes convert.uint64BitsToFloat64
+r5Step1 argument value UInt64 uInt644607182418800017408 copy
+r5Step1 result r5Part1 Float64
+r5Step1 ownedBy none
+r5Step1 cleanedBy none
+r5Step1 borrows none
+r5Step1 catch none
+r5Step1 suppresses none
+
+findR51 is call
+findR51 in arcCosineTest
+findR51 invokes arcCosineOf
+findR51 argument x Float64 r5Part1 copy
+findR51 result r5 Float64
+findR51 ownedBy none
+findR51 cleanedBy none
+findR51 borrows none
+findR51 catch none
+findR51 suppresses none
+
+findOk51 is call
+findOk51 in arcCosineTest
+findOk51 invokes sameBits
+findOk51 argument expectedBits UInt64 uInt640 copy
+findOk51 argument actual Float64 r5 copy
+findOk51 result ok5 Bool
+findOk51 ownedBy none
+findOk51 cleanedBy none
+findOk51 borrows none
+findOk51 catch none
+findOk51 suppresses none
+
+expect5 is call
+expect5 in arcCosineTest
+expect5 invokes test.assertTrue
+expect5 argument value Bool ok5 copy
+expect5 result none
+expect5 ownedBy none
+expect5 cleanedBy none
+expect5 borrows none
+expect5 catch none
+expect5 suppresses none
+
+r6Step1 is call
+r6Step1 in arcCosineTest
+r6Step1 invokes convert.uint64BitsToFloat64
+r6Step1 argument value UInt64 uInt6413830554455654793216 copy
+r6Step1 result r6Part1 Float64
+r6Step1 ownedBy none
+r6Step1 cleanedBy none
+r6Step1 borrows none
+r6Step1 catch none
+r6Step1 suppresses none
+
+findR61 is call
+findR61 in arcCosineTest
+findR61 invokes arcCosineOf
+findR61 argument x Float64 r6Part1 copy
+findR61 result r6 Float64
+findR61 ownedBy none
+findR61 cleanedBy none
+findR61 borrows none
+findR61 catch none
+findR61 suppresses none
+
+findOk61 is call
+findOk61 in arcCosineTest
+findOk61 invokes sameBits
+findOk61 argument expectedBits UInt64 uInt644614256656552045848 copy
+findOk61 argument actual Float64 r6 copy
+findOk61 result ok6 Bool
+findOk61 ownedBy none
+findOk61 cleanedBy none
+findOk61 borrows none
+findOk61 catch none
+findOk61 suppresses none
+
+expect6 is call
+expect6 in arcCosineTest
+expect6 invokes test.assertTrue
+expect6 argument value Bool ok6 copy
+expect6 result none
+expect6 ownedBy none
+expect6 cleanedBy none
+expect6 borrows none
+expect6 catch none
+expect6 suppresses none
+
+r7Step1 is call
+r7Step1 in arcCosineTest
+r7Step1 invokes convert.uint64BitsToFloat64
+r7Step1 argument value UInt64 uInt640 copy
+r7Step1 result r7Part1 Float64
+r7Step1 ownedBy none
+r7Step1 cleanedBy none
+r7Step1 borrows none
+r7Step1 catch none
+r7Step1 suppresses none
+
+findR71 is call
+findR71 in arcCosineTest
+findR71 invokes arcCosineOf
+findR71 argument x Float64 r7Part1 copy
+findR71 result r7 Float64
+findR71 ownedBy none
+findR71 cleanedBy none
+findR71 borrows none
+findR71 catch none
+findR71 suppresses none
+
+findOk71 is call
+findOk71 in arcCosineTest
+findOk71 invokes sameBits
+findOk71 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk71 argument actual Float64 r7 copy
+findOk71 result ok7 Bool
+findOk71 ownedBy none
+findOk71 cleanedBy none
+findOk71 borrows none
+findOk71 catch none
+findOk71 suppresses none
+
+expect7 is call
+expect7 in arcCosineTest
+expect7 invokes test.assertTrue
+expect7 argument value Bool ok7 copy
+expect7 result none
+expect7 ownedBy none
+expect7 cleanedBy none
+expect7 borrows none
+expect7 catch none
+expect7 suppresses none
+
+r8Step1 is call
+r8Step1 in arcCosineTest
+r8Step1 invokes convert.uint64BitsToFloat64
+r8Step1 argument value UInt64 uInt6418442240474082181120 copy
+r8Step1 result r8Part1 Float64
+r8Step1 ownedBy none
+r8Step1 cleanedBy none
+r8Step1 borrows none
+r8Step1 catch none
+r8Step1 suppresses none
+
+findR81 is call
+findR81 in arcCosineTest
+findR81 invokes arcCosineOf
+findR81 argument x Float64 r8Part1 copy
+findR81 result r8 Float64
+findR81 ownedBy none
+findR81 cleanedBy none
+findR81 borrows none
+findR81 catch none
+findR81 suppresses none
+
+ok8Step1 is call
+ok8Step1 in arcCosineTest
+ok8Step1 invokes compare.equalFloat64
+ok8Step1 argument left Float64 r8 copy
+ok8Step1 argument right Float64 r8 copy
+ok8Step1 result ok8Part1 Bool
+ok8Step1 ownedBy none
+ok8Step1 cleanedBy none
+ok8Step1 borrows none
+ok8Step1 catch none
+ok8Step1 suppresses none
+
+findOk81 is call
+findOk81 in arcCosineTest
+findOk81 invokes logic.not
+findOk81 argument value Bool ok8Part1 copy
+findOk81 result ok8 Bool
+findOk81 ownedBy none
+findOk81 cleanedBy none
+findOk81 borrows none
+findOk81 catch none
+findOk81 suppresses none
+
+expect8 is call
+expect8 in arcCosineTest
+expect8 invokes test.assertTrue
+expect8 argument value Bool ok8 copy
+expect8 result none
+expect8 ownedBy none
+expect8 cleanedBy none
+expect8 borrows none
+expect8 catch none
+expect8 suppresses none
+
+arcTangentTest is test
+arcTangentTest purpose "arcTangentOf: the correctly rounded result or a neighbor of it, and exact special values"
+arcTangentTest verifies arcTangentOf arcTangentWithin
+arcTangentTest typeParameter none
+arcTangentTest input none
+arcTangentTest output none
+arcTangentTest outputOwnedBy none
+arcTangentTest raises none
+arcTangentTest effect use machine.memory
+arcTangentTest uses memoryAccess
+arcTangentTest memoryHeap false
+arcTangentTest async false
+arcTangentTest maxRecursion none
+arcTangentTest label begin loopKind none
+arcTangentTest label begin within none
+arcTangentTest let uInt644602678819172646912 UInt64 4602678819172646912 immutable
+arcTangentTest let uInt644602023952714414927 UInt64 4602023952714414927 immutable
+arcTangentTest let uInt6413835058055282163712 UInt64 13835058055282163712 immutable
+arcTangentTest let uInt6413831037010580323908 UInt64 13831037010580323908 immutable
+arcTangentTest let uInt644621819117588971520 UInt64 4621819117588971520 immutable
+arcTangentTest let uInt644609304189218455636 UInt64 4609304189218455636 immutable
+arcTangentTest let uInt644756540486875873280 UInt64 4756540486875873280 immutable
+arcTangentTest let uInt644609753056924224992 UInt64 4609753056924224992 immutable
+arcTangentTest let uInt649094988921128908188 UInt64 9094988921128908188 immutable
+arcTangentTest let uInt644609753056924675352 UInt64 4609753056924675352 immutable
+arcTangentTest let uInt644593671619917905920 UInt64 4593671619917905920 immutable
+arcTangentTest let uInt644593625142376804206 UInt64 4593625142376804206 immutable
+arcTangentTest let uInt649218868437227405312 UInt64 9218868437227405312 immutable
+arcTangentTest let uInt6418442240474082181120 UInt64 18442240474082181120 immutable
+arcTangentTest let uInt6413833125093779451160 UInt64 13833125093779451160 immutable
+arcTangentTest let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+arcTangentTest at begin do r0Step1
+arcTangentTest at begin do findR01
+arcTangentTest at begin do findOk01
+arcTangentTest at begin do expect0
+arcTangentTest at begin do r1Step1
+arcTangentTest at begin do findR11
+arcTangentTest at begin do findOk11
+arcTangentTest at begin do expect1
+arcTangentTest at begin do r2Step1
+arcTangentTest at begin do findR21
+arcTangentTest at begin do findOk21
+arcTangentTest at begin do expect2
+arcTangentTest at begin do r3Step1
+arcTangentTest at begin do findR31
+arcTangentTest at begin do findOk31
+arcTangentTest at begin do expect3
+arcTangentTest at begin do r4Step1
+arcTangentTest at begin do findR41
+arcTangentTest at begin do findOk41
+arcTangentTest at begin do expect4
+arcTangentTest at begin do r5Step1
+arcTangentTest at begin do findR51
+arcTangentTest at begin do findOk51
+arcTangentTest at begin do expect5
+arcTangentTest at begin do r6Step1
+arcTangentTest at begin do findR61
+arcTangentTest at begin do findOk61
+arcTangentTest at begin do expect6
+arcTangentTest at begin do r7Step1
+arcTangentTest at begin do findR71
+arcTangentTest at begin do findOk71
+arcTangentTest at begin do expect7
+arcTangentTest at begin do r8Step1
+arcTangentTest at begin do findR81
+arcTangentTest at begin do findOk81
+arcTangentTest at begin do expect8
+arcTangentTest at begin return ok none
+
+r0Step1 is call
+r0Step1 in arcTangentTest
+r0Step1 invokes convert.uint64BitsToFloat64
+r0Step1 argument value UInt64 uInt644602678819172646912 copy
+r0Step1 result r0Part1 Float64
+r0Step1 ownedBy none
+r0Step1 cleanedBy none
+r0Step1 borrows none
+r0Step1 catch none
+r0Step1 suppresses none
+
+findR01 is call
+findR01 in arcTangentTest
+findR01 invokes arcTangentOf
+findR01 argument x Float64 r0Part1 copy
+findR01 result r0 Float64
+findR01 ownedBy none
+findR01 cleanedBy none
+findR01 borrows none
+findR01 catch none
+findR01 suppresses none
+
+findOk01 is call
+findOk01 in arcTangentTest
+findOk01 invokes closeBits
+findOk01 argument expectedBits UInt64 uInt644602023952714414927 copy
+findOk01 argument actual Float64 r0 copy
+findOk01 result ok0 Bool
+findOk01 ownedBy none
+findOk01 cleanedBy none
+findOk01 borrows none
+findOk01 catch none
+findOk01 suppresses none
+
+expect0 is call
+expect0 in arcTangentTest
+expect0 invokes test.assertTrue
+expect0 argument value Bool ok0 copy
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+r1Step1 is call
+r1Step1 in arcTangentTest
+r1Step1 invokes convert.uint64BitsToFloat64
+r1Step1 argument value UInt64 uInt6413835058055282163712 copy
+r1Step1 result r1Part1 Float64
+r1Step1 ownedBy none
+r1Step1 cleanedBy none
+r1Step1 borrows none
+r1Step1 catch none
+r1Step1 suppresses none
+
+findR11 is call
+findR11 in arcTangentTest
+findR11 invokes arcTangentOf
+findR11 argument x Float64 r1Part1 copy
+findR11 result r1 Float64
+findR11 ownedBy none
+findR11 cleanedBy none
+findR11 borrows none
+findR11 catch none
+findR11 suppresses none
+
+findOk11 is call
+findOk11 in arcTangentTest
+findOk11 invokes closeBits
+findOk11 argument expectedBits UInt64 uInt6413831037010580323908 copy
+findOk11 argument actual Float64 r1 copy
+findOk11 result ok1 Bool
+findOk11 ownedBy none
+findOk11 cleanedBy none
+findOk11 borrows none
+findOk11 catch none
+findOk11 suppresses none
+
+expect1 is call
+expect1 in arcTangentTest
+expect1 invokes test.assertTrue
+expect1 argument value Bool ok1 copy
+expect1 result none
+expect1 ownedBy none
+expect1 cleanedBy none
+expect1 borrows none
+expect1 catch none
+expect1 suppresses none
+
+r2Step1 is call
+r2Step1 in arcTangentTest
+r2Step1 invokes convert.uint64BitsToFloat64
+r2Step1 argument value UInt64 uInt644621819117588971520 copy
+r2Step1 result r2Part1 Float64
+r2Step1 ownedBy none
+r2Step1 cleanedBy none
+r2Step1 borrows none
+r2Step1 catch none
+r2Step1 suppresses none
+
+findR21 is call
+findR21 in arcTangentTest
+findR21 invokes arcTangentOf
+findR21 argument x Float64 r2Part1 copy
+findR21 result r2 Float64
+findR21 ownedBy none
+findR21 cleanedBy none
+findR21 borrows none
+findR21 catch none
+findR21 suppresses none
+
+findOk21 is call
+findOk21 in arcTangentTest
+findOk21 invokes closeBits
+findOk21 argument expectedBits UInt64 uInt644609304189218455636 copy
+findOk21 argument actual Float64 r2 copy
+findOk21 result ok2 Bool
+findOk21 ownedBy none
+findOk21 cleanedBy none
+findOk21 borrows none
+findOk21 catch none
+findOk21 suppresses none
+
+expect2 is call
+expect2 in arcTangentTest
+expect2 invokes test.assertTrue
+expect2 argument value Bool ok2 copy
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+r3Step1 is call
+r3Step1 in arcTangentTest
+r3Step1 invokes convert.uint64BitsToFloat64
+r3Step1 argument value UInt64 uInt644756540486875873280 copy
+r3Step1 result r3Part1 Float64
+r3Step1 ownedBy none
+r3Step1 cleanedBy none
+r3Step1 borrows none
+r3Step1 catch none
+r3Step1 suppresses none
+
+findR31 is call
+findR31 in arcTangentTest
+findR31 invokes arcTangentOf
+findR31 argument x Float64 r3Part1 copy
+findR31 result r3 Float64
+findR31 ownedBy none
+findR31 cleanedBy none
+findR31 borrows none
+findR31 catch none
+findR31 suppresses none
+
+findOk31 is call
+findOk31 in arcTangentTest
+findOk31 invokes closeBits
+findOk31 argument expectedBits UInt64 uInt644609753056924224992 copy
+findOk31 argument actual Float64 r3 copy
+findOk31 result ok3 Bool
+findOk31 ownedBy none
+findOk31 cleanedBy none
+findOk31 borrows none
+findOk31 catch none
+findOk31 suppresses none
+
+expect3 is call
+expect3 in arcTangentTest
+expect3 invokes test.assertTrue
+expect3 argument value Bool ok3 copy
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+r4Step1 is call
+r4Step1 in arcTangentTest
+r4Step1 invokes convert.uint64BitsToFloat64
+r4Step1 argument value UInt64 uInt649094988921128908188 copy
+r4Step1 result r4Part1 Float64
+r4Step1 ownedBy none
+r4Step1 cleanedBy none
+r4Step1 borrows none
+r4Step1 catch none
+r4Step1 suppresses none
+
+findR41 is call
+findR41 in arcTangentTest
+findR41 invokes arcTangentOf
+findR41 argument x Float64 r4Part1 copy
+findR41 result r4 Float64
+findR41 ownedBy none
+findR41 cleanedBy none
+findR41 borrows none
+findR41 catch none
+findR41 suppresses none
+
+findOk41 is call
+findOk41 in arcTangentTest
+findOk41 invokes closeBits
+findOk41 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk41 argument actual Float64 r4 copy
+findOk41 result ok4 Bool
+findOk41 ownedBy none
+findOk41 cleanedBy none
+findOk41 borrows none
+findOk41 catch none
+findOk41 suppresses none
+
+expect4 is call
+expect4 in arcTangentTest
+expect4 invokes test.assertTrue
+expect4 argument value Bool ok4 copy
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+r5Step1 is call
+r5Step1 in arcTangentTest
+r5Step1 invokes convert.uint64BitsToFloat64
+r5Step1 argument value UInt64 uInt644593671619917905920 copy
+r5Step1 result r5Part1 Float64
+r5Step1 ownedBy none
+r5Step1 cleanedBy none
+r5Step1 borrows none
+r5Step1 catch none
+r5Step1 suppresses none
+
+findR51 is call
+findR51 in arcTangentTest
+findR51 invokes arcTangentOf
+findR51 argument x Float64 r5Part1 copy
+findR51 result r5 Float64
+findR51 ownedBy none
+findR51 cleanedBy none
+findR51 borrows none
+findR51 catch none
+findR51 suppresses none
+
+findOk51 is call
+findOk51 in arcTangentTest
+findOk51 invokes closeBits
+findOk51 argument expectedBits UInt64 uInt644593625142376804206 copy
+findOk51 argument actual Float64 r5 copy
+findOk51 result ok5 Bool
+findOk51 ownedBy none
+findOk51 cleanedBy none
+findOk51 borrows none
+findOk51 catch none
+findOk51 suppresses none
+
+expect5 is call
+expect5 in arcTangentTest
+expect5 invokes test.assertTrue
+expect5 argument value Bool ok5 copy
+expect5 result none
+expect5 ownedBy none
+expect5 cleanedBy none
+expect5 borrows none
+expect5 catch none
+expect5 suppresses none
+
+r6Step1 is call
+r6Step1 in arcTangentTest
+r6Step1 invokes convert.uint64BitsToFloat64
+r6Step1 argument value UInt64 uInt649218868437227405312 copy
+r6Step1 result r6Part1 Float64
+r6Step1 ownedBy none
+r6Step1 cleanedBy none
+r6Step1 borrows none
+r6Step1 catch none
+r6Step1 suppresses none
+
+findR61 is call
+findR61 in arcTangentTest
+findR61 invokes arcTangentOf
+findR61 argument x Float64 r6Part1 copy
+findR61 result r6 Float64
+findR61 ownedBy none
+findR61 cleanedBy none
+findR61 borrows none
+findR61 catch none
+findR61 suppresses none
+
+findOk61 is call
+findOk61 in arcTangentTest
+findOk61 invokes sameBits
+findOk61 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk61 argument actual Float64 r6 copy
+findOk61 result ok6 Bool
+findOk61 ownedBy none
+findOk61 cleanedBy none
+findOk61 borrows none
+findOk61 catch none
+findOk61 suppresses none
+
+expect6 is call
+expect6 in arcTangentTest
+expect6 invokes test.assertTrue
+expect6 argument value Bool ok6 copy
+expect6 result none
+expect6 ownedBy none
+expect6 cleanedBy none
+expect6 borrows none
+expect6 catch none
+expect6 suppresses none
+
+r7Step1 is call
+r7Step1 in arcTangentTest
+r7Step1 invokes convert.uint64BitsToFloat64
+r7Step1 argument value UInt64 uInt6418442240474082181120 copy
+r7Step1 result r7Part1 Float64
+r7Step1 ownedBy none
+r7Step1 cleanedBy none
+r7Step1 borrows none
+r7Step1 catch none
+r7Step1 suppresses none
+
+findR71 is call
+findR71 in arcTangentTest
+findR71 invokes arcTangentOf
+findR71 argument x Float64 r7Part1 copy
+findR71 result r7 Float64
+findR71 ownedBy none
+findR71 cleanedBy none
+findR71 borrows none
+findR71 catch none
+findR71 suppresses none
+
+findOk71 is call
+findOk71 in arcTangentTest
+findOk71 invokes sameBits
+findOk71 argument expectedBits UInt64 uInt6413833125093779451160 copy
+findOk71 argument actual Float64 r7 copy
+findOk71 result ok7 Bool
+findOk71 ownedBy none
+findOk71 cleanedBy none
+findOk71 borrows none
+findOk71 catch none
+findOk71 suppresses none
+
+expect7 is call
+expect7 in arcTangentTest
+expect7 invokes test.assertTrue
+expect7 argument value Bool ok7 copy
+expect7 result none
+expect7 ownedBy none
+expect7 cleanedBy none
+expect7 borrows none
+expect7 catch none
+expect7 suppresses none
+
+r8Step1 is call
+r8Step1 in arcTangentTest
+r8Step1 invokes convert.uint64BitsToFloat64
+r8Step1 argument value UInt64 uInt649223372036854775808 copy
+r8Step1 result r8Part1 Float64
+r8Step1 ownedBy none
+r8Step1 cleanedBy none
+r8Step1 borrows none
+r8Step1 catch none
+r8Step1 suppresses none
+
+findR81 is call
+findR81 in arcTangentTest
+findR81 invokes arcTangentOf
+findR81 argument x Float64 r8Part1 copy
+findR81 result r8 Float64
+findR81 ownedBy none
+findR81 cleanedBy none
+findR81 borrows none
+findR81 catch none
+findR81 suppresses none
+
+findOk81 is call
+findOk81 in arcTangentTest
+findOk81 invokes sameBits
+findOk81 argument expectedBits UInt64 uInt649223372036854775808 copy
+findOk81 argument actual Float64 r8 copy
+findOk81 result ok8 Bool
+findOk81 ownedBy none
+findOk81 cleanedBy none
+findOk81 borrows none
+findOk81 catch none
+findOk81 suppresses none
+
+expect8 is call
+expect8 in arcTangentTest
+expect8 invokes test.assertTrue
+expect8 argument value Bool ok8 copy
+expect8 result none
+expect8 ownedBy none
+expect8 cleanedBy none
+expect8 borrows none
+expect8 catch none
+expect8 suppresses none
+
+arcTangent2Test is test
+arcTangent2Test purpose "arcTangent2Of: the correctly rounded result or a neighbor of it, and exact special values"
+arcTangent2Test verifies arcTangent2Of arcTangent2Within
+arcTangent2Test typeParameter none
+arcTangent2Test input none
+arcTangent2Test output none
+arcTangent2Test outputOwnedBy none
+arcTangent2Test raises none
+arcTangent2Test effect use machine.memory
+arcTangent2Test uses memoryAccess
+arcTangent2Test memoryHeap false
+arcTangent2Test async false
+arcTangent2Test maxRecursion none
+arcTangent2Test label begin loopKind none
+arcTangent2Test label begin within none
+arcTangent2Test let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+arcTangent2Test let uInt644611686018427387904 UInt64 4611686018427387904 immutable
+arcTangent2Test let uInt644602023952714414927 UInt64 4602023952714414927 immutable
+arcTangent2Test let uInt6413830554455654793216 UInt64 13830554455654793216 immutable
+arcTangent2Test let uInt6413835058055282163712 UInt64 13835058055282163712 immutable
+arcTangent2Test let uInt6413836584651807258030 UInt64 13836584651807258030 immutable
+arcTangent2Test let uInt644611763579275595254 UInt64 4611763579275595254 immutable
+arcTangent2Test let uInt6413837309855095848960 UInt64 13837309855095848960 immutable
+arcTangent2Test let uInt644616189618054758400 UInt64 4616189618054758400 immutable
+arcTangent2Test let uInt6413827343399107600097 UInt64 13827343399107600097 immutable
+arcTangent2Test let uInt64118622047889322841 UInt64 118622047889322841 immutable
+arcTangent2Test let uInt64126121232842798723 UInt64 126121232842798723 immutable
+arcTangent2Test let uInt644599467762625453793 UInt64 4599467762625453793 immutable
+arcTangent2Test let uInt641 UInt64 1 immutable
+arcTangent2Test let uInt649094988921128908188 UInt64 9094988921128908188 immutable
+arcTangent2Test let uInt640 UInt64 0 immutable
+arcTangent2Test let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+arcTangent2Test let uInt644614256656552045848 UInt64 4614256656552045848 immutable
+arcTangent2Test let uInt649218868437227405312 UInt64 9218868437227405312 immutable
+arcTangent2Test let uInt6418442240474082181120 UInt64 18442240474082181120 immutable
+arcTangent2Test let uInt6413837628693406821656 UInt64 13837628693406821656 immutable
+arcTangent2Test let uInt644609753056924675352 UInt64 4609753056924675352 immutable
+arcTangent2Test let uInt6413833125093779451160 UInt64 13833125093779451160 immutable
+arcTangent2Test let uInt644605249457297304856 UInt64 4605249457297304856 immutable
+arcTangent2Test let uInt644612488097114038738 UInt64 4612488097114038738 immutable
+arcTangent2Test let uInt6413828621494152080664 UInt64 13828621494152080664 immutable
+arcTangent2Test let uInt6413835860133968814546 UInt64 13835860133968814546 immutable
+arcTangent2Test at begin do r0Step1
+arcTangent2Test at begin do r0Step2
+arcTangent2Test at begin do findR01
+arcTangent2Test at begin do findOk01
+arcTangent2Test at begin do expect0
+arcTangent2Test at begin do r1Step1
+arcTangent2Test at begin do r1Step2
+arcTangent2Test at begin do findR11
+arcTangent2Test at begin do findOk11
+arcTangent2Test at begin do expect1
+arcTangent2Test at begin do r2Step1
+arcTangent2Test at begin do r2Step2
+arcTangent2Test at begin do findR21
+arcTangent2Test at begin do findOk21
+arcTangent2Test at begin do expect2
+arcTangent2Test at begin do r3Step1
+arcTangent2Test at begin do r3Step2
+arcTangent2Test at begin do findR31
+arcTangent2Test at begin do findOk31
+arcTangent2Test at begin do expect3
+arcTangent2Test at begin do r4Step1
+arcTangent2Test at begin do r4Step2
+arcTangent2Test at begin do findR41
+arcTangent2Test at begin do findOk41
+arcTangent2Test at begin do expect4
+arcTangent2Test at begin do r5Step1
+arcTangent2Test at begin do r5Step2
+arcTangent2Test at begin do findR51
+arcTangent2Test at begin do findOk51
+arcTangent2Test at begin do expect5
+arcTangent2Test at begin do r6Step1
+arcTangent2Test at begin do r6Step2
+arcTangent2Test at begin do findR61
+arcTangent2Test at begin do findOk61
+arcTangent2Test at begin do expect6
+arcTangent2Test at begin do r7Step1
+arcTangent2Test at begin do r7Step2
+arcTangent2Test at begin do findR71
+arcTangent2Test at begin do findOk71
+arcTangent2Test at begin do expect7
+arcTangent2Test at begin do r8Step1
+arcTangent2Test at begin do r8Step2
+arcTangent2Test at begin do findR81
+arcTangent2Test at begin do findOk81
+arcTangent2Test at begin do expect8
+arcTangent2Test at begin do r9Step1
+arcTangent2Test at begin do r9Step2
+arcTangent2Test at begin do findR91
+arcTangent2Test at begin do findOk91
+arcTangent2Test at begin do expect9
+arcTangent2Test at begin do r10Step1
+arcTangent2Test at begin do r10Step2
+arcTangent2Test at begin do findR101
+arcTangent2Test at begin do findOk101
+arcTangent2Test at begin do expect10
+arcTangent2Test at begin do r11Step1
+arcTangent2Test at begin do r11Step2
+arcTangent2Test at begin do findR111
+arcTangent2Test at begin do findOk111
+arcTangent2Test at begin do expect11
+arcTangent2Test at begin do r12Step1
+arcTangent2Test at begin do r12Step2
+arcTangent2Test at begin do findR121
+arcTangent2Test at begin do findOk121
+arcTangent2Test at begin do expect12
+arcTangent2Test at begin do r13Step1
+arcTangent2Test at begin do r13Step2
+arcTangent2Test at begin do findR131
+arcTangent2Test at begin do findOk131
+arcTangent2Test at begin do expect13
+arcTangent2Test at begin do r14Step1
+arcTangent2Test at begin do r14Step2
+arcTangent2Test at begin do findR141
+arcTangent2Test at begin do findOk141
+arcTangent2Test at begin do expect14
+arcTangent2Test at begin do r15Step1
+arcTangent2Test at begin do r15Step2
+arcTangent2Test at begin do findR151
+arcTangent2Test at begin do findOk151
+arcTangent2Test at begin do expect15
+arcTangent2Test at begin do r16Step1
+arcTangent2Test at begin do r16Step2
+arcTangent2Test at begin do findR161
+arcTangent2Test at begin do findOk161
+arcTangent2Test at begin do expect16
+arcTangent2Test at begin do r17Step1
+arcTangent2Test at begin do r17Step2
+arcTangent2Test at begin do findR171
+arcTangent2Test at begin do findOk171
+arcTangent2Test at begin do expect17
+arcTangent2Test at begin do r18Step1
+arcTangent2Test at begin do r18Step2
+arcTangent2Test at begin do findR181
+arcTangent2Test at begin do findOk181
+arcTangent2Test at begin do expect18
+arcTangent2Test at begin do r19Step1
+arcTangent2Test at begin do r19Step2
+arcTangent2Test at begin do findR191
+arcTangent2Test at begin do findOk191
+arcTangent2Test at begin do expect19
+arcTangent2Test at begin do r20Step1
+arcTangent2Test at begin do r20Step2
+arcTangent2Test at begin do findR201
+arcTangent2Test at begin do findOk201
+arcTangent2Test at begin do expect20
+arcTangent2Test at begin do r21Step1
+arcTangent2Test at begin do r21Step2
+arcTangent2Test at begin do findR211
+arcTangent2Test at begin do findOk211
+arcTangent2Test at begin do expect21
+arcTangent2Test at begin do r22Step1
+arcTangent2Test at begin do r22Step2
+arcTangent2Test at begin do findR221
+arcTangent2Test at begin do findOk221
+arcTangent2Test at begin do expect22
+arcTangent2Test at begin do r23Step1
+arcTangent2Test at begin do r23Step2
+arcTangent2Test at begin do findR231
+arcTangent2Test at begin do findOk231
+arcTangent2Test at begin do expect23
+arcTangent2Test at begin do r24Step1
+arcTangent2Test at begin do r24Step2
+arcTangent2Test at begin do findR241
+arcTangent2Test at begin do findOk241
+arcTangent2Test at begin do expect24
+arcTangent2Test at begin do r25Step1
+arcTangent2Test at begin do r25Step2
+arcTangent2Test at begin do findR251
+arcTangent2Test at begin do findOk251
+arcTangent2Test at begin do expect25
+arcTangent2Test at begin do r26Step1
+arcTangent2Test at begin do r26Step2
+arcTangent2Test at begin do findR261
+arcTangent2Test at begin do findOk261
+arcTangent2Test at begin do expect26
+arcTangent2Test at begin do r27Step1
+arcTangent2Test at begin do r27Step2
+arcTangent2Test at begin do findR271
+arcTangent2Test at begin do findOk271
+arcTangent2Test at begin do expect27
+arcTangent2Test at begin do r28Step1
+arcTangent2Test at begin do r28Step2
+arcTangent2Test at begin do findR281
+arcTangent2Test at begin do findOk281
+arcTangent2Test at begin do expect28
+arcTangent2Test at begin do r29Step1
+arcTangent2Test at begin do r29Step2
+arcTangent2Test at begin do findR291
+arcTangent2Test at begin do findOk291
+arcTangent2Test at begin do expect29
+arcTangent2Test at begin do r30Step1
+arcTangent2Test at begin do r30Step2
+arcTangent2Test at begin do findR301
+arcTangent2Test at begin do findOk301
+arcTangent2Test at begin do expect30
+arcTangent2Test at begin do r31Step1
+arcTangent2Test at begin do r31Step2
+arcTangent2Test at begin do findR311
+arcTangent2Test at begin do findOk311
+arcTangent2Test at begin do expect31
+arcTangent2Test at begin do r32Step1
+arcTangent2Test at begin do r32Step2
+arcTangent2Test at begin do findR321
+arcTangent2Test at begin do findOk321
+arcTangent2Test at begin do expect32
+arcTangent2Test at begin do r33Step1
+arcTangent2Test at begin do r33Step2
+arcTangent2Test at begin do findR331
+arcTangent2Test at begin do findOk331
+arcTangent2Test at begin do expect33
+arcTangent2Test at begin do r34Step1
+arcTangent2Test at begin do r34Step2
+arcTangent2Test at begin do findR341
+arcTangent2Test at begin do findOk341
+arcTangent2Test at begin do expect34
+arcTangent2Test at begin do r35Step1
+arcTangent2Test at begin do r35Step2
+arcTangent2Test at begin do findR351
+arcTangent2Test at begin do findOk351
+arcTangent2Test at begin do expect35
+arcTangent2Test at begin do r36Step1
+arcTangent2Test at begin do r36Step2
+arcTangent2Test at begin do findR361
+arcTangent2Test at begin do findOk361
+arcTangent2Test at begin do expect36
+arcTangent2Test at begin do r37Step1
+arcTangent2Test at begin do r37Step2
+arcTangent2Test at begin do findR371
+arcTangent2Test at begin do findOk371
+arcTangent2Test at begin do expect37
+arcTangent2Test at begin do r38Step1
+arcTangent2Test at begin do r38Step2
+arcTangent2Test at begin do findR381
+arcTangent2Test at begin do findOk381
+arcTangent2Test at begin do expect38
+arcTangent2Test at begin return ok none
+
+r0Step1 is call
+r0Step1 in arcTangent2Test
+r0Step1 invokes convert.uint64BitsToFloat64
+r0Step1 argument value UInt64 uInt644607182418800017408 copy
+r0Step1 result r0Part1 Float64
+r0Step1 ownedBy none
+r0Step1 cleanedBy none
+r0Step1 borrows none
+r0Step1 catch none
+r0Step1 suppresses none
+
+r0Step2 is call
+r0Step2 in arcTangent2Test
+r0Step2 invokes convert.uint64BitsToFloat64
+r0Step2 argument value UInt64 uInt644611686018427387904 copy
+r0Step2 result r0Part2 Float64
+r0Step2 ownedBy none
+r0Step2 cleanedBy none
+r0Step2 borrows none
+r0Step2 catch none
+r0Step2 suppresses none
+
+findR01 is call
+findR01 in arcTangent2Test
+findR01 invokes arcTangent2Of
+findR01 argument y Float64 r0Part1 copy
+findR01 argument x Float64 r0Part2 copy
+findR01 result r0 Float64
+findR01 ownedBy none
+findR01 cleanedBy none
+findR01 borrows none
+findR01 catch none
+findR01 suppresses none
+
+findOk01 is call
+findOk01 in arcTangent2Test
+findOk01 invokes closeBits
+findOk01 argument expectedBits UInt64 uInt644602023952714414927 copy
+findOk01 argument actual Float64 r0 copy
+findOk01 result ok0 Bool
+findOk01 ownedBy none
+findOk01 cleanedBy none
+findOk01 borrows none
+findOk01 catch none
+findOk01 suppresses none
+
+expect0 is call
+expect0 in arcTangent2Test
+expect0 invokes test.assertTrue
+expect0 argument value Bool ok0 copy
+expect0 result none
+expect0 ownedBy none
+expect0 cleanedBy none
+expect0 borrows none
+expect0 catch none
+expect0 suppresses none
+
+r1Step1 is call
+r1Step1 in arcTangent2Test
+r1Step1 invokes convert.uint64BitsToFloat64
+r1Step1 argument value UInt64 uInt6413830554455654793216 copy
+r1Step1 result r1Part1 Float64
+r1Step1 ownedBy none
+r1Step1 cleanedBy none
+r1Step1 borrows none
+r1Step1 catch none
+r1Step1 suppresses none
+
+r1Step2 is call
+r1Step2 in arcTangent2Test
+r1Step2 invokes convert.uint64BitsToFloat64
+r1Step2 argument value UInt64 uInt6413835058055282163712 copy
+r1Step2 result r1Part2 Float64
+r1Step2 ownedBy none
+r1Step2 cleanedBy none
+r1Step2 borrows none
+r1Step2 catch none
+r1Step2 suppresses none
+
+findR11 is call
+findR11 in arcTangent2Test
+findR11 invokes arcTangent2Of
+findR11 argument y Float64 r1Part1 copy
+findR11 argument x Float64 r1Part2 copy
+findR11 result r1 Float64
+findR11 ownedBy none
+findR11 cleanedBy none
+findR11 borrows none
+findR11 catch none
+findR11 suppresses none
+
+findOk11 is call
+findOk11 in arcTangent2Test
+findOk11 invokes closeBits
+findOk11 argument expectedBits UInt64 uInt6413836584651807258030 copy
+findOk11 argument actual Float64 r1 copy
+findOk11 result ok1 Bool
+findOk11 ownedBy none
+findOk11 cleanedBy none
+findOk11 borrows none
+findOk11 catch none
+findOk11 suppresses none
+
+expect1 is call
+expect1 in arcTangent2Test
+expect1 invokes test.assertTrue
+expect1 argument value Bool ok1 copy
+expect1 result none
+expect1 ownedBy none
+expect1 cleanedBy none
+expect1 borrows none
+expect1 catch none
+expect1 suppresses none
+
+r2Step1 is call
+r2Step1 in arcTangent2Test
+r2Step1 invokes convert.uint64BitsToFloat64
+r2Step1 argument value UInt64 uInt644611686018427387904 copy
+r2Step1 result r2Part1 Float64
+r2Step1 ownedBy none
+r2Step1 cleanedBy none
+r2Step1 borrows none
+r2Step1 catch none
+r2Step1 suppresses none
+
+r2Step2 is call
+r2Step2 in arcTangent2Test
+r2Step2 invokes convert.uint64BitsToFloat64
+r2Step2 argument value UInt64 uInt6413830554455654793216 copy
+r2Step2 result r2Part2 Float64
+r2Step2 ownedBy none
+r2Step2 cleanedBy none
+r2Step2 borrows none
+r2Step2 catch none
+r2Step2 suppresses none
+
+findR21 is call
+findR21 in arcTangent2Test
+findR21 invokes arcTangent2Of
+findR21 argument y Float64 r2Part1 copy
+findR21 argument x Float64 r2Part2 copy
+findR21 result r2 Float64
+findR21 ownedBy none
+findR21 cleanedBy none
+findR21 borrows none
+findR21 catch none
+findR21 suppresses none
+
+findOk21 is call
+findOk21 in arcTangent2Test
+findOk21 invokes closeBits
+findOk21 argument expectedBits UInt64 uInt644611763579275595254 copy
+findOk21 argument actual Float64 r2 copy
+findOk21 result ok2 Bool
+findOk21 ownedBy none
+findOk21 cleanedBy none
+findOk21 borrows none
+findOk21 catch none
+findOk21 suppresses none
+
+expect2 is call
+expect2 in arcTangent2Test
+expect2 invokes test.assertTrue
+expect2 argument value Bool ok2 copy
+expect2 result none
+expect2 ownedBy none
+expect2 cleanedBy none
+expect2 borrows none
+expect2 catch none
+expect2 suppresses none
+
+r3Step1 is call
+r3Step1 in arcTangent2Test
+r3Step1 invokes convert.uint64BitsToFloat64
+r3Step1 argument value UInt64 uInt6413837309855095848960 copy
+r3Step1 result r3Part1 Float64
+r3Step1 ownedBy none
+r3Step1 cleanedBy none
+r3Step1 borrows none
+r3Step1 catch none
+r3Step1 suppresses none
+
+r3Step2 is call
+r3Step2 in arcTangent2Test
+r3Step2 invokes convert.uint64BitsToFloat64
+r3Step2 argument value UInt64 uInt644616189618054758400 copy
+r3Step2 result r3Part2 Float64
+r3Step2 ownedBy none
+r3Step2 cleanedBy none
+r3Step2 borrows none
+r3Step2 catch none
+r3Step2 suppresses none
+
+findR31 is call
+findR31 in arcTangent2Test
+findR31 invokes arcTangent2Of
+findR31 argument y Float64 r3Part1 copy
+findR31 argument x Float64 r3Part2 copy
+findR31 result r3 Float64
+findR31 ownedBy none
+findR31 cleanedBy none
+findR31 borrows none
+findR31 catch none
+findR31 suppresses none
+
+findOk31 is call
+findOk31 in arcTangent2Test
+findOk31 invokes closeBits
+findOk31 argument expectedBits UInt64 uInt6413827343399107600097 copy
+findOk31 argument actual Float64 r3 copy
+findOk31 result ok3 Bool
+findOk31 ownedBy none
+findOk31 cleanedBy none
+findOk31 borrows none
+findOk31 catch none
+findOk31 suppresses none
+
+expect3 is call
+expect3 in arcTangent2Test
+expect3 invokes test.assertTrue
+expect3 argument value Bool ok3 copy
+expect3 result none
+expect3 ownedBy none
+expect3 cleanedBy none
+expect3 borrows none
+expect3 catch none
+expect3 suppresses none
+
+r4Step1 is call
+r4Step1 in arcTangent2Test
+r4Step1 invokes convert.uint64BitsToFloat64
+r4Step1 argument value UInt64 uInt64118622047889322841 copy
+r4Step1 result r4Part1 Float64
+r4Step1 ownedBy none
+r4Step1 cleanedBy none
+r4Step1 borrows none
+r4Step1 catch none
+r4Step1 suppresses none
+
+r4Step2 is call
+r4Step2 in arcTangent2Test
+r4Step2 invokes convert.uint64BitsToFloat64
+r4Step2 argument value UInt64 uInt64126121232842798723 copy
+r4Step2 result r4Part2 Float64
+r4Step2 ownedBy none
+r4Step2 cleanedBy none
+r4Step2 borrows none
+r4Step2 catch none
+r4Step2 suppresses none
+
+findR41 is call
+findR41 in arcTangent2Test
+findR41 invokes arcTangent2Of
+findR41 argument y Float64 r4Part1 copy
+findR41 argument x Float64 r4Part2 copy
+findR41 result r4 Float64
+findR41 ownedBy none
+findR41 cleanedBy none
+findR41 borrows none
+findR41 catch none
+findR41 suppresses none
+
+findOk41 is call
+findOk41 in arcTangent2Test
+findOk41 invokes closeBits
+findOk41 argument expectedBits UInt64 uInt644599467762625453793 copy
+findOk41 argument actual Float64 r4 copy
+findOk41 result ok4 Bool
+findOk41 ownedBy none
+findOk41 cleanedBy none
+findOk41 borrows none
+findOk41 catch none
+findOk41 suppresses none
+
+expect4 is call
+expect4 in arcTangent2Test
+expect4 invokes test.assertTrue
+expect4 argument value Bool ok4 copy
+expect4 result none
+expect4 ownedBy none
+expect4 cleanedBy none
+expect4 borrows none
+expect4 catch none
+expect4 suppresses none
+
+r5Step1 is call
+r5Step1 in arcTangent2Test
+r5Step1 invokes convert.uint64BitsToFloat64
+r5Step1 argument value UInt64 uInt641 copy
+r5Step1 result r5Part1 Float64
+r5Step1 ownedBy none
+r5Step1 cleanedBy none
+r5Step1 borrows none
+r5Step1 catch none
+r5Step1 suppresses none
+
+r5Step2 is call
+r5Step2 in arcTangent2Test
+r5Step2 invokes convert.uint64BitsToFloat64
+r5Step2 argument value UInt64 uInt644607182418800017408 copy
+r5Step2 result r5Part2 Float64
+r5Step2 ownedBy none
+r5Step2 cleanedBy none
+r5Step2 borrows none
+r5Step2 catch none
+r5Step2 suppresses none
+
+findR51 is call
+findR51 in arcTangent2Test
+findR51 invokes arcTangent2Of
+findR51 argument y Float64 r5Part1 copy
+findR51 argument x Float64 r5Part2 copy
+findR51 result r5 Float64
+findR51 ownedBy none
+findR51 cleanedBy none
+findR51 borrows none
+findR51 catch none
+findR51 suppresses none
+
+findOk51 is call
+findOk51 in arcTangent2Test
+findOk51 invokes closeBits
+findOk51 argument expectedBits UInt64 uInt641 copy
+findOk51 argument actual Float64 r5 copy
+findOk51 result ok5 Bool
+findOk51 ownedBy none
+findOk51 cleanedBy none
+findOk51 borrows none
+findOk51 catch none
+findOk51 suppresses none
+
+expect5 is call
+expect5 in arcTangent2Test
+expect5 invokes test.assertTrue
+expect5 argument value Bool ok5 copy
+expect5 result none
+expect5 ownedBy none
+expect5 cleanedBy none
+expect5 borrows none
+expect5 catch none
+expect5 suppresses none
+
+r6Step1 is call
+r6Step1 in arcTangent2Test
+r6Step1 invokes convert.uint64BitsToFloat64
+r6Step1 argument value UInt64 uInt644607182418800017408 copy
+r6Step1 result r6Part1 Float64
+r6Step1 ownedBy none
+r6Step1 cleanedBy none
+r6Step1 borrows none
+r6Step1 catch none
+r6Step1 suppresses none
+
+r6Step2 is call
+r6Step2 in arcTangent2Test
+r6Step2 invokes convert.uint64BitsToFloat64
+r6Step2 argument value UInt64 uInt649094988921128908188 copy
+r6Step2 result r6Part2 Float64
+r6Step2 ownedBy none
+r6Step2 cleanedBy none
+r6Step2 borrows none
+r6Step2 catch none
+r6Step2 suppresses none
+
+findR61 is call
+findR61 in arcTangent2Test
+findR61 invokes arcTangent2Of
+findR61 argument y Float64 r6Part1 copy
+findR61 argument x Float64 r6Part2 copy
+findR61 result r6 Float64
+findR61 ownedBy none
+findR61 cleanedBy none
+findR61 borrows none
+findR61 catch none
+findR61 suppresses none
+
+findOk61 is call
+findOk61 in arcTangent2Test
+findOk61 invokes closeBits
+findOk61 argument expectedBits UInt64 uInt64118622047889322841 copy
+findOk61 argument actual Float64 r6 copy
+findOk61 result ok6 Bool
+findOk61 ownedBy none
+findOk61 cleanedBy none
+findOk61 borrows none
+findOk61 catch none
+findOk61 suppresses none
+
+expect6 is call
+expect6 in arcTangent2Test
+expect6 invokes test.assertTrue
+expect6 argument value Bool ok6 copy
+expect6 result none
+expect6 ownedBy none
+expect6 cleanedBy none
+expect6 borrows none
+expect6 catch none
+expect6 suppresses none
+
+r7Step1 is call
+r7Step1 in arcTangent2Test
+r7Step1 invokes convert.uint64BitsToFloat64
+r7Step1 argument value UInt64 uInt640 copy
+r7Step1 result r7Part1 Float64
+r7Step1 ownedBy none
+r7Step1 cleanedBy none
+r7Step1 borrows none
+r7Step1 catch none
+r7Step1 suppresses none
+
+r7Step2 is call
+r7Step2 in arcTangent2Test
+r7Step2 invokes convert.uint64BitsToFloat64
+r7Step2 argument value UInt64 uInt640 copy
+r7Step2 result r7Part2 Float64
+r7Step2 ownedBy none
+r7Step2 cleanedBy none
+r7Step2 borrows none
+r7Step2 catch none
+r7Step2 suppresses none
+
+findR71 is call
+findR71 in arcTangent2Test
+findR71 invokes arcTangent2Of
+findR71 argument y Float64 r7Part1 copy
+findR71 argument x Float64 r7Part2 copy
+findR71 result r7 Float64
+findR71 ownedBy none
+findR71 cleanedBy none
+findR71 borrows none
+findR71 catch none
+findR71 suppresses none
+
+findOk71 is call
+findOk71 in arcTangent2Test
+findOk71 invokes sameBits
+findOk71 argument expectedBits UInt64 uInt640 copy
+findOk71 argument actual Float64 r7 copy
+findOk71 result ok7 Bool
+findOk71 ownedBy none
+findOk71 cleanedBy none
+findOk71 borrows none
+findOk71 catch none
+findOk71 suppresses none
+
+expect7 is call
+expect7 in arcTangent2Test
+expect7 invokes test.assertTrue
+expect7 argument value Bool ok7 copy
+expect7 result none
+expect7 ownedBy none
+expect7 cleanedBy none
+expect7 borrows none
+expect7 catch none
+expect7 suppresses none
+
+r8Step1 is call
+r8Step1 in arcTangent2Test
+r8Step1 invokes convert.uint64BitsToFloat64
+r8Step1 argument value UInt64 uInt640 copy
+r8Step1 result r8Part1 Float64
+r8Step1 ownedBy none
+r8Step1 cleanedBy none
+r8Step1 borrows none
+r8Step1 catch none
+r8Step1 suppresses none
+
+r8Step2 is call
+r8Step2 in arcTangent2Test
+r8Step2 invokes convert.uint64BitsToFloat64
+r8Step2 argument value UInt64 uInt649223372036854775808 copy
+r8Step2 result r8Part2 Float64
+r8Step2 ownedBy none
+r8Step2 cleanedBy none
+r8Step2 borrows none
+r8Step2 catch none
+r8Step2 suppresses none
+
+findR81 is call
+findR81 in arcTangent2Test
+findR81 invokes arcTangent2Of
+findR81 argument y Float64 r8Part1 copy
+findR81 argument x Float64 r8Part2 copy
+findR81 result r8 Float64
+findR81 ownedBy none
+findR81 cleanedBy none
+findR81 borrows none
+findR81 catch none
+findR81 suppresses none
+
+findOk81 is call
+findOk81 in arcTangent2Test
+findOk81 invokes sameBits
+findOk81 argument expectedBits UInt64 uInt644614256656552045848 copy
+findOk81 argument actual Float64 r8 copy
+findOk81 result ok8 Bool
+findOk81 ownedBy none
+findOk81 cleanedBy none
+findOk81 borrows none
+findOk81 catch none
+findOk81 suppresses none
+
+expect8 is call
+expect8 in arcTangent2Test
+expect8 invokes test.assertTrue
+expect8 argument value Bool ok8 copy
+expect8 result none
+expect8 ownedBy none
+expect8 cleanedBy none
+expect8 borrows none
+expect8 catch none
+expect8 suppresses none
+
+r9Step1 is call
+r9Step1 in arcTangent2Test
+r9Step1 invokes convert.uint64BitsToFloat64
+r9Step1 argument value UInt64 uInt640 copy
+r9Step1 result r9Part1 Float64
+r9Step1 ownedBy none
+r9Step1 cleanedBy none
+r9Step1 borrows none
+r9Step1 catch none
+r9Step1 suppresses none
+
+r9Step2 is call
+r9Step2 in arcTangent2Test
+r9Step2 invokes convert.uint64BitsToFloat64
+r9Step2 argument value UInt64 uInt644607182418800017408 copy
+r9Step2 result r9Part2 Float64
+r9Step2 ownedBy none
+r9Step2 cleanedBy none
+r9Step2 borrows none
+r9Step2 catch none
+r9Step2 suppresses none
+
+findR91 is call
+findR91 in arcTangent2Test
+findR91 invokes arcTangent2Of
+findR91 argument y Float64 r9Part1 copy
+findR91 argument x Float64 r9Part2 copy
+findR91 result r9 Float64
+findR91 ownedBy none
+findR91 cleanedBy none
+findR91 borrows none
+findR91 catch none
+findR91 suppresses none
+
+findOk91 is call
+findOk91 in arcTangent2Test
+findOk91 invokes sameBits
+findOk91 argument expectedBits UInt64 uInt640 copy
+findOk91 argument actual Float64 r9 copy
+findOk91 result ok9 Bool
+findOk91 ownedBy none
+findOk91 cleanedBy none
+findOk91 borrows none
+findOk91 catch none
+findOk91 suppresses none
+
+expect9 is call
+expect9 in arcTangent2Test
+expect9 invokes test.assertTrue
+expect9 argument value Bool ok9 copy
+expect9 result none
+expect9 ownedBy none
+expect9 cleanedBy none
+expect9 borrows none
+expect9 catch none
+expect9 suppresses none
+
+r10Step1 is call
+r10Step1 in arcTangent2Test
+r10Step1 invokes convert.uint64BitsToFloat64
+r10Step1 argument value UInt64 uInt640 copy
+r10Step1 result r10Part1 Float64
+r10Step1 ownedBy none
+r10Step1 cleanedBy none
+r10Step1 borrows none
+r10Step1 catch none
+r10Step1 suppresses none
+
+r10Step2 is call
+r10Step2 in arcTangent2Test
+r10Step2 invokes convert.uint64BitsToFloat64
+r10Step2 argument value UInt64 uInt6413830554455654793216 copy
+r10Step2 result r10Part2 Float64
+r10Step2 ownedBy none
+r10Step2 cleanedBy none
+r10Step2 borrows none
+r10Step2 catch none
+r10Step2 suppresses none
+
+findR101 is call
+findR101 in arcTangent2Test
+findR101 invokes arcTangent2Of
+findR101 argument y Float64 r10Part1 copy
+findR101 argument x Float64 r10Part2 copy
+findR101 result r10 Float64
+findR101 ownedBy none
+findR101 cleanedBy none
+findR101 borrows none
+findR101 catch none
+findR101 suppresses none
+
+findOk101 is call
+findOk101 in arcTangent2Test
+findOk101 invokes sameBits
+findOk101 argument expectedBits UInt64 uInt644614256656552045848 copy
+findOk101 argument actual Float64 r10 copy
+findOk101 result ok10 Bool
+findOk101 ownedBy none
+findOk101 cleanedBy none
+findOk101 borrows none
+findOk101 catch none
+findOk101 suppresses none
+
+expect10 is call
+expect10 in arcTangent2Test
+expect10 invokes test.assertTrue
+expect10 argument value Bool ok10 copy
+expect10 result none
+expect10 ownedBy none
+expect10 cleanedBy none
+expect10 borrows none
+expect10 catch none
+expect10 suppresses none
+
+r11Step1 is call
+r11Step1 in arcTangent2Test
+r11Step1 invokes convert.uint64BitsToFloat64
+r11Step1 argument value UInt64 uInt640 copy
+r11Step1 result r11Part1 Float64
+r11Step1 ownedBy none
+r11Step1 cleanedBy none
+r11Step1 borrows none
+r11Step1 catch none
+r11Step1 suppresses none
+
+r11Step2 is call
+r11Step2 in arcTangent2Test
+r11Step2 invokes convert.uint64BitsToFloat64
+r11Step2 argument value UInt64 uInt649218868437227405312 copy
+r11Step2 result r11Part2 Float64
+r11Step2 ownedBy none
+r11Step2 cleanedBy none
+r11Step2 borrows none
+r11Step2 catch none
+r11Step2 suppresses none
+
+findR111 is call
+findR111 in arcTangent2Test
+findR111 invokes arcTangent2Of
+findR111 argument y Float64 r11Part1 copy
+findR111 argument x Float64 r11Part2 copy
+findR111 result r11 Float64
+findR111 ownedBy none
+findR111 cleanedBy none
+findR111 borrows none
+findR111 catch none
+findR111 suppresses none
+
+findOk111 is call
+findOk111 in arcTangent2Test
+findOk111 invokes sameBits
+findOk111 argument expectedBits UInt64 uInt640 copy
+findOk111 argument actual Float64 r11 copy
+findOk111 result ok11 Bool
+findOk111 ownedBy none
+findOk111 cleanedBy none
+findOk111 borrows none
+findOk111 catch none
+findOk111 suppresses none
+
+expect11 is call
+expect11 in arcTangent2Test
+expect11 invokes test.assertTrue
+expect11 argument value Bool ok11 copy
+expect11 result none
+expect11 ownedBy none
+expect11 cleanedBy none
+expect11 borrows none
+expect11 catch none
+expect11 suppresses none
+
+r12Step1 is call
+r12Step1 in arcTangent2Test
+r12Step1 invokes convert.uint64BitsToFloat64
+r12Step1 argument value UInt64 uInt640 copy
+r12Step1 result r12Part1 Float64
+r12Step1 ownedBy none
+r12Step1 cleanedBy none
+r12Step1 borrows none
+r12Step1 catch none
+r12Step1 suppresses none
+
+r12Step2 is call
+r12Step2 in arcTangent2Test
+r12Step2 invokes convert.uint64BitsToFloat64
+r12Step2 argument value UInt64 uInt6418442240474082181120 copy
+r12Step2 result r12Part2 Float64
+r12Step2 ownedBy none
+r12Step2 cleanedBy none
+r12Step2 borrows none
+r12Step2 catch none
+r12Step2 suppresses none
+
+findR121 is call
+findR121 in arcTangent2Test
+findR121 invokes arcTangent2Of
+findR121 argument y Float64 r12Part1 copy
+findR121 argument x Float64 r12Part2 copy
+findR121 result r12 Float64
+findR121 ownedBy none
+findR121 cleanedBy none
+findR121 borrows none
+findR121 catch none
+findR121 suppresses none
+
+findOk121 is call
+findOk121 in arcTangent2Test
+findOk121 invokes sameBits
+findOk121 argument expectedBits UInt64 uInt644614256656552045848 copy
+findOk121 argument actual Float64 r12 copy
+findOk121 result ok12 Bool
+findOk121 ownedBy none
+findOk121 cleanedBy none
+findOk121 borrows none
+findOk121 catch none
+findOk121 suppresses none
+
+expect12 is call
+expect12 in arcTangent2Test
+expect12 invokes test.assertTrue
+expect12 argument value Bool ok12 copy
+expect12 result none
+expect12 ownedBy none
+expect12 cleanedBy none
+expect12 borrows none
+expect12 catch none
+expect12 suppresses none
+
+r13Step1 is call
+r13Step1 in arcTangent2Test
+r13Step1 invokes convert.uint64BitsToFloat64
+r13Step1 argument value UInt64 uInt649223372036854775808 copy
+r13Step1 result r13Part1 Float64
+r13Step1 ownedBy none
+r13Step1 cleanedBy none
+r13Step1 borrows none
+r13Step1 catch none
+r13Step1 suppresses none
+
+r13Step2 is call
+r13Step2 in arcTangent2Test
+r13Step2 invokes convert.uint64BitsToFloat64
+r13Step2 argument value UInt64 uInt640 copy
+r13Step2 result r13Part2 Float64
+r13Step2 ownedBy none
+r13Step2 cleanedBy none
+r13Step2 borrows none
+r13Step2 catch none
+r13Step2 suppresses none
+
+findR131 is call
+findR131 in arcTangent2Test
+findR131 invokes arcTangent2Of
+findR131 argument y Float64 r13Part1 copy
+findR131 argument x Float64 r13Part2 copy
+findR131 result r13 Float64
+findR131 ownedBy none
+findR131 cleanedBy none
+findR131 borrows none
+findR131 catch none
+findR131 suppresses none
+
+findOk131 is call
+findOk131 in arcTangent2Test
+findOk131 invokes sameBits
+findOk131 argument expectedBits UInt64 uInt649223372036854775808 copy
+findOk131 argument actual Float64 r13 copy
+findOk131 result ok13 Bool
+findOk131 ownedBy none
+findOk131 cleanedBy none
+findOk131 borrows none
+findOk131 catch none
+findOk131 suppresses none
+
+expect13 is call
+expect13 in arcTangent2Test
+expect13 invokes test.assertTrue
+expect13 argument value Bool ok13 copy
+expect13 result none
+expect13 ownedBy none
+expect13 cleanedBy none
+expect13 borrows none
+expect13 catch none
+expect13 suppresses none
+
+r14Step1 is call
+r14Step1 in arcTangent2Test
+r14Step1 invokes convert.uint64BitsToFloat64
+r14Step1 argument value UInt64 uInt649223372036854775808 copy
+r14Step1 result r14Part1 Float64
+r14Step1 ownedBy none
+r14Step1 cleanedBy none
+r14Step1 borrows none
+r14Step1 catch none
+r14Step1 suppresses none
+
+r14Step2 is call
+r14Step2 in arcTangent2Test
+r14Step2 invokes convert.uint64BitsToFloat64
+r14Step2 argument value UInt64 uInt649223372036854775808 copy
+r14Step2 result r14Part2 Float64
+r14Step2 ownedBy none
+r14Step2 cleanedBy none
+r14Step2 borrows none
+r14Step2 catch none
+r14Step2 suppresses none
+
+findR141 is call
+findR141 in arcTangent2Test
+findR141 invokes arcTangent2Of
+findR141 argument y Float64 r14Part1 copy
+findR141 argument x Float64 r14Part2 copy
+findR141 result r14 Float64
+findR141 ownedBy none
+findR141 cleanedBy none
+findR141 borrows none
+findR141 catch none
+findR141 suppresses none
+
+findOk141 is call
+findOk141 in arcTangent2Test
+findOk141 invokes sameBits
+findOk141 argument expectedBits UInt64 uInt6413837628693406821656 copy
+findOk141 argument actual Float64 r14 copy
+findOk141 result ok14 Bool
+findOk141 ownedBy none
+findOk141 cleanedBy none
+findOk141 borrows none
+findOk141 catch none
+findOk141 suppresses none
+
+expect14 is call
+expect14 in arcTangent2Test
+expect14 invokes test.assertTrue
+expect14 argument value Bool ok14 copy
+expect14 result none
+expect14 ownedBy none
+expect14 cleanedBy none
+expect14 borrows none
+expect14 catch none
+expect14 suppresses none
+
+r15Step1 is call
+r15Step1 in arcTangent2Test
+r15Step1 invokes convert.uint64BitsToFloat64
+r15Step1 argument value UInt64 uInt649223372036854775808 copy
+r15Step1 result r15Part1 Float64
+r15Step1 ownedBy none
+r15Step1 cleanedBy none
+r15Step1 borrows none
+r15Step1 catch none
+r15Step1 suppresses none
+
+r15Step2 is call
+r15Step2 in arcTangent2Test
+r15Step2 invokes convert.uint64BitsToFloat64
+r15Step2 argument value UInt64 uInt644607182418800017408 copy
+r15Step2 result r15Part2 Float64
+r15Step2 ownedBy none
+r15Step2 cleanedBy none
+r15Step2 borrows none
+r15Step2 catch none
+r15Step2 suppresses none
+
+findR151 is call
+findR151 in arcTangent2Test
+findR151 invokes arcTangent2Of
+findR151 argument y Float64 r15Part1 copy
+findR151 argument x Float64 r15Part2 copy
+findR151 result r15 Float64
+findR151 ownedBy none
+findR151 cleanedBy none
+findR151 borrows none
+findR151 catch none
+findR151 suppresses none
+
+findOk151 is call
+findOk151 in arcTangent2Test
+findOk151 invokes sameBits
+findOk151 argument expectedBits UInt64 uInt649223372036854775808 copy
+findOk151 argument actual Float64 r15 copy
+findOk151 result ok15 Bool
+findOk151 ownedBy none
+findOk151 cleanedBy none
+findOk151 borrows none
+findOk151 catch none
+findOk151 suppresses none
+
+expect15 is call
+expect15 in arcTangent2Test
+expect15 invokes test.assertTrue
+expect15 argument value Bool ok15 copy
+expect15 result none
+expect15 ownedBy none
+expect15 cleanedBy none
+expect15 borrows none
+expect15 catch none
+expect15 suppresses none
+
+r16Step1 is call
+r16Step1 in arcTangent2Test
+r16Step1 invokes convert.uint64BitsToFloat64
+r16Step1 argument value UInt64 uInt649223372036854775808 copy
+r16Step1 result r16Part1 Float64
+r16Step1 ownedBy none
+r16Step1 cleanedBy none
+r16Step1 borrows none
+r16Step1 catch none
+r16Step1 suppresses none
+
+r16Step2 is call
+r16Step2 in arcTangent2Test
+r16Step2 invokes convert.uint64BitsToFloat64
+r16Step2 argument value UInt64 uInt6413830554455654793216 copy
+r16Step2 result r16Part2 Float64
+r16Step2 ownedBy none
+r16Step2 cleanedBy none
+r16Step2 borrows none
+r16Step2 catch none
+r16Step2 suppresses none
+
+findR161 is call
+findR161 in arcTangent2Test
+findR161 invokes arcTangent2Of
+findR161 argument y Float64 r16Part1 copy
+findR161 argument x Float64 r16Part2 copy
+findR161 result r16 Float64
+findR161 ownedBy none
+findR161 cleanedBy none
+findR161 borrows none
+findR161 catch none
+findR161 suppresses none
+
+findOk161 is call
+findOk161 in arcTangent2Test
+findOk161 invokes sameBits
+findOk161 argument expectedBits UInt64 uInt6413837628693406821656 copy
+findOk161 argument actual Float64 r16 copy
+findOk161 result ok16 Bool
+findOk161 ownedBy none
+findOk161 cleanedBy none
+findOk161 borrows none
+findOk161 catch none
+findOk161 suppresses none
+
+expect16 is call
+expect16 in arcTangent2Test
+expect16 invokes test.assertTrue
+expect16 argument value Bool ok16 copy
+expect16 result none
+expect16 ownedBy none
+expect16 cleanedBy none
+expect16 borrows none
+expect16 catch none
+expect16 suppresses none
+
+r17Step1 is call
+r17Step1 in arcTangent2Test
+r17Step1 invokes convert.uint64BitsToFloat64
+r17Step1 argument value UInt64 uInt649223372036854775808 copy
+r17Step1 result r17Part1 Float64
+r17Step1 ownedBy none
+r17Step1 cleanedBy none
+r17Step1 borrows none
+r17Step1 catch none
+r17Step1 suppresses none
+
+r17Step2 is call
+r17Step2 in arcTangent2Test
+r17Step2 invokes convert.uint64BitsToFloat64
+r17Step2 argument value UInt64 uInt649218868437227405312 copy
+r17Step2 result r17Part2 Float64
+r17Step2 ownedBy none
+r17Step2 cleanedBy none
+r17Step2 borrows none
+r17Step2 catch none
+r17Step2 suppresses none
+
+findR171 is call
+findR171 in arcTangent2Test
+findR171 invokes arcTangent2Of
+findR171 argument y Float64 r17Part1 copy
+findR171 argument x Float64 r17Part2 copy
+findR171 result r17 Float64
+findR171 ownedBy none
+findR171 cleanedBy none
+findR171 borrows none
+findR171 catch none
+findR171 suppresses none
+
+findOk171 is call
+findOk171 in arcTangent2Test
+findOk171 invokes sameBits
+findOk171 argument expectedBits UInt64 uInt649223372036854775808 copy
+findOk171 argument actual Float64 r17 copy
+findOk171 result ok17 Bool
+findOk171 ownedBy none
+findOk171 cleanedBy none
+findOk171 borrows none
+findOk171 catch none
+findOk171 suppresses none
+
+expect17 is call
+expect17 in arcTangent2Test
+expect17 invokes test.assertTrue
+expect17 argument value Bool ok17 copy
+expect17 result none
+expect17 ownedBy none
+expect17 cleanedBy none
+expect17 borrows none
+expect17 catch none
+expect17 suppresses none
+
+r18Step1 is call
+r18Step1 in arcTangent2Test
+r18Step1 invokes convert.uint64BitsToFloat64
+r18Step1 argument value UInt64 uInt649223372036854775808 copy
+r18Step1 result r18Part1 Float64
+r18Step1 ownedBy none
+r18Step1 cleanedBy none
+r18Step1 borrows none
+r18Step1 catch none
+r18Step1 suppresses none
+
+r18Step2 is call
+r18Step2 in arcTangent2Test
+r18Step2 invokes convert.uint64BitsToFloat64
+r18Step2 argument value UInt64 uInt6418442240474082181120 copy
+r18Step2 result r18Part2 Float64
+r18Step2 ownedBy none
+r18Step2 cleanedBy none
+r18Step2 borrows none
+r18Step2 catch none
+r18Step2 suppresses none
+
+findR181 is call
+findR181 in arcTangent2Test
+findR181 invokes arcTangent2Of
+findR181 argument y Float64 r18Part1 copy
+findR181 argument x Float64 r18Part2 copy
+findR181 result r18 Float64
+findR181 ownedBy none
+findR181 cleanedBy none
+findR181 borrows none
+findR181 catch none
+findR181 suppresses none
+
+findOk181 is call
+findOk181 in arcTangent2Test
+findOk181 invokes sameBits
+findOk181 argument expectedBits UInt64 uInt6413837628693406821656 copy
+findOk181 argument actual Float64 r18 copy
+findOk181 result ok18 Bool
+findOk181 ownedBy none
+findOk181 cleanedBy none
+findOk181 borrows none
+findOk181 catch none
+findOk181 suppresses none
+
+expect18 is call
+expect18 in arcTangent2Test
+expect18 invokes test.assertTrue
+expect18 argument value Bool ok18 copy
+expect18 result none
+expect18 ownedBy none
+expect18 cleanedBy none
+expect18 borrows none
+expect18 catch none
+expect18 suppresses none
+
+r19Step1 is call
+r19Step1 in arcTangent2Test
+r19Step1 invokes convert.uint64BitsToFloat64
+r19Step1 argument value UInt64 uInt644607182418800017408 copy
+r19Step1 result r19Part1 Float64
+r19Step1 ownedBy none
+r19Step1 cleanedBy none
+r19Step1 borrows none
+r19Step1 catch none
+r19Step1 suppresses none
+
+r19Step2 is call
+r19Step2 in arcTangent2Test
+r19Step2 invokes convert.uint64BitsToFloat64
+r19Step2 argument value UInt64 uInt640 copy
+r19Step2 result r19Part2 Float64
+r19Step2 ownedBy none
+r19Step2 cleanedBy none
+r19Step2 borrows none
+r19Step2 catch none
+r19Step2 suppresses none
+
+findR191 is call
+findR191 in arcTangent2Test
+findR191 invokes arcTangent2Of
+findR191 argument y Float64 r19Part1 copy
+findR191 argument x Float64 r19Part2 copy
+findR191 result r19 Float64
+findR191 ownedBy none
+findR191 cleanedBy none
+findR191 borrows none
+findR191 catch none
+findR191 suppresses none
+
+findOk191 is call
+findOk191 in arcTangent2Test
+findOk191 invokes sameBits
+findOk191 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk191 argument actual Float64 r19 copy
+findOk191 result ok19 Bool
+findOk191 ownedBy none
+findOk191 cleanedBy none
+findOk191 borrows none
+findOk191 catch none
+findOk191 suppresses none
+
+expect19 is call
+expect19 in arcTangent2Test
+expect19 invokes test.assertTrue
+expect19 argument value Bool ok19 copy
+expect19 result none
+expect19 ownedBy none
+expect19 cleanedBy none
+expect19 borrows none
+expect19 catch none
+expect19 suppresses none
+
+r20Step1 is call
+r20Step1 in arcTangent2Test
+r20Step1 invokes convert.uint64BitsToFloat64
+r20Step1 argument value UInt64 uInt644607182418800017408 copy
+r20Step1 result r20Part1 Float64
+r20Step1 ownedBy none
+r20Step1 cleanedBy none
+r20Step1 borrows none
+r20Step1 catch none
+r20Step1 suppresses none
+
+r20Step2 is call
+r20Step2 in arcTangent2Test
+r20Step2 invokes convert.uint64BitsToFloat64
+r20Step2 argument value UInt64 uInt649223372036854775808 copy
+r20Step2 result r20Part2 Float64
+r20Step2 ownedBy none
+r20Step2 cleanedBy none
+r20Step2 borrows none
+r20Step2 catch none
+r20Step2 suppresses none
+
+findR201 is call
+findR201 in arcTangent2Test
+findR201 invokes arcTangent2Of
+findR201 argument y Float64 r20Part1 copy
+findR201 argument x Float64 r20Part2 copy
+findR201 result r20 Float64
+findR201 ownedBy none
+findR201 cleanedBy none
+findR201 borrows none
+findR201 catch none
+findR201 suppresses none
+
+findOk201 is call
+findOk201 in arcTangent2Test
+findOk201 invokes sameBits
+findOk201 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk201 argument actual Float64 r20 copy
+findOk201 result ok20 Bool
+findOk201 ownedBy none
+findOk201 cleanedBy none
+findOk201 borrows none
+findOk201 catch none
+findOk201 suppresses none
+
+expect20 is call
+expect20 in arcTangent2Test
+expect20 invokes test.assertTrue
+expect20 argument value Bool ok20 copy
+expect20 result none
+expect20 ownedBy none
+expect20 cleanedBy none
+expect20 borrows none
+expect20 catch none
+expect20 suppresses none
+
+r21Step1 is call
+r21Step1 in arcTangent2Test
+r21Step1 invokes convert.uint64BitsToFloat64
+r21Step1 argument value UInt64 uInt644607182418800017408 copy
+r21Step1 result r21Part1 Float64
+r21Step1 ownedBy none
+r21Step1 cleanedBy none
+r21Step1 borrows none
+r21Step1 catch none
+r21Step1 suppresses none
+
+r21Step2 is call
+r21Step2 in arcTangent2Test
+r21Step2 invokes convert.uint64BitsToFloat64
+r21Step2 argument value UInt64 uInt649218868437227405312 copy
+r21Step2 result r21Part2 Float64
+r21Step2 ownedBy none
+r21Step2 cleanedBy none
+r21Step2 borrows none
+r21Step2 catch none
+r21Step2 suppresses none
+
+findR211 is call
+findR211 in arcTangent2Test
+findR211 invokes arcTangent2Of
+findR211 argument y Float64 r21Part1 copy
+findR211 argument x Float64 r21Part2 copy
+findR211 result r21 Float64
+findR211 ownedBy none
+findR211 cleanedBy none
+findR211 borrows none
+findR211 catch none
+findR211 suppresses none
+
+findOk211 is call
+findOk211 in arcTangent2Test
+findOk211 invokes sameBits
+findOk211 argument expectedBits UInt64 uInt640 copy
+findOk211 argument actual Float64 r21 copy
+findOk211 result ok21 Bool
+findOk211 ownedBy none
+findOk211 cleanedBy none
+findOk211 borrows none
+findOk211 catch none
+findOk211 suppresses none
+
+expect21 is call
+expect21 in arcTangent2Test
+expect21 invokes test.assertTrue
+expect21 argument value Bool ok21 copy
+expect21 result none
+expect21 ownedBy none
+expect21 cleanedBy none
+expect21 borrows none
+expect21 catch none
+expect21 suppresses none
+
+r22Step1 is call
+r22Step1 in arcTangent2Test
+r22Step1 invokes convert.uint64BitsToFloat64
+r22Step1 argument value UInt64 uInt644607182418800017408 copy
+r22Step1 result r22Part1 Float64
+r22Step1 ownedBy none
+r22Step1 cleanedBy none
+r22Step1 borrows none
+r22Step1 catch none
+r22Step1 suppresses none
+
+r22Step2 is call
+r22Step2 in arcTangent2Test
+r22Step2 invokes convert.uint64BitsToFloat64
+r22Step2 argument value UInt64 uInt6418442240474082181120 copy
+r22Step2 result r22Part2 Float64
+r22Step2 ownedBy none
+r22Step2 cleanedBy none
+r22Step2 borrows none
+r22Step2 catch none
+r22Step2 suppresses none
+
+findR221 is call
+findR221 in arcTangent2Test
+findR221 invokes arcTangent2Of
+findR221 argument y Float64 r22Part1 copy
+findR221 argument x Float64 r22Part2 copy
+findR221 result r22 Float64
+findR221 ownedBy none
+findR221 cleanedBy none
+findR221 borrows none
+findR221 catch none
+findR221 suppresses none
+
+findOk221 is call
+findOk221 in arcTangent2Test
+findOk221 invokes sameBits
+findOk221 argument expectedBits UInt64 uInt644614256656552045848 copy
+findOk221 argument actual Float64 r22 copy
+findOk221 result ok22 Bool
+findOk221 ownedBy none
+findOk221 cleanedBy none
+findOk221 borrows none
+findOk221 catch none
+findOk221 suppresses none
+
+expect22 is call
+expect22 in arcTangent2Test
+expect22 invokes test.assertTrue
+expect22 argument value Bool ok22 copy
+expect22 result none
+expect22 ownedBy none
+expect22 cleanedBy none
+expect22 borrows none
+expect22 catch none
+expect22 suppresses none
+
+r23Step1 is call
+r23Step1 in arcTangent2Test
+r23Step1 invokes convert.uint64BitsToFloat64
+r23Step1 argument value UInt64 uInt6413830554455654793216 copy
+r23Step1 result r23Part1 Float64
+r23Step1 ownedBy none
+r23Step1 cleanedBy none
+r23Step1 borrows none
+r23Step1 catch none
+r23Step1 suppresses none
+
+r23Step2 is call
+r23Step2 in arcTangent2Test
+r23Step2 invokes convert.uint64BitsToFloat64
+r23Step2 argument value UInt64 uInt640 copy
+r23Step2 result r23Part2 Float64
+r23Step2 ownedBy none
+r23Step2 cleanedBy none
+r23Step2 borrows none
+r23Step2 catch none
+r23Step2 suppresses none
+
+findR231 is call
+findR231 in arcTangent2Test
+findR231 invokes arcTangent2Of
+findR231 argument y Float64 r23Part1 copy
+findR231 argument x Float64 r23Part2 copy
+findR231 result r23 Float64
+findR231 ownedBy none
+findR231 cleanedBy none
+findR231 borrows none
+findR231 catch none
+findR231 suppresses none
+
+findOk231 is call
+findOk231 in arcTangent2Test
+findOk231 invokes sameBits
+findOk231 argument expectedBits UInt64 uInt6413833125093779451160 copy
+findOk231 argument actual Float64 r23 copy
+findOk231 result ok23 Bool
+findOk231 ownedBy none
+findOk231 cleanedBy none
+findOk231 borrows none
+findOk231 catch none
+findOk231 suppresses none
+
+expect23 is call
+expect23 in arcTangent2Test
+expect23 invokes test.assertTrue
+expect23 argument value Bool ok23 copy
+expect23 result none
+expect23 ownedBy none
+expect23 cleanedBy none
+expect23 borrows none
+expect23 catch none
+expect23 suppresses none
+
+r24Step1 is call
+r24Step1 in arcTangent2Test
+r24Step1 invokes convert.uint64BitsToFloat64
+r24Step1 argument value UInt64 uInt6413830554455654793216 copy
+r24Step1 result r24Part1 Float64
+r24Step1 ownedBy none
+r24Step1 cleanedBy none
+r24Step1 borrows none
+r24Step1 catch none
+r24Step1 suppresses none
+
+r24Step2 is call
+r24Step2 in arcTangent2Test
+r24Step2 invokes convert.uint64BitsToFloat64
+r24Step2 argument value UInt64 uInt649223372036854775808 copy
+r24Step2 result r24Part2 Float64
+r24Step2 ownedBy none
+r24Step2 cleanedBy none
+r24Step2 borrows none
+r24Step2 catch none
+r24Step2 suppresses none
+
+findR241 is call
+findR241 in arcTangent2Test
+findR241 invokes arcTangent2Of
+findR241 argument y Float64 r24Part1 copy
+findR241 argument x Float64 r24Part2 copy
+findR241 result r24 Float64
+findR241 ownedBy none
+findR241 cleanedBy none
+findR241 borrows none
+findR241 catch none
+findR241 suppresses none
+
+findOk241 is call
+findOk241 in arcTangent2Test
+findOk241 invokes sameBits
+findOk241 argument expectedBits UInt64 uInt6413833125093779451160 copy
+findOk241 argument actual Float64 r24 copy
+findOk241 result ok24 Bool
+findOk241 ownedBy none
+findOk241 cleanedBy none
+findOk241 borrows none
+findOk241 catch none
+findOk241 suppresses none
+
+expect24 is call
+expect24 in arcTangent2Test
+expect24 invokes test.assertTrue
+expect24 argument value Bool ok24 copy
+expect24 result none
+expect24 ownedBy none
+expect24 cleanedBy none
+expect24 borrows none
+expect24 catch none
+expect24 suppresses none
+
+r25Step1 is call
+r25Step1 in arcTangent2Test
+r25Step1 invokes convert.uint64BitsToFloat64
+r25Step1 argument value UInt64 uInt6413830554455654793216 copy
+r25Step1 result r25Part1 Float64
+r25Step1 ownedBy none
+r25Step1 cleanedBy none
+r25Step1 borrows none
+r25Step1 catch none
+r25Step1 suppresses none
+
+r25Step2 is call
+r25Step2 in arcTangent2Test
+r25Step2 invokes convert.uint64BitsToFloat64
+r25Step2 argument value UInt64 uInt649218868437227405312 copy
+r25Step2 result r25Part2 Float64
+r25Step2 ownedBy none
+r25Step2 cleanedBy none
+r25Step2 borrows none
+r25Step2 catch none
+r25Step2 suppresses none
+
+findR251 is call
+findR251 in arcTangent2Test
+findR251 invokes arcTangent2Of
+findR251 argument y Float64 r25Part1 copy
+findR251 argument x Float64 r25Part2 copy
+findR251 result r25 Float64
+findR251 ownedBy none
+findR251 cleanedBy none
+findR251 borrows none
+findR251 catch none
+findR251 suppresses none
+
+findOk251 is call
+findOk251 in arcTangent2Test
+findOk251 invokes sameBits
+findOk251 argument expectedBits UInt64 uInt649223372036854775808 copy
+findOk251 argument actual Float64 r25 copy
+findOk251 result ok25 Bool
+findOk251 ownedBy none
+findOk251 cleanedBy none
+findOk251 borrows none
+findOk251 catch none
+findOk251 suppresses none
+
+expect25 is call
+expect25 in arcTangent2Test
+expect25 invokes test.assertTrue
+expect25 argument value Bool ok25 copy
+expect25 result none
+expect25 ownedBy none
+expect25 cleanedBy none
+expect25 borrows none
+expect25 catch none
+expect25 suppresses none
+
+r26Step1 is call
+r26Step1 in arcTangent2Test
+r26Step1 invokes convert.uint64BitsToFloat64
+r26Step1 argument value UInt64 uInt6413830554455654793216 copy
+r26Step1 result r26Part1 Float64
+r26Step1 ownedBy none
+r26Step1 cleanedBy none
+r26Step1 borrows none
+r26Step1 catch none
+r26Step1 suppresses none
+
+r26Step2 is call
+r26Step2 in arcTangent2Test
+r26Step2 invokes convert.uint64BitsToFloat64
+r26Step2 argument value UInt64 uInt6418442240474082181120 copy
+r26Step2 result r26Part2 Float64
+r26Step2 ownedBy none
+r26Step2 cleanedBy none
+r26Step2 borrows none
+r26Step2 catch none
+r26Step2 suppresses none
+
+findR261 is call
+findR261 in arcTangent2Test
+findR261 invokes arcTangent2Of
+findR261 argument y Float64 r26Part1 copy
+findR261 argument x Float64 r26Part2 copy
+findR261 result r26 Float64
+findR261 ownedBy none
+findR261 cleanedBy none
+findR261 borrows none
+findR261 catch none
+findR261 suppresses none
+
+findOk261 is call
+findOk261 in arcTangent2Test
+findOk261 invokes sameBits
+findOk261 argument expectedBits UInt64 uInt6413837628693406821656 copy
+findOk261 argument actual Float64 r26 copy
+findOk261 result ok26 Bool
+findOk261 ownedBy none
+findOk261 cleanedBy none
+findOk261 borrows none
+findOk261 catch none
+findOk261 suppresses none
+
+expect26 is call
+expect26 in arcTangent2Test
+expect26 invokes test.assertTrue
+expect26 argument value Bool ok26 copy
+expect26 result none
+expect26 ownedBy none
+expect26 cleanedBy none
+expect26 borrows none
+expect26 catch none
+expect26 suppresses none
+
+r27Step1 is call
+r27Step1 in arcTangent2Test
+r27Step1 invokes convert.uint64BitsToFloat64
+r27Step1 argument value UInt64 uInt649218868437227405312 copy
+r27Step1 result r27Part1 Float64
+r27Step1 ownedBy none
+r27Step1 cleanedBy none
+r27Step1 borrows none
+r27Step1 catch none
+r27Step1 suppresses none
+
+r27Step2 is call
+r27Step2 in arcTangent2Test
+r27Step2 invokes convert.uint64BitsToFloat64
+r27Step2 argument value UInt64 uInt640 copy
+r27Step2 result r27Part2 Float64
+r27Step2 ownedBy none
+r27Step2 cleanedBy none
+r27Step2 borrows none
+r27Step2 catch none
+r27Step2 suppresses none
+
+findR271 is call
+findR271 in arcTangent2Test
+findR271 invokes arcTangent2Of
+findR271 argument y Float64 r27Part1 copy
+findR271 argument x Float64 r27Part2 copy
+findR271 result r27 Float64
+findR271 ownedBy none
+findR271 cleanedBy none
+findR271 borrows none
+findR271 catch none
+findR271 suppresses none
+
+findOk271 is call
+findOk271 in arcTangent2Test
+findOk271 invokes sameBits
+findOk271 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk271 argument actual Float64 r27 copy
+findOk271 result ok27 Bool
+findOk271 ownedBy none
+findOk271 cleanedBy none
+findOk271 borrows none
+findOk271 catch none
+findOk271 suppresses none
+
+expect27 is call
+expect27 in arcTangent2Test
+expect27 invokes test.assertTrue
+expect27 argument value Bool ok27 copy
+expect27 result none
+expect27 ownedBy none
+expect27 cleanedBy none
+expect27 borrows none
+expect27 catch none
+expect27 suppresses none
+
+r28Step1 is call
+r28Step1 in arcTangent2Test
+r28Step1 invokes convert.uint64BitsToFloat64
+r28Step1 argument value UInt64 uInt649218868437227405312 copy
+r28Step1 result r28Part1 Float64
+r28Step1 ownedBy none
+r28Step1 cleanedBy none
+r28Step1 borrows none
+r28Step1 catch none
+r28Step1 suppresses none
+
+r28Step2 is call
+r28Step2 in arcTangent2Test
+r28Step2 invokes convert.uint64BitsToFloat64
+r28Step2 argument value UInt64 uInt649223372036854775808 copy
+r28Step2 result r28Part2 Float64
+r28Step2 ownedBy none
+r28Step2 cleanedBy none
+r28Step2 borrows none
+r28Step2 catch none
+r28Step2 suppresses none
+
+findR281 is call
+findR281 in arcTangent2Test
+findR281 invokes arcTangent2Of
+findR281 argument y Float64 r28Part1 copy
+findR281 argument x Float64 r28Part2 copy
+findR281 result r28 Float64
+findR281 ownedBy none
+findR281 cleanedBy none
+findR281 borrows none
+findR281 catch none
+findR281 suppresses none
+
+findOk281 is call
+findOk281 in arcTangent2Test
+findOk281 invokes sameBits
+findOk281 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk281 argument actual Float64 r28 copy
+findOk281 result ok28 Bool
+findOk281 ownedBy none
+findOk281 cleanedBy none
+findOk281 borrows none
+findOk281 catch none
+findOk281 suppresses none
+
+expect28 is call
+expect28 in arcTangent2Test
+expect28 invokes test.assertTrue
+expect28 argument value Bool ok28 copy
+expect28 result none
+expect28 ownedBy none
+expect28 cleanedBy none
+expect28 borrows none
+expect28 catch none
+expect28 suppresses none
+
+r29Step1 is call
+r29Step1 in arcTangent2Test
+r29Step1 invokes convert.uint64BitsToFloat64
+r29Step1 argument value UInt64 uInt649218868437227405312 copy
+r29Step1 result r29Part1 Float64
+r29Step1 ownedBy none
+r29Step1 cleanedBy none
+r29Step1 borrows none
+r29Step1 catch none
+r29Step1 suppresses none
+
+r29Step2 is call
+r29Step2 in arcTangent2Test
+r29Step2 invokes convert.uint64BitsToFloat64
+r29Step2 argument value UInt64 uInt644607182418800017408 copy
+r29Step2 result r29Part2 Float64
+r29Step2 ownedBy none
+r29Step2 cleanedBy none
+r29Step2 borrows none
+r29Step2 catch none
+r29Step2 suppresses none
+
+findR291 is call
+findR291 in arcTangent2Test
+findR291 invokes arcTangent2Of
+findR291 argument y Float64 r29Part1 copy
+findR291 argument x Float64 r29Part2 copy
+findR291 result r29 Float64
+findR291 ownedBy none
+findR291 cleanedBy none
+findR291 borrows none
+findR291 catch none
+findR291 suppresses none
+
+findOk291 is call
+findOk291 in arcTangent2Test
+findOk291 invokes sameBits
+findOk291 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk291 argument actual Float64 r29 copy
+findOk291 result ok29 Bool
+findOk291 ownedBy none
+findOk291 cleanedBy none
+findOk291 borrows none
+findOk291 catch none
+findOk291 suppresses none
+
+expect29 is call
+expect29 in arcTangent2Test
+expect29 invokes test.assertTrue
+expect29 argument value Bool ok29 copy
+expect29 result none
+expect29 ownedBy none
+expect29 cleanedBy none
+expect29 borrows none
+expect29 catch none
+expect29 suppresses none
+
+r30Step1 is call
+r30Step1 in arcTangent2Test
+r30Step1 invokes convert.uint64BitsToFloat64
+r30Step1 argument value UInt64 uInt649218868437227405312 copy
+r30Step1 result r30Part1 Float64
+r30Step1 ownedBy none
+r30Step1 cleanedBy none
+r30Step1 borrows none
+r30Step1 catch none
+r30Step1 suppresses none
+
+r30Step2 is call
+r30Step2 in arcTangent2Test
+r30Step2 invokes convert.uint64BitsToFloat64
+r30Step2 argument value UInt64 uInt6413830554455654793216 copy
+r30Step2 result r30Part2 Float64
+r30Step2 ownedBy none
+r30Step2 cleanedBy none
+r30Step2 borrows none
+r30Step2 catch none
+r30Step2 suppresses none
+
+findR301 is call
+findR301 in arcTangent2Test
+findR301 invokes arcTangent2Of
+findR301 argument y Float64 r30Part1 copy
+findR301 argument x Float64 r30Part2 copy
+findR301 result r30 Float64
+findR301 ownedBy none
+findR301 cleanedBy none
+findR301 borrows none
+findR301 catch none
+findR301 suppresses none
+
+findOk301 is call
+findOk301 in arcTangent2Test
+findOk301 invokes sameBits
+findOk301 argument expectedBits UInt64 uInt644609753056924675352 copy
+findOk301 argument actual Float64 r30 copy
+findOk301 result ok30 Bool
+findOk301 ownedBy none
+findOk301 cleanedBy none
+findOk301 borrows none
+findOk301 catch none
+findOk301 suppresses none
+
+expect30 is call
+expect30 in arcTangent2Test
+expect30 invokes test.assertTrue
+expect30 argument value Bool ok30 copy
+expect30 result none
+expect30 ownedBy none
+expect30 cleanedBy none
+expect30 borrows none
+expect30 catch none
+expect30 suppresses none
+
+r31Step1 is call
+r31Step1 in arcTangent2Test
+r31Step1 invokes convert.uint64BitsToFloat64
+r31Step1 argument value UInt64 uInt649218868437227405312 copy
+r31Step1 result r31Part1 Float64
+r31Step1 ownedBy none
+r31Step1 cleanedBy none
+r31Step1 borrows none
+r31Step1 catch none
+r31Step1 suppresses none
+
+r31Step2 is call
+r31Step2 in arcTangent2Test
+r31Step2 invokes convert.uint64BitsToFloat64
+r31Step2 argument value UInt64 uInt649218868437227405312 copy
+r31Step2 result r31Part2 Float64
+r31Step2 ownedBy none
+r31Step2 cleanedBy none
+r31Step2 borrows none
+r31Step2 catch none
+r31Step2 suppresses none
+
+findR311 is call
+findR311 in arcTangent2Test
+findR311 invokes arcTangent2Of
+findR311 argument y Float64 r31Part1 copy
+findR311 argument x Float64 r31Part2 copy
+findR311 result r31 Float64
+findR311 ownedBy none
+findR311 cleanedBy none
+findR311 borrows none
+findR311 catch none
+findR311 suppresses none
+
+findOk311 is call
+findOk311 in arcTangent2Test
+findOk311 invokes sameBits
+findOk311 argument expectedBits UInt64 uInt644605249457297304856 copy
+findOk311 argument actual Float64 r31 copy
+findOk311 result ok31 Bool
+findOk311 ownedBy none
+findOk311 cleanedBy none
+findOk311 borrows none
+findOk311 catch none
+findOk311 suppresses none
+
+expect31 is call
+expect31 in arcTangent2Test
+expect31 invokes test.assertTrue
+expect31 argument value Bool ok31 copy
+expect31 result none
+expect31 ownedBy none
+expect31 cleanedBy none
+expect31 borrows none
+expect31 catch none
+expect31 suppresses none
+
+r32Step1 is call
+r32Step1 in arcTangent2Test
+r32Step1 invokes convert.uint64BitsToFloat64
+r32Step1 argument value UInt64 uInt649218868437227405312 copy
+r32Step1 result r32Part1 Float64
+r32Step1 ownedBy none
+r32Step1 cleanedBy none
+r32Step1 borrows none
+r32Step1 catch none
+r32Step1 suppresses none
+
+r32Step2 is call
+r32Step2 in arcTangent2Test
+r32Step2 invokes convert.uint64BitsToFloat64
+r32Step2 argument value UInt64 uInt6418442240474082181120 copy
+r32Step2 result r32Part2 Float64
+r32Step2 ownedBy none
+r32Step2 cleanedBy none
+r32Step2 borrows none
+r32Step2 catch none
+r32Step2 suppresses none
+
+findR321 is call
+findR321 in arcTangent2Test
+findR321 invokes arcTangent2Of
+findR321 argument y Float64 r32Part1 copy
+findR321 argument x Float64 r32Part2 copy
+findR321 result r32 Float64
+findR321 ownedBy none
+findR321 cleanedBy none
+findR321 borrows none
+findR321 catch none
+findR321 suppresses none
+
+findOk321 is call
+findOk321 in arcTangent2Test
+findOk321 invokes sameBits
+findOk321 argument expectedBits UInt64 uInt644612488097114038738 copy
+findOk321 argument actual Float64 r32 copy
+findOk321 result ok32 Bool
+findOk321 ownedBy none
+findOk321 cleanedBy none
+findOk321 borrows none
+findOk321 catch none
+findOk321 suppresses none
+
+expect32 is call
+expect32 in arcTangent2Test
+expect32 invokes test.assertTrue
+expect32 argument value Bool ok32 copy
+expect32 result none
+expect32 ownedBy none
+expect32 cleanedBy none
+expect32 borrows none
+expect32 catch none
+expect32 suppresses none
+
+r33Step1 is call
+r33Step1 in arcTangent2Test
+r33Step1 invokes convert.uint64BitsToFloat64
+r33Step1 argument value UInt64 uInt6418442240474082181120 copy
+r33Step1 result r33Part1 Float64
+r33Step1 ownedBy none
+r33Step1 cleanedBy none
+r33Step1 borrows none
+r33Step1 catch none
+r33Step1 suppresses none
+
+r33Step2 is call
+r33Step2 in arcTangent2Test
+r33Step2 invokes convert.uint64BitsToFloat64
+r33Step2 argument value UInt64 uInt640 copy
+r33Step2 result r33Part2 Float64
+r33Step2 ownedBy none
+r33Step2 cleanedBy none
+r33Step2 borrows none
+r33Step2 catch none
+r33Step2 suppresses none
+
+findR331 is call
+findR331 in arcTangent2Test
+findR331 invokes arcTangent2Of
+findR331 argument y Float64 r33Part1 copy
+findR331 argument x Float64 r33Part2 copy
+findR331 result r33 Float64
+findR331 ownedBy none
+findR331 cleanedBy none
+findR331 borrows none
+findR331 catch none
+findR331 suppresses none
+
+findOk331 is call
+findOk331 in arcTangent2Test
+findOk331 invokes sameBits
+findOk331 argument expectedBits UInt64 uInt6413833125093779451160 copy
+findOk331 argument actual Float64 r33 copy
+findOk331 result ok33 Bool
+findOk331 ownedBy none
+findOk331 cleanedBy none
+findOk331 borrows none
+findOk331 catch none
+findOk331 suppresses none
+
+expect33 is call
+expect33 in arcTangent2Test
+expect33 invokes test.assertTrue
+expect33 argument value Bool ok33 copy
+expect33 result none
+expect33 ownedBy none
+expect33 cleanedBy none
+expect33 borrows none
+expect33 catch none
+expect33 suppresses none
+
+r34Step1 is call
+r34Step1 in arcTangent2Test
+r34Step1 invokes convert.uint64BitsToFloat64
+r34Step1 argument value UInt64 uInt6418442240474082181120 copy
+r34Step1 result r34Part1 Float64
+r34Step1 ownedBy none
+r34Step1 cleanedBy none
+r34Step1 borrows none
+r34Step1 catch none
+r34Step1 suppresses none
+
+r34Step2 is call
+r34Step2 in arcTangent2Test
+r34Step2 invokes convert.uint64BitsToFloat64
+r34Step2 argument value UInt64 uInt649223372036854775808 copy
+r34Step2 result r34Part2 Float64
+r34Step2 ownedBy none
+r34Step2 cleanedBy none
+r34Step2 borrows none
+r34Step2 catch none
+r34Step2 suppresses none
+
+findR341 is call
+findR341 in arcTangent2Test
+findR341 invokes arcTangent2Of
+findR341 argument y Float64 r34Part1 copy
+findR341 argument x Float64 r34Part2 copy
+findR341 result r34 Float64
+findR341 ownedBy none
+findR341 cleanedBy none
+findR341 borrows none
+findR341 catch none
+findR341 suppresses none
+
+findOk341 is call
+findOk341 in arcTangent2Test
+findOk341 invokes sameBits
+findOk341 argument expectedBits UInt64 uInt6413833125093779451160 copy
+findOk341 argument actual Float64 r34 copy
+findOk341 result ok34 Bool
+findOk341 ownedBy none
+findOk341 cleanedBy none
+findOk341 borrows none
+findOk341 catch none
+findOk341 suppresses none
+
+expect34 is call
+expect34 in arcTangent2Test
+expect34 invokes test.assertTrue
+expect34 argument value Bool ok34 copy
+expect34 result none
+expect34 ownedBy none
+expect34 cleanedBy none
+expect34 borrows none
+expect34 catch none
+expect34 suppresses none
+
+r35Step1 is call
+r35Step1 in arcTangent2Test
+r35Step1 invokes convert.uint64BitsToFloat64
+r35Step1 argument value UInt64 uInt6418442240474082181120 copy
+r35Step1 result r35Part1 Float64
+r35Step1 ownedBy none
+r35Step1 cleanedBy none
+r35Step1 borrows none
+r35Step1 catch none
+r35Step1 suppresses none
+
+r35Step2 is call
+r35Step2 in arcTangent2Test
+r35Step2 invokes convert.uint64BitsToFloat64
+r35Step2 argument value UInt64 uInt644607182418800017408 copy
+r35Step2 result r35Part2 Float64
+r35Step2 ownedBy none
+r35Step2 cleanedBy none
+r35Step2 borrows none
+r35Step2 catch none
+r35Step2 suppresses none
+
+findR351 is call
+findR351 in arcTangent2Test
+findR351 invokes arcTangent2Of
+findR351 argument y Float64 r35Part1 copy
+findR351 argument x Float64 r35Part2 copy
+findR351 result r35 Float64
+findR351 ownedBy none
+findR351 cleanedBy none
+findR351 borrows none
+findR351 catch none
+findR351 suppresses none
+
+findOk351 is call
+findOk351 in arcTangent2Test
+findOk351 invokes sameBits
+findOk351 argument expectedBits UInt64 uInt6413833125093779451160 copy
+findOk351 argument actual Float64 r35 copy
+findOk351 result ok35 Bool
+findOk351 ownedBy none
+findOk351 cleanedBy none
+findOk351 borrows none
+findOk351 catch none
+findOk351 suppresses none
+
+expect35 is call
+expect35 in arcTangent2Test
+expect35 invokes test.assertTrue
+expect35 argument value Bool ok35 copy
+expect35 result none
+expect35 ownedBy none
+expect35 cleanedBy none
+expect35 borrows none
+expect35 catch none
+expect35 suppresses none
+
+r36Step1 is call
+r36Step1 in arcTangent2Test
+r36Step1 invokes convert.uint64BitsToFloat64
+r36Step1 argument value UInt64 uInt6418442240474082181120 copy
+r36Step1 result r36Part1 Float64
+r36Step1 ownedBy none
+r36Step1 cleanedBy none
+r36Step1 borrows none
+r36Step1 catch none
+r36Step1 suppresses none
+
+r36Step2 is call
+r36Step2 in arcTangent2Test
+r36Step2 invokes convert.uint64BitsToFloat64
+r36Step2 argument value UInt64 uInt6413830554455654793216 copy
+r36Step2 result r36Part2 Float64
+r36Step2 ownedBy none
+r36Step2 cleanedBy none
+r36Step2 borrows none
+r36Step2 catch none
+r36Step2 suppresses none
+
+findR361 is call
+findR361 in arcTangent2Test
+findR361 invokes arcTangent2Of
+findR361 argument y Float64 r36Part1 copy
+findR361 argument x Float64 r36Part2 copy
+findR361 result r36 Float64
+findR361 ownedBy none
+findR361 cleanedBy none
+findR361 borrows none
+findR361 catch none
+findR361 suppresses none
+
+findOk361 is call
+findOk361 in arcTangent2Test
+findOk361 invokes sameBits
+findOk361 argument expectedBits UInt64 uInt6413833125093779451160 copy
+findOk361 argument actual Float64 r36 copy
+findOk361 result ok36 Bool
+findOk361 ownedBy none
+findOk361 cleanedBy none
+findOk361 borrows none
+findOk361 catch none
+findOk361 suppresses none
+
+expect36 is call
+expect36 in arcTangent2Test
+expect36 invokes test.assertTrue
+expect36 argument value Bool ok36 copy
+expect36 result none
+expect36 ownedBy none
+expect36 cleanedBy none
+expect36 borrows none
+expect36 catch none
+expect36 suppresses none
+
+r37Step1 is call
+r37Step1 in arcTangent2Test
+r37Step1 invokes convert.uint64BitsToFloat64
+r37Step1 argument value UInt64 uInt6418442240474082181120 copy
+r37Step1 result r37Part1 Float64
+r37Step1 ownedBy none
+r37Step1 cleanedBy none
+r37Step1 borrows none
+r37Step1 catch none
+r37Step1 suppresses none
+
+r37Step2 is call
+r37Step2 in arcTangent2Test
+r37Step2 invokes convert.uint64BitsToFloat64
+r37Step2 argument value UInt64 uInt649218868437227405312 copy
+r37Step2 result r37Part2 Float64
+r37Step2 ownedBy none
+r37Step2 cleanedBy none
+r37Step2 borrows none
+r37Step2 catch none
+r37Step2 suppresses none
+
+findR371 is call
+findR371 in arcTangent2Test
+findR371 invokes arcTangent2Of
+findR371 argument y Float64 r37Part1 copy
+findR371 argument x Float64 r37Part2 copy
+findR371 result r37 Float64
+findR371 ownedBy none
+findR371 cleanedBy none
+findR371 borrows none
+findR371 catch none
+findR371 suppresses none
+
+findOk371 is call
+findOk371 in arcTangent2Test
+findOk371 invokes sameBits
+findOk371 argument expectedBits UInt64 uInt6413828621494152080664 copy
+findOk371 argument actual Float64 r37 copy
+findOk371 result ok37 Bool
+findOk371 ownedBy none
+findOk371 cleanedBy none
+findOk371 borrows none
+findOk371 catch none
+findOk371 suppresses none
+
+expect37 is call
+expect37 in arcTangent2Test
+expect37 invokes test.assertTrue
+expect37 argument value Bool ok37 copy
+expect37 result none
+expect37 ownedBy none
+expect37 cleanedBy none
+expect37 borrows none
+expect37 catch none
+expect37 suppresses none
+
+r38Step1 is call
+r38Step1 in arcTangent2Test
+r38Step1 invokes convert.uint64BitsToFloat64
+r38Step1 argument value UInt64 uInt6418442240474082181120 copy
+r38Step1 result r38Part1 Float64
+r38Step1 ownedBy none
+r38Step1 cleanedBy none
+r38Step1 borrows none
+r38Step1 catch none
+r38Step1 suppresses none
+
+r38Step2 is call
+r38Step2 in arcTangent2Test
+r38Step2 invokes convert.uint64BitsToFloat64
+r38Step2 argument value UInt64 uInt6418442240474082181120 copy
+r38Step2 result r38Part2 Float64
+r38Step2 ownedBy none
+r38Step2 cleanedBy none
+r38Step2 borrows none
+r38Step2 catch none
+r38Step2 suppresses none
+
+findR381 is call
+findR381 in arcTangent2Test
+findR381 invokes arcTangent2Of
+findR381 argument y Float64 r38Part1 copy
+findR381 argument x Float64 r38Part2 copy
+findR381 result r38 Float64
+findR381 ownedBy none
+findR381 cleanedBy none
+findR381 borrows none
+findR381 catch none
+findR381 suppresses none
+
+findOk381 is call
+findOk381 in arcTangent2Test
+findOk381 invokes sameBits
+findOk381 argument expectedBits UInt64 uInt6413835860133968814546 copy
+findOk381 argument actual Float64 r38 copy
+findOk381 result ok38 Bool
+findOk381 ownedBy none
+findOk381 cleanedBy none
+findOk381 borrows none
+findOk381 catch none
+findOk381 suppresses none
+
+expect38 is call
+expect38 in arcTangent2Test
+expect38 invokes test.assertTrue
+expect38 argument value Bool ok38 copy
+expect38 result none
+expect38 ownedBy none
+expect38 cleanedBy none
+expect38 borrows none
+expect38 catch none
+expect38 suppresses none

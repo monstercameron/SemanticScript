@@ -1,0 +1,8 @@
+# The trigonometric functions of math.h written in SemanticScript, as glibc's libm gives them in the C
+# locale (D-153): sin, cos, tan, asin, acos, atan, atan2, and the f forms that take and give a float. Each is an
+# `abi library` operation, reached through `ffi.open("c")` and by a mapped library's C imports. Argument reduction is
+# Cody and Waite's up to 1.6e6 and Payne and Hanek's beyond, with the bits of 2/pi computed by
+# tools/cmathtriggen.py; every result is within 1 ulp of the exact one, and Annex F's special values are exact.
+#
+# This module is generated from tools/cmathtrig.dsl by tools/build.py; tools/cmathtriggen.py writes the blocks
+# of that file between its `@generated` marks (the tables, the polynomials, and the tests).

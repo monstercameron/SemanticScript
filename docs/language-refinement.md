@@ -2787,6 +2787,18 @@ with glibc. Decided by delegation:
   ERANGE on overflow and poles, EDOM on domain errors. `signgam` is not exported (it is POSIX's, not ISO C's): the
   sign is kept at machine.state 24592 and given by lgamma_r and lgammaf_r. The module's state is machine.state 24576
   to 24831 (each parallel module has a range of its own, 24576 to 27903).
+- **D-181** math.h's trigonometric functions (`cmathtrig`): sin, cos, tan, asin, acos, atan, atan2, and their `f`
+  forms, each within 1 ulp of the exact value (the tour's worst over about 3,900 arguments from 2^-60 to 1.8e308 is
+  0.64 ulp, tan's). Arguments are reduced not at all up to pi/4, by Cody-Waite up to 1.6e6 (pi/2 in four pieces,
+  every rounding caught by two-sum), and by Payne-Hanek above (2/pi to 41 limbs, a 288-bit product held in 32-bit
+  limbs in machine.state 25344 to 25599), so a huge argument such as 6381956970095103 * 2^797 reduces exactly. The
+  inverse functions start from a table of atan(k/8) as double-double pairs and a short series. Every constant is
+  computed from Python integers by tools/cmathtriggen.py (pi from Machin's formula, 2/pi by one exact division, the
+  series from exact fractions), which writes the generated blocks of cmathtrig.dsl. Annex F's special values are
+  exact, with errno EDOM for the infinities of sin, cos, and tan and arguments of asin and acos beyond 1. The `f`
+  forms compute in double and round once (within 1 ulp, not glibc's sinf bit for bit). In the runtime's DSL a NaN
+  test is `!(x == x)`: `!=` on floats is an ordered comparison.
+
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3508,6 +3520,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-162 to D-164 | The runtime in SemanticScript, the whole C library: exit handlers and the div family, setjmp and longjmp as routines the compiler emits, signal, raise, abort, and system (by delegation) |
 | 2026-11-15 | D-165 | The runtime in SemanticScript, the whole C library: the `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call (by delegation) |
 | 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
+| 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |
