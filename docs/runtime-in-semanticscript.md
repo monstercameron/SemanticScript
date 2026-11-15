@@ -7,9 +7,11 @@ buffers, time), and tasks, on top of the C library. This plan moved all of it
 into SemanticScript and links executables with no C library at all: the
 program and its runtime are compiled from SemanticScript to one object, and
 the only code not written in SemanticScript is the operating system's own
-interface (kernel32 on Windows, system calls on x86_64 Linux) and a few
-instructions of assembly that switch stacks on Linux. All five stages are
-done; `native_runtime.c` is deleted.
+interface (kernel32, ws2_32, and bcrypt on Windows, system calls on x86_64 and
+AArch64 Linux) and a few instructions of assembly that switch stacks, start the
+process, and return from a signal on Linux. All six stages are done;
+`native_runtime.c` is deleted, and every module of the standard library works
+in an executable but `ffi` on Linux, which needs the C library (D-145).
 
 ## The bar
 
@@ -80,7 +82,7 @@ layout, which was wrong for values like `100.0`; D-129 corrects both.)
 | 3 | Files, identity and claims, directories, processes and pipes, environment, arguments, time | Done |
 | 4 | Tasks, groups, channels, test assertions | Done |
 | 5 | Linux through system calls; switch every executable to the new runtime; delete `native_runtime.c`; stage0 links it | Done |
-| 6 | The rest of the library: random, http, json, signal, net; AArch64 Linux | In progress |
+| 6 | The rest of the library: random, http, json, signal, net; AArch64 Linux | Done |
 
 ## Stage 1 (done)
 
@@ -284,7 +286,7 @@ The runtime in SemanticScript is the only runtime of standalone executables, on 
    tests/test_stage0.py, test_bootstrap.py, and test_selfhost_suite.py link with it, and stage0b compiles every
    sample to C byte-identical to stage0's.
 
-## Stage 6: the rest of the library (in progress)
+## Stage 6: the rest of the library (done)
 
 The five modules stage 4 left to `refined run` move into the runtime (D-144 onward), each exactly as `refined run`
 behaves, and the Linux system layer gains AArch64.
@@ -304,7 +306,8 @@ No C library or C runtime of any kind: no msvcrt, ucrt, vcruntime, glibc, or mus
 no dynamic loader. What an executable links besides the program and the runtime is the operating system's own
 interface where the system gives no other: on Windows `KERNEL32.dll`, `WS2_32.dll` (Winsock, the only interface to
 Windows's TCP/IP stack), and `bcrypt.dll` (the system's random number generator); on Linux the system calls. A DLL
-is in the import table only when the program reaches one of its functions. `assert_no_libc` checks every
+is in the import table when the program's code can reach it: `hello` imports KERNEL32.dll alone, and a program that
+calls any host target reaches `refined_host`'s dispatch over all of them, so it imports the other two as well. `assert_no_libc` checks every
 executable the tests build: Windows imports are KERNEL32.dll and a subset of {WS2_32.dll, bcrypt.dll}, never a CRT
 DLL; Linux executables are static, with no PT_DYNAMIC or PT_INTERP and no trace of the C library.
 

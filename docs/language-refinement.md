@@ -2657,8 +2657,10 @@ The five modules stage 4 left to `refined run` (D-137) moved into `semanticscrip
   `KERNEL32.dll`, `WS2_32.dll` (Winsock, the only interface Windows gives to its TCP/IP stack), and `bcrypt.dll`
   (the system's random number generator, `BCryptGenRandom`, which Python's `os.urandom` also calls); on Linux the
   system calls themselves. Their rows are `SYSTEM_CALLS`, each named in `SYSTEM_DLLS` with its DLL when it is not
-  kernel32's, and executables and stage0 link `-lkernel32 -lws2_32 -lbcrypt`; a DLL only appears in the import table
-  when the program reaches one of its functions (`hello` still imports KERNEL32.dll alone). `assert_no_libc` holds
+  kernel32's, and executables and stage0 link `-lkernel32 -lws2_32 -lbcrypt`; a DLL is in the import table when the program's code
+  can reach it: `hello`, which calls no host target, imports KERNEL32.dll alone, and a program that calls any host
+  target reaches `refined_host`'s dispatch over all of them (D-126), so it imports WS2_32.dll and bcrypt.dll too
+  (Winsock is started only at the first socket). `assert_no_libc` holds
   every executable the tests build to it: on Windows the import table names KERNEL32.dll and a subset of
   {WS2_32.dll, bcrypt.dll}, never a CRT DLL; on Linux the file is static, with no PT_DYNAMIC or PT_INTERP and no
   trace of the C library.
