@@ -39,6 +39,7 @@ import test_runtime_nolibc as nolibc  # noqa: E402
 
 GLIBC_DIFFERENCE = 24.0
 NAMES = set(G.ALL_NAMES)
+LONG_NAMES = set(T.LONG_NAMES)
 
 
 def _to_float(text: str) -> float:
@@ -130,13 +131,28 @@ def test_c_complex_is_within_its_bounds_of_the_exact_value(tour):
     exact value over the tour's special grid and sweeps, and as Annex G says for infinities, NaN and signed zeros."""
     _project, ran = tour
     by_function = _output_by_function(ran.stdout.splitlines())
-    assert set(by_function) == NAMES
+    assert set(by_function) == NAMES | (LONG_NAMES if nolibc.WINDOWS else set())
     worst: dict = {}
     for name, got in by_function.items():
-        _check_function(name, got, worst)
+        if name not in LONG_NAMES:
+            _check_function(name, got, worst)
     if os.environ.get("CMATHCOMPLEX_REPORT"):
         for name in sorted(worst):
             print(f"{name:10} worst {worst[name]:.2f} ulp")
+
+
+@nolibc.needs_windows_cc
+def test_c_complex_long_double_forms_are_the_double_ones_on_windows(tour):
+    """On Windows long double is a double (D-174), so cabsl to catanhl are cabs to catanh: the executable's results for
+    each l form are bit for bit those of the double function over every argument of the tour, through the same ABI
+    (two Float64 in and out, D-175). Linux has no such rows yet: its long double is x87 or binary128."""
+    if not nolibc.WINDOWS:
+        pytest.skip("the l forms are in Windows's table only; Linux's are still to come")
+    _project, ran = tour
+    by_function = _output_by_function(ran.stdout.splitlines())
+    for name in sorted(LONG_NAMES):
+        assert by_function[name] == by_function[name[:-1]], name
+        assert by_function[name], name
 
 
 @nolibc.needs_windows_cc
@@ -178,12 +194,16 @@ def test_c_complex_matches_glibc_on_linux(tour):
 
 
 def test_c_complex_table_names_glibc_functions():
-    """The `abi library` operations of cmathcomplex.sem are exactly the names this test lists, and on Linux each is a
-    name glibc's libm exports."""
+    """The `abi library` operations of cmathcomplex.sem are exactly the names this test lists (the l forms marked
+    `windows`: in Windows's table only), and on Linux each is a name glibc's libm exports."""
     path = os.path.join(nolibc.RUNTIME, "cmathcomplex.sem")
     with open(path, encoding="utf-8") as fh:
-        names = set(re.findall(r'^\w+ abi library "(\w+)"(?: variadic)?$', fh.read(), re.M))
+        text = fh.read()
+    names = set(re.findall(r'^\w+ abi library "(\w+)"$', text, re.M))
+    longs = set(re.findall(r'^\w+ abi library "(\w+)" windows$', text, re.M))
     assert names == NAMES, (names - NAMES, NAMES - names)
+    assert longs == LONG_NAMES, (longs - LONG_NAMES, LONG_NAMES - longs)
+    names |= longs
     if not nolibc.WINDOWS and nolibc.PLATFORM:
         import ctypes
         import ctypes.util

@@ -46,6 +46,11 @@ clibrary exports runHandlers
 clibrary exports checkFits
 clibrary exports errnoCell
 clibrary exports windowsErrno
+clibrary exports alignedOrigin
+clibrary exports alignedSize
+clibrary exports registryAdd
+clibrary exports reallocate
+clibrary exports release
 
 memoryAccess is capability
 memoryAccess purpose "Authority to read and write the memory C callers hand the library"
@@ -124,6 +129,21 @@ hexBitsAt is constant
 hexBitsAt purpose "Where a hexadecimal strtod puts the bits it made, in machine.state"
 hexBitsAt type Int64
 hexBitsAt value 1616
+
+alignedCountAt is constant
+alignedCountAt purpose "Where the count of recorded aligned blocks (4096 bytes of alignment or more) is kept, in machine.state (27328 to 27359 are this registry's, within cextra's range)"
+alignedCountAt type Int64
+alignedCountAt value 27328
+
+alignedTableAt is constant
+alignedTableAt purpose "Where the address of the registry's 1024 chains is kept"
+alignedTableAt type Int64
+alignedTableAt value 27336
+
+alignedLockAt is constant
+alignedLockAt purpose "Where the registry's spin lock is kept"
+alignedLockAt type Int64
+alignedLockAt value 27344
 
 exitListAt is constant
 exitListAt purpose "Where the list of atexit's handlers is kept (its block, how many, how many it holds), in machine.state (D-162)"
@@ -12183,9 +12203,1946 @@ takeIt borrows none
 takeIt catch none
 takeIt suppresses none
 
+registryLock is operation
+registryLock purpose "Take the lock of the registry of aligned blocks (a spin lock: its sections are a few loads)"
+registryLock invariant none
+registryLock typeParameter none
+registryLock input none
+registryLock output none
+registryLock outputOwnedBy none
+registryLock raises none
+registryLock effect use machine.memory
+registryLock uses memoryAccess
+registryLock memoryHeap false
+registryLock async false
+registryLock maxRecursion none
+registryLock label begin loopKind none
+registryLock label begin within none
+registryLock label attempt loopKind while
+registryLock label attempt within none
+registryLock label attempt maxIterations 9223372036854775807
+registryLock label again loopKind none
+registryLock label again within attempt
+registryLock label held loopKind none
+registryLock label held within none
+registryLock let int320 Int32 0 immutable
+registryLock let int321 Int32 1 immutable
+registryLock at begin do readWord
+registryLock at begin goto attempt
+registryLock at attempt do readPrevious
+registryLock at attempt do findCheck11
+registryLock at attempt branch if check1 goto held else goto again
+registryLock at again goto attempt
+registryLock at held return ok none
+
+readWord is call
+readWord in registryLock
+readWord invokes kernel.stateAt
+readWord argument offset Int64 alignedLockAt copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+readPrevious is call
+readPrevious in registryLock
+readPrevious invokes machine.compareExchange32
+readPrevious argument address machine.Address word copy
+readPrevious argument expected Int32 int320 copy
+readPrevious argument desired Int32 int321 copy
+readPrevious result previous Int32
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+findCheck11 is call
+findCheck11 in registryLock
+findCheck11 invokes compare.equalInt32
+findCheck11 argument left Int32 previous copy
+findCheck11 argument right Int32 int320 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+registryUnlock is operation
+registryUnlock purpose "Give back the lock of the registry of aligned blocks"
+registryUnlock invariant none
+registryUnlock typeParameter none
+registryUnlock input none
+registryUnlock output none
+registryUnlock outputOwnedBy none
+registryUnlock raises none
+registryUnlock effect use machine.memory
+registryUnlock uses memoryAccess
+registryUnlock memoryHeap false
+registryUnlock async false
+registryUnlock maxRecursion none
+registryUnlock label begin loopKind none
+registryUnlock label begin within none
+registryUnlock let int321 Int32 1 immutable
+registryUnlock let int320 Int32 0 immutable
+registryUnlock at begin do readWord
+registryUnlock at begin do readReleased
+registryUnlock at begin return ok none
+
+readWord is call
+readWord in registryUnlock
+readWord invokes kernel.stateAt
+readWord argument offset Int64 alignedLockAt copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+readReleased is call
+readReleased in registryUnlock
+readReleased invokes machine.compareExchange32
+readReleased argument address machine.Address word copy
+readReleased argument expected Int32 int321 copy
+readReleased argument desired Int32 int320 copy
+readReleased result released Int32
+readReleased ownedBy none
+readReleased cleanedBy none
+readReleased borrows none
+readReleased catch none
+readReleased suppresses none
+
+registryAdd is operation
+registryAdd purpose "Record an aligned block cut from a plain one: nodes of 32 bytes (the next node, the aligned address, the plain block's address, the size asked) in 1024 chains by page number, the chains' table made at the first record"
+registryAdd invariant recordsBlocks "\"After a record, alignedOrigin and alignedSize of the aligned address give the plain block and the size\""
+registryAdd typeParameter none
+registryAdd input place machine.Address copied
+registryAdd input origin machine.Address copied
+registryAdd input size Int64 copied
+registryAdd output none
+registryAdd outputOwnedBy none
+registryAdd raises none
+registryAdd effect use machine.memory
+registryAdd effect use system.calls
+registryAdd uses memoryAccess
+registryAdd uses systemCalls
+registryAdd memoryHeap false
+registryAdd async false
+registryAdd maxRecursion none
+registryAdd label begin loopKind none
+registryAdd label begin within none
+registryAdd label makeTable loopKind none
+registryAdd label makeTable within none
+registryAdd label filed loopKind none
+registryAdd label filed within none
+registryAdd let thirtyTwo Int64 32 immutable
+registryAdd let eight Int64 8 immutable
+registryAdd let sixteen Int64 16 immutable
+registryAdd let n24 Int64 24 immutable
+registryAdd let n8192 Int64 8192 immutable
+registryAdd let twelve Int64 12 immutable
+registryAdd let ten Int64 10 immutable
+registryAdd let n1023 Int64 1023 immutable
+registryAdd let one Int64 1 immutable
+registryAdd at begin do readNowhere
+registryAdd at begin do readNode
+registryAdd at begin do findPlaceSlot1
+registryAdd at begin do doStoreAddress
+registryAdd at begin do findOriginSlot1
+registryAdd at begin do doStoreAddress2
+registryAdd at begin do findSizeSlot1
+registryAdd at begin do doStoreInt64
+registryAdd at begin do doRegistryLock
+registryAdd at begin do readTableCell
+registryAdd at begin do readTable
+registryAdd at begin do findCheck11
+registryAdd at begin branch if check1 goto makeTable else goto filed
+registryAdd at makeTable do readFresh
+registryAdd at makeTable do doStoreAddress3
+registryAdd at makeTable goto filed
+registryAdd at filed do readKept
+registryAdd at filed do readValue
+registryAdd at filed do findPage1
+registryAdd at filed do mixedStep1
+registryAdd at filed do findMixed1
+registryAdd at filed do findChain1
+registryAdd at filed do bucketStep1
+registryAdd at filed do findBucket1
+registryAdd at filed do readHead
+registryAdd at filed do doStoreAddress4
+registryAdd at filed do doStoreAddress5
+registryAdd at filed do readCountCell
+registryAdd at filed do readCount
+registryAdd at filed do findMore1
+registryAdd at filed do doStoreInt642
+registryAdd at filed do doRegistryUnlock
+registryAdd at filed return ok none
+
+readNowhere is call
+readNowhere in registryAdd
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readNode is call
+readNode in registryAdd
+readNode invokes heap.take
+readNode argument bytes Int64 thirtyTwo copy
+readNode result node machine.Address
+readNode ownedBy none
+readNode cleanedBy none
+readNode borrows none
+readNode catch none
+readNode suppresses none
+
+findPlaceSlot1 is call
+findPlaceSlot1 in registryAdd
+findPlaceSlot1 invokes machine.offset
+findPlaceSlot1 argument address machine.Address node copy
+findPlaceSlot1 argument bytes Int64 eight copy
+findPlaceSlot1 result placeSlot machine.Address
+findPlaceSlot1 ownedBy none
+findPlaceSlot1 cleanedBy none
+findPlaceSlot1 borrows none
+findPlaceSlot1 catch none
+findPlaceSlot1 suppresses none
+
+doStoreAddress is call
+doStoreAddress in registryAdd
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address placeSlot copy
+doStoreAddress argument value machine.Address place copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+findOriginSlot1 is call
+findOriginSlot1 in registryAdd
+findOriginSlot1 invokes machine.offset
+findOriginSlot1 argument address machine.Address node copy
+findOriginSlot1 argument bytes Int64 sixteen copy
+findOriginSlot1 result originSlot machine.Address
+findOriginSlot1 ownedBy none
+findOriginSlot1 cleanedBy none
+findOriginSlot1 borrows none
+findOriginSlot1 catch none
+findOriginSlot1 suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in registryAdd
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address originSlot copy
+doStoreAddress2 argument value machine.Address origin copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+findSizeSlot1 is call
+findSizeSlot1 in registryAdd
+findSizeSlot1 invokes machine.offset
+findSizeSlot1 argument address machine.Address node copy
+findSizeSlot1 argument bytes Int64 n24 copy
+findSizeSlot1 result sizeSlot machine.Address
+findSizeSlot1 ownedBy none
+findSizeSlot1 cleanedBy none
+findSizeSlot1 borrows none
+findSizeSlot1 catch none
+findSizeSlot1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in registryAdd
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address sizeSlot copy
+doStoreInt64 argument value Int64 size copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+doRegistryLock is call
+doRegistryLock in registryAdd
+doRegistryLock invokes registryLock
+doRegistryLock argument none
+doRegistryLock result none
+doRegistryLock ownedBy none
+doRegistryLock cleanedBy none
+doRegistryLock borrows none
+doRegistryLock catch none
+doRegistryLock suppresses none
+
+readTableCell is call
+readTableCell in registryAdd
+readTableCell invokes kernel.stateAt
+readTableCell argument offset Int64 alignedTableAt copy
+readTableCell result tableCell machine.Address
+readTableCell ownedBy none
+readTableCell cleanedBy none
+readTableCell borrows none
+readTableCell catch none
+readTableCell suppresses none
+
+readTable is call
+readTable in registryAdd
+readTable invokes machine.loadAddress
+readTable argument address machine.Address tableCell copy
+readTable result table machine.Address
+readTable ownedBy none
+readTable cleanedBy none
+readTable borrows none
+readTable catch none
+readTable suppresses none
+
+findCheck11 is call
+findCheck11 in registryAdd
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address table copy
+findCheck11 argument right machine.Address nowhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readFresh is call
+readFresh in registryAdd
+readFresh invokes heap.take
+readFresh argument bytes Int64 n8192 copy
+readFresh result fresh machine.Address
+readFresh ownedBy none
+readFresh cleanedBy none
+readFresh borrows none
+readFresh catch none
+readFresh suppresses none
+
+doStoreAddress3 is call
+doStoreAddress3 in registryAdd
+doStoreAddress3 invokes machine.storeAddress
+doStoreAddress3 argument address machine.Address tableCell copy
+doStoreAddress3 argument value machine.Address fresh copy
+doStoreAddress3 result none
+doStoreAddress3 ownedBy none
+doStoreAddress3 cleanedBy none
+doStoreAddress3 borrows none
+doStoreAddress3 catch none
+doStoreAddress3 suppresses none
+
+readKept is call
+readKept in registryAdd
+readKept invokes machine.loadAddress
+readKept argument address machine.Address tableCell copy
+readKept result kept machine.Address
+readKept ownedBy none
+readKept cleanedBy none
+readKept borrows none
+readKept catch none
+readKept suppresses none
+
+readValue is call
+readValue in registryAdd
+readValue invokes machine.toInt64
+readValue argument address machine.Address place copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+findPage1 is call
+findPage1 in registryAdd
+findPage1 invokes bits.shiftRightInt64
+findPage1 argument value Int64 value copy
+findPage1 argument amount Int64 twelve copy
+findPage1 result page Int64
+findPage1 ownedBy none
+findPage1 cleanedBy none
+findPage1 borrows none
+findPage1 catch none
+findPage1 suppresses none
+
+mixedStep1 is call
+mixedStep1 in registryAdd
+mixedStep1 invokes bits.shiftRightInt64
+mixedStep1 argument value Int64 page copy
+mixedStep1 argument amount Int64 ten copy
+mixedStep1 result mixedPart1 Int64
+mixedStep1 ownedBy none
+mixedStep1 cleanedBy none
+mixedStep1 borrows none
+mixedStep1 catch none
+mixedStep1 suppresses none
+
+findMixed1 is call
+findMixed1 in registryAdd
+findMixed1 invokes bits.xorInt64
+findMixed1 argument left Int64 page copy
+findMixed1 argument right Int64 mixedPart1 copy
+findMixed1 result mixed Int64
+findMixed1 ownedBy none
+findMixed1 cleanedBy none
+findMixed1 borrows none
+findMixed1 catch none
+findMixed1 suppresses none
+
+findChain1 is call
+findChain1 in registryAdd
+findChain1 invokes bits.andInt64
+findChain1 argument left Int64 mixed copy
+findChain1 argument right Int64 n1023 copy
+findChain1 result chain Int64
+findChain1 ownedBy none
+findChain1 cleanedBy none
+findChain1 borrows none
+findChain1 catch none
+findChain1 suppresses none
+
+bucketStep1 is call
+bucketStep1 in registryAdd
+bucketStep1 invokes math.multiplyInt64
+bucketStep1 argument left Int64 chain copy
+bucketStep1 argument right Int64 eight copy
+bucketStep1 result bucketPart1 Int64
+bucketStep1 ownedBy none
+bucketStep1 cleanedBy none
+bucketStep1 borrows none
+bucketStep1 catch none
+bucketStep1 suppresses none
+
+findBucket1 is call
+findBucket1 in registryAdd
+findBucket1 invokes machine.offset
+findBucket1 argument address machine.Address kept copy
+findBucket1 argument bytes Int64 bucketPart1 copy
+findBucket1 result bucket machine.Address
+findBucket1 ownedBy none
+findBucket1 cleanedBy none
+findBucket1 borrows none
+findBucket1 catch none
+findBucket1 suppresses none
+
+readHead is call
+readHead in registryAdd
+readHead invokes machine.loadAddress
+readHead argument address machine.Address bucket copy
+readHead result head machine.Address
+readHead ownedBy none
+readHead cleanedBy none
+readHead borrows none
+readHead catch none
+readHead suppresses none
+
+doStoreAddress4 is call
+doStoreAddress4 in registryAdd
+doStoreAddress4 invokes machine.storeAddress
+doStoreAddress4 argument address machine.Address node copy
+doStoreAddress4 argument value machine.Address head copy
+doStoreAddress4 result none
+doStoreAddress4 ownedBy none
+doStoreAddress4 cleanedBy none
+doStoreAddress4 borrows none
+doStoreAddress4 catch none
+doStoreAddress4 suppresses none
+
+doStoreAddress5 is call
+doStoreAddress5 in registryAdd
+doStoreAddress5 invokes machine.storeAddress
+doStoreAddress5 argument address machine.Address bucket copy
+doStoreAddress5 argument value machine.Address node copy
+doStoreAddress5 result none
+doStoreAddress5 ownedBy none
+doStoreAddress5 cleanedBy none
+doStoreAddress5 borrows none
+doStoreAddress5 catch none
+doStoreAddress5 suppresses none
+
+readCountCell is call
+readCountCell in registryAdd
+readCountCell invokes kernel.stateAt
+readCountCell argument offset Int64 alignedCountAt copy
+readCountCell result countCell machine.Address
+readCountCell ownedBy none
+readCountCell cleanedBy none
+readCountCell borrows none
+readCountCell catch none
+readCountCell suppresses none
+
+readCount is call
+readCount in registryAdd
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countCell copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findMore1 is call
+findMore1 in registryAdd
+findMore1 invokes math.addInt64
+findMore1 argument left Int64 count copy
+findMore1 argument right Int64 one copy
+findMore1 result more Int64
+findMore1 ownedBy none
+findMore1 cleanedBy none
+findMore1 borrows none
+findMore1 catch none
+findMore1 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in registryAdd
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address countCell copy
+doStoreInt642 argument value Int64 more copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+doRegistryUnlock is call
+doRegistryUnlock in registryAdd
+doRegistryUnlock invokes registryUnlock
+doRegistryUnlock argument none
+doRegistryUnlock result none
+doRegistryUnlock ownedBy none
+doRegistryUnlock cleanedBy none
+doRegistryUnlock borrows none
+doRegistryUnlock catch none
+doRegistryUnlock suppresses none
+
+registryField is operation
+registryField purpose "A recorded aligned block's plain block (16) or size asked (24), or 0 for an address no record has; 0 at once when none are recorded"
+registryField invariant none
+registryField typeParameter none
+registryField input place machine.Address copied
+registryField input field Int64 copied
+registryField output Int64
+registryField outputOwnedBy none
+registryField raises none
+registryField effect use machine.memory
+registryField uses memoryAccess
+registryField memoryHeap false
+registryField async false
+registryField maxRecursion none
+registryField label begin loopKind none
+registryField label begin within none
+registryField label empty loopKind none
+registryField label empty within none
+registryField label search loopKind none
+registryField label search within none
+registryField label eachNode loopKind while
+registryField label eachNode within none
+registryField label eachNode maxIterations 9223372036854775807
+registryField label look loopKind none
+registryField label look within eachNode
+registryField label next loopKind none
+registryField label next within eachNode
+registryField label hit loopKind none
+registryField label hit within none
+registryField label finish loopKind none
+registryField label finish within none
+registryField let linkValue Int64 0 mutable
+registryField let found Int64 0 mutable
+registryField let zero Int64 0 immutable
+registryField let twelve Int64 12 immutable
+registryField let ten Int64 10 immutable
+registryField let n1023 Int64 1023 immutable
+registryField let eight Int64 8 immutable
+registryField at begin do readCountCell
+registryField at begin do readCount
+registryField at begin do findCheck11
+registryField at begin branch if check1 goto empty else goto search
+registryField at empty return ok zero
+registryField at search do doRegistryLock
+registryField at search do readTableCell
+registryField at search do readTable
+registryField at search do readValue
+registryField at search do findPage1
+registryField at search do mixedStep1
+registryField at search do findMixed1
+registryField at search do findChain1
+registryField at search do bucketStep1
+registryField at search do findBucket1
+registryField at search do findLinkValueNext11
+registryField at search set linkValue linkValueNext1
+registryField at search goto eachNode
+registryField at eachNode do readLink
+registryField at eachNode do readNode
+registryField at eachNode do findCheck21
+registryField at eachNode branch if check2 goto finish else goto look
+registryField at look do readNodeAddress
+registryField at look do findPlaceSlot1
+registryField at look do readRecordedPlace
+registryField at look do findCheck31
+registryField at look branch if check3 goto hit else goto next
+registryField at next set linkValue node
+registryField at next goto eachNode
+registryField at hit do findFieldSlot1
+registryField at hit do findFoundNext11
+registryField at hit set found foundNext1
+registryField at hit goto finish
+registryField at finish do doRegistryUnlock
+registryField at finish return ok found
+
+readCountCell is call
+readCountCell in registryField
+readCountCell invokes kernel.stateAt
+readCountCell argument offset Int64 alignedCountAt copy
+readCountCell result countCell machine.Address
+readCountCell ownedBy none
+readCountCell cleanedBy none
+readCountCell borrows none
+readCountCell catch none
+readCountCell suppresses none
+
+readCount is call
+readCount in registryField
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countCell copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCheck11 is call
+findCheck11 in registryField
+findCheck11 invokes compare.equalInt64
+findCheck11 argument left Int64 count copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doRegistryLock is call
+doRegistryLock in registryField
+doRegistryLock invokes registryLock
+doRegistryLock argument none
+doRegistryLock result none
+doRegistryLock ownedBy none
+doRegistryLock cleanedBy none
+doRegistryLock borrows none
+doRegistryLock catch none
+doRegistryLock suppresses none
+
+readTableCell is call
+readTableCell in registryField
+readTableCell invokes kernel.stateAt
+readTableCell argument offset Int64 alignedTableAt copy
+readTableCell result tableCell machine.Address
+readTableCell ownedBy none
+readTableCell cleanedBy none
+readTableCell borrows none
+readTableCell catch none
+readTableCell suppresses none
+
+readTable is call
+readTable in registryField
+readTable invokes machine.loadAddress
+readTable argument address machine.Address tableCell copy
+readTable result table machine.Address
+readTable ownedBy none
+readTable cleanedBy none
+readTable borrows none
+readTable catch none
+readTable suppresses none
+
+readValue is call
+readValue in registryField
+readValue invokes machine.toInt64
+readValue argument address machine.Address place copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+findPage1 is call
+findPage1 in registryField
+findPage1 invokes bits.shiftRightInt64
+findPage1 argument value Int64 value copy
+findPage1 argument amount Int64 twelve copy
+findPage1 result page Int64
+findPage1 ownedBy none
+findPage1 cleanedBy none
+findPage1 borrows none
+findPage1 catch none
+findPage1 suppresses none
+
+mixedStep1 is call
+mixedStep1 in registryField
+mixedStep1 invokes bits.shiftRightInt64
+mixedStep1 argument value Int64 page copy
+mixedStep1 argument amount Int64 ten copy
+mixedStep1 result mixedPart1 Int64
+mixedStep1 ownedBy none
+mixedStep1 cleanedBy none
+mixedStep1 borrows none
+mixedStep1 catch none
+mixedStep1 suppresses none
+
+findMixed1 is call
+findMixed1 in registryField
+findMixed1 invokes bits.xorInt64
+findMixed1 argument left Int64 page copy
+findMixed1 argument right Int64 mixedPart1 copy
+findMixed1 result mixed Int64
+findMixed1 ownedBy none
+findMixed1 cleanedBy none
+findMixed1 borrows none
+findMixed1 catch none
+findMixed1 suppresses none
+
+findChain1 is call
+findChain1 in registryField
+findChain1 invokes bits.andInt64
+findChain1 argument left Int64 mixed copy
+findChain1 argument right Int64 n1023 copy
+findChain1 result chain Int64
+findChain1 ownedBy none
+findChain1 cleanedBy none
+findChain1 borrows none
+findChain1 catch none
+findChain1 suppresses none
+
+bucketStep1 is call
+bucketStep1 in registryField
+bucketStep1 invokes math.multiplyInt64
+bucketStep1 argument left Int64 chain copy
+bucketStep1 argument right Int64 eight copy
+bucketStep1 result bucketPart1 Int64
+bucketStep1 ownedBy none
+bucketStep1 cleanedBy none
+bucketStep1 borrows none
+bucketStep1 catch none
+bucketStep1 suppresses none
+
+findBucket1 is call
+findBucket1 in registryField
+findBucket1 invokes machine.offset
+findBucket1 argument address machine.Address table copy
+findBucket1 argument bytes Int64 bucketPart1 copy
+findBucket1 result bucket machine.Address
+findBucket1 ownedBy none
+findBucket1 cleanedBy none
+findBucket1 borrows none
+findBucket1 catch none
+findBucket1 suppresses none
+
+findLinkValueNext11 is call
+findLinkValueNext11 in registryField
+findLinkValueNext11 invokes machine.toInt64
+findLinkValueNext11 argument address machine.Address bucket copy
+findLinkValueNext11 result linkValueNext1 Int64
+findLinkValueNext11 ownedBy none
+findLinkValueNext11 cleanedBy none
+findLinkValueNext11 borrows none
+findLinkValueNext11 catch none
+findLinkValueNext11 suppresses none
+
+readLink is call
+readLink in registryField
+readLink invokes machine.fromInt64
+readLink argument value Int64 linkValue copy
+readLink result link machine.Address
+readLink ownedBy none
+readLink cleanedBy none
+readLink borrows none
+readLink catch none
+readLink suppresses none
+
+readNode is call
+readNode in registryField
+readNode invokes machine.loadInt64
+readNode argument address machine.Address link copy
+readNode result node Int64
+readNode ownedBy none
+readNode cleanedBy none
+readNode borrows none
+readNode catch none
+readNode suppresses none
+
+findCheck21 is call
+findCheck21 in registryField
+findCheck21 invokes compare.equalInt64
+findCheck21 argument left Int64 node copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+readNodeAddress is call
+readNodeAddress in registryField
+readNodeAddress invokes machine.fromInt64
+readNodeAddress argument value Int64 node copy
+readNodeAddress result nodeAddress machine.Address
+readNodeAddress ownedBy none
+readNodeAddress cleanedBy none
+readNodeAddress borrows none
+readNodeAddress catch none
+readNodeAddress suppresses none
+
+findPlaceSlot1 is call
+findPlaceSlot1 in registryField
+findPlaceSlot1 invokes machine.offset
+findPlaceSlot1 argument address machine.Address nodeAddress copy
+findPlaceSlot1 argument bytes Int64 eight copy
+findPlaceSlot1 result placeSlot machine.Address
+findPlaceSlot1 ownedBy none
+findPlaceSlot1 cleanedBy none
+findPlaceSlot1 borrows none
+findPlaceSlot1 catch none
+findPlaceSlot1 suppresses none
+
+readRecordedPlace is call
+readRecordedPlace in registryField
+readRecordedPlace invokes machine.loadInt64
+readRecordedPlace argument address machine.Address placeSlot copy
+readRecordedPlace result recordedPlace Int64
+readRecordedPlace ownedBy none
+readRecordedPlace cleanedBy none
+readRecordedPlace borrows none
+readRecordedPlace catch none
+readRecordedPlace suppresses none
+
+findCheck31 is call
+findCheck31 in registryField
+findCheck31 invokes compare.equalInt64
+findCheck31 argument left Int64 recordedPlace copy
+findCheck31 argument right Int64 value copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+findFieldSlot1 is call
+findFieldSlot1 in registryField
+findFieldSlot1 invokes machine.offset
+findFieldSlot1 argument address machine.Address nodeAddress copy
+findFieldSlot1 argument bytes Int64 field copy
+findFieldSlot1 result fieldSlot machine.Address
+findFieldSlot1 ownedBy none
+findFieldSlot1 cleanedBy none
+findFieldSlot1 borrows none
+findFieldSlot1 catch none
+findFieldSlot1 suppresses none
+
+findFoundNext11 is call
+findFoundNext11 in registryField
+findFoundNext11 invokes machine.loadInt64
+findFoundNext11 argument address machine.Address fieldSlot copy
+findFoundNext11 result foundNext1 Int64
+findFoundNext11 ownedBy none
+findFoundNext11 cleanedBy none
+findFoundNext11 borrows none
+findFoundNext11 catch none
+findFoundNext11 suppresses none
+
+doRegistryUnlock is call
+doRegistryUnlock in registryField
+doRegistryUnlock invokes registryUnlock
+doRegistryUnlock argument none
+doRegistryUnlock result none
+doRegistryUnlock ownedBy none
+doRegistryUnlock cleanedBy none
+doRegistryUnlock borrows none
+doRegistryUnlock catch none
+doRegistryUnlock suppresses none
+
+registryRemove is operation
+registryRemove purpose "Forget a recorded aligned block, giving its record back"
+registryRemove invariant none
+registryRemove typeParameter none
+registryRemove input place machine.Address copied
+registryRemove output none
+registryRemove outputOwnedBy none
+registryRemove raises none
+registryRemove effect use machine.memory
+registryRemove effect use system.calls
+registryRemove uses memoryAccess
+registryRemove uses systemCalls
+registryRemove memoryHeap false
+registryRemove async false
+registryRemove maxRecursion none
+registryRemove label begin loopKind none
+registryRemove label begin within none
+registryRemove label finished loopKind none
+registryRemove label finished within none
+registryRemove label search loopKind none
+registryRemove label search within none
+registryRemove label eachNode loopKind while
+registryRemove label eachNode within none
+registryRemove label eachNode maxIterations 9223372036854775807
+registryRemove label look loopKind none
+registryRemove label look within eachNode
+registryRemove label next loopKind none
+registryRemove label next within eachNode
+registryRemove label hit loopKind none
+registryRemove label hit within none
+registryRemove label notFound loopKind none
+registryRemove label notFound within none
+registryRemove let linkValue Int64 0 mutable
+registryRemove let zero Int64 0 immutable
+registryRemove let twelve Int64 12 immutable
+registryRemove let ten Int64 10 immutable
+registryRemove let n1023 Int64 1023 immutable
+registryRemove let eight Int64 8 immutable
+registryRemove let one Int64 1 immutable
+registryRemove at begin do readCountCell
+registryRemove at begin do readCount
+registryRemove at begin do findCheck11
+registryRemove at begin branch if check1 goto finished else goto search
+registryRemove at finished return ok none
+registryRemove at search do doRegistryLock
+registryRemove at search do readTableCell
+registryRemove at search do readTable
+registryRemove at search do readValue
+registryRemove at search do findPage1
+registryRemove at search do mixedStep1
+registryRemove at search do findMixed1
+registryRemove at search do findChain1
+registryRemove at search do bucketStep1
+registryRemove at search do findBucket1
+registryRemove at search do findLinkValueNext11
+registryRemove at search set linkValue linkValueNext1
+registryRemove at search goto eachNode
+registryRemove at eachNode do readLink
+registryRemove at eachNode do readNode
+registryRemove at eachNode do findCheck21
+registryRemove at eachNode branch if check2 goto notFound else goto look
+registryRemove at look do readNodeAddress
+registryRemove at look do findPlaceSlot1
+registryRemove at look do readRecordedPlace
+registryRemove at look do findCheck31
+registryRemove at look branch if check3 goto hit else goto next
+registryRemove at next set linkValue node
+registryRemove at next goto eachNode
+registryRemove at hit do readFollowing
+registryRemove at hit do doStoreInt64
+registryRemove at hit do findRemaining1
+registryRemove at hit do doStoreInt642
+registryRemove at hit do doRegistryUnlock
+registryRemove at hit do doGive
+registryRemove at hit return ok none
+registryRemove at notFound do doRegistryUnlock2
+registryRemove at notFound return ok none
+
+readCountCell is call
+readCountCell in registryRemove
+readCountCell invokes kernel.stateAt
+readCountCell argument offset Int64 alignedCountAt copy
+readCountCell result countCell machine.Address
+readCountCell ownedBy none
+readCountCell cleanedBy none
+readCountCell borrows none
+readCountCell catch none
+readCountCell suppresses none
+
+readCount is call
+readCount in registryRemove
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countCell copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCheck11 is call
+findCheck11 in registryRemove
+findCheck11 invokes compare.equalInt64
+findCheck11 argument left Int64 count copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doRegistryLock is call
+doRegistryLock in registryRemove
+doRegistryLock invokes registryLock
+doRegistryLock argument none
+doRegistryLock result none
+doRegistryLock ownedBy none
+doRegistryLock cleanedBy none
+doRegistryLock borrows none
+doRegistryLock catch none
+doRegistryLock suppresses none
+
+readTableCell is call
+readTableCell in registryRemove
+readTableCell invokes kernel.stateAt
+readTableCell argument offset Int64 alignedTableAt copy
+readTableCell result tableCell machine.Address
+readTableCell ownedBy none
+readTableCell cleanedBy none
+readTableCell borrows none
+readTableCell catch none
+readTableCell suppresses none
+
+readTable is call
+readTable in registryRemove
+readTable invokes machine.loadAddress
+readTable argument address machine.Address tableCell copy
+readTable result table machine.Address
+readTable ownedBy none
+readTable cleanedBy none
+readTable borrows none
+readTable catch none
+readTable suppresses none
+
+readValue is call
+readValue in registryRemove
+readValue invokes machine.toInt64
+readValue argument address machine.Address place copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+findPage1 is call
+findPage1 in registryRemove
+findPage1 invokes bits.shiftRightInt64
+findPage1 argument value Int64 value copy
+findPage1 argument amount Int64 twelve copy
+findPage1 result page Int64
+findPage1 ownedBy none
+findPage1 cleanedBy none
+findPage1 borrows none
+findPage1 catch none
+findPage1 suppresses none
+
+mixedStep1 is call
+mixedStep1 in registryRemove
+mixedStep1 invokes bits.shiftRightInt64
+mixedStep1 argument value Int64 page copy
+mixedStep1 argument amount Int64 ten copy
+mixedStep1 result mixedPart1 Int64
+mixedStep1 ownedBy none
+mixedStep1 cleanedBy none
+mixedStep1 borrows none
+mixedStep1 catch none
+mixedStep1 suppresses none
+
+findMixed1 is call
+findMixed1 in registryRemove
+findMixed1 invokes bits.xorInt64
+findMixed1 argument left Int64 page copy
+findMixed1 argument right Int64 mixedPart1 copy
+findMixed1 result mixed Int64
+findMixed1 ownedBy none
+findMixed1 cleanedBy none
+findMixed1 borrows none
+findMixed1 catch none
+findMixed1 suppresses none
+
+findChain1 is call
+findChain1 in registryRemove
+findChain1 invokes bits.andInt64
+findChain1 argument left Int64 mixed copy
+findChain1 argument right Int64 n1023 copy
+findChain1 result chain Int64
+findChain1 ownedBy none
+findChain1 cleanedBy none
+findChain1 borrows none
+findChain1 catch none
+findChain1 suppresses none
+
+bucketStep1 is call
+bucketStep1 in registryRemove
+bucketStep1 invokes math.multiplyInt64
+bucketStep1 argument left Int64 chain copy
+bucketStep1 argument right Int64 eight copy
+bucketStep1 result bucketPart1 Int64
+bucketStep1 ownedBy none
+bucketStep1 cleanedBy none
+bucketStep1 borrows none
+bucketStep1 catch none
+bucketStep1 suppresses none
+
+findBucket1 is call
+findBucket1 in registryRemove
+findBucket1 invokes machine.offset
+findBucket1 argument address machine.Address table copy
+findBucket1 argument bytes Int64 bucketPart1 copy
+findBucket1 result bucket machine.Address
+findBucket1 ownedBy none
+findBucket1 cleanedBy none
+findBucket1 borrows none
+findBucket1 catch none
+findBucket1 suppresses none
+
+findLinkValueNext11 is call
+findLinkValueNext11 in registryRemove
+findLinkValueNext11 invokes machine.toInt64
+findLinkValueNext11 argument address machine.Address bucket copy
+findLinkValueNext11 result linkValueNext1 Int64
+findLinkValueNext11 ownedBy none
+findLinkValueNext11 cleanedBy none
+findLinkValueNext11 borrows none
+findLinkValueNext11 catch none
+findLinkValueNext11 suppresses none
+
+readLink is call
+readLink in registryRemove
+readLink invokes machine.fromInt64
+readLink argument value Int64 linkValue copy
+readLink result link machine.Address
+readLink ownedBy none
+readLink cleanedBy none
+readLink borrows none
+readLink catch none
+readLink suppresses none
+
+readNode is call
+readNode in registryRemove
+readNode invokes machine.loadInt64
+readNode argument address machine.Address link copy
+readNode result node Int64
+readNode ownedBy none
+readNode cleanedBy none
+readNode borrows none
+readNode catch none
+readNode suppresses none
+
+findCheck21 is call
+findCheck21 in registryRemove
+findCheck21 invokes compare.equalInt64
+findCheck21 argument left Int64 node copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+readNodeAddress is call
+readNodeAddress in registryRemove
+readNodeAddress invokes machine.fromInt64
+readNodeAddress argument value Int64 node copy
+readNodeAddress result nodeAddress machine.Address
+readNodeAddress ownedBy none
+readNodeAddress cleanedBy none
+readNodeAddress borrows none
+readNodeAddress catch none
+readNodeAddress suppresses none
+
+findPlaceSlot1 is call
+findPlaceSlot1 in registryRemove
+findPlaceSlot1 invokes machine.offset
+findPlaceSlot1 argument address machine.Address nodeAddress copy
+findPlaceSlot1 argument bytes Int64 eight copy
+findPlaceSlot1 result placeSlot machine.Address
+findPlaceSlot1 ownedBy none
+findPlaceSlot1 cleanedBy none
+findPlaceSlot1 borrows none
+findPlaceSlot1 catch none
+findPlaceSlot1 suppresses none
+
+readRecordedPlace is call
+readRecordedPlace in registryRemove
+readRecordedPlace invokes machine.loadInt64
+readRecordedPlace argument address machine.Address placeSlot copy
+readRecordedPlace result recordedPlace Int64
+readRecordedPlace ownedBy none
+readRecordedPlace cleanedBy none
+readRecordedPlace borrows none
+readRecordedPlace catch none
+readRecordedPlace suppresses none
+
+findCheck31 is call
+findCheck31 in registryRemove
+findCheck31 invokes compare.equalInt64
+findCheck31 argument left Int64 recordedPlace copy
+findCheck31 argument right Int64 value copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+readFollowing is call
+readFollowing in registryRemove
+readFollowing invokes machine.loadInt64
+readFollowing argument address machine.Address nodeAddress copy
+readFollowing result following Int64
+readFollowing ownedBy none
+readFollowing cleanedBy none
+readFollowing borrows none
+readFollowing catch none
+readFollowing suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in registryRemove
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address link copy
+doStoreInt64 argument value Int64 following copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+findRemaining1 is call
+findRemaining1 in registryRemove
+findRemaining1 invokes math.subtractInt64
+findRemaining1 argument left Int64 count copy
+findRemaining1 argument right Int64 one copy
+findRemaining1 result remaining Int64
+findRemaining1 ownedBy none
+findRemaining1 cleanedBy none
+findRemaining1 borrows none
+findRemaining1 catch none
+findRemaining1 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in registryRemove
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address countCell copy
+doStoreInt642 argument value Int64 remaining copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+doRegistryUnlock is call
+doRegistryUnlock in registryRemove
+doRegistryUnlock invokes registryUnlock
+doRegistryUnlock argument none
+doRegistryUnlock result none
+doRegistryUnlock ownedBy none
+doRegistryUnlock cleanedBy none
+doRegistryUnlock borrows none
+doRegistryUnlock catch none
+doRegistryUnlock suppresses none
+
+doGive is call
+doGive in registryRemove
+doGive invokes heap.give
+doGive argument block machine.Address nodeAddress copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doRegistryUnlock2 is call
+doRegistryUnlock2 in registryRemove
+doRegistryUnlock2 invokes registryUnlock
+doRegistryUnlock2 argument none
+doRegistryUnlock2 result none
+doRegistryUnlock2 ownedBy none
+doRegistryUnlock2 cleanedBy none
+doRegistryUnlock2 borrows none
+doRegistryUnlock2 catch none
+doRegistryUnlock2 suppresses none
+
+alignedOrigin is operation
+alignedOrigin purpose "The plain heap block an aligned block (aligned_alloc, posix_memalign) was cut from, or the address 0 when the block is not one. Blocks aligned to 32 up to 2048 keep a header 16 bytes before them on their own page (cextra puts them 16 bytes or more into a page): the plain block's address, then the size asked shifted up 24 bits plus the base 2 logarithm of the alignment in bits 16 to 23 and the tag 41242 in bits 0 to 15, checked against the address's alignment and distance. Blocks aligned to 4096 or more, and any block less than 16 bytes into a page (where the 16 bytes before it may be unmapped, as before a large block of the system's heap), are looked up in the registry"
+alignedOrigin invariant findsOrigin "\"Gives the address 0 for a block that is not aligned, and the plain block a header or a record names\""
+alignedOrigin typeParameter none
+alignedOrigin input block machine.Address copied
+alignedOrigin output machine.Address
+alignedOrigin outputOwnedBy none
+alignedOrigin raises none
+alignedOrigin effect use machine.memory
+alignedOrigin uses memoryAccess
+alignedOrigin memoryHeap false
+alignedOrigin async false
+alignedOrigin maxRecursion none
+alignedOrigin label begin loopKind none
+alignedOrigin label begin within none
+alignedOrigin label inPage loopKind none
+alignedOrigin label inPage within none
+alignedOrigin label checkLog loopKind none
+alignedOrigin label checkLog within none
+alignedOrigin label checkGap loopKind none
+alignedOrigin label checkGap within none
+alignedOrigin label headerFound loopKind none
+alignedOrigin label headerFound within none
+alignedOrigin label registered loopKind none
+alignedOrigin label registered within none
+alignedOrigin label recordFound loopKind none
+alignedOrigin label recordFound within none
+alignedOrigin label plain loopKind none
+alignedOrigin label plain within none
+alignedOrigin let n4095 Int64 4095 immutable
+alignedOrigin let sixteen Int64 16 immutable
+alignedOrigin let eight Int64 8 immutable
+alignedOrigin let n65535 Int64 65535 immutable
+alignedOrigin let n41242 Int64 41242 immutable
+alignedOrigin let n255 Int64 255 immutable
+alignedOrigin let five Int64 5 immutable
+alignedOrigin let eleven Int64 11 immutable
+alignedOrigin let one Int64 1 immutable
+alignedOrigin let zero Int64 0 immutable
+alignedOrigin let two Int64 2 immutable
+alignedOrigin at begin do readNowhere
+alignedOrigin at begin do readValue
+alignedOrigin at begin do findOffset1
+alignedOrigin at begin do findCheck11
+alignedOrigin at begin branch if check1 goto inPage else goto registered
+alignedOrigin at inPage do tagSlotStep1
+alignedOrigin at inPage do findTagSlot1
+alignedOrigin at inPage do readWord
+alignedOrigin at inPage do findMagic1
+alignedOrigin at inPage do findCheck21
+alignedOrigin at inPage branch if check2 goto checkLog else goto plain
+alignedOrigin at checkLog do logStep1
+alignedOrigin at checkLog do findLog1
+alignedOrigin at checkLog do check3Step1
+alignedOrigin at checkLog do check3Step2
+alignedOrigin at checkLog do findCheck31
+alignedOrigin at checkLog branch if check3 goto checkGap else goto plain
+alignedOrigin at checkGap do findWidth1
+alignedOrigin at checkGap do lowStep1
+alignedOrigin at checkGap do findLow1
+alignedOrigin at checkGap do originSlotStep1
+alignedOrigin at checkGap do findOriginSlot1
+alignedOrigin at checkGap do readOrigin
+alignedOrigin at checkGap do findGap1
+alignedOrigin at checkGap do check4Step1
+alignedOrigin at checkGap do check4Step2
+alignedOrigin at checkGap do check4Step3
+alignedOrigin at checkGap do check4Step4
+alignedOrigin at checkGap do check4Step5
+alignedOrigin at checkGap do check4Step6
+alignedOrigin at checkGap do findCheck41
+alignedOrigin at checkGap branch if check4 goto headerFound else goto plain
+alignedOrigin at headerFound do readFromHeader
+alignedOrigin at headerFound return ok fromHeader
+alignedOrigin at registered do readRecorded
+alignedOrigin at registered do findCheck51
+alignedOrigin at registered branch if check5 goto plain else goto recordFound
+alignedOrigin at recordFound do readFromRecord
+alignedOrigin at recordFound return ok fromRecord
+alignedOrigin at plain return ok nowhere
+
+readNowhere is call
+readNowhere in alignedOrigin
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readValue is call
+readValue in alignedOrigin
+readValue invokes machine.toInt64
+readValue argument address machine.Address block copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+findOffset1 is call
+findOffset1 in alignedOrigin
+findOffset1 invokes bits.andInt64
+findOffset1 argument left Int64 value copy
+findOffset1 argument right Int64 n4095 copy
+findOffset1 result offset Int64
+findOffset1 ownedBy none
+findOffset1 cleanedBy none
+findOffset1 borrows none
+findOffset1 catch none
+findOffset1 suppresses none
+
+findCheck11 is call
+findCheck11 in alignedOrigin
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 offset copy
+findCheck11 argument right Int64 sixteen copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+tagSlotStep1 is call
+tagSlotStep1 in alignedOrigin
+tagSlotStep1 invokes math.negateInt64
+tagSlotStep1 argument value Int64 eight copy
+tagSlotStep1 result tagSlotPart1 Int64
+tagSlotStep1 ownedBy none
+tagSlotStep1 cleanedBy none
+tagSlotStep1 borrows none
+tagSlotStep1 catch none
+tagSlotStep1 suppresses none
+
+findTagSlot1 is call
+findTagSlot1 in alignedOrigin
+findTagSlot1 invokes machine.offset
+findTagSlot1 argument address machine.Address block copy
+findTagSlot1 argument bytes Int64 tagSlotPart1 copy
+findTagSlot1 result tagSlot machine.Address
+findTagSlot1 ownedBy none
+findTagSlot1 cleanedBy none
+findTagSlot1 borrows none
+findTagSlot1 catch none
+findTagSlot1 suppresses none
+
+readWord is call
+readWord in alignedOrigin
+readWord invokes machine.loadInt64
+readWord argument address machine.Address tagSlot copy
+readWord result word Int64
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+findMagic1 is call
+findMagic1 in alignedOrigin
+findMagic1 invokes bits.andInt64
+findMagic1 argument left Int64 word copy
+findMagic1 argument right Int64 n65535 copy
+findMagic1 result magic Int64
+findMagic1 ownedBy none
+findMagic1 cleanedBy none
+findMagic1 borrows none
+findMagic1 catch none
+findMagic1 suppresses none
+
+findCheck21 is call
+findCheck21 in alignedOrigin
+findCheck21 invokes compare.equalInt64
+findCheck21 argument left Int64 magic copy
+findCheck21 argument right Int64 n41242 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+logStep1 is call
+logStep1 in alignedOrigin
+logStep1 invokes bits.shiftRightInt64
+logStep1 argument value Int64 word copy
+logStep1 argument amount Int64 sixteen copy
+logStep1 result logPart1 Int64
+logStep1 ownedBy none
+logStep1 cleanedBy none
+logStep1 borrows none
+logStep1 catch none
+logStep1 suppresses none
+
+findLog1 is call
+findLog1 in alignedOrigin
+findLog1 invokes bits.andInt64
+findLog1 argument left Int64 logPart1 copy
+findLog1 argument right Int64 n255 copy
+findLog1 result log Int64
+findLog1 ownedBy none
+findLog1 cleanedBy none
+findLog1 borrows none
+findLog1 catch none
+findLog1 suppresses none
+
+check3Step1 is call
+check3Step1 in alignedOrigin
+check3Step1 invokes compare.greaterOrEqualInt64
+check3Step1 argument left Int64 log copy
+check3Step1 argument right Int64 five copy
+check3Step1 result check3Part1 Bool
+check3Step1 ownedBy none
+check3Step1 cleanedBy none
+check3Step1 borrows none
+check3Step1 catch none
+check3Step1 suppresses none
+
+check3Step2 is call
+check3Step2 in alignedOrigin
+check3Step2 invokes compare.lessOrEqualInt64
+check3Step2 argument left Int64 log copy
+check3Step2 argument right Int64 eleven copy
+check3Step2 result check3Part2 Bool
+check3Step2 ownedBy none
+check3Step2 cleanedBy none
+check3Step2 borrows none
+check3Step2 catch none
+check3Step2 suppresses none
+
+findCheck31 is call
+findCheck31 in alignedOrigin
+findCheck31 invokes logic.and
+findCheck31 argument left Bool check3Part1 copy
+findCheck31 argument right Bool check3Part2 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+findWidth1 is call
+findWidth1 in alignedOrigin
+findWidth1 invokes bits.shiftLeftInt64
+findWidth1 argument value Int64 one copy
+findWidth1 argument amount Int64 log copy
+findWidth1 result width Int64
+findWidth1 ownedBy none
+findWidth1 cleanedBy none
+findWidth1 borrows none
+findWidth1 catch none
+findWidth1 suppresses none
+
+lowStep1 is call
+lowStep1 in alignedOrigin
+lowStep1 invokes math.subtractInt64
+lowStep1 argument left Int64 width copy
+lowStep1 argument right Int64 one copy
+lowStep1 result lowPart1 Int64
+lowStep1 ownedBy none
+lowStep1 cleanedBy none
+lowStep1 borrows none
+lowStep1 catch none
+lowStep1 suppresses none
+
+findLow1 is call
+findLow1 in alignedOrigin
+findLow1 invokes bits.andInt64
+findLow1 argument left Int64 value copy
+findLow1 argument right Int64 lowPart1 copy
+findLow1 result low Int64
+findLow1 ownedBy none
+findLow1 cleanedBy none
+findLow1 borrows none
+findLow1 catch none
+findLow1 suppresses none
+
+originSlotStep1 is call
+originSlotStep1 in alignedOrigin
+originSlotStep1 invokes math.negateInt64
+originSlotStep1 argument value Int64 sixteen copy
+originSlotStep1 result originSlotPart1 Int64
+originSlotStep1 ownedBy none
+originSlotStep1 cleanedBy none
+originSlotStep1 borrows none
+originSlotStep1 catch none
+originSlotStep1 suppresses none
+
+findOriginSlot1 is call
+findOriginSlot1 in alignedOrigin
+findOriginSlot1 invokes machine.offset
+findOriginSlot1 argument address machine.Address block copy
+findOriginSlot1 argument bytes Int64 originSlotPart1 copy
+findOriginSlot1 result originSlot machine.Address
+findOriginSlot1 ownedBy none
+findOriginSlot1 cleanedBy none
+findOriginSlot1 borrows none
+findOriginSlot1 catch none
+findOriginSlot1 suppresses none
+
+readOrigin is call
+readOrigin in alignedOrigin
+readOrigin invokes machine.loadInt64
+readOrigin argument address machine.Address originSlot copy
+readOrigin result origin Int64
+readOrigin ownedBy none
+readOrigin cleanedBy none
+readOrigin borrows none
+readOrigin catch none
+readOrigin suppresses none
+
+findGap1 is call
+findGap1 in alignedOrigin
+findGap1 invokes math.subtractInt64
+findGap1 argument left Int64 value copy
+findGap1 argument right Int64 origin copy
+findGap1 result gap Int64
+findGap1 ownedBy none
+findGap1 cleanedBy none
+findGap1 borrows none
+findGap1 catch none
+findGap1 suppresses none
+
+check4Step1 is call
+check4Step1 in alignedOrigin
+check4Step1 invokes compare.equalInt64
+check4Step1 argument left Int64 low copy
+check4Step1 argument right Int64 zero copy
+check4Step1 result check4Part1 Bool
+check4Step1 ownedBy none
+check4Step1 cleanedBy none
+check4Step1 borrows none
+check4Step1 catch none
+check4Step1 suppresses none
+
+check4Step2 is call
+check4Step2 in alignedOrigin
+check4Step2 invokes compare.greaterOrEqualInt64
+check4Step2 argument left Int64 gap copy
+check4Step2 argument right Int64 sixteen copy
+check4Step2 result check4Part2 Bool
+check4Step2 ownedBy none
+check4Step2 cleanedBy none
+check4Step2 borrows none
+check4Step2 catch none
+check4Step2 suppresses none
+
+check4Step3 is call
+check4Step3 in alignedOrigin
+check4Step3 invokes logic.and
+check4Step3 argument left Bool check4Part1 copy
+check4Step3 argument right Bool check4Part2 copy
+check4Step3 result check4Part3 Bool
+check4Step3 ownedBy none
+check4Step3 cleanedBy none
+check4Step3 borrows none
+check4Step3 catch none
+check4Step3 suppresses none
+
+check4Step4 is call
+check4Step4 in alignedOrigin
+check4Step4 invokes math.multiplyInt64
+check4Step4 argument left Int64 width copy
+check4Step4 argument right Int64 two copy
+check4Step4 result check4Part4 Int64
+check4Step4 ownedBy none
+check4Step4 cleanedBy none
+check4Step4 borrows none
+check4Step4 catch none
+check4Step4 suppresses none
+
+check4Step5 is call
+check4Step5 in alignedOrigin
+check4Step5 invokes math.addInt64
+check4Step5 argument left Int64 check4Part4 copy
+check4Step5 argument right Int64 sixteen copy
+check4Step5 result check4Part5 Int64
+check4Step5 ownedBy none
+check4Step5 cleanedBy none
+check4Step5 borrows none
+check4Step5 catch none
+check4Step5 suppresses none
+
+check4Step6 is call
+check4Step6 in alignedOrigin
+check4Step6 invokes compare.lessOrEqualInt64
+check4Step6 argument left Int64 gap copy
+check4Step6 argument right Int64 check4Part5 copy
+check4Step6 result check4Part6 Bool
+check4Step6 ownedBy none
+check4Step6 cleanedBy none
+check4Step6 borrows none
+check4Step6 catch none
+check4Step6 suppresses none
+
+findCheck41 is call
+findCheck41 in alignedOrigin
+findCheck41 invokes logic.and
+findCheck41 argument left Bool check4Part3 copy
+findCheck41 argument right Bool check4Part6 copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+readFromHeader is call
+readFromHeader in alignedOrigin
+readFromHeader invokes machine.fromInt64
+readFromHeader argument value Int64 origin copy
+readFromHeader result fromHeader machine.Address
+readFromHeader ownedBy none
+readFromHeader cleanedBy none
+readFromHeader borrows none
+readFromHeader catch none
+readFromHeader suppresses none
+
+readRecorded is call
+readRecorded in alignedOrigin
+readRecorded invokes registryField
+readRecorded argument place machine.Address block copy
+readRecorded argument field Int64 sixteen copy
+readRecorded result recorded Int64
+readRecorded ownedBy none
+readRecorded cleanedBy none
+readRecorded borrows none
+readRecorded catch none
+readRecorded suppresses none
+
+findCheck51 is call
+findCheck51 in alignedOrigin
+findCheck51 invokes compare.equalInt64
+findCheck51 argument left Int64 recorded copy
+findCheck51 argument right Int64 zero copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+readFromRecord is call
+readFromRecord in alignedOrigin
+readFromRecord invokes machine.fromInt64
+readFromRecord argument value Int64 recorded copy
+readFromRecord result fromRecord machine.Address
+readFromRecord ownedBy none
+readFromRecord cleanedBy none
+readFromRecord borrows none
+readFromRecord catch none
+readFromRecord suppresses none
+
+alignedSize is operation
+alignedSize purpose "The size asked of an aligned block (alignedOrigin says it is one): from its header, or from its record"
+alignedSize invariant readsSize "\"Gives the size stored with an aligned block, in its header or its record\""
+alignedSize typeParameter none
+alignedSize input block machine.Address copied
+alignedSize output Int64
+alignedSize outputOwnedBy none
+alignedSize raises none
+alignedSize effect use machine.memory
+alignedSize uses memoryAccess
+alignedSize memoryHeap false
+alignedSize async false
+alignedSize maxRecursion none
+alignedSize label begin loopKind none
+alignedSize label begin within none
+alignedSize label inPage loopKind none
+alignedSize label inPage within none
+alignedSize label registered loopKind none
+alignedSize label registered within none
+alignedSize let n4095 Int64 4095 immutable
+alignedSize let sixteen Int64 16 immutable
+alignedSize let eight Int64 8 immutable
+alignedSize let n24 Int64 24 immutable
+alignedSize at begin do readValue
+alignedSize at begin do findOffset1
+alignedSize at begin do findCheck11
+alignedSize at begin branch if check1 goto inPage else goto registered
+alignedSize at inPage do tagSlotStep1
+alignedSize at inPage do findTagSlot1
+alignedSize at inPage do readWord
+alignedSize at inPage do findSize1
+alignedSize at inPage return ok size
+alignedSize at registered do readRecorded
+alignedSize at registered return ok recorded
+
+readValue is call
+readValue in alignedSize
+readValue invokes machine.toInt64
+readValue argument address machine.Address block copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+findOffset1 is call
+findOffset1 in alignedSize
+findOffset1 invokes bits.andInt64
+findOffset1 argument left Int64 value copy
+findOffset1 argument right Int64 n4095 copy
+findOffset1 result offset Int64
+findOffset1 ownedBy none
+findOffset1 cleanedBy none
+findOffset1 borrows none
+findOffset1 catch none
+findOffset1 suppresses none
+
+findCheck11 is call
+findCheck11 in alignedSize
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 offset copy
+findCheck11 argument right Int64 sixteen copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+tagSlotStep1 is call
+tagSlotStep1 in alignedSize
+tagSlotStep1 invokes math.negateInt64
+tagSlotStep1 argument value Int64 eight copy
+tagSlotStep1 result tagSlotPart1 Int64
+tagSlotStep1 ownedBy none
+tagSlotStep1 cleanedBy none
+tagSlotStep1 borrows none
+tagSlotStep1 catch none
+tagSlotStep1 suppresses none
+
+findTagSlot1 is call
+findTagSlot1 in alignedSize
+findTagSlot1 invokes machine.offset
+findTagSlot1 argument address machine.Address block copy
+findTagSlot1 argument bytes Int64 tagSlotPart1 copy
+findTagSlot1 result tagSlot machine.Address
+findTagSlot1 ownedBy none
+findTagSlot1 cleanedBy none
+findTagSlot1 borrows none
+findTagSlot1 catch none
+findTagSlot1 suppresses none
+
+readWord is call
+readWord in alignedSize
+readWord invokes machine.loadInt64
+readWord argument address machine.Address tagSlot copy
+readWord result word Int64
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+findSize1 is call
+findSize1 in alignedSize
+findSize1 invokes bits.shiftRightInt64
+findSize1 argument value Int64 word copy
+findSize1 argument amount Int64 n24 copy
+findSize1 result size Int64
+findSize1 ownedBy none
+findSize1 cleanedBy none
+findSize1 borrows none
+findSize1 catch none
+findSize1 suppresses none
+
+readRecorded is call
+readRecorded in alignedSize
+readRecorded invokes registryField
+readRecorded argument place machine.Address block copy
+readRecorded argument field Int64 n24 copy
+readRecorded result recorded Int64
+readRecorded ownedBy none
+readRecorded cleanedBy none
+readRecorded borrows none
+readRecorded catch none
+readRecorded suppresses none
+
+forgetAligned is operation
+forgetAligned purpose "Drop the record of an aligned block that is being given back (a block with a header has none)"
+forgetAligned invariant none
+forgetAligned typeParameter none
+forgetAligned input block machine.Address copied
+forgetAligned output none
+forgetAligned outputOwnedBy none
+forgetAligned raises none
+forgetAligned effect use machine.memory
+forgetAligned effect use system.calls
+forgetAligned uses memoryAccess
+forgetAligned uses systemCalls
+forgetAligned memoryHeap false
+forgetAligned async false
+forgetAligned maxRecursion none
+forgetAligned label begin loopKind none
+forgetAligned label begin within none
+forgetAligned label forget loopKind none
+forgetAligned label forget within none
+forgetAligned label done loopKind none
+forgetAligned label done within none
+forgetAligned let n4095 Int64 4095 immutable
+forgetAligned let sixteen Int64 16 immutable
+forgetAligned at begin do readValue
+forgetAligned at begin do findOffset1
+forgetAligned at begin do findCheck11
+forgetAligned at begin branch if check1 goto done else goto forget
+forgetAligned at forget do doRegistryRemove
+forgetAligned at forget return ok none
+forgetAligned at done return ok none
+
+readValue is call
+readValue in forgetAligned
+readValue invokes machine.toInt64
+readValue argument address machine.Address block copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+findOffset1 is call
+findOffset1 in forgetAligned
+findOffset1 invokes bits.andInt64
+findOffset1 argument left Int64 value copy
+findOffset1 argument right Int64 n4095 copy
+findOffset1 result offset Int64
+findOffset1 ownedBy none
+findOffset1 cleanedBy none
+findOffset1 borrows none
+findOffset1 catch none
+findOffset1 suppresses none
+
+findCheck11 is call
+findCheck11 in forgetAligned
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 offset copy
+findCheck11 argument right Int64 sixteen copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doRegistryRemove is call
+doRegistryRemove in forgetAligned
+doRegistryRemove invokes registryRemove
+doRegistryRemove argument place machine.Address block copy
+doRegistryRemove result none
+doRegistryRemove ownedBy none
+doRegistryRemove cleanedBy none
+doRegistryRemove borrows none
+doRegistryRemove catch none
+doRegistryRemove suppresses none
+
 reallocate is operation
-reallocate purpose "realloc: a block grown or shrunk, its bytes kept; the address 0 gives a new block, and 0 bytes frees the block and gives the address 0"
-reallocate invariant none
+reallocate purpose "realloc: a block grown or shrunk, its bytes kept; the address 0 gives a new block, and 0 bytes frees the block and gives the address 0. An aligned block (alignedOrigin) moves to a plain one, as glibc's realloc need not keep an alignment past malloc's"
+reallocate invariant keepsBytesOfAnyBlock "\"Gives a block that holds the first bytes of the old one, up to the smaller size, for a plain block and for an aligned one\""
 reallocate typeParameter none
 reallocate input block machine.Address copied
 reallocate input bytes Int64 copied
@@ -12212,8 +14169,17 @@ reallocate label sizeCheck loopKind none
 reallocate label sizeCheck within none
 reallocate label refuse loopKind none
 reallocate label refuse within none
+reallocate label originCheck loopKind none
+reallocate label originCheck within none
 reallocate label resize loopKind none
 reallocate label resize within none
+reallocate label moveAligned loopKind none
+reallocate label moveAligned within none
+reallocate label shorter loopKind none
+reallocate label shorter within none
+reallocate label copyIt loopKind none
+reallocate label copyIt within none
+reallocate let kept Int64 0 mutable
 reallocate let zero Int64 0 immutable
 reallocate at begin do nowhere
 reallocate at begin do freshCheck
@@ -12225,11 +14191,25 @@ reallocate at zeroCheck branch if empty goto freeIt else goto sizeCheck
 reallocate at freeIt do giveIt
 reallocate at freeIt return ok anywhere
 reallocate at sizeCheck do negativeCheck
-reallocate at sizeCheck branch if tooLarge goto refuse else goto resize
+reallocate at sizeCheck branch if tooLarge goto refuse else goto originCheck
 reallocate at refuse do errnoMemory
 reallocate at refuse return ok anywhere
+reallocate at originCheck do readOrigin
+reallocate at originCheck do findCheck11
+reallocate at originCheck branch if check1 goto resize else goto moveAligned
 reallocate at resize do resizeIt
 reallocate at resize return ok resized
+reallocate at moveAligned do readOldSize
+reallocate at moveAligned do doForgetAligned
+reallocate at moveAligned do readMoved
+reallocate at moveAligned set kept oldSize
+reallocate at moveAligned do findCheck21
+reallocate at moveAligned branch if check2 goto shorter else goto copyIt
+reallocate at shorter set kept bytes
+reallocate at shorter goto copyIt
+reallocate at copyIt do doCopy
+reallocate at copyIt do doGive
+reallocate at copyIt return ok moved
 
 nowhere is call
 nowhere in reallocate
@@ -12279,7 +14259,7 @@ emptyCheck suppresses none
 
 giveIt is call
 giveIt in reallocate
-giveIt invokes heap.give
+giveIt invokes release
 giveIt argument block machine.Address block copy
 giveIt result none
 giveIt ownedBy none
@@ -12311,6 +14291,29 @@ errnoMemory borrows none
 errnoMemory catch none
 errnoMemory suppresses none
 
+readOrigin is call
+readOrigin in reallocate
+readOrigin invokes alignedOrigin
+readOrigin argument block machine.Address block copy
+readOrigin result origin machine.Address
+readOrigin ownedBy none
+readOrigin cleanedBy none
+readOrigin borrows none
+readOrigin catch none
+readOrigin suppresses none
+
+findCheck11 is call
+findCheck11 in reallocate
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address origin copy
+findCheck11 argument right machine.Address anywhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
 resizeIt is call
 resizeIt in reallocate
 resizeIt invokes heap.resize
@@ -12323,9 +14326,78 @@ resizeIt borrows none
 resizeIt catch none
 resizeIt suppresses none
 
+readOldSize is call
+readOldSize in reallocate
+readOldSize invokes alignedSize
+readOldSize argument block machine.Address block copy
+readOldSize result oldSize Int64
+readOldSize ownedBy none
+readOldSize cleanedBy none
+readOldSize borrows none
+readOldSize catch none
+readOldSize suppresses none
+
+doForgetAligned is call
+doForgetAligned in reallocate
+doForgetAligned invokes forgetAligned
+doForgetAligned argument block machine.Address block copy
+doForgetAligned result none
+doForgetAligned ownedBy none
+doForgetAligned cleanedBy none
+doForgetAligned borrows none
+doForgetAligned catch none
+doForgetAligned suppresses none
+
+readMoved is call
+readMoved in reallocate
+readMoved invokes allocate
+readMoved argument bytes Int64 bytes copy
+readMoved result moved machine.Address
+readMoved ownedBy none
+readMoved cleanedBy none
+readMoved borrows none
+readMoved catch none
+readMoved suppresses none
+
+findCheck21 is call
+findCheck21 in reallocate
+findCheck21 invokes compare.lessThanInt64
+findCheck21 argument left Int64 bytes copy
+findCheck21 argument right Int64 oldSize copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doCopy is call
+doCopy in reallocate
+doCopy invokes machine.copy
+doCopy argument target machine.Address moved copy
+doCopy argument source machine.Address block copy
+doCopy argument bytes Int64 kept copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+doGive is call
+doGive in reallocate
+doGive invokes heap.give
+doGive argument block machine.Address origin copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
 release is operation
-release purpose "free: give a block malloc gave back; the address 0 is nothing"
-release invariant none
+release purpose "free: give a block malloc gave back (or the plain block an aligned one was cut from); the address 0 is nothing"
+release invariant givesBackAnyBlock "\"A block malloc or aligned_alloc gave goes back to the heap whole; the address 0 is nothing\""
 release typeParameter none
 release input block machine.Address copied
 release output none
@@ -12341,20 +14413,106 @@ release maxRecursion none
 release abi library "free"
 release label begin loopKind none
 release label begin within none
+release label originCheck loopKind none
+release label originCheck within none
+release label plain loopKind none
+release label plain within none
+release label aligned loopKind none
+release label aligned within none
+release label done loopKind none
+release label done within none
 release let none
-release at begin do giveIt
-release at begin return ok none
+release at begin do readNowhere
+release at begin do findCheck11
+release at begin branch if check1 goto done else goto originCheck
+release at originCheck do readOrigin
+release at originCheck do findCheck21
+release at originCheck branch if check2 goto plain else goto aligned
+release at plain do doGive
+release at plain return ok none
+release at aligned do doForgetAligned
+release at aligned do doGive2
+release at aligned return ok none
+release at done return ok none
 
-giveIt is call
-giveIt in release
-giveIt invokes heap.give
-giveIt argument block machine.Address block copy
-giveIt result none
-giveIt ownedBy none
-giveIt cleanedBy none
-giveIt borrows none
-giveIt catch none
-giveIt suppresses none
+readNowhere is call
+readNowhere in release
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findCheck11 is call
+findCheck11 in release
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address block copy
+findCheck11 argument right machine.Address nowhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readOrigin is call
+readOrigin in release
+readOrigin invokes alignedOrigin
+readOrigin argument block machine.Address block copy
+readOrigin result origin machine.Address
+readOrigin ownedBy none
+readOrigin cleanedBy none
+readOrigin borrows none
+readOrigin catch none
+readOrigin suppresses none
+
+findCheck21 is call
+findCheck21 in release
+findCheck21 invokes machine.equal
+findCheck21 argument left machine.Address origin copy
+findCheck21 argument right machine.Address nowhere copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doGive is call
+doGive in release
+doGive invokes heap.give
+doGive argument block machine.Address block copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doForgetAligned is call
+doForgetAligned in release
+doForgetAligned invokes forgetAligned
+doForgetAligned argument block machine.Address block copy
+doForgetAligned result none
+doForgetAligned ownedBy none
+doForgetAligned cleanedBy none
+doForgetAligned borrows none
+doForgetAligned catch none
+doForgetAligned suppresses none
+
+doGive2 is call
+doGive2 in release
+doGive2 invokes heap.give
+doGive2 argument block machine.Address origin copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
 
 errnoLocation is operation
 errnoLocation purpose "__errno_location: the address of errno, which strtol, strtod, and malloc set"

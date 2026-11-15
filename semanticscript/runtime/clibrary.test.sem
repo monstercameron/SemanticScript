@@ -4511,6 +4511,900 @@ expectUnset borrows none
 expectUnset catch none
 expectUnset suppresses none
 
+alignedHeaderTest is test
+alignedHeaderTest purpose "A block with the aligned header, or recorded in the registry, gives its plain block back from free and realloc, which keeps its bytes in a plain block; a plain block has neither"
+alignedHeaderTest verifies alignedOrigin findsOrigin
+alignedHeaderTest verifies alignedSize readsSize
+alignedHeaderTest verifies registryAdd recordsBlocks
+alignedHeaderTest verifies reallocate keepsBytesOfAnyBlock
+alignedHeaderTest verifies release givesBackAnyBlock
+alignedHeaderTest typeParameter none
+alignedHeaderTest input none
+alignedHeaderTest output none
+alignedHeaderTest outputOwnedBy none
+alignedHeaderTest raises none
+alignedHeaderTest effect use machine.memory
+alignedHeaderTest effect use system.calls
+alignedHeaderTest uses memoryAccess
+alignedHeaderTest uses systemCalls
+alignedHeaderTest memoryHeap false
+alignedHeaderTest async false
+alignedHeaderTest maxRecursion none
+alignedHeaderTest label begin loopKind none
+alignedHeaderTest label begin within none
+alignedHeaderTest label bumpPlace loopKind none
+alignedHeaderTest label bumpPlace within none
+alignedHeaderTest label keepPlace loopKind none
+alignedHeaderTest label keepPlace within none
+alignedHeaderTest label headed loopKind none
+alignedHeaderTest label headed within none
+alignedHeaderTest let moved Int64 0 mutable
+alignedHeaderTest let n100 Int64 100 immutable
+alignedHeaderTest let n600 Int64 600 immutable
+alignedHeaderTest let sixteen Int64 16 immutable
+alignedHeaderTest let n63 Int64 63 immutable
+alignedHeaderTest let zero Int64 0 immutable
+alignedHeaderTest let sixtyFour Int64 64 immutable
+alignedHeaderTest let n4095 Int64 4095 immutable
+alignedHeaderTest let eight Int64 8 immutable
+alignedHeaderTest let n24 Int64 24 immutable
+alignedHeaderTest let six Int64 6 immutable
+alignedHeaderTest let n41242 Int64 41242 immutable
+alignedHeaderTest let byte5 Byte 5 immutable
+alignedHeaderTest let n1000 Int64 1000 immutable
+alignedHeaderTest let five Int64 5 immutable
+alignedHeaderTest let n12288 Int64 12288 immutable
+alignedHeaderTest let n4096 Int64 4096 immutable
+alignedHeaderTest let n300 Int64 300 immutable
+alignedHeaderTest let n77 Int64 77 immutable
+alignedHeaderTest let byte9 Byte 9 immutable
+alignedHeaderTest let n200 Int64 200 immutable
+alignedHeaderTest let nine Int64 9 immutable
+alignedHeaderTest at begin do readNowhere
+alignedHeaderTest at begin do readPlain
+alignedHeaderTest at begin do readPlainOrigin
+alignedHeaderTest at begin do doAssertTrueStep1
+alignedHeaderTest at begin do doAssertTrue
+alignedHeaderTest at begin do readBase
+alignedHeaderTest at begin do readBaseValue
+alignedHeaderTest at begin do findFirst1
+alignedHeaderTest at begin do candidateStep1
+alignedHeaderTest at begin do candidateStep2
+alignedHeaderTest at begin do findCandidate1
+alignedHeaderTest at begin do findPageOffset1
+alignedHeaderTest at begin do findCheck11
+alignedHeaderTest at begin branch if check1 goto bumpPlace else goto keepPlace
+alignedHeaderTest at bumpPlace do findMovedNext11
+alignedHeaderTest at bumpPlace set moved movedNext1
+alignedHeaderTest at bumpPlace goto headed
+alignedHeaderTest at keepPlace set moved candidate
+alignedHeaderTest at keepPlace goto headed
+alignedHeaderTest at headed do readPlace
+alignedHeaderTest at headed do originSlotStep1
+alignedHeaderTest at headed do findOriginSlot1
+alignedHeaderTest at headed do doStoreInt64
+alignedHeaderTest at headed do tagSlotStep1
+alignedHeaderTest at headed do findTagSlot1
+alignedHeaderTest at headed do taggedStep1
+alignedHeaderTest at headed do taggedStep2
+alignedHeaderTest at headed do taggedStep3
+alignedHeaderTest at headed do findTagged1
+alignedHeaderTest at headed do doStoreInt642
+alignedHeaderTest at headed do doStoreByte
+alignedHeaderTest at headed do readFound
+alignedHeaderTest at headed do doAssertTrueStep2
+alignedHeaderTest at headed do doAssertTrue2
+alignedHeaderTest at headed do readRecorded
+alignedHeaderTest at headed do doAssertEqualInt64
+alignedHeaderTest at headed do readGrown
+alignedHeaderTest at headed do readGrownFirst
+alignedHeaderTest at headed do readGrownWide
+alignedHeaderTest at headed do doAssertEqualInt642
+alignedHeaderTest at headed do readGrownOrigin
+alignedHeaderTest at headed do doAssertTrueStep3
+alignedHeaderTest at headed do doAssertTrue3
+alignedHeaderTest at headed do doRelease
+alignedHeaderTest at headed do readBig
+alignedHeaderTest at headed do readBigValue
+alignedHeaderTest at headed do pageStartStep1
+alignedHeaderTest at headed do pageStartStep2
+alignedHeaderTest at headed do findPageStart1
+alignedHeaderTest at headed do readPageAddress
+alignedHeaderTest at headed do readRecordedBase
+alignedHeaderTest at headed do readNoRecord
+alignedHeaderTest at headed do doAssertTrueStep4
+alignedHeaderTest at headed do doAssertTrue4
+alignedHeaderTest at headed do doRegistryAdd
+alignedHeaderTest at headed do readRecordFound
+alignedHeaderTest at headed do doAssertTrueStep5
+alignedHeaderTest at headed do doAssertTrue5
+alignedHeaderTest at headed do readRecordSize
+alignedHeaderTest at headed do doAssertEqualInt643
+alignedHeaderTest at headed do doStoreByte2
+alignedHeaderTest at headed do readCopied
+alignedHeaderTest at headed do readCopiedFirst
+alignedHeaderTest at headed do readCopiedWide
+alignedHeaderTest at headed do doAssertEqualInt644
+alignedHeaderTest at headed do readGone
+alignedHeaderTest at headed do doAssertTrueStep6
+alignedHeaderTest at headed do doAssertTrue6
+alignedHeaderTest at headed do doRelease2
+alignedHeaderTest at headed do doRelease3
+alignedHeaderTest at headed do doRelease4
+alignedHeaderTest at headed do doRelease5
+alignedHeaderTest at headed return ok none
+
+readNowhere is call
+readNowhere in alignedHeaderTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readPlain is call
+readPlain in alignedHeaderTest
+readPlain invokes allocate
+readPlain argument bytes Int64 n100 copy
+readPlain result plain machine.Address
+readPlain ownedBy none
+readPlain cleanedBy none
+readPlain borrows none
+readPlain catch none
+readPlain suppresses none
+
+readPlainOrigin is call
+readPlainOrigin in alignedHeaderTest
+readPlainOrigin invokes alignedOrigin
+readPlainOrigin argument block machine.Address plain copy
+readPlainOrigin result plainOrigin machine.Address
+readPlainOrigin ownedBy none
+readPlainOrigin cleanedBy none
+readPlainOrigin borrows none
+readPlainOrigin catch none
+readPlainOrigin suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in alignedHeaderTest
+doAssertTrueStep1 invokes machine.equal
+doAssertTrueStep1 argument left machine.Address plainOrigin copy
+doAssertTrueStep1 argument right machine.Address nowhere copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in alignedHeaderTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readBase is call
+readBase in alignedHeaderTest
+readBase invokes allocate
+readBase argument bytes Int64 n600 copy
+readBase result base machine.Address
+readBase ownedBy none
+readBase cleanedBy none
+readBase borrows none
+readBase catch none
+readBase suppresses none
+
+readBaseValue is call
+readBaseValue in alignedHeaderTest
+readBaseValue invokes machine.toInt64
+readBaseValue argument address machine.Address base copy
+readBaseValue result baseValue Int64
+readBaseValue ownedBy none
+readBaseValue cleanedBy none
+readBaseValue borrows none
+readBaseValue catch none
+readBaseValue suppresses none
+
+findFirst1 is call
+findFirst1 in alignedHeaderTest
+findFirst1 invokes math.addInt64
+findFirst1 argument left Int64 baseValue copy
+findFirst1 argument right Int64 sixteen copy
+findFirst1 result first Int64
+findFirst1 ownedBy none
+findFirst1 cleanedBy none
+findFirst1 borrows none
+findFirst1 catch none
+findFirst1 suppresses none
+
+candidateStep1 is call
+candidateStep1 in alignedHeaderTest
+candidateStep1 invokes math.addInt64
+candidateStep1 argument left Int64 first copy
+candidateStep1 argument right Int64 n63 copy
+candidateStep1 result candidatePart1 Int64
+candidateStep1 ownedBy none
+candidateStep1 cleanedBy none
+candidateStep1 borrows none
+candidateStep1 catch none
+candidateStep1 suppresses none
+
+candidateStep2 is call
+candidateStep2 in alignedHeaderTest
+candidateStep2 invokes math.subtractInt64
+candidateStep2 argument left Int64 zero copy
+candidateStep2 argument right Int64 sixtyFour copy
+candidateStep2 result candidatePart2 Int64
+candidateStep2 ownedBy none
+candidateStep2 cleanedBy none
+candidateStep2 borrows none
+candidateStep2 catch none
+candidateStep2 suppresses none
+
+findCandidate1 is call
+findCandidate1 in alignedHeaderTest
+findCandidate1 invokes bits.andInt64
+findCandidate1 argument left Int64 candidatePart1 copy
+findCandidate1 argument right Int64 candidatePart2 copy
+findCandidate1 result candidate Int64
+findCandidate1 ownedBy none
+findCandidate1 cleanedBy none
+findCandidate1 borrows none
+findCandidate1 catch none
+findCandidate1 suppresses none
+
+findPageOffset1 is call
+findPageOffset1 in alignedHeaderTest
+findPageOffset1 invokes bits.andInt64
+findPageOffset1 argument left Int64 candidate copy
+findPageOffset1 argument right Int64 n4095 copy
+findPageOffset1 result pageOffset Int64
+findPageOffset1 ownedBy none
+findPageOffset1 cleanedBy none
+findPageOffset1 borrows none
+findPageOffset1 catch none
+findPageOffset1 suppresses none
+
+findCheck11 is call
+findCheck11 in alignedHeaderTest
+findCheck11 invokes compare.lessThanInt64
+findCheck11 argument left Int64 pageOffset copy
+findCheck11 argument right Int64 sixteen copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findMovedNext11 is call
+findMovedNext11 in alignedHeaderTest
+findMovedNext11 invokes math.addInt64
+findMovedNext11 argument left Int64 candidate copy
+findMovedNext11 argument right Int64 sixtyFour copy
+findMovedNext11 result movedNext1 Int64
+findMovedNext11 ownedBy none
+findMovedNext11 cleanedBy none
+findMovedNext11 borrows none
+findMovedNext11 catch none
+findMovedNext11 suppresses none
+
+readPlace is call
+readPlace in alignedHeaderTest
+readPlace invokes machine.fromInt64
+readPlace argument value Int64 moved copy
+readPlace result place machine.Address
+readPlace ownedBy none
+readPlace cleanedBy none
+readPlace borrows none
+readPlace catch none
+readPlace suppresses none
+
+originSlotStep1 is call
+originSlotStep1 in alignedHeaderTest
+originSlotStep1 invokes math.negateInt64
+originSlotStep1 argument value Int64 sixteen copy
+originSlotStep1 result originSlotPart1 Int64
+originSlotStep1 ownedBy none
+originSlotStep1 cleanedBy none
+originSlotStep1 borrows none
+originSlotStep1 catch none
+originSlotStep1 suppresses none
+
+findOriginSlot1 is call
+findOriginSlot1 in alignedHeaderTest
+findOriginSlot1 invokes machine.offset
+findOriginSlot1 argument address machine.Address place copy
+findOriginSlot1 argument bytes Int64 originSlotPart1 copy
+findOriginSlot1 result originSlot machine.Address
+findOriginSlot1 ownedBy none
+findOriginSlot1 cleanedBy none
+findOriginSlot1 borrows none
+findOriginSlot1 catch none
+findOriginSlot1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in alignedHeaderTest
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address originSlot copy
+doStoreInt64 argument value Int64 baseValue copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+tagSlotStep1 is call
+tagSlotStep1 in alignedHeaderTest
+tagSlotStep1 invokes math.negateInt64
+tagSlotStep1 argument value Int64 eight copy
+tagSlotStep1 result tagSlotPart1 Int64
+tagSlotStep1 ownedBy none
+tagSlotStep1 cleanedBy none
+tagSlotStep1 borrows none
+tagSlotStep1 catch none
+tagSlotStep1 suppresses none
+
+findTagSlot1 is call
+findTagSlot1 in alignedHeaderTest
+findTagSlot1 invokes machine.offset
+findTagSlot1 argument address machine.Address place copy
+findTagSlot1 argument bytes Int64 tagSlotPart1 copy
+findTagSlot1 result tagSlot machine.Address
+findTagSlot1 ownedBy none
+findTagSlot1 cleanedBy none
+findTagSlot1 borrows none
+findTagSlot1 catch none
+findTagSlot1 suppresses none
+
+taggedStep1 is call
+taggedStep1 in alignedHeaderTest
+taggedStep1 invokes bits.shiftLeftInt64
+taggedStep1 argument value Int64 n100 copy
+taggedStep1 argument amount Int64 n24 copy
+taggedStep1 result taggedPart1 Int64
+taggedStep1 ownedBy none
+taggedStep1 cleanedBy none
+taggedStep1 borrows none
+taggedStep1 catch none
+taggedStep1 suppresses none
+
+taggedStep2 is call
+taggedStep2 in alignedHeaderTest
+taggedStep2 invokes bits.shiftLeftInt64
+taggedStep2 argument value Int64 six copy
+taggedStep2 argument amount Int64 sixteen copy
+taggedStep2 result taggedPart2 Int64
+taggedStep2 ownedBy none
+taggedStep2 cleanedBy none
+taggedStep2 borrows none
+taggedStep2 catch none
+taggedStep2 suppresses none
+
+taggedStep3 is call
+taggedStep3 in alignedHeaderTest
+taggedStep3 invokes math.addInt64
+taggedStep3 argument left Int64 taggedPart1 copy
+taggedStep3 argument right Int64 taggedPart2 copy
+taggedStep3 result taggedPart3 Int64
+taggedStep3 ownedBy none
+taggedStep3 cleanedBy none
+taggedStep3 borrows none
+taggedStep3 catch none
+taggedStep3 suppresses none
+
+findTagged1 is call
+findTagged1 in alignedHeaderTest
+findTagged1 invokes math.addInt64
+findTagged1 argument left Int64 taggedPart3 copy
+findTagged1 argument right Int64 n41242 copy
+findTagged1 result tagged Int64
+findTagged1 ownedBy none
+findTagged1 cleanedBy none
+findTagged1 borrows none
+findTagged1 catch none
+findTagged1 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in alignedHeaderTest
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address tagSlot copy
+doStoreInt642 argument value Int64 tagged copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+doStoreByte is call
+doStoreByte in alignedHeaderTest
+doStoreByte invokes machine.storeByte
+doStoreByte argument address machine.Address place copy
+doStoreByte argument value Byte byte5 copy
+doStoreByte result none
+doStoreByte ownedBy none
+doStoreByte cleanedBy none
+doStoreByte borrows none
+doStoreByte catch none
+doStoreByte suppresses none
+
+readFound is call
+readFound in alignedHeaderTest
+readFound invokes alignedOrigin
+readFound argument block machine.Address place copy
+readFound result found machine.Address
+readFound ownedBy none
+readFound cleanedBy none
+readFound borrows none
+readFound catch none
+readFound suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in alignedHeaderTest
+doAssertTrueStep2 invokes machine.equal
+doAssertTrueStep2 argument left machine.Address found copy
+doAssertTrueStep2 argument right machine.Address base copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in alignedHeaderTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool doAssertTruePart2 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+readRecorded is call
+readRecorded in alignedHeaderTest
+readRecorded invokes alignedSize
+readRecorded argument block machine.Address place copy
+readRecorded result recorded Int64
+readRecorded ownedBy none
+readRecorded cleanedBy none
+readRecorded borrows none
+readRecorded catch none
+readRecorded suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in alignedHeaderTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 n100 copy
+doAssertEqualInt64 argument actual Int64 recorded copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readGrown is call
+readGrown in alignedHeaderTest
+readGrown invokes reallocate
+readGrown argument block machine.Address place copy
+readGrown argument bytes Int64 n1000 copy
+readGrown result grown machine.Address
+readGrown ownedBy none
+readGrown cleanedBy none
+readGrown borrows none
+readGrown catch none
+readGrown suppresses none
+
+readGrownFirst is call
+readGrownFirst in alignedHeaderTest
+readGrownFirst invokes machine.loadByte
+readGrownFirst argument address machine.Address grown copy
+readGrownFirst result grownFirst Byte
+readGrownFirst ownedBy none
+readGrownFirst cleanedBy none
+readGrownFirst borrows none
+readGrownFirst catch none
+readGrownFirst suppresses none
+
+readGrownWide is call
+readGrownWide in alignedHeaderTest
+readGrownWide invokes convert.byteToInt64
+readGrownWide argument value Byte grownFirst copy
+readGrownWide result grownWide Int64
+readGrownWide ownedBy none
+readGrownWide cleanedBy none
+readGrownWide borrows none
+readGrownWide catch none
+readGrownWide suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in alignedHeaderTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 five copy
+doAssertEqualInt642 argument actual Int64 grownWide copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+readGrownOrigin is call
+readGrownOrigin in alignedHeaderTest
+readGrownOrigin invokes alignedOrigin
+readGrownOrigin argument block machine.Address grown copy
+readGrownOrigin result grownOrigin machine.Address
+readGrownOrigin ownedBy none
+readGrownOrigin cleanedBy none
+readGrownOrigin borrows none
+readGrownOrigin catch none
+readGrownOrigin suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in alignedHeaderTest
+doAssertTrueStep3 invokes machine.equal
+doAssertTrueStep3 argument left machine.Address grownOrigin copy
+doAssertTrueStep3 argument right machine.Address nowhere copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in alignedHeaderTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart3 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+doRelease is call
+doRelease in alignedHeaderTest
+doRelease invokes release
+doRelease argument block machine.Address grown copy
+doRelease result none
+doRelease ownedBy none
+doRelease cleanedBy none
+doRelease borrows none
+doRelease catch none
+doRelease suppresses none
+
+readBig is call
+readBig in alignedHeaderTest
+readBig invokes allocate
+readBig argument bytes Int64 n12288 copy
+readBig result big machine.Address
+readBig ownedBy none
+readBig cleanedBy none
+readBig borrows none
+readBig catch none
+readBig suppresses none
+
+readBigValue is call
+readBigValue in alignedHeaderTest
+readBigValue invokes machine.toInt64
+readBigValue argument address machine.Address big copy
+readBigValue result bigValue Int64
+readBigValue ownedBy none
+readBigValue cleanedBy none
+readBigValue borrows none
+readBigValue catch none
+readBigValue suppresses none
+
+pageStartStep1 is call
+pageStartStep1 in alignedHeaderTest
+pageStartStep1 invokes math.addInt64
+pageStartStep1 argument left Int64 bigValue copy
+pageStartStep1 argument right Int64 n4095 copy
+pageStartStep1 result pageStartPart1 Int64
+pageStartStep1 ownedBy none
+pageStartStep1 cleanedBy none
+pageStartStep1 borrows none
+pageStartStep1 catch none
+pageStartStep1 suppresses none
+
+pageStartStep2 is call
+pageStartStep2 in alignedHeaderTest
+pageStartStep2 invokes math.subtractInt64
+pageStartStep2 argument left Int64 zero copy
+pageStartStep2 argument right Int64 n4096 copy
+pageStartStep2 result pageStartPart2 Int64
+pageStartStep2 ownedBy none
+pageStartStep2 cleanedBy none
+pageStartStep2 borrows none
+pageStartStep2 catch none
+pageStartStep2 suppresses none
+
+findPageStart1 is call
+findPageStart1 in alignedHeaderTest
+findPageStart1 invokes bits.andInt64
+findPageStart1 argument left Int64 pageStartPart1 copy
+findPageStart1 argument right Int64 pageStartPart2 copy
+findPageStart1 result pageStart Int64
+findPageStart1 ownedBy none
+findPageStart1 cleanedBy none
+findPageStart1 borrows none
+findPageStart1 catch none
+findPageStart1 suppresses none
+
+readPageAddress is call
+readPageAddress in alignedHeaderTest
+readPageAddress invokes machine.fromInt64
+readPageAddress argument value Int64 pageStart copy
+readPageAddress result pageAddress machine.Address
+readPageAddress ownedBy none
+readPageAddress cleanedBy none
+readPageAddress borrows none
+readPageAddress catch none
+readPageAddress suppresses none
+
+readRecordedBase is call
+readRecordedBase in alignedHeaderTest
+readRecordedBase invokes allocate
+readRecordedBase argument bytes Int64 n300 copy
+readRecordedBase result recordedBase machine.Address
+readRecordedBase ownedBy none
+readRecordedBase cleanedBy none
+readRecordedBase borrows none
+readRecordedBase catch none
+readRecordedBase suppresses none
+
+readNoRecord is call
+readNoRecord in alignedHeaderTest
+readNoRecord invokes alignedOrigin
+readNoRecord argument block machine.Address pageAddress copy
+readNoRecord result noRecord machine.Address
+readNoRecord ownedBy none
+readNoRecord cleanedBy none
+readNoRecord borrows none
+readNoRecord catch none
+readNoRecord suppresses none
+
+doAssertTrueStep4 is call
+doAssertTrueStep4 in alignedHeaderTest
+doAssertTrueStep4 invokes machine.equal
+doAssertTrueStep4 argument left machine.Address noRecord copy
+doAssertTrueStep4 argument right machine.Address nowhere copy
+doAssertTrueStep4 result doAssertTruePart4 Bool
+doAssertTrueStep4 ownedBy none
+doAssertTrueStep4 cleanedBy none
+doAssertTrueStep4 borrows none
+doAssertTrueStep4 catch none
+doAssertTrueStep4 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in alignedHeaderTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool doAssertTruePart4 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+doRegistryAdd is call
+doRegistryAdd in alignedHeaderTest
+doRegistryAdd invokes registryAdd
+doRegistryAdd argument place machine.Address pageAddress copy
+doRegistryAdd argument origin machine.Address recordedBase copy
+doRegistryAdd argument size Int64 n77 copy
+doRegistryAdd result none
+doRegistryAdd ownedBy none
+doRegistryAdd cleanedBy none
+doRegistryAdd borrows none
+doRegistryAdd catch none
+doRegistryAdd suppresses none
+
+readRecordFound is call
+readRecordFound in alignedHeaderTest
+readRecordFound invokes alignedOrigin
+readRecordFound argument block machine.Address pageAddress copy
+readRecordFound result recordFound machine.Address
+readRecordFound ownedBy none
+readRecordFound cleanedBy none
+readRecordFound borrows none
+readRecordFound catch none
+readRecordFound suppresses none
+
+doAssertTrueStep5 is call
+doAssertTrueStep5 in alignedHeaderTest
+doAssertTrueStep5 invokes machine.equal
+doAssertTrueStep5 argument left machine.Address recordFound copy
+doAssertTrueStep5 argument right machine.Address recordedBase copy
+doAssertTrueStep5 result doAssertTruePart5 Bool
+doAssertTrueStep5 ownedBy none
+doAssertTrueStep5 cleanedBy none
+doAssertTrueStep5 borrows none
+doAssertTrueStep5 catch none
+doAssertTrueStep5 suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in alignedHeaderTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool doAssertTruePart5 copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+readRecordSize is call
+readRecordSize in alignedHeaderTest
+readRecordSize invokes alignedSize
+readRecordSize argument block machine.Address pageAddress copy
+readRecordSize result recordSize Int64
+readRecordSize ownedBy none
+readRecordSize cleanedBy none
+readRecordSize borrows none
+readRecordSize catch none
+readRecordSize suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in alignedHeaderTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 n77 copy
+doAssertEqualInt643 argument actual Int64 recordSize copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+doStoreByte2 is call
+doStoreByte2 in alignedHeaderTest
+doStoreByte2 invokes machine.storeByte
+doStoreByte2 argument address machine.Address pageAddress copy
+doStoreByte2 argument value Byte byte9 copy
+doStoreByte2 result none
+doStoreByte2 ownedBy none
+doStoreByte2 cleanedBy none
+doStoreByte2 borrows none
+doStoreByte2 catch none
+doStoreByte2 suppresses none
+
+readCopied is call
+readCopied in alignedHeaderTest
+readCopied invokes reallocate
+readCopied argument block machine.Address pageAddress copy
+readCopied argument bytes Int64 n200 copy
+readCopied result copied machine.Address
+readCopied ownedBy none
+readCopied cleanedBy none
+readCopied borrows none
+readCopied catch none
+readCopied suppresses none
+
+readCopiedFirst is call
+readCopiedFirst in alignedHeaderTest
+readCopiedFirst invokes machine.loadByte
+readCopiedFirst argument address machine.Address copied copy
+readCopiedFirst result copiedFirst Byte
+readCopiedFirst ownedBy none
+readCopiedFirst cleanedBy none
+readCopiedFirst borrows none
+readCopiedFirst catch none
+readCopiedFirst suppresses none
+
+readCopiedWide is call
+readCopiedWide in alignedHeaderTest
+readCopiedWide invokes convert.byteToInt64
+readCopiedWide argument value Byte copiedFirst copy
+readCopiedWide result copiedWide Int64
+readCopiedWide ownedBy none
+readCopiedWide cleanedBy none
+readCopiedWide borrows none
+readCopiedWide catch none
+readCopiedWide suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in alignedHeaderTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 nine copy
+doAssertEqualInt644 argument actual Int64 copiedWide copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+readGone is call
+readGone in alignedHeaderTest
+readGone invokes alignedOrigin
+readGone argument block machine.Address pageAddress copy
+readGone result gone machine.Address
+readGone ownedBy none
+readGone cleanedBy none
+readGone borrows none
+readGone catch none
+readGone suppresses none
+
+doAssertTrueStep6 is call
+doAssertTrueStep6 in alignedHeaderTest
+doAssertTrueStep6 invokes machine.equal
+doAssertTrueStep6 argument left machine.Address gone copy
+doAssertTrueStep6 argument right machine.Address nowhere copy
+doAssertTrueStep6 result doAssertTruePart6 Bool
+doAssertTrueStep6 ownedBy none
+doAssertTrueStep6 cleanedBy none
+doAssertTrueStep6 borrows none
+doAssertTrueStep6 catch none
+doAssertTrueStep6 suppresses none
+
+doAssertTrue6 is call
+doAssertTrue6 in alignedHeaderTest
+doAssertTrue6 invokes test.assertTrue
+doAssertTrue6 argument value Bool doAssertTruePart6 copy
+doAssertTrue6 result none
+doAssertTrue6 ownedBy none
+doAssertTrue6 cleanedBy none
+doAssertTrue6 borrows none
+doAssertTrue6 catch none
+doAssertTrue6 suppresses none
+
+doRelease2 is call
+doRelease2 in alignedHeaderTest
+doRelease2 invokes release
+doRelease2 argument block machine.Address copied copy
+doRelease2 result none
+doRelease2 ownedBy none
+doRelease2 cleanedBy none
+doRelease2 borrows none
+doRelease2 catch none
+doRelease2 suppresses none
+
+doRelease3 is call
+doRelease3 in alignedHeaderTest
+doRelease3 invokes release
+doRelease3 argument block machine.Address big copy
+doRelease3 result none
+doRelease3 ownedBy none
+doRelease3 cleanedBy none
+doRelease3 borrows none
+doRelease3 catch none
+doRelease3 suppresses none
+
+doRelease4 is call
+doRelease4 in alignedHeaderTest
+doRelease4 invokes release
+doRelease4 argument block machine.Address plain copy
+doRelease4 result none
+doRelease4 ownedBy none
+doRelease4 cleanedBy none
+doRelease4 borrows none
+doRelease4 catch none
+doRelease4 suppresses none
+
+doRelease5 is call
+doRelease5 in alignedHeaderTest
+doRelease5 invokes release
+doRelease5 argument block machine.Address nowhere copy
+doRelease5 result none
+doRelease5 ownedBy none
+doRelease5 cleanedBy none
+doRelease5 borrows none
+doRelease5 catch none
+doRelease5 suppresses none
+
 helpersTest is test
 helpersTest purpose "The pieces the other C library modules call: a byte at an offset, errno set, an int's low 32 bits, and a length bounded"
 helpersTest verifies byteAt readsByte

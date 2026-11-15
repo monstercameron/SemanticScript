@@ -53,7 +53,11 @@ STRTOF = ["0", "-0", "1", "  \t3.5xyz", "0.1", "-0.1", "1e10", "1e39", "-1e39", 
           "340282356779733661637539395458142568447", "340282356779733661637539395458142568448",
           "0.00000000000000000000000000000000000000000000140129846432481707"]
 
-ALIGNED = [(16, 1), (32, 100), (64, 100), (128, 5000), (256, 16), (64, 0), (8, 40)]
+ALIGNED = [(16, 1), (32, 100), (64, 100), (128, 5000), (256, 16), (64, 0), (8, 40), (32, 1), (2048, 3000),
+           (4096, 1), (4096, 100000), (65536, 70000), (65536, 1), (4096, 16777216), (65536, 16777216)]
+# (rounds, alignment, size) of the aligned_alloc, realloc, free cycles: none may fail, and a leak would be gigabytes
+ALIGNED_CYCLES = [(2000, 16, 100), (2000, 64, 1000), (2000, 2048, 5000), (1000, 4096, 20000), (1000, 65536, 100000),
+                  (60, 65536, 16777216), (60, 4096, 16777216)]
 ALIGN_BAD = [0, 3, 24]
 POSIX = [(64, 100, 0), (8, 8, 0), (3, 8, 22), (4, 8, 22), (24, 8, 22), (0, 8, 22)]
 
@@ -109,7 +113,7 @@ BINDINGS = {
     "strxfrm": "TripleFunction", "memccpy": "CopyUntilFunction", "mempcpy": "TripleFunction",
     "stpcpy": "PairFunction", "stpncpy": "TripleFunction", "strchrnul": "FindFunction", "memrchr": "FindBoundedFunction",
     "rand": "NumberFunction", "srand": "SeedFunction", "rand_r": "ReentrantFunction", "strtof": "SingleFunction",
-    "aligned_alloc": "PairFunction", "posix_memalign": "PosixFunction", "setlocale": "LocaleFunction",
+    "aligned_alloc": "PairFunction", "realloc": "PairFunction", "posix_memalign": "PosixFunction", "setlocale": "LocaleFunction",
     "localeconv": "NoArgumentFunction", "imaxabs": "LongFunction", "strtoimax": "StrtolFunction",
     "strtoumax": "StrtolFunction", "wcstoimax": "StrtolFunction", "wcstoumax": "StrtolFunction",
 }
@@ -198,6 +202,49 @@ op isAligned "1 when an address is not 0 and a multiple of an alignment, else 0"
   return 1
 :crooked
   return 0
+
+op alignedCycles "Many rounds of aligned_alloc, filling it, realloc to twice the size (its bytes kept: the first half is compared with 7s written to the second), and free; the number of rounds that went wrong"
+  input allocate PairFunction copied
+  input release LongFunction copied
+  input grow PairFunction copied
+  input setter SetFunction copied
+  input comparer CompareFunction copied
+  input count Int64 copied
+  input alignment Int64 copied
+  input size Int64 copied
+  output Int64
+  let done Int64 0 mut
+  let failures Int64 0 mut
+:begin
+  goto eachRound
+:eachRound loop=while max=9223372036854775807
+  when done >= count finished round
+:round in=eachRound
+  block = *allocate(alignment, size)
+  calc rest = block % alignment
+  when block == 0 bad checkAlignment
+:checkAlignment in=eachRound
+  when rest == 0 fillIt bad
+:fillIt in=eachRound
+  filled = *setter(block, seven=7, size)
+  calc bigger = size * 2
+  moved = *grow(block, bigger)
+  when moved == 0 bad keep
+:keep in=eachRound
+  calc second = moved + size
+  filledMore = *setter(second, sevenAgain=7, size)
+  same = *comparer(moved, second, size)
+  freed = *release(moved)
+  when same == 0 good bad
+:good in=eachRound
+  calc done := done + 1
+  goto eachRound
+:bad in=eachRound
+  calc failures := failures + 1
+  calc done := done + 1
+  goto eachRound
+:finished
+  return failures
 
 op say "Write a whole number on a line"
   input value Int64 copied
@@ -775,6 +822,11 @@ def build_program() -> Program:
         p.say(p.sign_of(p.call32("memcmp", end_at, want_at, 8)), 0)
 
     # aligned allocation
+    for rounds, alignment, size in ALIGNED_CYCLES:
+        failed = p.uid("y")
+        p.emit(f"{p.uid('q')}: {failed} = alignedCycles(alignedAllocFn, freeFn, reallocFn, memsetFn, memcmpFn, "
+               f"{p.arg(rounds)}, {p.arg(alignment)}, {p.arg(size)})")
+        p.say(failed, 0)
     for alignment, size in ALIGNED:
         block = p.call("aligned_alloc", alignment, size)
         flag = p.uid("m")

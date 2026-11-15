@@ -11,7 +11,7 @@ capability systemCalls "Authority to take memory, write to standard error, and e
 ## 27903 belong to it: 26880 strtok's save pointer, 26888 whether rand's state is made, 26896 the place of rand's front
 ## word, 26904 the cell strtof reads its end into, 26912 to 27159 rand's 31 words (each a UInt64 holding 32 bits),
 ## 27168 to 27263 the static struct lconv localeconv gives (glibc's x86_64 layout, 96 bytes), 27264 the texts `.`,
-## and the empty text, and `C` (setlocale's result), 27296 to 27327 the digits __assert_fail writes.
+## and the empty text, and `C` (setlocale's result), 27296 to 27327 the digits __assert_fail writes. 27328 to 27359 are clibrary's registry of aligned blocks (the count, the table, the lock).
 constant saveAt "Where strtok keeps its save pointer, in machine.state" Int64 26880
 
 constant madeAt "Where whether rand's state is made is kept, in machine.state" Int64 26888
@@ -742,7 +742,8 @@ op parseNarrow "strtol's reading of bytes, as C17 reads them or (binary) as C23 
 
 ## ---------------------------------------------------------------- stdlib.h: aligned allocation
 
-op alignedBlock "A zeroed block of a size whose address is a multiple of a power of two; the address 0 when there is none. Alignments the runtime's heap gives anyway (16 bytes, 32 on Linux) take a plain block. On Linux a larger one is cut from a block of its own with the header a small block has, so free puts it back on the free list of its size (a large one's munmap fails and its mapping is left); on Windows HeapAlloc cannot align, so blocks are taken together until one is aligned and the others given back"
+op alignedBlock "A zeroed block of a size whose address is a multiple of a power of two; the address 0 when there is none. Alignments the runtime's heap gives anyway (16 bytes, 32 on Linux) take a plain block. A larger one is cut from a plain block, the same on Windows and Linux, so clibrary's free and realloc give the plain block back. Below 4096 the plain block is size + 2 * alignment + 16 bytes and the aligned address the first one 16 bytes or more into it and into its page, with a header just before it (the plain block's address, the size asked shifted up 24 bits plus the alignment's base 2 logarithm in bits 16 to 23 and the tag 41242); from 4096 up the plain block is size + alignment + 16 bytes and clibrary's registry records the aligned address (its page start is where the 16 bytes before a block may be unmapped)"
+  invariant alignsBlocks "Gives a zeroed block of the size asked whose address is a multiple of the alignment, and free of it gives its plain block back"
   input alignment Int64 copied
   input size Int64 copied
   output machine.Address
@@ -750,144 +751,69 @@ op alignedBlock "A zeroed block of a size whose address is a multiple of a power
   effect use system.calls
   uses memoryAccess
   uses systemCalls
-  let classSize Int64 64 mut
+  let candidate Int64 0 mut
+  let log Int64 0 mut
+  let rest Int64 0 mut
 :begin
   nowhere = machine.zero()
   when size < 0 refuse sizeCheck
 :sizeCheck
-  when size > 1099511627776 refuse alignmentCheck
+  when size > 549755813888 refuse alignmentCheck
 :alignmentCheck
-  when alignment > 1099511627776 refuse systemCheck
+  when alignment > 549755813888 refuse systemCheck
 :systemCheck
   onLinux = system.posix()
   when onLinux linuxLimit windowsLimit
 :linuxLimit
-  when alignment <= 32 plain linuxSmall
+  when alignment <= 32 plain wrapped
 :windowsLimit
-  when alignment <= 16 plain probing
+  when alignment <= 16 plain wrapped
 :plain
   block = heap.take(size)
   return block
 :refuse
   return nowhere
-:probing
-  found = probeAligned(alignment, size)
-  return found
-:linuxSmall
-  calc need = size + 32
-  when need <= 4096 sizing large
-:sizing
-  goto eachClass
-:eachClass loop=while max=8
-  when classSize >= need classFound grow
-:grow in=eachClass
-  calc classSize := classSize * 2
-  goto eachClass
-:classFound
-  calc total = classSize + alignment
+:wrapped
+  when alignment >= 4096 registered headed
+:headed
+  calc total = size + alignment * 2 + 16
   base = heap.take(total)
   baseValue = machine.toInt64(base)
-  calc first = baseValue + 32
+  calc first = baseValue + 16
   calc mask = 0 - alignment
-  calc aligned = (first + alignment - 1) & mask
-  place = machine.fromInt64(aligned)
-  calc head = place - 32
-  calc capacity = classSize - 32
-  machine.storeInt64(head, capacity)
-  calc mappingSlot = head + 8
-  machine.storeInt64(mappingSlot, 0)
-  calc usedSlot = head + 16
-  machine.storeInt64(usedSlot, size)
+  calc candidate := (first + alignment - 1) & mask
+  calc pageOffset = candidate & 4095
+  when pageOffset < 16 bump settle
+:bump
+  calc candidate := candidate + alignment
+  goto settle
+:settle
+  calc rest := alignment
+  goto eachBit
+:eachBit loop=while max=64
+  when rest > 1 shift counted
+:shift in=eachBit
+  calc rest := rest >> 1
+  calc log := log + 1
+  goto eachBit
+:counted
+  place = machine.fromInt64(candidate)
+  calc originSlot = place - 16
+  machine.storeInt64(originSlot, baseValue)
+  calc tagSlot = place - 8
+  calc tagged = (size << 24) + (log << 16) + 41242
+  machine.storeInt64(tagSlot, tagged)
   return place
-:large
-  calc raw = size + alignment + 4128
-  calc pages = (raw + 4095) / 4096
-  calc mapped = pages * 4096
-  mapping = kernel.mapMemory(mapped)
-  when mapping == nowhere refuse mappedOk
-:mappedOk
-  mappingValue = machine.toInt64(mapping)
-  calc firstLarge = mappingValue + 32
-  calc maskLarge = 0 - alignment
-  calc alignedLarge = (firstLarge + alignment - 1) & maskLarge
-  placeLarge = machine.fromInt64(alignedLarge)
-  calc headLarge = placeLarge - 32
-  machine.storeInt64(headLarge, size)
-  calc mappingLarge = headLarge + 8
-  machine.storeInt64(mappingLarge, mapped)
-  calc usedLarge = headLarge + 16
-  machine.storeInt64(usedLarge, size)
-  return placeLarge
-
-op probeAligned "On Windows: take blocks of about a size, all held at once, until one has an aligned address, then give the others back; the address 0 when none of up to 2048 (fewer for a large size) does"
-  input alignment Int64 copied
-  input size Int64 copied
-  output machine.Address
-  effect use machine.memory
-  effect use system.calls
-  uses memoryAccess
-  uses systemCalls
-  let at Int64 0 mut
-  let foundValue Int64 0 mut
-  let limit Int64 0 mut
-  let clearing Int64 0 mut
-  let room Int64 0 mut
-:begin
-  nowhere = machine.zero()
-  calc wanted = alignment / 16 * 4 + 16
-  calc room := 67108864 / (size + 512)
-  set limit wanted
-  when limit > 2048 capLimit roomCheck
-:capLimit
-  calc limit := 2048
-  goto roomCheck
-:roomCheck
-  when room < 1 minimumRoom roomApply
-:minimumRoom
-  calc room := 1
-  goto roomApply
-:roomApply
-  when limit > room trimLimit start
-:trimLimit
-  set limit room
-  goto start
-:start
-  calc listBytes = limit * 8
-  list = heap.take(listBytes)
-  calc mask = alignment - 1
-  goto eachProbe
-:eachProbe loop=while max=2048
-  when at >= limit gather probe
-:probe in=eachProbe
-  calc extra = (at * 7) % 17 * 16
-  calc probeSize = size + extra
-  block = heap.take(probeSize)
-  value = machine.toInt64(block)
-  calc low = value & mask
-  when low == 0 aligned keep
-:aligned in=eachProbe
-  set foundValue value
-  goto gather
-:keep in=eachProbe
-  calc slot = list + at * 8
-  machine.storeInt64(slot, value)
-  calc at := at + 1
-  goto eachProbe
-:gather
-  goto eachClear
-:eachClear loop=while max=2048
-  when clearing >= at release give
-:give in=eachClear
-  calc clearSlot = list + clearing * 8
-  held = machine.loadInt64(clearSlot)
-  heldBlock = machine.fromInt64(held)
-  heap.give(heldBlock)
-  calc clearing := clearing + 1
-  goto eachClear
-:release
-  heap.give(list)
-  result = machine.fromInt64(foundValue)
-  return result
+:registered
+  calc bigTotal = size + alignment + 16
+  bigBase = heap.take(bigTotal)
+  bigValue = machine.toInt64(bigBase)
+  calc bigFirst = bigValue + 16
+  calc bigMask = 0 - alignment
+  calc bigAligned = (bigFirst + alignment - 1) & bigMask
+  bigPlace = machine.fromInt64(bigAligned)
+  clibrary.registryAdd(bigPlace, bigBase, size)
+  return bigPlace
 
 op alignedAllocate "aligned_alloc: a block of a size aligned to a power of two, or NULL with EINVAL for another alignment and ENOMEM for no memory"
   input alignment Int64 copied
@@ -1812,4 +1738,161 @@ test singleTest "strtof rounds to the nearest float, a number just above a halfw
   minus = floatBitsOf("-0x1.8p1")
   minusWide = convert.uint64BitsToInt64(minus)
   test.assertEqualInt64(-4609434218613702656, minusWide)
+  return
+
+op alignedRound "One aligned block from a size and alignment: aligned, zeroed, writable at both ends, kept by a realloc that grows it and by one that shrinks it, then freed; 0 when all hold, else the number of the check that failed"
+  input alignment Int64 copied
+  input size Int64 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  nowhere = machine.zero()
+  block = alignedBlock(alignment, size)
+  when block == nowhere missing placed
+:missing
+  return 1
+:placed
+  value = machine.toInt64(block)
+  calc rest = value % alignment
+  when rest == 0 zeroedCheck crooked
+:crooked
+  return 2
+:zeroedCheck
+  calc lastSlot = block + size - 1
+  firstByte = machine.loadByte(block)
+  lastByte = machine.loadByte(lastSlot)
+  firstWide = convert.byteToInt64(firstByte)
+  lastWide = convert.byteToInt64(lastByte)
+  calc dirty = firstWide + lastWide
+  when dirty == 0 writeBoth notZeroed
+:notZeroed
+  return 3
+:writeBoth
+  machine.storeByte(block, 7)
+  machine.storeByte(lastSlot, 9)
+  origin = clibrary.alignedOrigin(block)
+  when origin == nowhere untagged tagged
+:untagged
+  when alignment > 32 missingTag growIt
+:missingTag
+  return 4
+:tagged
+  recorded = clibrary.alignedSize(block)
+  when recorded == size growIt wrongSize
+:wrongSize
+  return 5
+:growIt
+  calc bigger = size * 2 + 16
+  grown = clibrary.reallocate(block, bigger)
+  grownFirst = machine.loadByte(grown)
+  calc grownLastSlot = grown + size - 1
+  grownLast = machine.loadByte(grownLastSlot)
+  calc grownBeyondSlot = grown + size
+  grownBeyond = machine.loadByte(grownBeyondSlot)
+  firstKept = convert.byteToInt64(grownFirst)
+  lastKept = convert.byteToInt64(grownLast)
+  beyond = convert.byteToInt64(grownBeyond)
+  when firstKept == 7 && lastKept == 9 && beyond == 0 shrinkIt notKept
+:notKept
+  return 6
+:shrinkIt
+  shrunk = clibrary.reallocate(grown, 1)
+  shrunkFirst = machine.loadByte(shrunk)
+  keptByte = convert.byteToInt64(shrunkFirst)
+  when keptByte == 7 giveBack notKeptSmall
+:notKeptSmall
+  return 7
+:giveBack
+  clibrary.release(shrunk)
+  return 0
+
+op alignedCycles "Many rounds of aligned blocks of one size and alignment, as many failures as rounds that failed"
+  input count Int64 copied
+  input alignment Int64 copied
+  input size Int64 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let done Int64 0 mut
+  let failures Int64 0 mut
+:begin
+  goto eachRound
+:eachRound loop=while max=count
+  when done >= count finished round
+:round in=eachRound
+  code = alignedRound(alignment, size)
+  when code == 0 clean failed
+:clean in=eachRound
+  calc done := done + 1
+  goto eachRound
+:failed in=eachRound
+  calc failures := failures + 1
+  calc done := done + 1
+  goto eachRound
+:finished
+  return failures
+
+op reusesPlainBlock "Whether a plain block taken right after an aligned block of a size is freed is the block the aligned one was cut from (free reached the heap)"
+  input alignment Int64 copied
+  input size Int64 copied
+  output Bool
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  block = alignedBlock(alignment, size)
+  origin = clibrary.alignedOrigin(block)
+  clibrary.release(block)
+  calc total = size + alignment + 16
+  again = heap.take(total)
+  calc same = again == origin
+  heap.give(again)
+  return same
+
+test alignedTest "Aligned blocks at 16 to 65536 bytes are aligned, zeroed, kept by realloc, and given back whole by free, over many rounds"
+  verifies alignedBlock alignsBlocks
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  nowhere = machine.zero()
+  direct = alignedBlock(256, 10)
+  directValue = machine.toInt64(direct)
+  test.assertEqualInt64(0, directValue % 256)
+  clibrary.release(direct)
+  plain = heap.take(40)
+  noOrigin = clibrary.alignedOrigin(plain)
+  test.assertTrue(noOrigin == nowhere)
+  clibrary.release(plain)
+  smallRound = alignedRound(16, 2)
+  test.assertEqualInt64(0, smallRound)
+  thirtyTwoRound = alignedRound(32, 100)
+  test.assertEqualInt64(0, thirtyTwoRound)
+  sixtyFourRound = alignedRound(64, 100)
+  test.assertEqualInt64(0, sixtyFourRound)
+  pageRound = alignedRound(4096, 5000)
+  test.assertEqualInt64(0, pageRound)
+  wideRound = alignedRound(65536, 70000)
+  test.assertEqualInt64(0, wideRound)
+  emptyRound = alignedRound(64, 2)
+  test.assertEqualInt64(0, emptyRound)
+  largeRound = alignedRound(65536, 16777216)
+  test.assertEqualInt64(0, largeRound)
+  midRound = alignedRound(4096, 3000000)
+  test.assertEqualInt64(0, midRound)
+  cyclesCount = alignedCycles(500, 64, 1000)
+  test.assertEqualInt64(0, cyclesCount)
+  pagesCount = alignedCycles(500, 4096, 20000)
+  test.assertEqualInt64(0, pagesCount)
+  bigCyclesCount = alignedCycles(40, 65536, 16777216)
+  test.assertEqualInt64(0, bigCyclesCount)
+  reusedCount = reusesPlainBlock(4096, 100000)
+  test.assertTrue(reusedCount)
   return

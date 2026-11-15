@@ -17121,3 +17121,687 @@ makeResult cleanedBy none
 makeResult borrows none
 makeResult catch none
 makeResult suppresses none
+
+complexExponentialLong is operation
+complexExponentialLong purpose "cexpl: e to the power z, for a long double complex, which is a double complex on Windows (D-174): exactly cexp"
+complexExponentialLong invariant givesCexpl "\"Gives cexpl, which is cexp's result bit for bit\""
+complexExponentialLong typeParameter none
+complexExponentialLong input z Complex copied
+complexExponentialLong output Complex
+complexExponentialLong outputOwnedBy none
+complexExponentialLong raises none
+complexExponentialLong effect use machine.memory
+complexExponentialLong uses memoryAccess
+complexExponentialLong memoryHeap false
+complexExponentialLong async false
+complexExponentialLong maxRecursion none
+complexExponentialLong abi library "cexpl" windows
+complexExponentialLong label begin loopKind none
+complexExponentialLong label begin within none
+complexExponentialLong let none
+complexExponentialLong at begin do readResult
+complexExponentialLong at begin return ok result
+
+readResult is call
+readResult in complexExponentialLong
+readResult invokes complexExponential
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexLogarithmLong is operation
+complexLogarithmLong purpose "clogl: the natural logarithm, with the imaginary part in -pi to pi, for a long double complex, which is a double complex on Windows (D-174): exactly clog"
+complexLogarithmLong invariant givesClogl "\"Gives clogl, which is clog's result bit for bit\""
+complexLogarithmLong typeParameter none
+complexLogarithmLong input z Complex copied
+complexLogarithmLong output Complex
+complexLogarithmLong outputOwnedBy none
+complexLogarithmLong raises none
+complexLogarithmLong effect use machine.memory
+complexLogarithmLong uses memoryAccess
+complexLogarithmLong memoryHeap false
+complexLogarithmLong async false
+complexLogarithmLong maxRecursion none
+complexLogarithmLong abi library "clogl" windows
+complexLogarithmLong label begin loopKind none
+complexLogarithmLong label begin within none
+complexLogarithmLong let none
+complexLogarithmLong at begin do readResult
+complexLogarithmLong at begin return ok result
+
+readResult is call
+readResult in complexLogarithmLong
+readResult invokes complexLogarithm
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexSquareRootLong is operation
+complexSquareRootLong purpose "csqrtl: the square root with a non-negative real part, for a long double complex, which is a double complex on Windows (D-174): exactly csqrt"
+complexSquareRootLong invariant givesCsqrtl "\"Gives csqrtl, which is csqrt's result bit for bit\""
+complexSquareRootLong typeParameter none
+complexSquareRootLong input z Complex copied
+complexSquareRootLong output Complex
+complexSquareRootLong outputOwnedBy none
+complexSquareRootLong raises none
+complexSquareRootLong effect use machine.memory
+complexSquareRootLong uses memoryAccess
+complexSquareRootLong memoryHeap false
+complexSquareRootLong async false
+complexSquareRootLong maxRecursion none
+complexSquareRootLong abi library "csqrtl" windows
+complexSquareRootLong label begin loopKind none
+complexSquareRootLong label begin within none
+complexSquareRootLong let none
+complexSquareRootLong at begin do readResult
+complexSquareRootLong at begin return ok result
+
+readResult is call
+readResult in complexSquareRootLong
+readResult invokes complexSquareRoot
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexSineLong is operation
+complexSineLong purpose "csinl: the sine, for a long double complex, which is a double complex on Windows (D-174): exactly csin"
+complexSineLong invariant givesCsinl "\"Gives csinl, which is csin's result bit for bit\""
+complexSineLong typeParameter none
+complexSineLong input z Complex copied
+complexSineLong output Complex
+complexSineLong outputOwnedBy none
+complexSineLong raises none
+complexSineLong effect use machine.memory
+complexSineLong uses memoryAccess
+complexSineLong memoryHeap false
+complexSineLong async false
+complexSineLong maxRecursion none
+complexSineLong abi library "csinl" windows
+complexSineLong label begin loopKind none
+complexSineLong label begin within none
+complexSineLong let none
+complexSineLong at begin do readResult
+complexSineLong at begin return ok result
+
+readResult is call
+readResult in complexSineLong
+readResult invokes complexSine
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexCosineLong is operation
+complexCosineLong purpose "ccosl: the cosine, for a long double complex, which is a double complex on Windows (D-174): exactly ccos"
+complexCosineLong invariant givesCcosl "\"Gives ccosl, which is ccos's result bit for bit\""
+complexCosineLong typeParameter none
+complexCosineLong input z Complex copied
+complexCosineLong output Complex
+complexCosineLong outputOwnedBy none
+complexCosineLong raises none
+complexCosineLong effect use machine.memory
+complexCosineLong uses memoryAccess
+complexCosineLong memoryHeap false
+complexCosineLong async false
+complexCosineLong maxRecursion none
+complexCosineLong abi library "ccosl" windows
+complexCosineLong label begin loopKind none
+complexCosineLong label begin within none
+complexCosineLong let none
+complexCosineLong at begin do readResult
+complexCosineLong at begin return ok result
+
+readResult is call
+readResult in complexCosineLong
+readResult invokes complexCosine
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexTangentLong is operation
+complexTangentLong purpose "ctanl: the tangent, for a long double complex, which is a double complex on Windows (D-174): exactly ctan"
+complexTangentLong invariant givesCtanl "\"Gives ctanl, which is ctan's result bit for bit\""
+complexTangentLong typeParameter none
+complexTangentLong input z Complex copied
+complexTangentLong output Complex
+complexTangentLong outputOwnedBy none
+complexTangentLong raises none
+complexTangentLong effect use machine.memory
+complexTangentLong uses memoryAccess
+complexTangentLong memoryHeap false
+complexTangentLong async false
+complexTangentLong maxRecursion none
+complexTangentLong abi library "ctanl" windows
+complexTangentLong label begin loopKind none
+complexTangentLong label begin within none
+complexTangentLong let none
+complexTangentLong at begin do readResult
+complexTangentLong at begin return ok result
+
+readResult is call
+readResult in complexTangentLong
+readResult invokes complexTangent
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexInverseSineLong is operation
+complexInverseSineLong purpose "casinl: the arc sine, for a long double complex, which is a double complex on Windows (D-174): exactly casin"
+complexInverseSineLong invariant givesCasinl "\"Gives casinl, which is casin's result bit for bit\""
+complexInverseSineLong typeParameter none
+complexInverseSineLong input z Complex copied
+complexInverseSineLong output Complex
+complexInverseSineLong outputOwnedBy none
+complexInverseSineLong raises none
+complexInverseSineLong effect use machine.memory
+complexInverseSineLong uses memoryAccess
+complexInverseSineLong memoryHeap false
+complexInverseSineLong async false
+complexInverseSineLong maxRecursion none
+complexInverseSineLong abi library "casinl" windows
+complexInverseSineLong label begin loopKind none
+complexInverseSineLong label begin within none
+complexInverseSineLong let none
+complexInverseSineLong at begin do readResult
+complexInverseSineLong at begin return ok result
+
+readResult is call
+readResult in complexInverseSineLong
+readResult invokes complexInverseSine
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexInverseCosineLong is operation
+complexInverseCosineLong purpose "cacosl: the arc cosine, for a long double complex, which is a double complex on Windows (D-174): exactly cacos"
+complexInverseCosineLong invariant givesCacosl "\"Gives cacosl, which is cacos's result bit for bit\""
+complexInverseCosineLong typeParameter none
+complexInverseCosineLong input z Complex copied
+complexInverseCosineLong output Complex
+complexInverseCosineLong outputOwnedBy none
+complexInverseCosineLong raises none
+complexInverseCosineLong effect use machine.memory
+complexInverseCosineLong uses memoryAccess
+complexInverseCosineLong memoryHeap false
+complexInverseCosineLong async false
+complexInverseCosineLong maxRecursion none
+complexInverseCosineLong abi library "cacosl" windows
+complexInverseCosineLong label begin loopKind none
+complexInverseCosineLong label begin within none
+complexInverseCosineLong let none
+complexInverseCosineLong at begin do readResult
+complexInverseCosineLong at begin return ok result
+
+readResult is call
+readResult in complexInverseCosineLong
+readResult invokes complexInverseCosine
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexInverseTangentLong is operation
+complexInverseTangentLong purpose "catanl: the arc tangent, for a long double complex, which is a double complex on Windows (D-174): exactly catan"
+complexInverseTangentLong invariant givesCatanl "\"Gives catanl, which is catan's result bit for bit\""
+complexInverseTangentLong typeParameter none
+complexInverseTangentLong input z Complex copied
+complexInverseTangentLong output Complex
+complexInverseTangentLong outputOwnedBy none
+complexInverseTangentLong raises none
+complexInverseTangentLong effect use machine.memory
+complexInverseTangentLong uses memoryAccess
+complexInverseTangentLong memoryHeap false
+complexInverseTangentLong async false
+complexInverseTangentLong maxRecursion none
+complexInverseTangentLong abi library "catanl" windows
+complexInverseTangentLong label begin loopKind none
+complexInverseTangentLong label begin within none
+complexInverseTangentLong let none
+complexInverseTangentLong at begin do readResult
+complexInverseTangentLong at begin return ok result
+
+readResult is call
+readResult in complexInverseTangentLong
+readResult invokes complexInverseTangent
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexHyperbolicSineLong is operation
+complexHyperbolicSineLong purpose "csinhl: the hyperbolic sine, for a long double complex, which is a double complex on Windows (D-174): exactly csinh"
+complexHyperbolicSineLong invariant givesCsinhl "\"Gives csinhl, which is csinh's result bit for bit\""
+complexHyperbolicSineLong typeParameter none
+complexHyperbolicSineLong input z Complex copied
+complexHyperbolicSineLong output Complex
+complexHyperbolicSineLong outputOwnedBy none
+complexHyperbolicSineLong raises none
+complexHyperbolicSineLong effect use machine.memory
+complexHyperbolicSineLong uses memoryAccess
+complexHyperbolicSineLong memoryHeap false
+complexHyperbolicSineLong async false
+complexHyperbolicSineLong maxRecursion none
+complexHyperbolicSineLong abi library "csinhl" windows
+complexHyperbolicSineLong label begin loopKind none
+complexHyperbolicSineLong label begin within none
+complexHyperbolicSineLong let none
+complexHyperbolicSineLong at begin do readResult
+complexHyperbolicSineLong at begin return ok result
+
+readResult is call
+readResult in complexHyperbolicSineLong
+readResult invokes complexHyperbolicSine
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexHyperbolicCosineLong is operation
+complexHyperbolicCosineLong purpose "ccoshl: the hyperbolic cosine, for a long double complex, which is a double complex on Windows (D-174): exactly ccosh"
+complexHyperbolicCosineLong invariant givesCcoshl "\"Gives ccoshl, which is ccosh's result bit for bit\""
+complexHyperbolicCosineLong typeParameter none
+complexHyperbolicCosineLong input z Complex copied
+complexHyperbolicCosineLong output Complex
+complexHyperbolicCosineLong outputOwnedBy none
+complexHyperbolicCosineLong raises none
+complexHyperbolicCosineLong effect use machine.memory
+complexHyperbolicCosineLong uses memoryAccess
+complexHyperbolicCosineLong memoryHeap false
+complexHyperbolicCosineLong async false
+complexHyperbolicCosineLong maxRecursion none
+complexHyperbolicCosineLong abi library "ccoshl" windows
+complexHyperbolicCosineLong label begin loopKind none
+complexHyperbolicCosineLong label begin within none
+complexHyperbolicCosineLong let none
+complexHyperbolicCosineLong at begin do readResult
+complexHyperbolicCosineLong at begin return ok result
+
+readResult is call
+readResult in complexHyperbolicCosineLong
+readResult invokes complexHyperbolicCosine
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexHyperbolicTangentLong is operation
+complexHyperbolicTangentLong purpose "ctanhl: the hyperbolic tangent, for a long double complex, which is a double complex on Windows (D-174): exactly ctanh"
+complexHyperbolicTangentLong invariant givesCtanhl "\"Gives ctanhl, which is ctanh's result bit for bit\""
+complexHyperbolicTangentLong typeParameter none
+complexHyperbolicTangentLong input z Complex copied
+complexHyperbolicTangentLong output Complex
+complexHyperbolicTangentLong outputOwnedBy none
+complexHyperbolicTangentLong raises none
+complexHyperbolicTangentLong effect use machine.memory
+complexHyperbolicTangentLong uses memoryAccess
+complexHyperbolicTangentLong memoryHeap false
+complexHyperbolicTangentLong async false
+complexHyperbolicTangentLong maxRecursion none
+complexHyperbolicTangentLong abi library "ctanhl" windows
+complexHyperbolicTangentLong label begin loopKind none
+complexHyperbolicTangentLong label begin within none
+complexHyperbolicTangentLong let none
+complexHyperbolicTangentLong at begin do readResult
+complexHyperbolicTangentLong at begin return ok result
+
+readResult is call
+readResult in complexHyperbolicTangentLong
+readResult invokes complexHyperbolicTangent
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexInverseHyperbolicSineLong is operation
+complexInverseHyperbolicSineLong purpose "casinhl: the inverse hyperbolic sine, for a long double complex, which is a double complex on Windows (D-174): exactly casinh"
+complexInverseHyperbolicSineLong invariant givesCasinhl "\"Gives casinhl, which is casinh's result bit for bit\""
+complexInverseHyperbolicSineLong typeParameter none
+complexInverseHyperbolicSineLong input z Complex copied
+complexInverseHyperbolicSineLong output Complex
+complexInverseHyperbolicSineLong outputOwnedBy none
+complexInverseHyperbolicSineLong raises none
+complexInverseHyperbolicSineLong effect use machine.memory
+complexInverseHyperbolicSineLong uses memoryAccess
+complexInverseHyperbolicSineLong memoryHeap false
+complexInverseHyperbolicSineLong async false
+complexInverseHyperbolicSineLong maxRecursion none
+complexInverseHyperbolicSineLong abi library "casinhl" windows
+complexInverseHyperbolicSineLong label begin loopKind none
+complexInverseHyperbolicSineLong label begin within none
+complexInverseHyperbolicSineLong let none
+complexInverseHyperbolicSineLong at begin do readResult
+complexInverseHyperbolicSineLong at begin return ok result
+
+readResult is call
+readResult in complexInverseHyperbolicSineLong
+readResult invokes complexInverseHyperbolicSine
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexInverseHyperbolicCosineLong is operation
+complexInverseHyperbolicCosineLong purpose "cacoshl: the inverse hyperbolic cosine, for a long double complex, which is a double complex on Windows (D-174): exactly cacosh"
+complexInverseHyperbolicCosineLong invariant givesCacoshl "\"Gives cacoshl, which is cacosh's result bit for bit\""
+complexInverseHyperbolicCosineLong typeParameter none
+complexInverseHyperbolicCosineLong input z Complex copied
+complexInverseHyperbolicCosineLong output Complex
+complexInverseHyperbolicCosineLong outputOwnedBy none
+complexInverseHyperbolicCosineLong raises none
+complexInverseHyperbolicCosineLong effect use machine.memory
+complexInverseHyperbolicCosineLong uses memoryAccess
+complexInverseHyperbolicCosineLong memoryHeap false
+complexInverseHyperbolicCosineLong async false
+complexInverseHyperbolicCosineLong maxRecursion none
+complexInverseHyperbolicCosineLong abi library "cacoshl" windows
+complexInverseHyperbolicCosineLong label begin loopKind none
+complexInverseHyperbolicCosineLong label begin within none
+complexInverseHyperbolicCosineLong let none
+complexInverseHyperbolicCosineLong at begin do readResult
+complexInverseHyperbolicCosineLong at begin return ok result
+
+readResult is call
+readResult in complexInverseHyperbolicCosineLong
+readResult invokes complexInverseHyperbolicCosine
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexInverseHyperbolicTangentLong is operation
+complexInverseHyperbolicTangentLong purpose "catanhl: the inverse hyperbolic tangent, for a long double complex, which is a double complex on Windows (D-174): exactly catanh"
+complexInverseHyperbolicTangentLong invariant givesCatanhl "\"Gives catanhl, which is catanh's result bit for bit\""
+complexInverseHyperbolicTangentLong typeParameter none
+complexInverseHyperbolicTangentLong input z Complex copied
+complexInverseHyperbolicTangentLong output Complex
+complexInverseHyperbolicTangentLong outputOwnedBy none
+complexInverseHyperbolicTangentLong raises none
+complexInverseHyperbolicTangentLong effect use machine.memory
+complexInverseHyperbolicTangentLong uses memoryAccess
+complexInverseHyperbolicTangentLong memoryHeap false
+complexInverseHyperbolicTangentLong async false
+complexInverseHyperbolicTangentLong maxRecursion none
+complexInverseHyperbolicTangentLong abi library "catanhl" windows
+complexInverseHyperbolicTangentLong label begin loopKind none
+complexInverseHyperbolicTangentLong label begin within none
+complexInverseHyperbolicTangentLong let none
+complexInverseHyperbolicTangentLong at begin do readResult
+complexInverseHyperbolicTangentLong at begin return ok result
+
+readResult is call
+readResult in complexInverseHyperbolicTangentLong
+readResult invokes complexInverseHyperbolicTangent
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexConjugateLong is operation
+complexConjugateLong purpose "conjl: the complex conjugate, for a long double complex, which is a double complex on Windows (D-174): exactly conj"
+complexConjugateLong invariant givesConjl "\"Gives conjl, which is conj's result bit for bit\""
+complexConjugateLong typeParameter none
+complexConjugateLong input z Complex copied
+complexConjugateLong output Complex
+complexConjugateLong outputOwnedBy none
+complexConjugateLong raises none
+complexConjugateLong effect use machine.memory
+complexConjugateLong uses memoryAccess
+complexConjugateLong memoryHeap false
+complexConjugateLong async false
+complexConjugateLong maxRecursion none
+complexConjugateLong abi library "conjl" windows
+complexConjugateLong label begin loopKind none
+complexConjugateLong label begin within none
+complexConjugateLong let none
+complexConjugateLong at begin do readResult
+complexConjugateLong at begin return ok result
+
+readResult is call
+readResult in complexConjugateLong
+readResult invokes complexConjugate
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexProjectionLong is operation
+complexProjectionLong purpose "cprojl: the projection onto the Riemann sphere, for a long double complex, which is a double complex on Windows (D-174): exactly cproj"
+complexProjectionLong invariant givesCprojl "\"Gives cprojl, which is cproj's result bit for bit\""
+complexProjectionLong typeParameter none
+complexProjectionLong input z Complex copied
+complexProjectionLong output Complex
+complexProjectionLong outputOwnedBy none
+complexProjectionLong raises none
+complexProjectionLong effect use machine.memory
+complexProjectionLong uses memoryAccess
+complexProjectionLong memoryHeap false
+complexProjectionLong async false
+complexProjectionLong maxRecursion none
+complexProjectionLong abi library "cprojl" windows
+complexProjectionLong label begin loopKind none
+complexProjectionLong label begin within none
+complexProjectionLong let none
+complexProjectionLong at begin do readResult
+complexProjectionLong at begin return ok result
+
+readResult is call
+readResult in complexProjectionLong
+readResult invokes complexProjection
+readResult argument z Complex z copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexMagnitudeLong is operation
+complexMagnitudeLong purpose "cabsl: the magnitude hypot(x, y), for a long double complex, which is a double complex on Windows (D-174): exactly cabs"
+complexMagnitudeLong invariant givesCabsl "\"Gives cabsl, which is cabs's result bit for bit\""
+complexMagnitudeLong typeParameter none
+complexMagnitudeLong input z Complex copied
+complexMagnitudeLong output Float64
+complexMagnitudeLong outputOwnedBy none
+complexMagnitudeLong raises none
+complexMagnitudeLong effect use machine.memory
+complexMagnitudeLong uses memoryAccess
+complexMagnitudeLong memoryHeap false
+complexMagnitudeLong async false
+complexMagnitudeLong maxRecursion none
+complexMagnitudeLong abi library "cabsl" windows
+complexMagnitudeLong label begin loopKind none
+complexMagnitudeLong label begin within none
+complexMagnitudeLong let none
+complexMagnitudeLong at begin do readResult
+complexMagnitudeLong at begin return ok result
+
+readResult is call
+readResult in complexMagnitudeLong
+readResult invokes complexMagnitude
+readResult argument z Complex z copy
+readResult result result Float64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexArgumentLong is operation
+complexArgumentLong purpose "cargl: the argument atan2(y, x), for a long double complex, which is a double complex on Windows (D-174): exactly carg"
+complexArgumentLong invariant givesCargl "\"Gives cargl, which is carg's result bit for bit\""
+complexArgumentLong typeParameter none
+complexArgumentLong input z Complex copied
+complexArgumentLong output Float64
+complexArgumentLong outputOwnedBy none
+complexArgumentLong raises none
+complexArgumentLong effect use machine.memory
+complexArgumentLong uses memoryAccess
+complexArgumentLong memoryHeap false
+complexArgumentLong async false
+complexArgumentLong maxRecursion none
+complexArgumentLong abi library "cargl" windows
+complexArgumentLong label begin loopKind none
+complexArgumentLong label begin within none
+complexArgumentLong let none
+complexArgumentLong at begin do readResult
+complexArgumentLong at begin return ok result
+
+readResult is call
+readResult in complexArgumentLong
+readResult invokes complexArgument
+readResult argument z Complex z copy
+readResult result result Float64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexRealPartLong is operation
+complexRealPartLong purpose "creall: the real part, for a long double complex, which is a double complex on Windows (D-174): exactly creal"
+complexRealPartLong invariant givesCreall "\"Gives creall, which is creal's result bit for bit\""
+complexRealPartLong typeParameter none
+complexRealPartLong input z Complex copied
+complexRealPartLong output Float64
+complexRealPartLong outputOwnedBy none
+complexRealPartLong raises none
+complexRealPartLong effect use machine.memory
+complexRealPartLong uses memoryAccess
+complexRealPartLong memoryHeap false
+complexRealPartLong async false
+complexRealPartLong maxRecursion none
+complexRealPartLong abi library "creall" windows
+complexRealPartLong label begin loopKind none
+complexRealPartLong label begin within none
+complexRealPartLong let none
+complexRealPartLong at begin do readResult
+complexRealPartLong at begin return ok result
+
+readResult is call
+readResult in complexRealPartLong
+readResult invokes complexRealPart
+readResult argument z Complex z copy
+readResult result result Float64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexImaginaryPartLong is operation
+complexImaginaryPartLong purpose "cimagl: the imaginary part, for a long double complex, which is a double complex on Windows (D-174): exactly cimag"
+complexImaginaryPartLong invariant givesCimagl "\"Gives cimagl, which is cimag's result bit for bit\""
+complexImaginaryPartLong typeParameter none
+complexImaginaryPartLong input z Complex copied
+complexImaginaryPartLong output Float64
+complexImaginaryPartLong outputOwnedBy none
+complexImaginaryPartLong raises none
+complexImaginaryPartLong effect use machine.memory
+complexImaginaryPartLong uses memoryAccess
+complexImaginaryPartLong memoryHeap false
+complexImaginaryPartLong async false
+complexImaginaryPartLong maxRecursion none
+complexImaginaryPartLong abi library "cimagl" windows
+complexImaginaryPartLong label begin loopKind none
+complexImaginaryPartLong label begin within none
+complexImaginaryPartLong let none
+complexImaginaryPartLong at begin do readResult
+complexImaginaryPartLong at begin return ok result
+
+readResult is call
+readResult in complexImaginaryPartLong
+readResult invokes complexImaginaryPart
+readResult argument z Complex z copy
+readResult result result Float64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+complexPowerLong is operation
+complexPowerLong purpose "cpowl: x to the power y, as cexp(y clog x), for a long double complex, which is a double complex on Windows (D-174): exactly cpow"
+complexPowerLong invariant givesCpowl "\"Gives cpowl, which is cpow's result bit for bit\""
+complexPowerLong typeParameter none
+complexPowerLong input z Complex copied
+complexPowerLong input w Complex copied
+complexPowerLong output Complex
+complexPowerLong outputOwnedBy none
+complexPowerLong raises none
+complexPowerLong effect use machine.memory
+complexPowerLong uses memoryAccess
+complexPowerLong memoryHeap false
+complexPowerLong async false
+complexPowerLong maxRecursion none
+complexPowerLong abi library "cpowl" windows
+complexPowerLong label begin loopKind none
+complexPowerLong label begin within none
+complexPowerLong let none
+complexPowerLong at begin do readResult
+complexPowerLong at begin return ok result
+
+readResult is call
+readResult in complexPowerLong
+readResult invokes complexPower
+readResult argument z Complex z copy
+readResult argument w Complex w copy
+readResult result result Complex
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none

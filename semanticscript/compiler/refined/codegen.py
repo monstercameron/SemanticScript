@@ -49,7 +49,7 @@ from .check import TEST_OFFSET
 from .runtime import default_triple
 from .host import HANDLERS as HOST_TARGETS
 from .library import INTEGER_RANGES, INTEGER_TYPES as INTEGER_TARGET_TYPES, LINUX_CALLS, STATE_BYTES, SYSTEM_CALLS
-from .semantics import (CallInfo, Module, OpInfo, World, abi_symbol, library_symbol, library_variadic, pair_record, grant_scope, instance_scope, resolve_type,
+from .semantics import (CallInfo, Module, OpInfo, World, abi_symbol, library_symbol, library_variadic, library_windows_only, pair_record, grant_scope, instance_scope, resolve_type,
                         resolve_variant, type_params_of)
 
 I1, I8, I16, I32, I64 = ir.IntType(1), ir.IntType(8), ir.IntType(16), ir.IntType(32), ir.IntType(64)
@@ -581,9 +581,10 @@ class Backend:
         # D-123: the operations exported to C, by symbol
         self.abi = {abi_symbol(ent): (m.short, name) for m in world.modules.values() for name, ent in m.ops.items()
                     if abi_symbol(ent) is not None}
-        # D-153: the functions of the runtime's C library, by their C names
+        # D-153: the functions of the runtime's C library, by their C names (a row marked `windows` only on Windows)
         self.library = {library_symbol(ent): (m.short, name) for m in world.modules.values()
-                        for name, ent in m.ops.items() if library_symbol(ent) is not None}
+                        for name, ent in m.ops.items() if library_symbol(ent) is not None
+                        and (self.os == "windows" or not library_windows_only(ent))}
         # D-124: a program that defines runtime functions is the runtime. Its operations keep no shadow call stack
         # and count recursion in place, since those calls would reach the runtime itself
         self.bare = bool(set(self.abi) & set(CALLBACKS))

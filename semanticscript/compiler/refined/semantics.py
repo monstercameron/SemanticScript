@@ -1344,6 +1344,13 @@ def library_variadic(ent) -> bool:
     return row is not None and len(row.args) > 2 and row.text(0) == "library" and row.text(2) == "variadic"
 
 
+def library_windows_only(ent) -> bool:
+    """Whether a C library function is in the table of Windows targets only (`abi library "<name>" windows`): the long
+    double complex functions, whose Windows ABI is the double ones' and whose Linux ABI the runtime does not have."""
+    row = ent.fact("abi")
+    return row is not None and len(row.args) > 2 and row.text(0) == "library" and row.text(2) == "windows"
+
+
 def pair_record(world, canon: Optional[str]) -> Optional[str]:
     """D-157, D-175: a record of two numbers the C ABI passes as a struct: two Int64 (`ldiv_t`, "i64"), two Float64
     (`double complex`, "f64"), or two Float32 (`float complex`, "f32"); None for any other type."""

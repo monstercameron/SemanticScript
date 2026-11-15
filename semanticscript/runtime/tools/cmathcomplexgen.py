@@ -132,6 +132,23 @@ def _wrapper(cname: str, parts: str, op: str, purpose: str, kind: str, single: b
     return "\n".join(lines) + "\n"
 
 
+def _long_wrapper(cname: str, op: str, purpose: str, kind: str) -> str:
+    """The `abi library` row of a long double complex function (cabsl, ...): on Windows long double is a double (D-174), so
+    a long double complex is a double complex and the function is the double one, through the same ABI (D-175). The row is
+    in Windows's table only (`windows`): on Linux long double is x87 or binary128, and the runtime does not yet pass a
+    record of two of those."""
+    cn = cname + "l"
+    lines = [f'op {op}Long "{cn}: {purpose}, for a long double complex, which is a double complex on Windows (D-174): exactly {cname}"']
+    lines.append(f'  invariant gives{cn[0].upper()}{cn[1:]} "Gives {cn}, which is {cname}\'s result bit for bit"')
+    names = ["z", "w"] if kind == "binary" else ["z"]
+    for n in names:
+        lines.append(f"  input {n} Complex copied")
+    lines.append(f"  output {'Float64' if kind == 'real' else 'Complex'}")
+    lines += ["  effect use machine.memory", "  uses memoryAccess", f'  abi library "{cn}" windows', ":begin",
+              f"  result = {op}({', '.join(names)})", "  return result"]
+    return "\n".join(lines) + "\n"
+
+
 def wrappers() -> str:
     out = []
     for single in (False, True):
@@ -141,6 +158,9 @@ def wrappers() -> str:
             out.append(_wrapper(cname, parts, op, purpose, "real", single))
         for cname, parts, op, purpose in BINARY:
             out.append(_wrapper(cname, parts, op, purpose, "binary", single))
+    for group, kind in ((UNARY, "unary"), (REALS, "real"), (BINARY, "binary")):
+        for cname, parts, op, purpose in group:
+            out.append(_long_wrapper(cname, op, purpose, kind))
     return "\n".join(out)
 
 
@@ -1009,10 +1029,55 @@ def tests() -> str:
         uses.append(f"  probe{k} = {rec}.new({'convert.float64ToFloat32(1.0)' if single else '1.0'}, {'convert.float64ToFloat32(0.5)' if single else '0.5'})")
         uses.append(f"  direct{k} = {op}({'probe%d, probe%d' % (k, k) if kind == 'binary' else 'probe%d' % k})")
     verifies = [f"  verifies {op} gives{c[0].upper()}{c[1:]}" for c, op, *_ in funcs]
-    return (dispatch() + "\n"
+    return (dispatch() + "\n" + long_tests() + "\n"
             + 'test complexTableTest "every function of complex.h on the special values of Annex G and some ordinary points, against an exact reference: a row is the arguments and the expected parts as bits and tolerances"\n'
             + "\n".join(verifies) + "\n  effect use machine.memory\n  uses memoryAccess\n"
             + "\n".join(lines) + "\n:begin\n" + "\n".join(uses) + "\n  return\n")
+
+
+LONG_PROBES = [(1.5, -0.5), (-2.0, 3.0), (0.0, 1.0), (1e300, -1e300), (INF, NAN), (NAN, 0.0), (-0.0, -0.0),
+               (0.0, -0.0), (-INF, 2.0)]
+
+
+def long_tests() -> str:
+    """longFormsTest: each long double complex function (cabsl, ...) gives the bits of the double function (cabs, ...) on
+    a handful of points, Annex G's infinities, NaNs, and signed zeros among them."""
+    lines = ['op sameBits "Whether two doubles have the same bits"', "  input left Float64 copied",
+             "  input right Float64 copied", "  output Bool", ":begin",
+             "  calc leftBits = convert.float64BitsToUInt64(left)",
+             "  calc rightBits = convert.float64BitsToUInt64(right)",
+             "  calc same = leftBits == rightBits", "  return same", "",
+             'op sameComplex "Whether two complex numbers have the same bits in both parts"',
+             "  input left Complex copied", "  input right Complex copied", "  output Bool", ":begin",
+             "  leftRe = Complex.real(left)", "  leftIm = Complex.imag(left)",
+             "  rightRe = Complex.real(right)", "  rightIm = Complex.imag(right)",
+             "  realSame = sameBits(leftRe, rightRe)", "  imagSame = sameBits(leftIm, rightIm)",
+             "  calc both = realSame && imagSame", "  return both", ""]
+    body = []
+    verifies = []
+    n = 0
+    for group, kind in ((UNARY, "unary"), (REALS, "real"), (BINARY, "binary")):
+        for cname, parts, op, purpose in group:
+            verifies.append(f"  verifies {op}Long gives{cname[0].upper()}{cname[1:]}l")
+            for k, (a, b) in enumerate(LONG_PROBES):
+                n += 1
+                body.append(f"  calc za{n} = convert.uint64BitsToFloat64({bits(a)})")
+                body.append(f"  calc zb{n} = convert.uint64BitsToFloat64({bits(b)})")
+                body.append(f"  z{n} = Complex.new(za{n}, zb{n})")
+                call = f"z{n}"
+                if kind == "binary":
+                    c, d = LONG_PROBES[(k + 1) % len(LONG_PROBES)]
+                    body.append(f"  calc wa{n} = convert.uint64BitsToFloat64({bits(c)})")
+                    body.append(f"  calc wb{n} = convert.uint64BitsToFloat64({bits(d)})")
+                    body.append(f"  w{n} = Complex.new(wa{n}, wb{n})")
+                    call = f"z{n}, w{n}"
+                body.append(f"  d{n} = {op}({call})")
+                body.append(f"  l{n} = {op}Long({call})")
+                body.append(f"  s{n} = {'sameBits' if kind == 'real' else 'sameComplex'}(d{n}, l{n})")
+                body.append(f"  expect{n}: test.assertTrue(s{n})")
+    lines += ['test longFormsTest "the long double complex functions (cabsl to catanhl), which are the double ones on Windows, give the double functions\' bits on ordinary points, infinities, NaNs, and signed zeros"']
+    lines += verifies + ["  effect use machine.memory", "  uses memoryAccess", ":begin"] + body + ["  return"]
+    return "\n".join(lines) + "\n"
 
 
 def _fits32(a, b):

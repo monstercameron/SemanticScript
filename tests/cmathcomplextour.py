@@ -37,8 +37,24 @@ BINARY = [n for n, *_ in G.BINARY]
 KINDS = ("Unary", "Real", "Binary")
 
 
+# complex.h's long double forms (D-174: long double is a double on Windows, so these are the double functions there; the
+# tour calls them on Windows hosts only, since Linux's table has none yet)
+LONG_NAMES = [n + "l" for n in UNARY + REAL + BINARY]
+
+
+def long_names() -> list[str]:
+    return LONG_NAMES if sys.platform == "win32" else []
+
+
+def base_name(name: str) -> str:
+    """The double function a name is, or is the f or l form of."""
+    if name in LONG_NAMES:
+        return name[:-1]
+    return name[:-1] if name.endswith("f") else name
+
+
 def kind_of(name: str) -> str:
-    base = name[:-1] if name.endswith("f") else name
+    base = base_name(name)
     return "Unary" if base in UNARY else "Real" if base in REAL else "Binary"
 
 
@@ -85,14 +101,14 @@ def inputs(name: str) -> list:
     """The arguments the tour calls `name` with: pairs, or pairs of pairs for cpow (floats for the f forms, as the
     doubles that hold them), in the order of the output."""
     single = name.endswith("f")
-    base = name[:-1] if single else name
+    base = base_name(name)
     if base in BINARY:
         return [(b, e) for b in BASES for e in EXPONENTS]
     return grid(single) + sweep_pairs(single)
 
 
 def expected_names() -> list[str]:
-    return UNARY + REAL + BINARY + [n + "f" for n in UNARY + REAL + BINARY]
+    return UNARY + REAL + BINARY + [n + "f" for n in UNARY + REAL + BINARY] + long_names()
 
 
 def lines_per_call(name: str) -> int:

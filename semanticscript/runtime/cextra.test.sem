@@ -2156,3 +2156,1378 @@ doAssertEqualInt6414 cleanedBy none
 doAssertEqualInt6414 borrows none
 doAssertEqualInt6414 catch none
 doAssertEqualInt6414 suppresses none
+
+alignedRound is operation
+alignedRound purpose "One aligned block from a size and alignment: aligned, zeroed, writable at both ends, kept by a realloc that grows it and by one that shrinks it, then freed; 0 when all hold, else the number of the check that failed"
+alignedRound invariant none
+alignedRound typeParameter none
+alignedRound input alignment Int64 copied
+alignedRound input size Int64 copied
+alignedRound output Int64
+alignedRound outputOwnedBy none
+alignedRound raises none
+alignedRound effect use machine.memory
+alignedRound effect use system.calls
+alignedRound uses memoryAccess
+alignedRound uses systemCalls
+alignedRound memoryHeap false
+alignedRound async false
+alignedRound maxRecursion none
+alignedRound label begin loopKind none
+alignedRound label begin within none
+alignedRound label missing loopKind none
+alignedRound label missing within none
+alignedRound label placed loopKind none
+alignedRound label placed within none
+alignedRound label crooked loopKind none
+alignedRound label crooked within none
+alignedRound label zeroedCheck loopKind none
+alignedRound label zeroedCheck within none
+alignedRound label notZeroed loopKind none
+alignedRound label notZeroed within none
+alignedRound label writeBoth loopKind none
+alignedRound label writeBoth within none
+alignedRound label untagged loopKind none
+alignedRound label untagged within none
+alignedRound label missingTag loopKind none
+alignedRound label missingTag within none
+alignedRound label tagged loopKind none
+alignedRound label tagged within none
+alignedRound label wrongSize loopKind none
+alignedRound label wrongSize within none
+alignedRound label growIt loopKind none
+alignedRound label growIt within none
+alignedRound label notKept loopKind none
+alignedRound label notKept within none
+alignedRound label shrinkIt loopKind none
+alignedRound label shrinkIt within none
+alignedRound label notKeptSmall loopKind none
+alignedRound label notKeptSmall within none
+alignedRound label giveBack loopKind none
+alignedRound label giveBack within none
+alignedRound let one Int64 1 immutable
+alignedRound let zero Int64 0 immutable
+alignedRound let two Int64 2 immutable
+alignedRound let three Int64 3 immutable
+alignedRound let byte7 Byte 7 immutable
+alignedRound let byte9 Byte 9 immutable
+alignedRound let thirtyTwo Int64 32 immutable
+alignedRound let four Int64 4 immutable
+alignedRound let five Int64 5 immutable
+alignedRound let sixteen Int64 16 immutable
+alignedRound let seven Int64 7 immutable
+alignedRound let nine Int64 9 immutable
+alignedRound let six Int64 6 immutable
+alignedRound at begin do readNowhere
+alignedRound at begin do readBlock
+alignedRound at begin do findCheck11
+alignedRound at begin branch if check1 goto missing else goto placed
+alignedRound at missing return ok one
+alignedRound at placed do readValue
+alignedRound at placed do findRest1
+alignedRound at placed do findCheck21
+alignedRound at placed branch if check2 goto zeroedCheck else goto crooked
+alignedRound at crooked return ok two
+alignedRound at zeroedCheck do lastSlotStep1
+alignedRound at zeroedCheck do lastSlotStep2
+alignedRound at zeroedCheck do findLastSlot1
+alignedRound at zeroedCheck do readFirstByte
+alignedRound at zeroedCheck do readLastByte
+alignedRound at zeroedCheck do readFirstWide
+alignedRound at zeroedCheck do readLastWide
+alignedRound at zeroedCheck do findDirty1
+alignedRound at zeroedCheck do findCheck31
+alignedRound at zeroedCheck branch if check3 goto writeBoth else goto notZeroed
+alignedRound at notZeroed return ok three
+alignedRound at writeBoth do doStoreByte
+alignedRound at writeBoth do doStoreByte2
+alignedRound at writeBoth do readOrigin
+alignedRound at writeBoth do findCheck41
+alignedRound at writeBoth branch if check4 goto untagged else goto tagged
+alignedRound at untagged do findCheck51
+alignedRound at untagged branch if check5 goto missingTag else goto growIt
+alignedRound at missingTag return ok four
+alignedRound at tagged do readRecorded
+alignedRound at tagged do findCheck61
+alignedRound at tagged branch if check6 goto growIt else goto wrongSize
+alignedRound at wrongSize return ok five
+alignedRound at growIt do biggerStep1
+alignedRound at growIt do findBigger1
+alignedRound at growIt do readGrown
+alignedRound at growIt do readGrownFirst
+alignedRound at growIt do grownLastSlotStep1
+alignedRound at growIt do grownLastSlotStep2
+alignedRound at growIt do findGrownLastSlot1
+alignedRound at growIt do readGrownLast
+alignedRound at growIt do findGrownBeyondSlot1
+alignedRound at growIt do readGrownBeyond
+alignedRound at growIt do readFirstKept
+alignedRound at growIt do readLastKept
+alignedRound at growIt do readBeyond
+alignedRound at growIt do check7Step1
+alignedRound at growIt do check7Step2
+alignedRound at growIt do check7Step3
+alignedRound at growIt do check7Step4
+alignedRound at growIt do findCheck71
+alignedRound at growIt branch if check7 goto shrinkIt else goto notKept
+alignedRound at notKept return ok six
+alignedRound at shrinkIt do readShrunk
+alignedRound at shrinkIt do readShrunkFirst
+alignedRound at shrinkIt do readKeptByte
+alignedRound at shrinkIt do findCheck81
+alignedRound at shrinkIt branch if check8 goto giveBack else goto notKeptSmall
+alignedRound at notKeptSmall return ok seven
+alignedRound at giveBack do doRelease
+alignedRound at giveBack return ok zero
+
+readNowhere is call
+readNowhere in alignedRound
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readBlock is call
+readBlock in alignedRound
+readBlock invokes alignedBlock
+readBlock argument alignment Int64 alignment copy
+readBlock argument size Int64 size copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+findCheck11 is call
+findCheck11 in alignedRound
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address block copy
+findCheck11 argument right machine.Address nowhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readValue is call
+readValue in alignedRound
+readValue invokes machine.toInt64
+readValue argument address machine.Address block copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+findRest1 is call
+findRest1 in alignedRound
+findRest1 invokes math.remainderInt64
+findRest1 argument left Int64 value copy
+findRest1 argument right Int64 alignment copy
+findRest1 result rest Int64
+findRest1 ownedBy none
+findRest1 cleanedBy none
+findRest1 borrows none
+findRest1 catch none
+findRest1 suppresses none
+
+findCheck21 is call
+findCheck21 in alignedRound
+findCheck21 invokes compare.equalInt64
+findCheck21 argument left Int64 rest copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+lastSlotStep1 is call
+lastSlotStep1 in alignedRound
+lastSlotStep1 invokes machine.offset
+lastSlotStep1 argument address machine.Address block copy
+lastSlotStep1 argument bytes Int64 size copy
+lastSlotStep1 result lastSlotPart1 machine.Address
+lastSlotStep1 ownedBy none
+lastSlotStep1 cleanedBy none
+lastSlotStep1 borrows none
+lastSlotStep1 catch none
+lastSlotStep1 suppresses none
+
+lastSlotStep2 is call
+lastSlotStep2 in alignedRound
+lastSlotStep2 invokes math.negateInt64
+lastSlotStep2 argument value Int64 one copy
+lastSlotStep2 result lastSlotPart2 Int64
+lastSlotStep2 ownedBy none
+lastSlotStep2 cleanedBy none
+lastSlotStep2 borrows none
+lastSlotStep2 catch none
+lastSlotStep2 suppresses none
+
+findLastSlot1 is call
+findLastSlot1 in alignedRound
+findLastSlot1 invokes machine.offset
+findLastSlot1 argument address machine.Address lastSlotPart1 copy
+findLastSlot1 argument bytes Int64 lastSlotPart2 copy
+findLastSlot1 result lastSlot machine.Address
+findLastSlot1 ownedBy none
+findLastSlot1 cleanedBy none
+findLastSlot1 borrows none
+findLastSlot1 catch none
+findLastSlot1 suppresses none
+
+readFirstByte is call
+readFirstByte in alignedRound
+readFirstByte invokes machine.loadByte
+readFirstByte argument address machine.Address block copy
+readFirstByte result firstByte Byte
+readFirstByte ownedBy none
+readFirstByte cleanedBy none
+readFirstByte borrows none
+readFirstByte catch none
+readFirstByte suppresses none
+
+readLastByte is call
+readLastByte in alignedRound
+readLastByte invokes machine.loadByte
+readLastByte argument address machine.Address lastSlot copy
+readLastByte result lastByte Byte
+readLastByte ownedBy none
+readLastByte cleanedBy none
+readLastByte borrows none
+readLastByte catch none
+readLastByte suppresses none
+
+readFirstWide is call
+readFirstWide in alignedRound
+readFirstWide invokes convert.byteToInt64
+readFirstWide argument value Byte firstByte copy
+readFirstWide result firstWide Int64
+readFirstWide ownedBy none
+readFirstWide cleanedBy none
+readFirstWide borrows none
+readFirstWide catch none
+readFirstWide suppresses none
+
+readLastWide is call
+readLastWide in alignedRound
+readLastWide invokes convert.byteToInt64
+readLastWide argument value Byte lastByte copy
+readLastWide result lastWide Int64
+readLastWide ownedBy none
+readLastWide cleanedBy none
+readLastWide borrows none
+readLastWide catch none
+readLastWide suppresses none
+
+findDirty1 is call
+findDirty1 in alignedRound
+findDirty1 invokes math.addInt64
+findDirty1 argument left Int64 firstWide copy
+findDirty1 argument right Int64 lastWide copy
+findDirty1 result dirty Int64
+findDirty1 ownedBy none
+findDirty1 cleanedBy none
+findDirty1 borrows none
+findDirty1 catch none
+findDirty1 suppresses none
+
+findCheck31 is call
+findCheck31 in alignedRound
+findCheck31 invokes compare.equalInt64
+findCheck31 argument left Int64 dirty copy
+findCheck31 argument right Int64 zero copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+doStoreByte is call
+doStoreByte in alignedRound
+doStoreByte invokes machine.storeByte
+doStoreByte argument address machine.Address block copy
+doStoreByte argument value Byte byte7 copy
+doStoreByte result none
+doStoreByte ownedBy none
+doStoreByte cleanedBy none
+doStoreByte borrows none
+doStoreByte catch none
+doStoreByte suppresses none
+
+doStoreByte2 is call
+doStoreByte2 in alignedRound
+doStoreByte2 invokes machine.storeByte
+doStoreByte2 argument address machine.Address lastSlot copy
+doStoreByte2 argument value Byte byte9 copy
+doStoreByte2 result none
+doStoreByte2 ownedBy none
+doStoreByte2 cleanedBy none
+doStoreByte2 borrows none
+doStoreByte2 catch none
+doStoreByte2 suppresses none
+
+readOrigin is call
+readOrigin in alignedRound
+readOrigin invokes clibrary.alignedOrigin
+readOrigin argument block machine.Address block copy
+readOrigin result origin machine.Address
+readOrigin ownedBy none
+readOrigin cleanedBy none
+readOrigin borrows none
+readOrigin catch none
+readOrigin suppresses none
+
+findCheck41 is call
+findCheck41 in alignedRound
+findCheck41 invokes machine.equal
+findCheck41 argument left machine.Address origin copy
+findCheck41 argument right machine.Address nowhere copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+findCheck51 is call
+findCheck51 in alignedRound
+findCheck51 invokes compare.greaterThanInt64
+findCheck51 argument left Int64 alignment copy
+findCheck51 argument right Int64 thirtyTwo copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+readRecorded is call
+readRecorded in alignedRound
+readRecorded invokes clibrary.alignedSize
+readRecorded argument block machine.Address block copy
+readRecorded result recorded Int64
+readRecorded ownedBy none
+readRecorded cleanedBy none
+readRecorded borrows none
+readRecorded catch none
+readRecorded suppresses none
+
+findCheck61 is call
+findCheck61 in alignedRound
+findCheck61 invokes compare.equalInt64
+findCheck61 argument left Int64 recorded copy
+findCheck61 argument right Int64 size copy
+findCheck61 result check6 Bool
+findCheck61 ownedBy none
+findCheck61 cleanedBy none
+findCheck61 borrows none
+findCheck61 catch none
+findCheck61 suppresses none
+
+biggerStep1 is call
+biggerStep1 in alignedRound
+biggerStep1 invokes math.multiplyInt64
+biggerStep1 argument left Int64 size copy
+biggerStep1 argument right Int64 two copy
+biggerStep1 result biggerPart1 Int64
+biggerStep1 ownedBy none
+biggerStep1 cleanedBy none
+biggerStep1 borrows none
+biggerStep1 catch none
+biggerStep1 suppresses none
+
+findBigger1 is call
+findBigger1 in alignedRound
+findBigger1 invokes math.addInt64
+findBigger1 argument left Int64 biggerPart1 copy
+findBigger1 argument right Int64 sixteen copy
+findBigger1 result bigger Int64
+findBigger1 ownedBy none
+findBigger1 cleanedBy none
+findBigger1 borrows none
+findBigger1 catch none
+findBigger1 suppresses none
+
+readGrown is call
+readGrown in alignedRound
+readGrown invokes clibrary.reallocate
+readGrown argument block machine.Address block copy
+readGrown argument bytes Int64 bigger copy
+readGrown result grown machine.Address
+readGrown ownedBy none
+readGrown cleanedBy none
+readGrown borrows none
+readGrown catch none
+readGrown suppresses none
+
+readGrownFirst is call
+readGrownFirst in alignedRound
+readGrownFirst invokes machine.loadByte
+readGrownFirst argument address machine.Address grown copy
+readGrownFirst result grownFirst Byte
+readGrownFirst ownedBy none
+readGrownFirst cleanedBy none
+readGrownFirst borrows none
+readGrownFirst catch none
+readGrownFirst suppresses none
+
+grownLastSlotStep1 is call
+grownLastSlotStep1 in alignedRound
+grownLastSlotStep1 invokes machine.offset
+grownLastSlotStep1 argument address machine.Address grown copy
+grownLastSlotStep1 argument bytes Int64 size copy
+grownLastSlotStep1 result grownLastSlotPart1 machine.Address
+grownLastSlotStep1 ownedBy none
+grownLastSlotStep1 cleanedBy none
+grownLastSlotStep1 borrows none
+grownLastSlotStep1 catch none
+grownLastSlotStep1 suppresses none
+
+grownLastSlotStep2 is call
+grownLastSlotStep2 in alignedRound
+grownLastSlotStep2 invokes math.negateInt64
+grownLastSlotStep2 argument value Int64 one copy
+grownLastSlotStep2 result grownLastSlotPart2 Int64
+grownLastSlotStep2 ownedBy none
+grownLastSlotStep2 cleanedBy none
+grownLastSlotStep2 borrows none
+grownLastSlotStep2 catch none
+grownLastSlotStep2 suppresses none
+
+findGrownLastSlot1 is call
+findGrownLastSlot1 in alignedRound
+findGrownLastSlot1 invokes machine.offset
+findGrownLastSlot1 argument address machine.Address grownLastSlotPart1 copy
+findGrownLastSlot1 argument bytes Int64 grownLastSlotPart2 copy
+findGrownLastSlot1 result grownLastSlot machine.Address
+findGrownLastSlot1 ownedBy none
+findGrownLastSlot1 cleanedBy none
+findGrownLastSlot1 borrows none
+findGrownLastSlot1 catch none
+findGrownLastSlot1 suppresses none
+
+readGrownLast is call
+readGrownLast in alignedRound
+readGrownLast invokes machine.loadByte
+readGrownLast argument address machine.Address grownLastSlot copy
+readGrownLast result grownLast Byte
+readGrownLast ownedBy none
+readGrownLast cleanedBy none
+readGrownLast borrows none
+readGrownLast catch none
+readGrownLast suppresses none
+
+findGrownBeyondSlot1 is call
+findGrownBeyondSlot1 in alignedRound
+findGrownBeyondSlot1 invokes machine.offset
+findGrownBeyondSlot1 argument address machine.Address grown copy
+findGrownBeyondSlot1 argument bytes Int64 size copy
+findGrownBeyondSlot1 result grownBeyondSlot machine.Address
+findGrownBeyondSlot1 ownedBy none
+findGrownBeyondSlot1 cleanedBy none
+findGrownBeyondSlot1 borrows none
+findGrownBeyondSlot1 catch none
+findGrownBeyondSlot1 suppresses none
+
+readGrownBeyond is call
+readGrownBeyond in alignedRound
+readGrownBeyond invokes machine.loadByte
+readGrownBeyond argument address machine.Address grownBeyondSlot copy
+readGrownBeyond result grownBeyond Byte
+readGrownBeyond ownedBy none
+readGrownBeyond cleanedBy none
+readGrownBeyond borrows none
+readGrownBeyond catch none
+readGrownBeyond suppresses none
+
+readFirstKept is call
+readFirstKept in alignedRound
+readFirstKept invokes convert.byteToInt64
+readFirstKept argument value Byte grownFirst copy
+readFirstKept result firstKept Int64
+readFirstKept ownedBy none
+readFirstKept cleanedBy none
+readFirstKept borrows none
+readFirstKept catch none
+readFirstKept suppresses none
+
+readLastKept is call
+readLastKept in alignedRound
+readLastKept invokes convert.byteToInt64
+readLastKept argument value Byte grownLast copy
+readLastKept result lastKept Int64
+readLastKept ownedBy none
+readLastKept cleanedBy none
+readLastKept borrows none
+readLastKept catch none
+readLastKept suppresses none
+
+readBeyond is call
+readBeyond in alignedRound
+readBeyond invokes convert.byteToInt64
+readBeyond argument value Byte grownBeyond copy
+readBeyond result beyond Int64
+readBeyond ownedBy none
+readBeyond cleanedBy none
+readBeyond borrows none
+readBeyond catch none
+readBeyond suppresses none
+
+check7Step1 is call
+check7Step1 in alignedRound
+check7Step1 invokes compare.equalInt64
+check7Step1 argument left Int64 firstKept copy
+check7Step1 argument right Int64 seven copy
+check7Step1 result check7Part1 Bool
+check7Step1 ownedBy none
+check7Step1 cleanedBy none
+check7Step1 borrows none
+check7Step1 catch none
+check7Step1 suppresses none
+
+check7Step2 is call
+check7Step2 in alignedRound
+check7Step2 invokes compare.equalInt64
+check7Step2 argument left Int64 lastKept copy
+check7Step2 argument right Int64 nine copy
+check7Step2 result check7Part2 Bool
+check7Step2 ownedBy none
+check7Step2 cleanedBy none
+check7Step2 borrows none
+check7Step2 catch none
+check7Step2 suppresses none
+
+check7Step3 is call
+check7Step3 in alignedRound
+check7Step3 invokes logic.and
+check7Step3 argument left Bool check7Part1 copy
+check7Step3 argument right Bool check7Part2 copy
+check7Step3 result check7Part3 Bool
+check7Step3 ownedBy none
+check7Step3 cleanedBy none
+check7Step3 borrows none
+check7Step3 catch none
+check7Step3 suppresses none
+
+check7Step4 is call
+check7Step4 in alignedRound
+check7Step4 invokes compare.equalInt64
+check7Step4 argument left Int64 beyond copy
+check7Step4 argument right Int64 zero copy
+check7Step4 result check7Part4 Bool
+check7Step4 ownedBy none
+check7Step4 cleanedBy none
+check7Step4 borrows none
+check7Step4 catch none
+check7Step4 suppresses none
+
+findCheck71 is call
+findCheck71 in alignedRound
+findCheck71 invokes logic.and
+findCheck71 argument left Bool check7Part3 copy
+findCheck71 argument right Bool check7Part4 copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
+
+readShrunk is call
+readShrunk in alignedRound
+readShrunk invokes clibrary.reallocate
+readShrunk argument block machine.Address grown copy
+readShrunk argument bytes Int64 one copy
+readShrunk result shrunk machine.Address
+readShrunk ownedBy none
+readShrunk cleanedBy none
+readShrunk borrows none
+readShrunk catch none
+readShrunk suppresses none
+
+readShrunkFirst is call
+readShrunkFirst in alignedRound
+readShrunkFirst invokes machine.loadByte
+readShrunkFirst argument address machine.Address shrunk copy
+readShrunkFirst result shrunkFirst Byte
+readShrunkFirst ownedBy none
+readShrunkFirst cleanedBy none
+readShrunkFirst borrows none
+readShrunkFirst catch none
+readShrunkFirst suppresses none
+
+readKeptByte is call
+readKeptByte in alignedRound
+readKeptByte invokes convert.byteToInt64
+readKeptByte argument value Byte shrunkFirst copy
+readKeptByte result keptByte Int64
+readKeptByte ownedBy none
+readKeptByte cleanedBy none
+readKeptByte borrows none
+readKeptByte catch none
+readKeptByte suppresses none
+
+findCheck81 is call
+findCheck81 in alignedRound
+findCheck81 invokes compare.equalInt64
+findCheck81 argument left Int64 keptByte copy
+findCheck81 argument right Int64 seven copy
+findCheck81 result check8 Bool
+findCheck81 ownedBy none
+findCheck81 cleanedBy none
+findCheck81 borrows none
+findCheck81 catch none
+findCheck81 suppresses none
+
+doRelease is call
+doRelease in alignedRound
+doRelease invokes clibrary.release
+doRelease argument block machine.Address shrunk copy
+doRelease result none
+doRelease ownedBy none
+doRelease cleanedBy none
+doRelease borrows none
+doRelease catch none
+doRelease suppresses none
+
+alignedCycles is operation
+alignedCycles purpose "Many rounds of aligned blocks of one size and alignment, as many failures as rounds that failed"
+alignedCycles invariant none
+alignedCycles typeParameter none
+alignedCycles input count Int64 copied
+alignedCycles input alignment Int64 copied
+alignedCycles input size Int64 copied
+alignedCycles output Int64
+alignedCycles outputOwnedBy none
+alignedCycles raises none
+alignedCycles effect use machine.memory
+alignedCycles effect use system.calls
+alignedCycles uses memoryAccess
+alignedCycles uses systemCalls
+alignedCycles memoryHeap false
+alignedCycles async false
+alignedCycles maxRecursion none
+alignedCycles label begin loopKind none
+alignedCycles label begin within none
+alignedCycles label eachRound loopKind while
+alignedCycles label eachRound within none
+alignedCycles label eachRound maxIterations count
+alignedCycles label round loopKind none
+alignedCycles label round within eachRound
+alignedCycles label clean loopKind none
+alignedCycles label clean within eachRound
+alignedCycles label failed loopKind none
+alignedCycles label failed within eachRound
+alignedCycles label finished loopKind none
+alignedCycles label finished within none
+alignedCycles let done Int64 0 mutable
+alignedCycles let failures Int64 0 mutable
+alignedCycles let zero Int64 0 immutable
+alignedCycles let one Int64 1 immutable
+alignedCycles at begin goto eachRound
+alignedCycles at eachRound do findCheck11
+alignedCycles at eachRound branch if check1 goto finished else goto round
+alignedCycles at round do readCode
+alignedCycles at round do findCheck21
+alignedCycles at round branch if check2 goto clean else goto failed
+alignedCycles at clean do findDoneNext11
+alignedCycles at clean set done doneNext1
+alignedCycles at clean goto eachRound
+alignedCycles at failed do findFailuresNext11
+alignedCycles at failed set failures failuresNext1
+alignedCycles at failed do findDoneNext21
+alignedCycles at failed set done doneNext2
+alignedCycles at failed goto eachRound
+alignedCycles at finished return ok failures
+
+findCheck11 is call
+findCheck11 in alignedCycles
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 done copy
+findCheck11 argument right Int64 count copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readCode is call
+readCode in alignedCycles
+readCode invokes alignedRound
+readCode argument alignment Int64 alignment copy
+readCode argument size Int64 size copy
+readCode result code Int64
+readCode ownedBy none
+readCode cleanedBy none
+readCode borrows none
+readCode catch none
+readCode suppresses none
+
+findCheck21 is call
+findCheck21 in alignedCycles
+findCheck21 invokes compare.equalInt64
+findCheck21 argument left Int64 code copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findDoneNext11 is call
+findDoneNext11 in alignedCycles
+findDoneNext11 invokes math.addInt64
+findDoneNext11 argument left Int64 done copy
+findDoneNext11 argument right Int64 one copy
+findDoneNext11 result doneNext1 Int64
+findDoneNext11 ownedBy none
+findDoneNext11 cleanedBy none
+findDoneNext11 borrows none
+findDoneNext11 catch none
+findDoneNext11 suppresses none
+
+findFailuresNext11 is call
+findFailuresNext11 in alignedCycles
+findFailuresNext11 invokes math.addInt64
+findFailuresNext11 argument left Int64 failures copy
+findFailuresNext11 argument right Int64 one copy
+findFailuresNext11 result failuresNext1 Int64
+findFailuresNext11 ownedBy none
+findFailuresNext11 cleanedBy none
+findFailuresNext11 borrows none
+findFailuresNext11 catch none
+findFailuresNext11 suppresses none
+
+findDoneNext21 is call
+findDoneNext21 in alignedCycles
+findDoneNext21 invokes math.addInt64
+findDoneNext21 argument left Int64 done copy
+findDoneNext21 argument right Int64 one copy
+findDoneNext21 result doneNext2 Int64
+findDoneNext21 ownedBy none
+findDoneNext21 cleanedBy none
+findDoneNext21 borrows none
+findDoneNext21 catch none
+findDoneNext21 suppresses none
+
+reusesPlainBlock is operation
+reusesPlainBlock purpose "Whether a plain block taken right after an aligned block of a size is freed is the block the aligned one was cut from (free reached the heap)"
+reusesPlainBlock invariant none
+reusesPlainBlock typeParameter none
+reusesPlainBlock input alignment Int64 copied
+reusesPlainBlock input size Int64 copied
+reusesPlainBlock output Bool
+reusesPlainBlock outputOwnedBy none
+reusesPlainBlock raises none
+reusesPlainBlock effect use machine.memory
+reusesPlainBlock effect use system.calls
+reusesPlainBlock uses memoryAccess
+reusesPlainBlock uses systemCalls
+reusesPlainBlock memoryHeap false
+reusesPlainBlock async false
+reusesPlainBlock maxRecursion none
+reusesPlainBlock label begin loopKind none
+reusesPlainBlock label begin within none
+reusesPlainBlock let sixteen Int64 16 immutable
+reusesPlainBlock at begin do readBlock
+reusesPlainBlock at begin do readOrigin
+reusesPlainBlock at begin do doRelease
+reusesPlainBlock at begin do totalStep1
+reusesPlainBlock at begin do findTotal1
+reusesPlainBlock at begin do readAgain
+reusesPlainBlock at begin do findSame1
+reusesPlainBlock at begin do doGive
+reusesPlainBlock at begin return ok same
+
+readBlock is call
+readBlock in reusesPlainBlock
+readBlock invokes alignedBlock
+readBlock argument alignment Int64 alignment copy
+readBlock argument size Int64 size copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+readOrigin is call
+readOrigin in reusesPlainBlock
+readOrigin invokes clibrary.alignedOrigin
+readOrigin argument block machine.Address block copy
+readOrigin result origin machine.Address
+readOrigin ownedBy none
+readOrigin cleanedBy none
+readOrigin borrows none
+readOrigin catch none
+readOrigin suppresses none
+
+doRelease is call
+doRelease in reusesPlainBlock
+doRelease invokes clibrary.release
+doRelease argument block machine.Address block copy
+doRelease result none
+doRelease ownedBy none
+doRelease cleanedBy none
+doRelease borrows none
+doRelease catch none
+doRelease suppresses none
+
+totalStep1 is call
+totalStep1 in reusesPlainBlock
+totalStep1 invokes math.addInt64
+totalStep1 argument left Int64 size copy
+totalStep1 argument right Int64 alignment copy
+totalStep1 result totalPart1 Int64
+totalStep1 ownedBy none
+totalStep1 cleanedBy none
+totalStep1 borrows none
+totalStep1 catch none
+totalStep1 suppresses none
+
+findTotal1 is call
+findTotal1 in reusesPlainBlock
+findTotal1 invokes math.addInt64
+findTotal1 argument left Int64 totalPart1 copy
+findTotal1 argument right Int64 sixteen copy
+findTotal1 result total Int64
+findTotal1 ownedBy none
+findTotal1 cleanedBy none
+findTotal1 borrows none
+findTotal1 catch none
+findTotal1 suppresses none
+
+readAgain is call
+readAgain in reusesPlainBlock
+readAgain invokes heap.take
+readAgain argument bytes Int64 total copy
+readAgain result again machine.Address
+readAgain ownedBy none
+readAgain cleanedBy none
+readAgain borrows none
+readAgain catch none
+readAgain suppresses none
+
+findSame1 is call
+findSame1 in reusesPlainBlock
+findSame1 invokes machine.equal
+findSame1 argument left machine.Address again copy
+findSame1 argument right machine.Address origin copy
+findSame1 result same Bool
+findSame1 ownedBy none
+findSame1 cleanedBy none
+findSame1 borrows none
+findSame1 catch none
+findSame1 suppresses none
+
+doGive is call
+doGive in reusesPlainBlock
+doGive invokes heap.give
+doGive argument block machine.Address again copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+alignedTest is test
+alignedTest purpose "Aligned blocks at 16 to 65536 bytes are aligned, zeroed, kept by realloc, and given back whole by free, over many rounds"
+alignedTest verifies alignedBlock alignsBlocks
+alignedTest typeParameter none
+alignedTest input none
+alignedTest output none
+alignedTest outputOwnedBy none
+alignedTest raises none
+alignedTest effect use machine.memory
+alignedTest effect use system.calls
+alignedTest uses memoryAccess
+alignedTest uses systemCalls
+alignedTest memoryHeap false
+alignedTest async false
+alignedTest maxRecursion none
+alignedTest label begin loopKind none
+alignedTest label begin within none
+alignedTest let n256 Int64 256 immutable
+alignedTest let ten Int64 10 immutable
+alignedTest let zero Int64 0 immutable
+alignedTest let n40 Int64 40 immutable
+alignedTest let sixteen Int64 16 immutable
+alignedTest let two Int64 2 immutable
+alignedTest let thirtyTwo Int64 32 immutable
+alignedTest let n100 Int64 100 immutable
+alignedTest let sixtyFour Int64 64 immutable
+alignedTest let n4096 Int64 4096 immutable
+alignedTest let n5000 Int64 5000 immutable
+alignedTest let n65536 Int64 65536 immutable
+alignedTest let n70000 Int64 70000 immutable
+alignedTest let n16777216 Int64 16777216 immutable
+alignedTest let n3000000 Int64 3000000 immutable
+alignedTest let n500 Int64 500 immutable
+alignedTest let n1000 Int64 1000 immutable
+alignedTest let n20000 Int64 20000 immutable
+alignedTest let n100000 Int64 100000 immutable
+alignedTest at begin do readNowhere
+alignedTest at begin do readDirect
+alignedTest at begin do readDirectValue
+alignedTest at begin do doAssertEqualInt64Step1
+alignedTest at begin do doAssertEqualInt64
+alignedTest at begin do doRelease
+alignedTest at begin do readPlain
+alignedTest at begin do readNoOrigin
+alignedTest at begin do doAssertTrueStep1
+alignedTest at begin do doAssertTrue
+alignedTest at begin do doRelease2
+alignedTest at begin do readSmallRound
+alignedTest at begin do doAssertEqualInt642
+alignedTest at begin do readThirtyTwoRound
+alignedTest at begin do doAssertEqualInt643
+alignedTest at begin do readSixtyFourRound
+alignedTest at begin do doAssertEqualInt644
+alignedTest at begin do readPageRound
+alignedTest at begin do doAssertEqualInt645
+alignedTest at begin do readWideRound
+alignedTest at begin do doAssertEqualInt646
+alignedTest at begin do readEmptyRound
+alignedTest at begin do doAssertEqualInt647
+alignedTest at begin do readLargeRound
+alignedTest at begin do doAssertEqualInt648
+alignedTest at begin do readMidRound
+alignedTest at begin do doAssertEqualInt649
+alignedTest at begin do readCyclesCount
+alignedTest at begin do doAssertEqualInt6410
+alignedTest at begin do readPagesCount
+alignedTest at begin do doAssertEqualInt6411
+alignedTest at begin do readBigCyclesCount
+alignedTest at begin do doAssertEqualInt6412
+alignedTest at begin do readReusedCount
+alignedTest at begin do doAssertTrue2
+alignedTest at begin return ok none
+
+readNowhere is call
+readNowhere in alignedTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readDirect is call
+readDirect in alignedTest
+readDirect invokes alignedBlock
+readDirect argument alignment Int64 n256 copy
+readDirect argument size Int64 ten copy
+readDirect result direct machine.Address
+readDirect ownedBy none
+readDirect cleanedBy none
+readDirect borrows none
+readDirect catch none
+readDirect suppresses none
+
+readDirectValue is call
+readDirectValue in alignedTest
+readDirectValue invokes machine.toInt64
+readDirectValue argument address machine.Address direct copy
+readDirectValue result directValue Int64
+readDirectValue ownedBy none
+readDirectValue cleanedBy none
+readDirectValue borrows none
+readDirectValue catch none
+readDirectValue suppresses none
+
+doAssertEqualInt64Step1 is call
+doAssertEqualInt64Step1 in alignedTest
+doAssertEqualInt64Step1 invokes math.remainderInt64
+doAssertEqualInt64Step1 argument left Int64 directValue copy
+doAssertEqualInt64Step1 argument right Int64 n256 copy
+doAssertEqualInt64Step1 result doAssertEqualInt64Part1 Int64
+doAssertEqualInt64Step1 ownedBy none
+doAssertEqualInt64Step1 cleanedBy none
+doAssertEqualInt64Step1 borrows none
+doAssertEqualInt64Step1 catch none
+doAssertEqualInt64Step1 suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in alignedTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 zero copy
+doAssertEqualInt64 argument actual Int64 doAssertEqualInt64Part1 copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+doRelease is call
+doRelease in alignedTest
+doRelease invokes clibrary.release
+doRelease argument block machine.Address direct copy
+doRelease result none
+doRelease ownedBy none
+doRelease cleanedBy none
+doRelease borrows none
+doRelease catch none
+doRelease suppresses none
+
+readPlain is call
+readPlain in alignedTest
+readPlain invokes heap.take
+readPlain argument bytes Int64 n40 copy
+readPlain result plain machine.Address
+readPlain ownedBy none
+readPlain cleanedBy none
+readPlain borrows none
+readPlain catch none
+readPlain suppresses none
+
+readNoOrigin is call
+readNoOrigin in alignedTest
+readNoOrigin invokes clibrary.alignedOrigin
+readNoOrigin argument block machine.Address plain copy
+readNoOrigin result noOrigin machine.Address
+readNoOrigin ownedBy none
+readNoOrigin cleanedBy none
+readNoOrigin borrows none
+readNoOrigin catch none
+readNoOrigin suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in alignedTest
+doAssertTrueStep1 invokes machine.equal
+doAssertTrueStep1 argument left machine.Address noOrigin copy
+doAssertTrueStep1 argument right machine.Address nowhere copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in alignedTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+doRelease2 is call
+doRelease2 in alignedTest
+doRelease2 invokes clibrary.release
+doRelease2 argument block machine.Address plain copy
+doRelease2 result none
+doRelease2 ownedBy none
+doRelease2 cleanedBy none
+doRelease2 borrows none
+doRelease2 catch none
+doRelease2 suppresses none
+
+readSmallRound is call
+readSmallRound in alignedTest
+readSmallRound invokes alignedRound
+readSmallRound argument alignment Int64 sixteen copy
+readSmallRound argument size Int64 two copy
+readSmallRound result smallRound Int64
+readSmallRound ownedBy none
+readSmallRound cleanedBy none
+readSmallRound borrows none
+readSmallRound catch none
+readSmallRound suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in alignedTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 zero copy
+doAssertEqualInt642 argument actual Int64 smallRound copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+readThirtyTwoRound is call
+readThirtyTwoRound in alignedTest
+readThirtyTwoRound invokes alignedRound
+readThirtyTwoRound argument alignment Int64 thirtyTwo copy
+readThirtyTwoRound argument size Int64 n100 copy
+readThirtyTwoRound result thirtyTwoRound Int64
+readThirtyTwoRound ownedBy none
+readThirtyTwoRound cleanedBy none
+readThirtyTwoRound borrows none
+readThirtyTwoRound catch none
+readThirtyTwoRound suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in alignedTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 zero copy
+doAssertEqualInt643 argument actual Int64 thirtyTwoRound copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+readSixtyFourRound is call
+readSixtyFourRound in alignedTest
+readSixtyFourRound invokes alignedRound
+readSixtyFourRound argument alignment Int64 sixtyFour copy
+readSixtyFourRound argument size Int64 n100 copy
+readSixtyFourRound result sixtyFourRound Int64
+readSixtyFourRound ownedBy none
+readSixtyFourRound cleanedBy none
+readSixtyFourRound borrows none
+readSixtyFourRound catch none
+readSixtyFourRound suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in alignedTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 zero copy
+doAssertEqualInt644 argument actual Int64 sixtyFourRound copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+readPageRound is call
+readPageRound in alignedTest
+readPageRound invokes alignedRound
+readPageRound argument alignment Int64 n4096 copy
+readPageRound argument size Int64 n5000 copy
+readPageRound result pageRound Int64
+readPageRound ownedBy none
+readPageRound cleanedBy none
+readPageRound borrows none
+readPageRound catch none
+readPageRound suppresses none
+
+doAssertEqualInt645 is call
+doAssertEqualInt645 in alignedTest
+doAssertEqualInt645 invokes test.assertEqualInt64
+doAssertEqualInt645 argument expected Int64 zero copy
+doAssertEqualInt645 argument actual Int64 pageRound copy
+doAssertEqualInt645 result none
+doAssertEqualInt645 ownedBy none
+doAssertEqualInt645 cleanedBy none
+doAssertEqualInt645 borrows none
+doAssertEqualInt645 catch none
+doAssertEqualInt645 suppresses none
+
+readWideRound is call
+readWideRound in alignedTest
+readWideRound invokes alignedRound
+readWideRound argument alignment Int64 n65536 copy
+readWideRound argument size Int64 n70000 copy
+readWideRound result wideRound Int64
+readWideRound ownedBy none
+readWideRound cleanedBy none
+readWideRound borrows none
+readWideRound catch none
+readWideRound suppresses none
+
+doAssertEqualInt646 is call
+doAssertEqualInt646 in alignedTest
+doAssertEqualInt646 invokes test.assertEqualInt64
+doAssertEqualInt646 argument expected Int64 zero copy
+doAssertEqualInt646 argument actual Int64 wideRound copy
+doAssertEqualInt646 result none
+doAssertEqualInt646 ownedBy none
+doAssertEqualInt646 cleanedBy none
+doAssertEqualInt646 borrows none
+doAssertEqualInt646 catch none
+doAssertEqualInt646 suppresses none
+
+readEmptyRound is call
+readEmptyRound in alignedTest
+readEmptyRound invokes alignedRound
+readEmptyRound argument alignment Int64 sixtyFour copy
+readEmptyRound argument size Int64 two copy
+readEmptyRound result emptyRound Int64
+readEmptyRound ownedBy none
+readEmptyRound cleanedBy none
+readEmptyRound borrows none
+readEmptyRound catch none
+readEmptyRound suppresses none
+
+doAssertEqualInt647 is call
+doAssertEqualInt647 in alignedTest
+doAssertEqualInt647 invokes test.assertEqualInt64
+doAssertEqualInt647 argument expected Int64 zero copy
+doAssertEqualInt647 argument actual Int64 emptyRound copy
+doAssertEqualInt647 result none
+doAssertEqualInt647 ownedBy none
+doAssertEqualInt647 cleanedBy none
+doAssertEqualInt647 borrows none
+doAssertEqualInt647 catch none
+doAssertEqualInt647 suppresses none
+
+readLargeRound is call
+readLargeRound in alignedTest
+readLargeRound invokes alignedRound
+readLargeRound argument alignment Int64 n65536 copy
+readLargeRound argument size Int64 n16777216 copy
+readLargeRound result largeRound Int64
+readLargeRound ownedBy none
+readLargeRound cleanedBy none
+readLargeRound borrows none
+readLargeRound catch none
+readLargeRound suppresses none
+
+doAssertEqualInt648 is call
+doAssertEqualInt648 in alignedTest
+doAssertEqualInt648 invokes test.assertEqualInt64
+doAssertEqualInt648 argument expected Int64 zero copy
+doAssertEqualInt648 argument actual Int64 largeRound copy
+doAssertEqualInt648 result none
+doAssertEqualInt648 ownedBy none
+doAssertEqualInt648 cleanedBy none
+doAssertEqualInt648 borrows none
+doAssertEqualInt648 catch none
+doAssertEqualInt648 suppresses none
+
+readMidRound is call
+readMidRound in alignedTest
+readMidRound invokes alignedRound
+readMidRound argument alignment Int64 n4096 copy
+readMidRound argument size Int64 n3000000 copy
+readMidRound result midRound Int64
+readMidRound ownedBy none
+readMidRound cleanedBy none
+readMidRound borrows none
+readMidRound catch none
+readMidRound suppresses none
+
+doAssertEqualInt649 is call
+doAssertEqualInt649 in alignedTest
+doAssertEqualInt649 invokes test.assertEqualInt64
+doAssertEqualInt649 argument expected Int64 zero copy
+doAssertEqualInt649 argument actual Int64 midRound copy
+doAssertEqualInt649 result none
+doAssertEqualInt649 ownedBy none
+doAssertEqualInt649 cleanedBy none
+doAssertEqualInt649 borrows none
+doAssertEqualInt649 catch none
+doAssertEqualInt649 suppresses none
+
+readCyclesCount is call
+readCyclesCount in alignedTest
+readCyclesCount invokes alignedCycles
+readCyclesCount argument count Int64 n500 copy
+readCyclesCount argument alignment Int64 sixtyFour copy
+readCyclesCount argument size Int64 n1000 copy
+readCyclesCount result cyclesCount Int64
+readCyclesCount ownedBy none
+readCyclesCount cleanedBy none
+readCyclesCount borrows none
+readCyclesCount catch none
+readCyclesCount suppresses none
+
+doAssertEqualInt6410 is call
+doAssertEqualInt6410 in alignedTest
+doAssertEqualInt6410 invokes test.assertEqualInt64
+doAssertEqualInt6410 argument expected Int64 zero copy
+doAssertEqualInt6410 argument actual Int64 cyclesCount copy
+doAssertEqualInt6410 result none
+doAssertEqualInt6410 ownedBy none
+doAssertEqualInt6410 cleanedBy none
+doAssertEqualInt6410 borrows none
+doAssertEqualInt6410 catch none
+doAssertEqualInt6410 suppresses none
+
+readPagesCount is call
+readPagesCount in alignedTest
+readPagesCount invokes alignedCycles
+readPagesCount argument count Int64 n500 copy
+readPagesCount argument alignment Int64 n4096 copy
+readPagesCount argument size Int64 n20000 copy
+readPagesCount result pagesCount Int64
+readPagesCount ownedBy none
+readPagesCount cleanedBy none
+readPagesCount borrows none
+readPagesCount catch none
+readPagesCount suppresses none
+
+doAssertEqualInt6411 is call
+doAssertEqualInt6411 in alignedTest
+doAssertEqualInt6411 invokes test.assertEqualInt64
+doAssertEqualInt6411 argument expected Int64 zero copy
+doAssertEqualInt6411 argument actual Int64 pagesCount copy
+doAssertEqualInt6411 result none
+doAssertEqualInt6411 ownedBy none
+doAssertEqualInt6411 cleanedBy none
+doAssertEqualInt6411 borrows none
+doAssertEqualInt6411 catch none
+doAssertEqualInt6411 suppresses none
+
+readBigCyclesCount is call
+readBigCyclesCount in alignedTest
+readBigCyclesCount invokes alignedCycles
+readBigCyclesCount argument count Int64 n40 copy
+readBigCyclesCount argument alignment Int64 n65536 copy
+readBigCyclesCount argument size Int64 n16777216 copy
+readBigCyclesCount result bigCyclesCount Int64
+readBigCyclesCount ownedBy none
+readBigCyclesCount cleanedBy none
+readBigCyclesCount borrows none
+readBigCyclesCount catch none
+readBigCyclesCount suppresses none
+
+doAssertEqualInt6412 is call
+doAssertEqualInt6412 in alignedTest
+doAssertEqualInt6412 invokes test.assertEqualInt64
+doAssertEqualInt6412 argument expected Int64 zero copy
+doAssertEqualInt6412 argument actual Int64 bigCyclesCount copy
+doAssertEqualInt6412 result none
+doAssertEqualInt6412 ownedBy none
+doAssertEqualInt6412 cleanedBy none
+doAssertEqualInt6412 borrows none
+doAssertEqualInt6412 catch none
+doAssertEqualInt6412 suppresses none
+
+readReusedCount is call
+readReusedCount in alignedTest
+readReusedCount invokes reusesPlainBlock
+readReusedCount argument alignment Int64 n4096 copy
+readReusedCount argument size Int64 n100000 copy
+readReusedCount result reusedCount Bool
+readReusedCount ownedBy none
+readReusedCount cleanedBy none
+readReusedCount borrows none
+readReusedCount catch none
+readReusedCount suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in alignedTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool reusedCount copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none

@@ -2945,6 +2945,23 @@ with glibc. Decided by delegation:
   from longjmp(7), then 1 from longjmp(0). No other x86 assembly reaches a Windows executable: the system call
   instruction, the thread pointer (`%fs`), and the start, stack, thread, and signal routines are Linux's.
 
+- **D-193** complex.h's long double forms on Windows: cabsl, cargl, cimagl, creall, conjl, cprojl, cexpl, clogl,
+  cpowl, csqrtl, and the trigonometric and hyperbolic l forms, each the double function itself, since Windows' long
+  double is double (D-174) and so its long double complex is double complex, with the same ABI (D-175); their
+  results are bit for bit the double forms'. An `abi library "<name>" windows` row puts a function in the C library
+  of Windows targets only (shapes.py accepts the word, semantics.library_windows_only reads it, and the code
+  generator leaves such rows out of other targets' table), so on Linux, where long double is x87 or binary128, these
+  names are symbolMissing until complex values of those formats have an ABI of their own.
+- **D-194** aligned_alloc and posix_memalign cooperate with free and realloc (replacing D-183's search on Windows and
+  its leak on Linux). An alignment below 4096 cuts the block from size + 2 alignment + 16 bytes, at least 16 bytes
+  into its page, with a header just below the aligned address (the original block, the size, log2 of the alignment,
+  and a 16-bit tag); free reads a header only for an address at least 16 bytes into its page, where it can be read,
+  and the tag, the alignment bits, and the distance guard against a false match. An alignment of 4096 or more starts
+  a page, where nothing below may be readable, so those blocks are kept in a registry (1024 chains by page number
+  under a spin lock, machine.state 27328 to 27359). free and realloc give back the original block; realloc of an
+  aligned block gives a plain one, as C allows. An ordinary free pays one page-offset test and one load. The aligned
+  size limit is 2^39.
+
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3845,6 +3862,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-190 | The runtime in SemanticScript, the whole C library: strerror built on Windows gives ucrt's message for each error, matched by its symbolic name (by delegation) |
 | 2026-11-15 | D-191 | The runtime in SemanticScript, the whole C library: threads.h on Windows blocks in kernel32's SRW locks and condition variables; `machine.testThreadEntry` for the runtime's thread tests (by delegation) |
 | 2026-11-15 | D-192 | The runtime in SemanticScript, the whole C library: setjmp's and longjmp's Windows x64 routines written as machine code, so x86_64 executables built on ARM64 have them (by delegation) |
+| 2026-11-15 | D-193, D-194 | The runtime in SemanticScript, Windows: complex.h's long double forms (Windows-only C library rows), aligned blocks that free and realloc give back (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

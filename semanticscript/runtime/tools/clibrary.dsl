@@ -1,7 +1,7 @@
 module clibrary "The C standard library written in SemanticScript: what ffi.open of c binds, and what a library the loader maps finds for its C imports (D-153)"
   path clibrary
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.list standard.test kernel memory output heap floats wide
-  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseWholeBinary parseReal runHandlers checkFits errnoCell windowsErrno
+  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseWholeBinary parseReal runHandlers checkFits errnoCell windowsErrno alignedOrigin alignedSize registryAdd reallocate release
 
 capability memoryAccess "Authority to read and write the memory C callers hand the library" use machine.memory none
 
@@ -40,6 +40,12 @@ constant environmentAt "Where the block getenv last gave on Windows is kept, in 
 constant realAt "Where strtod reads a Float64 into, in machine.state" Int64 1608
 
 constant hexBitsAt "Where a hexadecimal strtod puts the bits it made, in machine.state" Int64 1616
+
+constant alignedCountAt "Where the count of recorded aligned blocks (4096 bytes of alignment or more) is kept, in machine.state (27328 to 27359 are this registry's, within cextra's range)" Int64 27328
+
+constant alignedTableAt "Where the address of the registry's 1024 chains is kept" Int64 27336
+
+constant alignedLockAt "Where the registry's spin lock is kept" Int64 27344
 
 constant exitListAt "Where the list of atexit's handlers is kept (its block, how many, how many it holds), in machine.state (D-162)" Int64 27904
 
@@ -2578,7 +2584,239 @@ op allocateZeroed "calloc: a zeroed block for a count of items of a size; the ad
   takeIt: block = allocate(bytes)
   return block
 
-op reallocate "realloc: a block grown or shrunk, its bytes kept; the address 0 gives a new block, and 0 bytes frees the block and gives the address 0"
+op registryLock "Take the lock of the registry of aligned blocks (a spin lock: its sections are a few loads)"
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  word = kernel.stateAt(alignedLockAt)
+  goto attempt
+:attempt loop=while max=9223372036854775807
+  previous = machine.compareExchange32(word, 0, 1)
+  when previous == 0 held again
+:again in=attempt
+  goto attempt
+:held
+  return
+
+op registryUnlock "Give back the lock of the registry of aligned blocks"
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  word = kernel.stateAt(alignedLockAt)
+  released = machine.compareExchange32(word, 1, 0)
+  return
+
+op registryAdd "Record an aligned block cut from a plain one: nodes of 32 bytes (the next node, the aligned address, the plain block's address, the size asked) in 1024 chains by page number, the chains' table made at the first record"
+  invariant recordsBlocks "After a record, alignedOrigin and alignedSize of the aligned address give the plain block and the size"
+  input place machine.Address copied
+  input origin machine.Address copied
+  input size Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  nowhere = machine.zero()
+  node = heap.take(32)
+  calc placeSlot = node + 8
+  machine.storeAddress(placeSlot, place)
+  calc originSlot = node + 16
+  machine.storeAddress(originSlot, origin)
+  calc sizeSlot = node + 24
+  machine.storeInt64(sizeSlot, size)
+  registryLock()
+  tableCell = kernel.stateAt(alignedTableAt)
+  table = machine.loadAddress(tableCell)
+  when table == nowhere makeTable filed
+:makeTable
+  fresh = heap.take(8192)
+  machine.storeAddress(tableCell, fresh)
+  goto filed
+:filed
+  kept = machine.loadAddress(tableCell)
+  value = machine.toInt64(place)
+  calc page = value >> 12
+  calc mixed = page ^ (page >> 10)
+  calc chain = mixed & 1023
+  calc bucket = kept + chain * 8
+  head = machine.loadAddress(bucket)
+  machine.storeAddress(node, head)
+  machine.storeAddress(bucket, node)
+  countCell = kernel.stateAt(alignedCountAt)
+  count = machine.loadInt64(countCell)
+  calc more = count + 1
+  machine.storeInt64(countCell, more)
+  registryUnlock()
+  return
+
+op registryField "A recorded aligned block's plain block (16) or size asked (24), or 0 for an address no record has; 0 at once when none are recorded"
+  input place machine.Address copied
+  input field Int64 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  let linkValue Int64 0 mut
+  let found Int64 0 mut
+:begin
+  countCell = kernel.stateAt(alignedCountAt)
+  count = machine.loadInt64(countCell)
+  when count == 0 empty search
+:empty
+  return 0
+:search
+  registryLock()
+  tableCell = kernel.stateAt(alignedTableAt)
+  table = machine.loadAddress(tableCell)
+  value = machine.toInt64(place)
+  calc page = value >> 12
+  calc mixed = page ^ (page >> 10)
+  calc chain = mixed & 1023
+  calc bucket = table + chain * 8
+  calc linkValue := machine.toInt64(bucket)
+  goto eachNode
+:eachNode loop=while max=9223372036854775807
+  link = machine.fromInt64(linkValue)
+  node = machine.loadInt64(link)
+  when node == 0 finish look
+:look in=eachNode
+  nodeAddress = machine.fromInt64(node)
+  calc placeSlot = nodeAddress + 8
+  recordedPlace = machine.loadInt64(placeSlot)
+  when recordedPlace == value hit next
+:next in=eachNode
+  calc linkValue := node
+  goto eachNode
+:hit
+  calc fieldSlot = nodeAddress + field
+  calc found := machine.loadInt64(fieldSlot)
+  goto finish
+:finish
+  registryUnlock()
+  return found
+
+op registryRemove "Forget a recorded aligned block, giving its record back"
+  input place machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let linkValue Int64 0 mut
+:begin
+  countCell = kernel.stateAt(alignedCountAt)
+  count = machine.loadInt64(countCell)
+  when count == 0 finished search
+:finished
+  return
+:search
+  registryLock()
+  tableCell = kernel.stateAt(alignedTableAt)
+  table = machine.loadAddress(tableCell)
+  value = machine.toInt64(place)
+  calc page = value >> 12
+  calc mixed = page ^ (page >> 10)
+  calc chain = mixed & 1023
+  calc bucket = table + chain * 8
+  calc linkValue := machine.toInt64(bucket)
+  goto eachNode
+:eachNode loop=while max=9223372036854775807
+  link = machine.fromInt64(linkValue)
+  node = machine.loadInt64(link)
+  when node == 0 notFound look
+:look in=eachNode
+  nodeAddress = machine.fromInt64(node)
+  calc placeSlot = nodeAddress + 8
+  recordedPlace = machine.loadInt64(placeSlot)
+  when recordedPlace == value hit next
+:next in=eachNode
+  calc linkValue := node
+  goto eachNode
+:hit
+  following = machine.loadInt64(nodeAddress)
+  machine.storeInt64(link, following)
+  calc remaining = count - 1
+  machine.storeInt64(countCell, remaining)
+  registryUnlock()
+  heap.give(nodeAddress)
+  return
+:notFound
+  registryUnlock()
+  return
+
+op alignedOrigin "The plain heap block an aligned block (aligned_alloc, posix_memalign) was cut from, or the address 0 when the block is not one. Blocks aligned to 32 up to 2048 keep a header 16 bytes before them on their own page (cextra puts them 16 bytes or more into a page): the plain block's address, then the size asked shifted up 24 bits plus the base 2 logarithm of the alignment in bits 16 to 23 and the tag 41242 in bits 0 to 15, checked against the address's alignment and distance. Blocks aligned to 4096 or more, and any block less than 16 bytes into a page (where the 16 bytes before it may be unmapped, as before a large block of the system's heap), are looked up in the registry"
+  invariant findsOrigin "Gives the address 0 for a block that is not aligned, and the plain block a header or a record names"
+  input block machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  nowhere = machine.zero()
+  value = machine.toInt64(block)
+  calc offset = value & 4095
+  when offset >= 16 inPage registered
+:inPage
+  calc tagSlot = block - 8
+  word = machine.loadInt64(tagSlot)
+  calc magic = word & 65535
+  when magic == 41242 checkLog plain
+:checkLog
+  calc log = (word >> 16) & 255
+  when log >= 5 && log <= 11 checkGap plain
+:checkGap
+  calc width = 1 << log
+  calc low = value & (width - 1)
+  calc originSlot = block - 16
+  origin = machine.loadInt64(originSlot)
+  calc gap = value - origin
+  when low == 0 && gap >= 16 && gap <= width * 2 + 16 headerFound plain
+:headerFound
+  fromHeader = machine.fromInt64(origin)
+  return fromHeader
+:registered
+  recorded = registryField(block, 16)
+  when recorded == 0 plain recordFound
+:recordFound
+  fromRecord = machine.fromInt64(recorded)
+  return fromRecord
+:plain
+  return nowhere
+
+op alignedSize "The size asked of an aligned block (alignedOrigin says it is one): from its header, or from its record"
+  invariant readsSize "Gives the size stored with an aligned block, in its header or its record"
+  input block machine.Address copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  value = machine.toInt64(block)
+  calc offset = value & 4095
+  when offset >= 16 inPage registered
+:inPage
+  calc tagSlot = block - 8
+  word = machine.loadInt64(tagSlot)
+  calc size = word >> 24
+  return size
+:registered
+  recorded = registryField(block, 24)
+  return recorded
+
+op forgetAligned "Drop the record of an aligned block that is being given back (a block with a header has none)"
+  input block machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  value = machine.toInt64(block)
+  calc offset = value & 4095
+  when offset >= 16 done forget
+:forget
+  registryRemove(block)
+  return
+:done
+  return
+
+op reallocate "realloc: a block grown or shrunk, its bytes kept; the address 0 gives a new block, and 0 bytes frees the block and gives the address 0. An aligned block (alignedOrigin) moves to a plain one, as glibc's realloc need not keep an alignment past malloc's"
+  invariant keepsBytesOfAnyBlock "Gives a block that holds the first bytes of the old one, up to the smaller size, for a plain block and for an aligned one"
   input block machine.Address copied
   input bytes Int64 copied
   output machine.Address
@@ -2587,6 +2825,7 @@ op reallocate "realloc: a block grown or shrunk, its bytes kept; the address 0 g
   uses memoryAccess
   uses systemCalls
   abi library "realloc"
+  let kept Int64 0 mut
 :begin
   nowhere: anywhere = machine.zero()
   freshCheck: fresh = machine.equal(block, anywhere)
@@ -2598,19 +2837,36 @@ op reallocate "realloc: a block grown or shrunk, its bytes kept; the address 0 g
   emptyCheck: empty = compare.equalInt64(bytes, zero=0)
   if empty freeIt sizeCheck
 :freeIt
-  giveIt: heap.give(block)
+  giveIt: release(block)
   return anywhere
 :sizeCheck
   negativeCheck: tooLarge = compare.lessThanInt64(bytes, zero)
-  if tooLarge refuse resize
+  if tooLarge refuse originCheck
 :refuse
   errnoMemory: setErrno(memoryError)
   return anywhere
+:originCheck
+  origin = alignedOrigin(block)
+  when origin == anywhere resize moveAligned
 :resize
   resizeIt: resized = heap.resize(block, bytes)
   return resized
+:moveAligned
+  oldSize = alignedSize(block)
+  forgetAligned(block)
+  moved = allocate(bytes)
+  set kept oldSize
+  when bytes < oldSize shorter copyIt
+:shorter
+  calc kept := bytes
+  goto copyIt
+:copyIt
+  machine.copy(moved, block, kept)
+  heap.give(origin)
+  return moved
 
-op release "free: give a block malloc gave back; the address 0 is nothing"
+op release "free: give a block malloc gave back (or the plain block an aligned one was cut from); the address 0 is nothing"
+  invariant givesBackAnyBlock "A block malloc or aligned_alloc gave goes back to the heap whole; the address 0 is nothing"
   input block machine.Address copied
   effect use machine.memory
   effect use system.calls
@@ -2618,7 +2874,19 @@ op release "free: give a block malloc gave back; the address 0 is nothing"
   uses systemCalls
   abi library "free"
 :begin
-  giveIt: heap.give(block)
+  nowhere = machine.zero()
+  when block == nowhere done originCheck
+:originCheck
+  origin = alignedOrigin(block)
+  when origin == nowhere plain aligned
+:plain
+  heap.give(block)
+  return
+:aligned
+  forgetAligned(block)
+  heap.give(origin)
+  return
+:done
   return
 
 op errnoLocation "__errno_location: the address of errno, which strtol, strtod, and malloc set"
@@ -4173,6 +4441,78 @@ test lookupTest "The table finds abs and stdout, which holds 1; a name the libra
   findUnset: unsetValue = environmentValue(unsetText)
   unsetCheck: noUnset = machine.equal(unsetValue, anywhere)
   expectUnset: test.assertTrue(noUnset)
+  return
+
+test alignedHeaderTest "A block with the aligned header, or recorded in the registry, gives its plain block back from free and realloc, which keeps its bytes in a plain block; a plain block has neither"
+  verifies alignedOrigin findsOrigin
+  verifies alignedSize readsSize
+  verifies registryAdd recordsBlocks
+  verifies reallocate keepsBytesOfAnyBlock
+  verifies release givesBackAnyBlock
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let moved Int64 0 mut
+:begin
+  nowhere = machine.zero()
+  plain = allocate(100)
+  plainOrigin = alignedOrigin(plain)
+  test.assertTrue(plainOrigin == nowhere)
+  base = allocate(600)
+  baseValue = machine.toInt64(base)
+  calc first = baseValue + 16
+  calc candidate = (first + 63) & (0 - 64)
+  calc pageOffset = candidate & 4095
+  when pageOffset < 16 bumpPlace keepPlace
+:bumpPlace
+  calc moved := candidate + 64
+  goto headed
+:keepPlace
+  calc moved := candidate
+  goto headed
+:headed
+  place = machine.fromInt64(moved)
+  calc originSlot = place - 16
+  machine.storeInt64(originSlot, baseValue)
+  calc tagSlot = place - 8
+  calc tagged = (100 << 24) + (6 << 16) + 41242
+  machine.storeInt64(tagSlot, tagged)
+  machine.storeByte(place, 5)
+  found = alignedOrigin(place)
+  test.assertTrue(found == base)
+  recorded = alignedSize(place)
+  test.assertEqualInt64(100, recorded)
+  grown = reallocate(place, 1000)
+  grownFirst = machine.loadByte(grown)
+  grownWide = convert.byteToInt64(grownFirst)
+  test.assertEqualInt64(5, grownWide)
+  grownOrigin = alignedOrigin(grown)
+  test.assertTrue(grownOrigin == nowhere)
+  release(grown)
+  big = allocate(12288)
+  bigValue = machine.toInt64(big)
+  calc pageStart = (bigValue + 4095) & (0 - 4096)
+  pageAddress = machine.fromInt64(pageStart)
+  recordedBase = allocate(300)
+  noRecord = alignedOrigin(pageAddress)
+  test.assertTrue(noRecord == nowhere)
+  registryAdd(pageAddress, recordedBase, 77)
+  recordFound = alignedOrigin(pageAddress)
+  test.assertTrue(recordFound == recordedBase)
+  recordSize = alignedSize(pageAddress)
+  test.assertEqualInt64(77, recordSize)
+  machine.storeByte(pageAddress, 9)
+  copied = reallocate(pageAddress, 200)
+  copiedFirst = machine.loadByte(copied)
+  copiedWide = convert.byteToInt64(copiedFirst)
+  test.assertEqualInt64(9, copiedWide)
+  gone = alignedOrigin(pageAddress)
+  test.assertTrue(gone == nowhere)
+  release(copied)
+  release(big)
+  release(plain)
+  release(nowhere)
   return
 
 test helpersTest "The pieces the other C library modules call: a byte at an offset, errno set, an int's low 32 bits, and a length bounded"

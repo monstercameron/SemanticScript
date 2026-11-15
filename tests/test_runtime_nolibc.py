@@ -361,7 +361,7 @@ def test_c_library_table_names_glibc_functions():
     names = set()
     for module in C_MODULES:
         with open(os.path.join(RUNTIME, module), encoding="utf-8") as fh:
-            names |= set(re.findall(r'^\w+ abi library "(\w+)"(?: variadic)?$', fh.read(), re.M))
+            names |= set(re.findall(r'^\w+ abi library "(\w+)"(?: (?:variadic|windows))?$', fh.read(), re.M))
     assert names == C_LIBRARY, (names - C_LIBRARY, C_LIBRARY - names)
     for other in os.listdir(RUNTIME):
         if other.endswith(".sem") and other not in C_MODULES:
@@ -454,6 +454,10 @@ C_LIBRARY = {
     "cacosh", "catanh", "conj", "cproj", "cabs", "carg", "creal", "cimag", "cpow", "cexpf", "clogf", "csqrtf",
     "csinf", "ccosf", "ctanf", "casinf", "cacosf", "catanf", "csinhf", "ccoshf", "ctanhf", "casinhf", "cacoshf",
     "catanhf", "conjf", "cprojf", "cabsf", "cargf", "crealf", "cimagf", "cpowf",
+    # complex.h's long double forms (cmathcomplex), rows marked `windows`: Windows's table has them, where long double
+    # complex is double complex; Linux's, with x87 or binary128 parts, are still to come (glibc's libm has the names)
+    "cexpl", "clogl", "csqrtl", "csinl", "ccosl", "ctanl", "casinl", "cacosl", "catanl", "csinhl", "ccoshl", "ctanhl",
+    "casinhl", "cacoshl", "catanhl", "conjl", "cprojl", "cabsl", "cargl", "creall", "cimagl", "cpowl",
     # D-176: wcsftime (cwidetime)
     "wcsftime",
     # D-176: wchar.h's wide streams, in cstreams and cformat
@@ -844,9 +848,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 147 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 150 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "147 of 147 tests passed" in tested.stdout
+    assert "150 of 150 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

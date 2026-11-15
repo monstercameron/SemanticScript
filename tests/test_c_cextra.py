@@ -7,9 +7,12 @@ fractions (ties to even, halfway cases included) with ERANGE as glibc sets it fo
 strtol family follow their C definitions.
 
 Not provided: `imaxdiv`, which returns a 16-byte struct (imaxdiv_t) and waits for struct returns in the ABI rows.
-On Windows a block aligned_alloc or posix_memalign gives for an alignment above 16 comes from probing HeapAlloc until
-an address is aligned (HeapAlloc cannot align), and the block is a plain heap block, so free accepts it; a size too
-large to probe with gives NULL. On Linux a block of a large size aligned above 32 leaks when freed.
+A block aligned_alloc or posix_memalign gives for an alignment above 16 (32 on Linux) is cut from a larger plain block, on
+both systems: below 4096 with a header before it (the plain block's address, the size, the alignment's logarithm, a
+tag), from 4096 up with a record in clibrary's registry (the 16 bytes before a page-aligned block may be unmapped).
+clibrary's free and realloc find the plain block and give it back; a realloc'd block is a plain one. The tour fills
+blocks of up to 16 MiB at alignments up to 65536 and runs thousands of aligned_alloc, realloc, free cycles (the
+first half of the grown block must hold what was written, and none may fail); only Windows runs it.
 
 Checks: the executable with no libc prints what the models compute; on Linux it prints what `refined run` prints,
 which calls glibc; __assert_fail's message and abort are those of glibc; and the library's table holds exactly these

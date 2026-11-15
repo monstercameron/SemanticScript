@@ -36,7 +36,7 @@ systemCalls grants use system.calls none
 # 27903 belong to it: 26880 strtok's save pointer, 26888 whether rand's state is made, 26896 the place of rand's front
 # word, 26904 the cell strtof reads its end into, 26912 to 27159 rand's 31 words (each a UInt64 holding 32 bits),
 # 27168 to 27263 the static struct lconv localeconv gives (glibc's x86_64 layout, 96 bytes), 27264 the texts `.`,
-# and the empty text, and `C` (setlocale's result), 27296 to 27327 the digits __assert_fail writes.
+# and the empty text, and `C` (setlocale's result), 27296 to 27327 the digits __assert_fail writes. 27328 to 27359 are clibrary's registry of aligned blocks (the count, the table, the lock).
 saveAt is constant
 saveAt purpose "Where strtok keeps its save pointer, in machine.state"
 saveAt type Int64
@@ -4467,8 +4467,8 @@ readOlder suppresses none
 
 # ---------------------------------------------------------------- stdlib.h: aligned allocation
 alignedBlock is operation
-alignedBlock purpose "A zeroed block of a size whose address is a multiple of a power of two; the address 0 when there is none. Alignments the runtime's heap gives anyway (16 bytes, 32 on Linux) take a plain block. On Linux a larger one is cut from a block of its own with the header a small block has, so free puts it back on the free list of its size (a large one's munmap fails and its mapping is left); on Windows HeapAlloc cannot align, so blocks are taken together until one is aligned and the others given back"
-alignedBlock invariant none
+alignedBlock purpose "A zeroed block of a size whose address is a multiple of a power of two; the address 0 when there is none. Alignments the runtime's heap gives anyway (16 bytes, 32 on Linux) take a plain block. A larger one is cut from a plain block, the same on Windows and Linux, so clibrary's free and realloc give the plain block back. Below 4096 the plain block is size + 2 * alignment + 16 bytes and the aligned address the first one 16 bytes or more into it and into its page, with a header just before it (the plain block's address, the size asked shifted up 24 bits plus the alignment's base 2 logarithm in bits 16 to 23 and the tag 41242); from 4096 up the plain block is size + alignment + 16 bytes and clibrary's registry records the aligned address (its page start is where the 16 bytes before a block may be unmapped)"
+alignedBlock invariant alignsBlocks "\"Gives a zeroed block of the size asked whose address is a multiple of the alignment, and free of it gives its plain block back\""
 alignedBlock typeParameter none
 alignedBlock input alignment Int64 copied
 alignedBlock input size Int64 copied
@@ -4498,34 +4498,37 @@ alignedBlock label plain loopKind none
 alignedBlock label plain within none
 alignedBlock label refuse loopKind none
 alignedBlock label refuse within none
-alignedBlock label probing loopKind none
-alignedBlock label probing within none
-alignedBlock label linuxSmall loopKind none
-alignedBlock label linuxSmall within none
-alignedBlock label sizing loopKind none
-alignedBlock label sizing within none
-alignedBlock label eachClass loopKind while
-alignedBlock label eachClass within none
-alignedBlock label eachClass maxIterations 8
-alignedBlock label grow loopKind none
-alignedBlock label grow within eachClass
-alignedBlock label classFound loopKind none
-alignedBlock label classFound within none
-alignedBlock label large loopKind none
-alignedBlock label large within none
-alignedBlock label mappedOk loopKind none
-alignedBlock label mappedOk within none
-alignedBlock let classSize Int64 64 mutable
+alignedBlock label wrapped loopKind none
+alignedBlock label wrapped within none
+alignedBlock label headed loopKind none
+alignedBlock label headed within none
+alignedBlock label bump loopKind none
+alignedBlock label bump within none
+alignedBlock label settle loopKind none
+alignedBlock label settle within none
+alignedBlock label eachBit loopKind while
+alignedBlock label eachBit within none
+alignedBlock label eachBit maxIterations 64
+alignedBlock label shift loopKind none
+alignedBlock label shift within eachBit
+alignedBlock label counted loopKind none
+alignedBlock label counted within none
+alignedBlock label registered loopKind none
+alignedBlock label registered within none
+alignedBlock let candidate Int64 0 mutable
+alignedBlock let log Int64 0 mutable
+alignedBlock let rest Int64 0 mutable
 alignedBlock let zero Int64 0 immutable
-alignedBlock let n1099511627776 Int64 1099511627776 immutable
+alignedBlock let n549755813888 Int64 549755813888 immutable
 alignedBlock let thirtyTwo Int64 32 immutable
 alignedBlock let sixteen Int64 16 immutable
 alignedBlock let n4096 Int64 4096 immutable
 alignedBlock let two Int64 2 immutable
 alignedBlock let one Int64 1 immutable
-alignedBlock let eight Int64 8 immutable
-alignedBlock let n4128 Int64 4128 immutable
 alignedBlock let n4095 Int64 4095 immutable
+alignedBlock let eight Int64 8 immutable
+alignedBlock let n24 Int64 24 immutable
+alignedBlock let n41242 Int64 41242 immutable
 alignedBlock at begin do readNowhere
 alignedBlock at begin do findCheck11
 alignedBlock at begin branch if check1 goto refuse else goto sizeCheck
@@ -4536,64 +4539,64 @@ alignedBlock at alignmentCheck branch if check3 goto refuse else goto systemChec
 alignedBlock at systemCheck do readOnLinux
 alignedBlock at systemCheck branch if onLinux goto linuxLimit else goto windowsLimit
 alignedBlock at linuxLimit do findCheck41
-alignedBlock at linuxLimit branch if check4 goto plain else goto linuxSmall
+alignedBlock at linuxLimit branch if check4 goto plain else goto wrapped
 alignedBlock at windowsLimit do findCheck51
-alignedBlock at windowsLimit branch if check5 goto plain else goto probing
+alignedBlock at windowsLimit branch if check5 goto plain else goto wrapped
 alignedBlock at plain do readBlock
 alignedBlock at plain return ok block
 alignedBlock at refuse return ok nowhere
-alignedBlock at probing do readFound
-alignedBlock at probing return ok found
-alignedBlock at linuxSmall do findNeed1
-alignedBlock at linuxSmall do findCheck61
-alignedBlock at linuxSmall branch if check6 goto sizing else goto large
-alignedBlock at sizing goto eachClass
-alignedBlock at eachClass do findCheck71
-alignedBlock at eachClass branch if check7 goto classFound else goto grow
-alignedBlock at grow do findClassSizeNext11
-alignedBlock at grow set classSize classSizeNext1
-alignedBlock at grow goto eachClass
-alignedBlock at classFound do findTotal1
-alignedBlock at classFound do readBase
-alignedBlock at classFound do readBaseValue
-alignedBlock at classFound do findFirst1
-alignedBlock at classFound do findMask1
-alignedBlock at classFound do alignedStep1
-alignedBlock at classFound do alignedStep2
-alignedBlock at classFound do findAligned1
-alignedBlock at classFound do readPlace
-alignedBlock at classFound do headStep1
-alignedBlock at classFound do findHead1
-alignedBlock at classFound do findCapacity1
-alignedBlock at classFound do doStoreInt64
-alignedBlock at classFound do findMappingSlot1
-alignedBlock at classFound do doStoreInt642
-alignedBlock at classFound do findUsedSlot1
-alignedBlock at classFound do doStoreInt643
-alignedBlock at classFound return ok place
-alignedBlock at large do rawStep1
-alignedBlock at large do findRaw1
-alignedBlock at large do pagesStep1
-alignedBlock at large do findPages1
-alignedBlock at large do findMapped1
-alignedBlock at large do readMapping
-alignedBlock at large do findCheck81
-alignedBlock at large branch if check8 goto refuse else goto mappedOk
-alignedBlock at mappedOk do readMappingValue
-alignedBlock at mappedOk do findFirstLarge1
-alignedBlock at mappedOk do findMaskLarge1
-alignedBlock at mappedOk do alignedLargeStep1
-alignedBlock at mappedOk do alignedLargeStep2
-alignedBlock at mappedOk do findAlignedLarge1
-alignedBlock at mappedOk do readPlaceLarge
-alignedBlock at mappedOk do headLargeStep1
-alignedBlock at mappedOk do findHeadLarge1
-alignedBlock at mappedOk do doStoreInt644
-alignedBlock at mappedOk do findMappingLarge1
-alignedBlock at mappedOk do doStoreInt645
-alignedBlock at mappedOk do findUsedLarge1
-alignedBlock at mappedOk do doStoreInt646
-alignedBlock at mappedOk return ok placeLarge
+alignedBlock at wrapped do findCheck61
+alignedBlock at wrapped branch if check6 goto registered else goto headed
+alignedBlock at headed do totalStep1
+alignedBlock at headed do totalStep2
+alignedBlock at headed do findTotal1
+alignedBlock at headed do readBase
+alignedBlock at headed do readBaseValue
+alignedBlock at headed do findFirst1
+alignedBlock at headed do findMask1
+alignedBlock at headed do candidateStep1
+alignedBlock at headed do candidateStep2
+alignedBlock at headed do findCandidateNext11
+alignedBlock at headed set candidate candidateNext1
+alignedBlock at headed do findPageOffset1
+alignedBlock at headed do findCheck71
+alignedBlock at headed branch if check7 goto bump else goto settle
+alignedBlock at bump do findCandidateNext21
+alignedBlock at bump set candidate candidateNext2
+alignedBlock at bump goto settle
+alignedBlock at settle set rest alignment
+alignedBlock at settle goto eachBit
+alignedBlock at eachBit do findCheck81
+alignedBlock at eachBit branch if check8 goto shift else goto counted
+alignedBlock at shift do findRestNext11
+alignedBlock at shift set rest restNext1
+alignedBlock at shift do findLogNext11
+alignedBlock at shift set log logNext1
+alignedBlock at shift goto eachBit
+alignedBlock at counted do readPlace
+alignedBlock at counted do originSlotStep1
+alignedBlock at counted do findOriginSlot1
+alignedBlock at counted do doStoreInt64
+alignedBlock at counted do tagSlotStep1
+alignedBlock at counted do findTagSlot1
+alignedBlock at counted do taggedStep1
+alignedBlock at counted do taggedStep2
+alignedBlock at counted do taggedStep3
+alignedBlock at counted do findTagged1
+alignedBlock at counted do doStoreInt642
+alignedBlock at counted return ok place
+alignedBlock at registered do bigTotalStep1
+alignedBlock at registered do findBigTotal1
+alignedBlock at registered do readBigBase
+alignedBlock at registered do readBigValue
+alignedBlock at registered do findBigFirst1
+alignedBlock at registered do findBigMask1
+alignedBlock at registered do bigAlignedStep1
+alignedBlock at registered do bigAlignedStep2
+alignedBlock at registered do findBigAligned1
+alignedBlock at registered do readBigPlace
+alignedBlock at registered do doRegistryAdd
+alignedBlock at registered return ok bigPlace
 
 readNowhere is call
 readNowhere in alignedBlock
@@ -4622,7 +4625,7 @@ findCheck21 is call
 findCheck21 in alignedBlock
 findCheck21 invokes compare.greaterThanInt64
 findCheck21 argument left Int64 size copy
-findCheck21 argument right Int64 n1099511627776 copy
+findCheck21 argument right Int64 n549755813888 copy
 findCheck21 result check2 Bool
 findCheck21 ownedBy none
 findCheck21 cleanedBy none
@@ -4634,7 +4637,7 @@ findCheck31 is call
 findCheck31 in alignedBlock
 findCheck31 invokes compare.greaterThanInt64
 findCheck31 argument left Int64 alignment copy
-findCheck31 argument right Int64 n1099511627776 copy
+findCheck31 argument right Int64 n549755813888 copy
 findCheck31 result check3 Bool
 findCheck31 ownedBy none
 findCheck31 cleanedBy none
@@ -4688,34 +4691,10 @@ readBlock borrows none
 readBlock catch none
 readBlock suppresses none
 
-readFound is call
-readFound in alignedBlock
-readFound invokes probeAligned
-readFound argument alignment Int64 alignment copy
-readFound argument size Int64 size copy
-readFound result found machine.Address
-readFound ownedBy none
-readFound cleanedBy none
-readFound borrows none
-readFound catch none
-readFound suppresses none
-
-findNeed1 is call
-findNeed1 in alignedBlock
-findNeed1 invokes math.addInt64
-findNeed1 argument left Int64 size copy
-findNeed1 argument right Int64 thirtyTwo copy
-findNeed1 result need Int64
-findNeed1 ownedBy none
-findNeed1 cleanedBy none
-findNeed1 borrows none
-findNeed1 catch none
-findNeed1 suppresses none
-
 findCheck61 is call
 findCheck61 in alignedBlock
-findCheck61 invokes compare.lessOrEqualInt64
-findCheck61 argument left Int64 need copy
+findCheck61 invokes compare.greaterOrEqualInt64
+findCheck61 argument left Int64 alignment copy
 findCheck61 argument right Int64 n4096 copy
 findCheck61 result check6 Bool
 findCheck61 ownedBy none
@@ -4724,35 +4703,35 @@ findCheck61 borrows none
 findCheck61 catch none
 findCheck61 suppresses none
 
-findCheck71 is call
-findCheck71 in alignedBlock
-findCheck71 invokes compare.greaterOrEqualInt64
-findCheck71 argument left Int64 classSize copy
-findCheck71 argument right Int64 need copy
-findCheck71 result check7 Bool
-findCheck71 ownedBy none
-findCheck71 cleanedBy none
-findCheck71 borrows none
-findCheck71 catch none
-findCheck71 suppresses none
+totalStep1 is call
+totalStep1 in alignedBlock
+totalStep1 invokes math.multiplyInt64
+totalStep1 argument left Int64 alignment copy
+totalStep1 argument right Int64 two copy
+totalStep1 result totalPart1 Int64
+totalStep1 ownedBy none
+totalStep1 cleanedBy none
+totalStep1 borrows none
+totalStep1 catch none
+totalStep1 suppresses none
 
-findClassSizeNext11 is call
-findClassSizeNext11 in alignedBlock
-findClassSizeNext11 invokes math.multiplyInt64
-findClassSizeNext11 argument left Int64 classSize copy
-findClassSizeNext11 argument right Int64 two copy
-findClassSizeNext11 result classSizeNext1 Int64
-findClassSizeNext11 ownedBy none
-findClassSizeNext11 cleanedBy none
-findClassSizeNext11 borrows none
-findClassSizeNext11 catch none
-findClassSizeNext11 suppresses none
+totalStep2 is call
+totalStep2 in alignedBlock
+totalStep2 invokes math.addInt64
+totalStep2 argument left Int64 size copy
+totalStep2 argument right Int64 totalPart1 copy
+totalStep2 result totalPart2 Int64
+totalStep2 ownedBy none
+totalStep2 cleanedBy none
+totalStep2 borrows none
+totalStep2 catch none
+totalStep2 suppresses none
 
 findTotal1 is call
 findTotal1 in alignedBlock
 findTotal1 invokes math.addInt64
-findTotal1 argument left Int64 classSize copy
-findTotal1 argument right Int64 alignment copy
+findTotal1 argument left Int64 totalPart2 copy
+findTotal1 argument right Int64 sixteen copy
 findTotal1 result total Int64
 findTotal1 ownedBy none
 findTotal1 cleanedBy none
@@ -4786,7 +4765,7 @@ findFirst1 is call
 findFirst1 in alignedBlock
 findFirst1 invokes math.addInt64
 findFirst1 argument left Int64 baseValue copy
-findFirst1 argument right Int64 thirtyTwo copy
+findFirst1 argument right Int64 sixteen copy
 findFirst1 result first Int64
 findFirst1 ownedBy none
 findFirst1 cleanedBy none
@@ -4806,224 +4785,83 @@ findMask1 borrows none
 findMask1 catch none
 findMask1 suppresses none
 
-alignedStep1 is call
-alignedStep1 in alignedBlock
-alignedStep1 invokes math.addInt64
-alignedStep1 argument left Int64 first copy
-alignedStep1 argument right Int64 alignment copy
-alignedStep1 result alignedPart1 Int64
-alignedStep1 ownedBy none
-alignedStep1 cleanedBy none
-alignedStep1 borrows none
-alignedStep1 catch none
-alignedStep1 suppresses none
+candidateStep1 is call
+candidateStep1 in alignedBlock
+candidateStep1 invokes math.addInt64
+candidateStep1 argument left Int64 first copy
+candidateStep1 argument right Int64 alignment copy
+candidateStep1 result candidatePart1 Int64
+candidateStep1 ownedBy none
+candidateStep1 cleanedBy none
+candidateStep1 borrows none
+candidateStep1 catch none
+candidateStep1 suppresses none
 
-alignedStep2 is call
-alignedStep2 in alignedBlock
-alignedStep2 invokes math.subtractInt64
-alignedStep2 argument left Int64 alignedPart1 copy
-alignedStep2 argument right Int64 one copy
-alignedStep2 result alignedPart2 Int64
-alignedStep2 ownedBy none
-alignedStep2 cleanedBy none
-alignedStep2 borrows none
-alignedStep2 catch none
-alignedStep2 suppresses none
+candidateStep2 is call
+candidateStep2 in alignedBlock
+candidateStep2 invokes math.subtractInt64
+candidateStep2 argument left Int64 candidatePart1 copy
+candidateStep2 argument right Int64 one copy
+candidateStep2 result candidatePart2 Int64
+candidateStep2 ownedBy none
+candidateStep2 cleanedBy none
+candidateStep2 borrows none
+candidateStep2 catch none
+candidateStep2 suppresses none
 
-findAligned1 is call
-findAligned1 in alignedBlock
-findAligned1 invokes bits.andInt64
-findAligned1 argument left Int64 alignedPart2 copy
-findAligned1 argument right Int64 mask copy
-findAligned1 result aligned Int64
-findAligned1 ownedBy none
-findAligned1 cleanedBy none
-findAligned1 borrows none
-findAligned1 catch none
-findAligned1 suppresses none
+findCandidateNext11 is call
+findCandidateNext11 in alignedBlock
+findCandidateNext11 invokes bits.andInt64
+findCandidateNext11 argument left Int64 candidatePart2 copy
+findCandidateNext11 argument right Int64 mask copy
+findCandidateNext11 result candidateNext1 Int64
+findCandidateNext11 ownedBy none
+findCandidateNext11 cleanedBy none
+findCandidateNext11 borrows none
+findCandidateNext11 catch none
+findCandidateNext11 suppresses none
 
-readPlace is call
-readPlace in alignedBlock
-readPlace invokes machine.fromInt64
-readPlace argument value Int64 aligned copy
-readPlace result place machine.Address
-readPlace ownedBy none
-readPlace cleanedBy none
-readPlace borrows none
-readPlace catch none
-readPlace suppresses none
+findPageOffset1 is call
+findPageOffset1 in alignedBlock
+findPageOffset1 invokes bits.andInt64
+findPageOffset1 argument left Int64 candidate copy
+findPageOffset1 argument right Int64 n4095 copy
+findPageOffset1 result pageOffset Int64
+findPageOffset1 ownedBy none
+findPageOffset1 cleanedBy none
+findPageOffset1 borrows none
+findPageOffset1 catch none
+findPageOffset1 suppresses none
 
-headStep1 is call
-headStep1 in alignedBlock
-headStep1 invokes math.negateInt64
-headStep1 argument value Int64 thirtyTwo copy
-headStep1 result headPart1 Int64
-headStep1 ownedBy none
-headStep1 cleanedBy none
-headStep1 borrows none
-headStep1 catch none
-headStep1 suppresses none
+findCheck71 is call
+findCheck71 in alignedBlock
+findCheck71 invokes compare.lessThanInt64
+findCheck71 argument left Int64 pageOffset copy
+findCheck71 argument right Int64 sixteen copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
 
-findHead1 is call
-findHead1 in alignedBlock
-findHead1 invokes machine.offset
-findHead1 argument address machine.Address place copy
-findHead1 argument bytes Int64 headPart1 copy
-findHead1 result head machine.Address
-findHead1 ownedBy none
-findHead1 cleanedBy none
-findHead1 borrows none
-findHead1 catch none
-findHead1 suppresses none
-
-findCapacity1 is call
-findCapacity1 in alignedBlock
-findCapacity1 invokes math.subtractInt64
-findCapacity1 argument left Int64 classSize copy
-findCapacity1 argument right Int64 thirtyTwo copy
-findCapacity1 result capacity Int64
-findCapacity1 ownedBy none
-findCapacity1 cleanedBy none
-findCapacity1 borrows none
-findCapacity1 catch none
-findCapacity1 suppresses none
-
-doStoreInt64 is call
-doStoreInt64 in alignedBlock
-doStoreInt64 invokes machine.storeInt64
-doStoreInt64 argument address machine.Address head copy
-doStoreInt64 argument value Int64 capacity copy
-doStoreInt64 result none
-doStoreInt64 ownedBy none
-doStoreInt64 cleanedBy none
-doStoreInt64 borrows none
-doStoreInt64 catch none
-doStoreInt64 suppresses none
-
-findMappingSlot1 is call
-findMappingSlot1 in alignedBlock
-findMappingSlot1 invokes machine.offset
-findMappingSlot1 argument address machine.Address head copy
-findMappingSlot1 argument bytes Int64 eight copy
-findMappingSlot1 result mappingSlot machine.Address
-findMappingSlot1 ownedBy none
-findMappingSlot1 cleanedBy none
-findMappingSlot1 borrows none
-findMappingSlot1 catch none
-findMappingSlot1 suppresses none
-
-doStoreInt642 is call
-doStoreInt642 in alignedBlock
-doStoreInt642 invokes machine.storeInt64
-doStoreInt642 argument address machine.Address mappingSlot copy
-doStoreInt642 argument value Int64 zero copy
-doStoreInt642 result none
-doStoreInt642 ownedBy none
-doStoreInt642 cleanedBy none
-doStoreInt642 borrows none
-doStoreInt642 catch none
-doStoreInt642 suppresses none
-
-findUsedSlot1 is call
-findUsedSlot1 in alignedBlock
-findUsedSlot1 invokes machine.offset
-findUsedSlot1 argument address machine.Address head copy
-findUsedSlot1 argument bytes Int64 sixteen copy
-findUsedSlot1 result usedSlot machine.Address
-findUsedSlot1 ownedBy none
-findUsedSlot1 cleanedBy none
-findUsedSlot1 borrows none
-findUsedSlot1 catch none
-findUsedSlot1 suppresses none
-
-doStoreInt643 is call
-doStoreInt643 in alignedBlock
-doStoreInt643 invokes machine.storeInt64
-doStoreInt643 argument address machine.Address usedSlot copy
-doStoreInt643 argument value Int64 size copy
-doStoreInt643 result none
-doStoreInt643 ownedBy none
-doStoreInt643 cleanedBy none
-doStoreInt643 borrows none
-doStoreInt643 catch none
-doStoreInt643 suppresses none
-
-rawStep1 is call
-rawStep1 in alignedBlock
-rawStep1 invokes math.addInt64
-rawStep1 argument left Int64 size copy
-rawStep1 argument right Int64 alignment copy
-rawStep1 result rawPart1 Int64
-rawStep1 ownedBy none
-rawStep1 cleanedBy none
-rawStep1 borrows none
-rawStep1 catch none
-rawStep1 suppresses none
-
-findRaw1 is call
-findRaw1 in alignedBlock
-findRaw1 invokes math.addInt64
-findRaw1 argument left Int64 rawPart1 copy
-findRaw1 argument right Int64 n4128 copy
-findRaw1 result raw Int64
-findRaw1 ownedBy none
-findRaw1 cleanedBy none
-findRaw1 borrows none
-findRaw1 catch none
-findRaw1 suppresses none
-
-pagesStep1 is call
-pagesStep1 in alignedBlock
-pagesStep1 invokes math.addInt64
-pagesStep1 argument left Int64 raw copy
-pagesStep1 argument right Int64 n4095 copy
-pagesStep1 result pagesPart1 Int64
-pagesStep1 ownedBy none
-pagesStep1 cleanedBy none
-pagesStep1 borrows none
-pagesStep1 catch none
-pagesStep1 suppresses none
-
-findPages1 is call
-findPages1 in alignedBlock
-findPages1 invokes math.divideInt64
-findPages1 argument left Int64 pagesPart1 copy
-findPages1 argument right Int64 n4096 copy
-findPages1 result pages Int64
-findPages1 ownedBy none
-findPages1 cleanedBy none
-findPages1 borrows none
-findPages1 catch none
-findPages1 suppresses none
-
-findMapped1 is call
-findMapped1 in alignedBlock
-findMapped1 invokes math.multiplyInt64
-findMapped1 argument left Int64 pages copy
-findMapped1 argument right Int64 n4096 copy
-findMapped1 result mapped Int64
-findMapped1 ownedBy none
-findMapped1 cleanedBy none
-findMapped1 borrows none
-findMapped1 catch none
-findMapped1 suppresses none
-
-readMapping is call
-readMapping in alignedBlock
-readMapping invokes kernel.mapMemory
-readMapping argument bytes Int64 mapped copy
-readMapping result mapping machine.Address
-readMapping ownedBy none
-readMapping cleanedBy none
-readMapping borrows none
-readMapping catch none
-readMapping suppresses none
+findCandidateNext21 is call
+findCandidateNext21 in alignedBlock
+findCandidateNext21 invokes math.addInt64
+findCandidateNext21 argument left Int64 candidate copy
+findCandidateNext21 argument right Int64 alignment copy
+findCandidateNext21 result candidateNext2 Int64
+findCandidateNext21 ownedBy none
+findCandidateNext21 cleanedBy none
+findCandidateNext21 borrows none
+findCandidateNext21 catch none
+findCandidateNext21 suppresses none
 
 findCheck81 is call
 findCheck81 in alignedBlock
-findCheck81 invokes machine.equal
-findCheck81 argument left machine.Address mapping copy
-findCheck81 argument right machine.Address nowhere copy
+findCheck81 invokes compare.greaterThanInt64
+findCheck81 argument left Int64 rest copy
+findCheck81 argument right Int64 one copy
 findCheck81 result check8 Bool
 findCheck81 ownedBy none
 findCheck81 cleanedBy none
@@ -5031,569 +4869,69 @@ findCheck81 borrows none
 findCheck81 catch none
 findCheck81 suppresses none
 
-readMappingValue is call
-readMappingValue in alignedBlock
-readMappingValue invokes machine.toInt64
-readMappingValue argument address machine.Address mapping copy
-readMappingValue result mappingValue Int64
-readMappingValue ownedBy none
-readMappingValue cleanedBy none
-readMappingValue borrows none
-readMappingValue catch none
-readMappingValue suppresses none
+findRestNext11 is call
+findRestNext11 in alignedBlock
+findRestNext11 invokes bits.shiftRightInt64
+findRestNext11 argument value Int64 rest copy
+findRestNext11 argument amount Int64 one copy
+findRestNext11 result restNext1 Int64
+findRestNext11 ownedBy none
+findRestNext11 cleanedBy none
+findRestNext11 borrows none
+findRestNext11 catch none
+findRestNext11 suppresses none
 
-findFirstLarge1 is call
-findFirstLarge1 in alignedBlock
-findFirstLarge1 invokes math.addInt64
-findFirstLarge1 argument left Int64 mappingValue copy
-findFirstLarge1 argument right Int64 thirtyTwo copy
-findFirstLarge1 result firstLarge Int64
-findFirstLarge1 ownedBy none
-findFirstLarge1 cleanedBy none
-findFirstLarge1 borrows none
-findFirstLarge1 catch none
-findFirstLarge1 suppresses none
+findLogNext11 is call
+findLogNext11 in alignedBlock
+findLogNext11 invokes math.addInt64
+findLogNext11 argument left Int64 log copy
+findLogNext11 argument right Int64 one copy
+findLogNext11 result logNext1 Int64
+findLogNext11 ownedBy none
+findLogNext11 cleanedBy none
+findLogNext11 borrows none
+findLogNext11 catch none
+findLogNext11 suppresses none
 
-findMaskLarge1 is call
-findMaskLarge1 in alignedBlock
-findMaskLarge1 invokes math.subtractInt64
-findMaskLarge1 argument left Int64 zero copy
-findMaskLarge1 argument right Int64 alignment copy
-findMaskLarge1 result maskLarge Int64
-findMaskLarge1 ownedBy none
-findMaskLarge1 cleanedBy none
-findMaskLarge1 borrows none
-findMaskLarge1 catch none
-findMaskLarge1 suppresses none
+readPlace is call
+readPlace in alignedBlock
+readPlace invokes machine.fromInt64
+readPlace argument value Int64 candidate copy
+readPlace result place machine.Address
+readPlace ownedBy none
+readPlace cleanedBy none
+readPlace borrows none
+readPlace catch none
+readPlace suppresses none
 
-alignedLargeStep1 is call
-alignedLargeStep1 in alignedBlock
-alignedLargeStep1 invokes math.addInt64
-alignedLargeStep1 argument left Int64 firstLarge copy
-alignedLargeStep1 argument right Int64 alignment copy
-alignedLargeStep1 result alignedLargePart1 Int64
-alignedLargeStep1 ownedBy none
-alignedLargeStep1 cleanedBy none
-alignedLargeStep1 borrows none
-alignedLargeStep1 catch none
-alignedLargeStep1 suppresses none
+originSlotStep1 is call
+originSlotStep1 in alignedBlock
+originSlotStep1 invokes math.negateInt64
+originSlotStep1 argument value Int64 sixteen copy
+originSlotStep1 result originSlotPart1 Int64
+originSlotStep1 ownedBy none
+originSlotStep1 cleanedBy none
+originSlotStep1 borrows none
+originSlotStep1 catch none
+originSlotStep1 suppresses none
 
-alignedLargeStep2 is call
-alignedLargeStep2 in alignedBlock
-alignedLargeStep2 invokes math.subtractInt64
-alignedLargeStep2 argument left Int64 alignedLargePart1 copy
-alignedLargeStep2 argument right Int64 one copy
-alignedLargeStep2 result alignedLargePart2 Int64
-alignedLargeStep2 ownedBy none
-alignedLargeStep2 cleanedBy none
-alignedLargeStep2 borrows none
-alignedLargeStep2 catch none
-alignedLargeStep2 suppresses none
-
-findAlignedLarge1 is call
-findAlignedLarge1 in alignedBlock
-findAlignedLarge1 invokes bits.andInt64
-findAlignedLarge1 argument left Int64 alignedLargePart2 copy
-findAlignedLarge1 argument right Int64 maskLarge copy
-findAlignedLarge1 result alignedLarge Int64
-findAlignedLarge1 ownedBy none
-findAlignedLarge1 cleanedBy none
-findAlignedLarge1 borrows none
-findAlignedLarge1 catch none
-findAlignedLarge1 suppresses none
-
-readPlaceLarge is call
-readPlaceLarge in alignedBlock
-readPlaceLarge invokes machine.fromInt64
-readPlaceLarge argument value Int64 alignedLarge copy
-readPlaceLarge result placeLarge machine.Address
-readPlaceLarge ownedBy none
-readPlaceLarge cleanedBy none
-readPlaceLarge borrows none
-readPlaceLarge catch none
-readPlaceLarge suppresses none
-
-headLargeStep1 is call
-headLargeStep1 in alignedBlock
-headLargeStep1 invokes math.negateInt64
-headLargeStep1 argument value Int64 thirtyTwo copy
-headLargeStep1 result headLargePart1 Int64
-headLargeStep1 ownedBy none
-headLargeStep1 cleanedBy none
-headLargeStep1 borrows none
-headLargeStep1 catch none
-headLargeStep1 suppresses none
-
-findHeadLarge1 is call
-findHeadLarge1 in alignedBlock
-findHeadLarge1 invokes machine.offset
-findHeadLarge1 argument address machine.Address placeLarge copy
-findHeadLarge1 argument bytes Int64 headLargePart1 copy
-findHeadLarge1 result headLarge machine.Address
-findHeadLarge1 ownedBy none
-findHeadLarge1 cleanedBy none
-findHeadLarge1 borrows none
-findHeadLarge1 catch none
-findHeadLarge1 suppresses none
-
-doStoreInt644 is call
-doStoreInt644 in alignedBlock
-doStoreInt644 invokes machine.storeInt64
-doStoreInt644 argument address machine.Address headLarge copy
-doStoreInt644 argument value Int64 size copy
-doStoreInt644 result none
-doStoreInt644 ownedBy none
-doStoreInt644 cleanedBy none
-doStoreInt644 borrows none
-doStoreInt644 catch none
-doStoreInt644 suppresses none
-
-findMappingLarge1 is call
-findMappingLarge1 in alignedBlock
-findMappingLarge1 invokes machine.offset
-findMappingLarge1 argument address machine.Address headLarge copy
-findMappingLarge1 argument bytes Int64 eight copy
-findMappingLarge1 result mappingLarge machine.Address
-findMappingLarge1 ownedBy none
-findMappingLarge1 cleanedBy none
-findMappingLarge1 borrows none
-findMappingLarge1 catch none
-findMappingLarge1 suppresses none
-
-doStoreInt645 is call
-doStoreInt645 in alignedBlock
-doStoreInt645 invokes machine.storeInt64
-doStoreInt645 argument address machine.Address mappingLarge copy
-doStoreInt645 argument value Int64 mapped copy
-doStoreInt645 result none
-doStoreInt645 ownedBy none
-doStoreInt645 cleanedBy none
-doStoreInt645 borrows none
-doStoreInt645 catch none
-doStoreInt645 suppresses none
-
-findUsedLarge1 is call
-findUsedLarge1 in alignedBlock
-findUsedLarge1 invokes machine.offset
-findUsedLarge1 argument address machine.Address headLarge copy
-findUsedLarge1 argument bytes Int64 sixteen copy
-findUsedLarge1 result usedLarge machine.Address
-findUsedLarge1 ownedBy none
-findUsedLarge1 cleanedBy none
-findUsedLarge1 borrows none
-findUsedLarge1 catch none
-findUsedLarge1 suppresses none
-
-doStoreInt646 is call
-doStoreInt646 in alignedBlock
-doStoreInt646 invokes machine.storeInt64
-doStoreInt646 argument address machine.Address usedLarge copy
-doStoreInt646 argument value Int64 size copy
-doStoreInt646 result none
-doStoreInt646 ownedBy none
-doStoreInt646 cleanedBy none
-doStoreInt646 borrows none
-doStoreInt646 catch none
-doStoreInt646 suppresses none
-
-probeAligned is operation
-probeAligned purpose "On Windows: take blocks of about a size, all held at once, until one has an aligned address, then give the others back; the address 0 when none of up to 2048 (fewer for a large size) does"
-probeAligned invariant none
-probeAligned typeParameter none
-probeAligned input alignment Int64 copied
-probeAligned input size Int64 copied
-probeAligned output machine.Address
-probeAligned outputOwnedBy none
-probeAligned raises none
-probeAligned effect use machine.memory
-probeAligned effect use system.calls
-probeAligned uses memoryAccess
-probeAligned uses systemCalls
-probeAligned memoryHeap false
-probeAligned async false
-probeAligned maxRecursion none
-probeAligned label begin loopKind none
-probeAligned label begin within none
-probeAligned label capLimit loopKind none
-probeAligned label capLimit within none
-probeAligned label roomCheck loopKind none
-probeAligned label roomCheck within none
-probeAligned label minimumRoom loopKind none
-probeAligned label minimumRoom within none
-probeAligned label roomApply loopKind none
-probeAligned label roomApply within none
-probeAligned label trimLimit loopKind none
-probeAligned label trimLimit within none
-probeAligned label start loopKind none
-probeAligned label start within none
-probeAligned label eachProbe loopKind while
-probeAligned label eachProbe within none
-probeAligned label eachProbe maxIterations 2048
-probeAligned label probe loopKind none
-probeAligned label probe within eachProbe
-probeAligned label aligned loopKind none
-probeAligned label aligned within eachProbe
-probeAligned label keep loopKind none
-probeAligned label keep within eachProbe
-probeAligned label gather loopKind none
-probeAligned label gather within none
-probeAligned label eachClear loopKind while
-probeAligned label eachClear within none
-probeAligned label eachClear maxIterations 2048
-probeAligned label give loopKind none
-probeAligned label give within eachClear
-probeAligned label release loopKind none
-probeAligned label release within none
-probeAligned let at Int64 0 mutable
-probeAligned let foundValue Int64 0 mutable
-probeAligned let limit Int64 0 mutable
-probeAligned let clearing Int64 0 mutable
-probeAligned let room Int64 0 mutable
-probeAligned let sixteen Int64 16 immutable
-probeAligned let four Int64 4 immutable
-probeAligned let n67108864 Int64 67108864 immutable
-probeAligned let n512 Int64 512 immutable
-probeAligned let n2048 Int64 2048 immutable
-probeAligned let one Int64 1 immutable
-probeAligned let eight Int64 8 immutable
-probeAligned let seven Int64 7 immutable
-probeAligned let n17 Int64 17 immutable
-probeAligned let zero Int64 0 immutable
-probeAligned at begin do readNowhere
-probeAligned at begin do wantedStep1
-probeAligned at begin do wantedStep2
-probeAligned at begin do findWanted1
-probeAligned at begin do roomStep1
-probeAligned at begin do findRoomNext11
-probeAligned at begin set room roomNext1
-probeAligned at begin set limit wanted
-probeAligned at begin do findCheck11
-probeAligned at begin branch if check1 goto capLimit else goto roomCheck
-probeAligned at capLimit set limit n2048
-probeAligned at capLimit goto roomCheck
-probeAligned at roomCheck do findCheck21
-probeAligned at roomCheck branch if check2 goto minimumRoom else goto roomApply
-probeAligned at minimumRoom set room one
-probeAligned at minimumRoom goto roomApply
-probeAligned at roomApply do findCheck31
-probeAligned at roomApply branch if check3 goto trimLimit else goto start
-probeAligned at trimLimit set limit room
-probeAligned at trimLimit goto start
-probeAligned at start do findListBytes1
-probeAligned at start do readList
-probeAligned at start do findMask1
-probeAligned at start goto eachProbe
-probeAligned at eachProbe do findCheck41
-probeAligned at eachProbe branch if check4 goto gather else goto probe
-probeAligned at probe do extraStep1
-probeAligned at probe do extraStep2
-probeAligned at probe do findExtra1
-probeAligned at probe do findProbeSize1
-probeAligned at probe do readBlock
-probeAligned at probe do readValue
-probeAligned at probe do findLow1
-probeAligned at probe do findCheck51
-probeAligned at probe branch if check5 goto aligned else goto keep
-probeAligned at aligned set foundValue value
-probeAligned at aligned goto gather
-probeAligned at keep do slotStep1
-probeAligned at keep do findSlot1
-probeAligned at keep do doStoreInt64
-probeAligned at keep do findAtNext11
-probeAligned at keep set at atNext1
-probeAligned at keep goto eachProbe
-probeAligned at gather goto eachClear
-probeAligned at eachClear do findCheck61
-probeAligned at eachClear branch if check6 goto release else goto give
-probeAligned at give do clearSlotStep1
-probeAligned at give do findClearSlot1
-probeAligned at give do readHeld
-probeAligned at give do readHeldBlock
-probeAligned at give do doGive
-probeAligned at give do findClearingNext11
-probeAligned at give set clearing clearingNext1
-probeAligned at give goto eachClear
-probeAligned at release do doGive2
-probeAligned at release do readResult
-probeAligned at release return ok result
-
-readNowhere is call
-readNowhere in probeAligned
-readNowhere invokes machine.zero
-readNowhere argument none
-readNowhere result nowhere machine.Address
-readNowhere ownedBy none
-readNowhere cleanedBy none
-readNowhere borrows none
-readNowhere catch none
-readNowhere suppresses none
-
-wantedStep1 is call
-wantedStep1 in probeAligned
-wantedStep1 invokes math.divideInt64
-wantedStep1 argument left Int64 alignment copy
-wantedStep1 argument right Int64 sixteen copy
-wantedStep1 result wantedPart1 Int64
-wantedStep1 ownedBy none
-wantedStep1 cleanedBy none
-wantedStep1 borrows none
-wantedStep1 catch none
-wantedStep1 suppresses none
-
-wantedStep2 is call
-wantedStep2 in probeAligned
-wantedStep2 invokes math.multiplyInt64
-wantedStep2 argument left Int64 wantedPart1 copy
-wantedStep2 argument right Int64 four copy
-wantedStep2 result wantedPart2 Int64
-wantedStep2 ownedBy none
-wantedStep2 cleanedBy none
-wantedStep2 borrows none
-wantedStep2 catch none
-wantedStep2 suppresses none
-
-findWanted1 is call
-findWanted1 in probeAligned
-findWanted1 invokes math.addInt64
-findWanted1 argument left Int64 wantedPart2 copy
-findWanted1 argument right Int64 sixteen copy
-findWanted1 result wanted Int64
-findWanted1 ownedBy none
-findWanted1 cleanedBy none
-findWanted1 borrows none
-findWanted1 catch none
-findWanted1 suppresses none
-
-roomStep1 is call
-roomStep1 in probeAligned
-roomStep1 invokes math.addInt64
-roomStep1 argument left Int64 size copy
-roomStep1 argument right Int64 n512 copy
-roomStep1 result roomPart1 Int64
-roomStep1 ownedBy none
-roomStep1 cleanedBy none
-roomStep1 borrows none
-roomStep1 catch none
-roomStep1 suppresses none
-
-findRoomNext11 is call
-findRoomNext11 in probeAligned
-findRoomNext11 invokes math.divideInt64
-findRoomNext11 argument left Int64 n67108864 copy
-findRoomNext11 argument right Int64 roomPart1 copy
-findRoomNext11 result roomNext1 Int64
-findRoomNext11 ownedBy none
-findRoomNext11 cleanedBy none
-findRoomNext11 borrows none
-findRoomNext11 catch none
-findRoomNext11 suppresses none
-
-findCheck11 is call
-findCheck11 in probeAligned
-findCheck11 invokes compare.greaterThanInt64
-findCheck11 argument left Int64 limit copy
-findCheck11 argument right Int64 n2048 copy
-findCheck11 result check1 Bool
-findCheck11 ownedBy none
-findCheck11 cleanedBy none
-findCheck11 borrows none
-findCheck11 catch none
-findCheck11 suppresses none
-
-findCheck21 is call
-findCheck21 in probeAligned
-findCheck21 invokes compare.lessThanInt64
-findCheck21 argument left Int64 room copy
-findCheck21 argument right Int64 one copy
-findCheck21 result check2 Bool
-findCheck21 ownedBy none
-findCheck21 cleanedBy none
-findCheck21 borrows none
-findCheck21 catch none
-findCheck21 suppresses none
-
-findCheck31 is call
-findCheck31 in probeAligned
-findCheck31 invokes compare.greaterThanInt64
-findCheck31 argument left Int64 limit copy
-findCheck31 argument right Int64 room copy
-findCheck31 result check3 Bool
-findCheck31 ownedBy none
-findCheck31 cleanedBy none
-findCheck31 borrows none
-findCheck31 catch none
-findCheck31 suppresses none
-
-findListBytes1 is call
-findListBytes1 in probeAligned
-findListBytes1 invokes math.multiplyInt64
-findListBytes1 argument left Int64 limit copy
-findListBytes1 argument right Int64 eight copy
-findListBytes1 result listBytes Int64
-findListBytes1 ownedBy none
-findListBytes1 cleanedBy none
-findListBytes1 borrows none
-findListBytes1 catch none
-findListBytes1 suppresses none
-
-readList is call
-readList in probeAligned
-readList invokes heap.take
-readList argument bytes Int64 listBytes copy
-readList result list machine.Address
-readList ownedBy none
-readList cleanedBy none
-readList borrows none
-readList catch none
-readList suppresses none
-
-findMask1 is call
-findMask1 in probeAligned
-findMask1 invokes math.subtractInt64
-findMask1 argument left Int64 alignment copy
-findMask1 argument right Int64 one copy
-findMask1 result mask Int64
-findMask1 ownedBy none
-findMask1 cleanedBy none
-findMask1 borrows none
-findMask1 catch none
-findMask1 suppresses none
-
-findCheck41 is call
-findCheck41 in probeAligned
-findCheck41 invokes compare.greaterOrEqualInt64
-findCheck41 argument left Int64 at copy
-findCheck41 argument right Int64 limit copy
-findCheck41 result check4 Bool
-findCheck41 ownedBy none
-findCheck41 cleanedBy none
-findCheck41 borrows none
-findCheck41 catch none
-findCheck41 suppresses none
-
-extraStep1 is call
-extraStep1 in probeAligned
-extraStep1 invokes math.multiplyInt64
-extraStep1 argument left Int64 at copy
-extraStep1 argument right Int64 seven copy
-extraStep1 result extraPart1 Int64
-extraStep1 ownedBy none
-extraStep1 cleanedBy none
-extraStep1 borrows none
-extraStep1 catch none
-extraStep1 suppresses none
-
-extraStep2 is call
-extraStep2 in probeAligned
-extraStep2 invokes math.remainderInt64
-extraStep2 argument left Int64 extraPart1 copy
-extraStep2 argument right Int64 n17 copy
-extraStep2 result extraPart2 Int64
-extraStep2 ownedBy none
-extraStep2 cleanedBy none
-extraStep2 borrows none
-extraStep2 catch none
-extraStep2 suppresses none
-
-findExtra1 is call
-findExtra1 in probeAligned
-findExtra1 invokes math.multiplyInt64
-findExtra1 argument left Int64 extraPart2 copy
-findExtra1 argument right Int64 sixteen copy
-findExtra1 result extra Int64
-findExtra1 ownedBy none
-findExtra1 cleanedBy none
-findExtra1 borrows none
-findExtra1 catch none
-findExtra1 suppresses none
-
-findProbeSize1 is call
-findProbeSize1 in probeAligned
-findProbeSize1 invokes math.addInt64
-findProbeSize1 argument left Int64 size copy
-findProbeSize1 argument right Int64 extra copy
-findProbeSize1 result probeSize Int64
-findProbeSize1 ownedBy none
-findProbeSize1 cleanedBy none
-findProbeSize1 borrows none
-findProbeSize1 catch none
-findProbeSize1 suppresses none
-
-readBlock is call
-readBlock in probeAligned
-readBlock invokes heap.take
-readBlock argument bytes Int64 probeSize copy
-readBlock result block machine.Address
-readBlock ownedBy none
-readBlock cleanedBy none
-readBlock borrows none
-readBlock catch none
-readBlock suppresses none
-
-readValue is call
-readValue in probeAligned
-readValue invokes machine.toInt64
-readValue argument address machine.Address block copy
-readValue result value Int64
-readValue ownedBy none
-readValue cleanedBy none
-readValue borrows none
-readValue catch none
-readValue suppresses none
-
-findLow1 is call
-findLow1 in probeAligned
-findLow1 invokes bits.andInt64
-findLow1 argument left Int64 value copy
-findLow1 argument right Int64 mask copy
-findLow1 result low Int64
-findLow1 ownedBy none
-findLow1 cleanedBy none
-findLow1 borrows none
-findLow1 catch none
-findLow1 suppresses none
-
-findCheck51 is call
-findCheck51 in probeAligned
-findCheck51 invokes compare.equalInt64
-findCheck51 argument left Int64 low copy
-findCheck51 argument right Int64 zero copy
-findCheck51 result check5 Bool
-findCheck51 ownedBy none
-findCheck51 cleanedBy none
-findCheck51 borrows none
-findCheck51 catch none
-findCheck51 suppresses none
-
-slotStep1 is call
-slotStep1 in probeAligned
-slotStep1 invokes math.multiplyInt64
-slotStep1 argument left Int64 at copy
-slotStep1 argument right Int64 eight copy
-slotStep1 result slotPart1 Int64
-slotStep1 ownedBy none
-slotStep1 cleanedBy none
-slotStep1 borrows none
-slotStep1 catch none
-slotStep1 suppresses none
-
-findSlot1 is call
-findSlot1 in probeAligned
-findSlot1 invokes machine.offset
-findSlot1 argument address machine.Address list copy
-findSlot1 argument bytes Int64 slotPart1 copy
-findSlot1 result slot machine.Address
-findSlot1 ownedBy none
-findSlot1 cleanedBy none
-findSlot1 borrows none
-findSlot1 catch none
-findSlot1 suppresses none
+findOriginSlot1 is call
+findOriginSlot1 in alignedBlock
+findOriginSlot1 invokes machine.offset
+findOriginSlot1 argument address machine.Address place copy
+findOriginSlot1 argument bytes Int64 originSlotPart1 copy
+findOriginSlot1 result originSlot machine.Address
+findOriginSlot1 ownedBy none
+findOriginSlot1 cleanedBy none
+findOriginSlot1 borrows none
+findOriginSlot1 catch none
+findOriginSlot1 suppresses none
 
 doStoreInt64 is call
-doStoreInt64 in probeAligned
+doStoreInt64 in alignedBlock
 doStoreInt64 invokes machine.storeInt64
-doStoreInt64 argument address machine.Address slot copy
-doStoreInt64 argument value Int64 value copy
+doStoreInt64 argument address machine.Address originSlot copy
+doStoreInt64 argument value Int64 baseValue copy
 doStoreInt64 result none
 doStoreInt64 ownedBy none
 doStoreInt64 cleanedBy none
@@ -5601,120 +4939,218 @@ doStoreInt64 borrows none
 doStoreInt64 catch none
 doStoreInt64 suppresses none
 
-findAtNext11 is call
-findAtNext11 in probeAligned
-findAtNext11 invokes math.addInt64
-findAtNext11 argument left Int64 at copy
-findAtNext11 argument right Int64 one copy
-findAtNext11 result atNext1 Int64
-findAtNext11 ownedBy none
-findAtNext11 cleanedBy none
-findAtNext11 borrows none
-findAtNext11 catch none
-findAtNext11 suppresses none
+tagSlotStep1 is call
+tagSlotStep1 in alignedBlock
+tagSlotStep1 invokes math.negateInt64
+tagSlotStep1 argument value Int64 eight copy
+tagSlotStep1 result tagSlotPart1 Int64
+tagSlotStep1 ownedBy none
+tagSlotStep1 cleanedBy none
+tagSlotStep1 borrows none
+tagSlotStep1 catch none
+tagSlotStep1 suppresses none
 
-findCheck61 is call
-findCheck61 in probeAligned
-findCheck61 invokes compare.greaterOrEqualInt64
-findCheck61 argument left Int64 clearing copy
-findCheck61 argument right Int64 at copy
-findCheck61 result check6 Bool
-findCheck61 ownedBy none
-findCheck61 cleanedBy none
-findCheck61 borrows none
-findCheck61 catch none
-findCheck61 suppresses none
+findTagSlot1 is call
+findTagSlot1 in alignedBlock
+findTagSlot1 invokes machine.offset
+findTagSlot1 argument address machine.Address place copy
+findTagSlot1 argument bytes Int64 tagSlotPart1 copy
+findTagSlot1 result tagSlot machine.Address
+findTagSlot1 ownedBy none
+findTagSlot1 cleanedBy none
+findTagSlot1 borrows none
+findTagSlot1 catch none
+findTagSlot1 suppresses none
 
-clearSlotStep1 is call
-clearSlotStep1 in probeAligned
-clearSlotStep1 invokes math.multiplyInt64
-clearSlotStep1 argument left Int64 clearing copy
-clearSlotStep1 argument right Int64 eight copy
-clearSlotStep1 result clearSlotPart1 Int64
-clearSlotStep1 ownedBy none
-clearSlotStep1 cleanedBy none
-clearSlotStep1 borrows none
-clearSlotStep1 catch none
-clearSlotStep1 suppresses none
+taggedStep1 is call
+taggedStep1 in alignedBlock
+taggedStep1 invokes bits.shiftLeftInt64
+taggedStep1 argument value Int64 size copy
+taggedStep1 argument amount Int64 n24 copy
+taggedStep1 result taggedPart1 Int64
+taggedStep1 ownedBy none
+taggedStep1 cleanedBy none
+taggedStep1 borrows none
+taggedStep1 catch none
+taggedStep1 suppresses none
 
-findClearSlot1 is call
-findClearSlot1 in probeAligned
-findClearSlot1 invokes machine.offset
-findClearSlot1 argument address machine.Address list copy
-findClearSlot1 argument bytes Int64 clearSlotPart1 copy
-findClearSlot1 result clearSlot machine.Address
-findClearSlot1 ownedBy none
-findClearSlot1 cleanedBy none
-findClearSlot1 borrows none
-findClearSlot1 catch none
-findClearSlot1 suppresses none
+taggedStep2 is call
+taggedStep2 in alignedBlock
+taggedStep2 invokes bits.shiftLeftInt64
+taggedStep2 argument value Int64 log copy
+taggedStep2 argument amount Int64 sixteen copy
+taggedStep2 result taggedPart2 Int64
+taggedStep2 ownedBy none
+taggedStep2 cleanedBy none
+taggedStep2 borrows none
+taggedStep2 catch none
+taggedStep2 suppresses none
 
-readHeld is call
-readHeld in probeAligned
-readHeld invokes machine.loadInt64
-readHeld argument address machine.Address clearSlot copy
-readHeld result held Int64
-readHeld ownedBy none
-readHeld cleanedBy none
-readHeld borrows none
-readHeld catch none
-readHeld suppresses none
+taggedStep3 is call
+taggedStep3 in alignedBlock
+taggedStep3 invokes math.addInt64
+taggedStep3 argument left Int64 taggedPart1 copy
+taggedStep3 argument right Int64 taggedPart2 copy
+taggedStep3 result taggedPart3 Int64
+taggedStep3 ownedBy none
+taggedStep3 cleanedBy none
+taggedStep3 borrows none
+taggedStep3 catch none
+taggedStep3 suppresses none
 
-readHeldBlock is call
-readHeldBlock in probeAligned
-readHeldBlock invokes machine.fromInt64
-readHeldBlock argument value Int64 held copy
-readHeldBlock result heldBlock machine.Address
-readHeldBlock ownedBy none
-readHeldBlock cleanedBy none
-readHeldBlock borrows none
-readHeldBlock catch none
-readHeldBlock suppresses none
+findTagged1 is call
+findTagged1 in alignedBlock
+findTagged1 invokes math.addInt64
+findTagged1 argument left Int64 taggedPart3 copy
+findTagged1 argument right Int64 n41242 copy
+findTagged1 result tagged Int64
+findTagged1 ownedBy none
+findTagged1 cleanedBy none
+findTagged1 borrows none
+findTagged1 catch none
+findTagged1 suppresses none
 
-doGive is call
-doGive in probeAligned
-doGive invokes heap.give
-doGive argument block machine.Address heldBlock copy
-doGive result none
-doGive ownedBy none
-doGive cleanedBy none
-doGive borrows none
-doGive catch none
-doGive suppresses none
+doStoreInt642 is call
+doStoreInt642 in alignedBlock
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address tagSlot copy
+doStoreInt642 argument value Int64 tagged copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
 
-findClearingNext11 is call
-findClearingNext11 in probeAligned
-findClearingNext11 invokes math.addInt64
-findClearingNext11 argument left Int64 clearing copy
-findClearingNext11 argument right Int64 one copy
-findClearingNext11 result clearingNext1 Int64
-findClearingNext11 ownedBy none
-findClearingNext11 cleanedBy none
-findClearingNext11 borrows none
-findClearingNext11 catch none
-findClearingNext11 suppresses none
+bigTotalStep1 is call
+bigTotalStep1 in alignedBlock
+bigTotalStep1 invokes math.addInt64
+bigTotalStep1 argument left Int64 size copy
+bigTotalStep1 argument right Int64 alignment copy
+bigTotalStep1 result bigTotalPart1 Int64
+bigTotalStep1 ownedBy none
+bigTotalStep1 cleanedBy none
+bigTotalStep1 borrows none
+bigTotalStep1 catch none
+bigTotalStep1 suppresses none
 
-doGive2 is call
-doGive2 in probeAligned
-doGive2 invokes heap.give
-doGive2 argument block machine.Address list copy
-doGive2 result none
-doGive2 ownedBy none
-doGive2 cleanedBy none
-doGive2 borrows none
-doGive2 catch none
-doGive2 suppresses none
+findBigTotal1 is call
+findBigTotal1 in alignedBlock
+findBigTotal1 invokes math.addInt64
+findBigTotal1 argument left Int64 bigTotalPart1 copy
+findBigTotal1 argument right Int64 sixteen copy
+findBigTotal1 result bigTotal Int64
+findBigTotal1 ownedBy none
+findBigTotal1 cleanedBy none
+findBigTotal1 borrows none
+findBigTotal1 catch none
+findBigTotal1 suppresses none
 
-readResult is call
-readResult in probeAligned
-readResult invokes machine.fromInt64
-readResult argument value Int64 foundValue copy
-readResult result result machine.Address
-readResult ownedBy none
-readResult cleanedBy none
-readResult borrows none
-readResult catch none
-readResult suppresses none
+readBigBase is call
+readBigBase in alignedBlock
+readBigBase invokes heap.take
+readBigBase argument bytes Int64 bigTotal copy
+readBigBase result bigBase machine.Address
+readBigBase ownedBy none
+readBigBase cleanedBy none
+readBigBase borrows none
+readBigBase catch none
+readBigBase suppresses none
+
+readBigValue is call
+readBigValue in alignedBlock
+readBigValue invokes machine.toInt64
+readBigValue argument address machine.Address bigBase copy
+readBigValue result bigValue Int64
+readBigValue ownedBy none
+readBigValue cleanedBy none
+readBigValue borrows none
+readBigValue catch none
+readBigValue suppresses none
+
+findBigFirst1 is call
+findBigFirst1 in alignedBlock
+findBigFirst1 invokes math.addInt64
+findBigFirst1 argument left Int64 bigValue copy
+findBigFirst1 argument right Int64 sixteen copy
+findBigFirst1 result bigFirst Int64
+findBigFirst1 ownedBy none
+findBigFirst1 cleanedBy none
+findBigFirst1 borrows none
+findBigFirst1 catch none
+findBigFirst1 suppresses none
+
+findBigMask1 is call
+findBigMask1 in alignedBlock
+findBigMask1 invokes math.subtractInt64
+findBigMask1 argument left Int64 zero copy
+findBigMask1 argument right Int64 alignment copy
+findBigMask1 result bigMask Int64
+findBigMask1 ownedBy none
+findBigMask1 cleanedBy none
+findBigMask1 borrows none
+findBigMask1 catch none
+findBigMask1 suppresses none
+
+bigAlignedStep1 is call
+bigAlignedStep1 in alignedBlock
+bigAlignedStep1 invokes math.addInt64
+bigAlignedStep1 argument left Int64 bigFirst copy
+bigAlignedStep1 argument right Int64 alignment copy
+bigAlignedStep1 result bigAlignedPart1 Int64
+bigAlignedStep1 ownedBy none
+bigAlignedStep1 cleanedBy none
+bigAlignedStep1 borrows none
+bigAlignedStep1 catch none
+bigAlignedStep1 suppresses none
+
+bigAlignedStep2 is call
+bigAlignedStep2 in alignedBlock
+bigAlignedStep2 invokes math.subtractInt64
+bigAlignedStep2 argument left Int64 bigAlignedPart1 copy
+bigAlignedStep2 argument right Int64 one copy
+bigAlignedStep2 result bigAlignedPart2 Int64
+bigAlignedStep2 ownedBy none
+bigAlignedStep2 cleanedBy none
+bigAlignedStep2 borrows none
+bigAlignedStep2 catch none
+bigAlignedStep2 suppresses none
+
+findBigAligned1 is call
+findBigAligned1 in alignedBlock
+findBigAligned1 invokes bits.andInt64
+findBigAligned1 argument left Int64 bigAlignedPart2 copy
+findBigAligned1 argument right Int64 bigMask copy
+findBigAligned1 result bigAligned Int64
+findBigAligned1 ownedBy none
+findBigAligned1 cleanedBy none
+findBigAligned1 borrows none
+findBigAligned1 catch none
+findBigAligned1 suppresses none
+
+readBigPlace is call
+readBigPlace in alignedBlock
+readBigPlace invokes machine.fromInt64
+readBigPlace argument value Int64 bigAligned copy
+readBigPlace result bigPlace machine.Address
+readBigPlace ownedBy none
+readBigPlace cleanedBy none
+readBigPlace borrows none
+readBigPlace catch none
+readBigPlace suppresses none
+
+doRegistryAdd is call
+doRegistryAdd in alignedBlock
+doRegistryAdd invokes clibrary.registryAdd
+doRegistryAdd argument place machine.Address bigPlace copy
+doRegistryAdd argument origin machine.Address bigBase copy
+doRegistryAdd argument size Int64 size copy
+doRegistryAdd result none
+doRegistryAdd ownedBy none
+doRegistryAdd cleanedBy none
+doRegistryAdd borrows none
+doRegistryAdd catch none
+doRegistryAdd suppresses none
 
 alignedAllocate is operation
 alignedAllocate purpose "aligned_alloc: a block of a size aligned to a power of two, or NULL with EINVAL for another alignment and ENOMEM for no memory"
