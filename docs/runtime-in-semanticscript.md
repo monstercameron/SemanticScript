@@ -369,6 +369,8 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | math.h | sinh, cosh, tanh, asinh, acosh, atanh, erf, erfc, tgamma, lgamma, their `f` forms, lgamma_r, lgammaf_r, within 1 ulp (D-180) | Done |
 | math.h | sin, cos, tan, asin, acos, atan, atan2 and their `f` forms, within 1 ulp for every double (D-181) | Done |
 | math.h | exp, exp2, expm1, log, log2, log10, log1p, pow, cbrt, hypot and their `f` forms, within 1 ulp (D-182) | Done |
+| string.h, stdlib.h | strtok, strtok_r, strsep, strcoll, strxfrm, memccpy, mempcpy, stpcpy, stpncpy, strchrnul, memrchr; strtof, rand, srand, rand_r, aligned_alloc, posix_memalign (D-183) | Done |
+| locale.h, assert.h, inttypes.h | setlocale, localeconv (the C locale); `__assert_fail`; imaxabs, strtoimax, strtoumax, wcstoimax, wcstoumax (D-183) | Done |
 | threads.h | thrd_*, mtx_*, cnd_*, tss_*, call_once on Linux threads and futexes; the heap and streams locked, errno per thread (D-166) | Done |
 | string.h | strerror: `Unknown error N` for every number (glibc's messages are a known gap) | Gap |
 

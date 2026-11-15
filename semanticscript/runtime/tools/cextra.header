@@ -1,0 +1,5 @@
+# The rest of what the C library's headers promise, in SemanticScript: string.h's strtok family and glibc's
+# extras, stdlib.h's strtof, rand, and aligned allocation, locale.h, assert.h's __assert_fail, and inttypes.h's
+# integer-max functions, as glibc behaves in the C locale.
+#
+# This module is generated from tools/cextra.dsl by tools/build.py.

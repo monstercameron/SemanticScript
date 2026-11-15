@@ -1,0 +1,2 @@
+# Tests of the `cextra` module; generated from tools/cextra.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.

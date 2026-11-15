@@ -1,0 +1,2146 @@
+# Tests of the `cextra` module; generated from tools/cextra.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+textOf is operation
+textOf purpose "A C string made from a String, in a new heap block"
+textOf invariant none
+textOf typeParameter none
+textOf input text String borrowed
+textOf output machine.Address
+textOf outputOwnedBy none
+textOf raises none
+textOf effect use machine.memory
+textOf effect use system.calls
+textOf uses memoryAccess
+textOf uses systemCalls
+textOf memoryHeap false
+textOf async false
+textOf maxRecursion none
+textOf label begin loopKind none
+textOf label begin within none
+textOf let one Int64 1 immutable
+textOf at begin do readAt
+textOf at begin do readBytes
+textOf at begin do findSize1
+textOf at begin do readBlock
+textOf at begin do doCopy
+textOf at begin return ok block
+
+readAt is call
+readAt in textOf
+readAt invokes machine.addressOfString
+readAt argument text String text lend
+readAt result at machine.Address
+readAt ownedBy none
+readAt cleanedBy none
+readAt borrows none
+readAt catch none
+readAt suppresses none
+
+readBytes is call
+readBytes in textOf
+readBytes invokes string.byteLength
+readBytes argument text String text lend
+readBytes result bytes Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+findSize1 is call
+findSize1 in textOf
+findSize1 invokes math.addInt64
+findSize1 argument left Int64 bytes copy
+findSize1 argument right Int64 one copy
+findSize1 result size Int64
+findSize1 ownedBy none
+findSize1 cleanedBy none
+findSize1 borrows none
+findSize1 catch none
+findSize1 suppresses none
+
+readBlock is call
+readBlock in textOf
+readBlock invokes heap.take
+readBlock argument bytes Int64 size copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+doCopy is call
+doCopy in textOf
+doCopy invokes machine.copy
+doCopy argument target machine.Address block copy
+doCopy argument source machine.Address at copy
+doCopy argument bytes Int64 bytes copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+textIs is operation
+textIs purpose "Whether a C string is exactly a String"
+textIs invariant none
+textIs typeParameter none
+textIs input address machine.Address copied
+textIs input text String borrowed
+textIs output Bool
+textIs outputOwnedBy none
+textIs raises none
+textIs effect use machine.memory
+textIs effect use system.calls
+textIs uses memoryAccess
+textIs uses systemCalls
+textIs memoryHeap false
+textIs async false
+textIs maxRecursion none
+textIs label begin loopKind none
+textIs label begin within none
+textIs let int320 Int32 0 immutable
+textIs at begin do readCopy
+textIs at begin do readOrder
+textIs at begin do findAnswer1
+textIs at begin return ok answer
+
+readCopy is call
+readCopy in textIs
+readCopy invokes textOf
+readCopy argument text String text lend
+readCopy result copy machine.Address
+readCopy ownedBy none
+readCopy cleanedBy none
+readCopy borrows none
+readCopy catch none
+readCopy suppresses none
+
+readOrder is call
+readOrder in textIs
+readOrder invokes compareText
+readOrder argument left machine.Address address copy
+readOrder argument right machine.Address copy copy
+readOrder result order Int32
+readOrder ownedBy none
+readOrder cleanedBy none
+readOrder borrows none
+readOrder catch none
+readOrder suppresses none
+
+findAnswer1 is call
+findAnswer1 in textIs
+findAnswer1 invokes compare.equalInt32
+findAnswer1 argument left Int32 order copy
+findAnswer1 argument right Int32 int320 copy
+findAnswer1 result answer Bool
+findAnswer1 ownedBy none
+findAnswer1 cleanedBy none
+findAnswer1 borrows none
+findAnswer1 catch none
+findAnswer1 suppresses none
+
+floatBitsOf is operation
+floatBitsOf purpose "The bits, as a Float64, of the float strtof gives for a String; errno is cleared first"
+floatBitsOf invariant none
+floatBitsOf typeParameter none
+floatBitsOf input text String borrowed
+floatBitsOf output UInt64
+floatBitsOf outputOwnedBy none
+floatBitsOf raises none
+floatBitsOf effect use machine.memory
+floatBitsOf effect use system.calls
+floatBitsOf uses memoryAccess
+floatBitsOf uses systemCalls
+floatBitsOf memoryHeap false
+floatBitsOf async false
+floatBitsOf maxRecursion none
+floatBitsOf label begin loopKind none
+floatBitsOf label begin within none
+floatBitsOf let int320 Int32 0 immutable
+floatBitsOf at begin do doSetErrno
+floatBitsOf at begin do readBlock
+floatBitsOf at begin do readNowhere
+floatBitsOf at begin do readValue
+floatBitsOf at begin do readWide
+floatBitsOf at begin do readBits
+floatBitsOf at begin return ok bits
+
+doSetErrno is call
+doSetErrno in floatBitsOf
+doSetErrno invokes clibrary.setErrno
+doSetErrno argument value Int32 int320 copy
+doSetErrno result none
+doSetErrno ownedBy none
+doSetErrno cleanedBy none
+doSetErrno borrows none
+doSetErrno catch none
+doSetErrno suppresses none
+
+readBlock is call
+readBlock in floatBitsOf
+readBlock invokes textOf
+readBlock argument text String text lend
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+readNowhere is call
+readNowhere in floatBitsOf
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readValue is call
+readValue in floatBitsOf
+readValue invokes toSingle
+readValue argument text machine.Address block copy
+readValue argument endAt machine.Address nowhere copy
+readValue result value Float32
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+readWide is call
+readWide in floatBitsOf
+readWide invokes convert.float32ToFloat64
+readWide argument value Float32 value copy
+readWide result wide Float64
+readWide ownedBy none
+readWide cleanedBy none
+readWide borrows none
+readWide catch none
+readWide suppresses none
+
+readBits is call
+readBits in floatBitsOf
+readBits invokes convert.float64BitsToUInt64
+readBits argument value Float64 wide copy
+readBits result bits UInt64
+readBits ownedBy none
+readBits cleanedBy none
+readBits borrows none
+readBits catch none
+readBits suppresses none
+
+currentErrno is operation
+currentErrno purpose "The value errno holds now, read from its cell"
+currentErrno invariant none
+currentErrno typeParameter none
+currentErrno input none
+currentErrno output Int32
+currentErrno outputOwnedBy none
+currentErrno raises none
+currentErrno effect use machine.memory
+currentErrno uses memoryAccess
+currentErrno memoryHeap false
+currentErrno async false
+currentErrno maxRecursion none
+currentErrno label begin loopKind none
+currentErrno label begin within none
+currentErrno let none
+currentErrno at begin do readErrnoCell
+currentErrno at begin do readValue
+currentErrno at begin return ok value
+
+readErrnoCell is call
+readErrnoCell in currentErrno
+readErrnoCell invokes kernel.stateAt
+readErrnoCell argument offset Int64 errnoAt copy
+readErrnoCell result errnoCell machine.Address
+readErrnoCell ownedBy none
+readErrnoCell cleanedBy none
+readErrnoCell borrows none
+readErrnoCell catch none
+readErrnoCell suppresses none
+
+readValue is call
+readValue in currentErrno
+readValue invokes machine.loadInt32
+readValue argument address machine.Address errnoCell copy
+readValue result value Int32
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+randomIs is operation
+randomIs purpose "Whether rand gives a number"
+randomIs invariant none
+randomIs typeParameter none
+randomIs input expected Int64 copied
+randomIs output Bool
+randomIs outputOwnedBy none
+randomIs raises none
+randomIs effect use machine.memory
+randomIs uses memoryAccess
+randomIs memoryHeap false
+randomIs async false
+randomIs maxRecursion none
+randomIs label begin loopKind none
+randomIs label begin within none
+randomIs let none
+randomIs at begin do readNumber
+randomIs at begin do readWide
+randomIs at begin do findAnswer1
+randomIs at begin return ok answer
+
+readNumber is call
+readNumber in randomIs
+readNumber invokes randomNumber
+readNumber argument none
+readNumber result number Int32
+readNumber ownedBy none
+readNumber cleanedBy none
+readNumber borrows none
+readNumber catch none
+readNumber suppresses none
+
+readWide is call
+readWide in randomIs
+readWide invokes convert.int32ToInt64
+readWide argument value Int32 number copy
+readWide result wide Int64
+readWide ownedBy none
+readWide cleanedBy none
+readWide borrows none
+readWide catch none
+readWide suppresses none
+
+findAnswer1 is call
+findAnswer1 in randomIs
+findAnswer1 invokes compare.equalInt64
+findAnswer1 argument left Int64 wide copy
+findAnswer1 argument right Int64 expected copy
+findAnswer1 result answer Bool
+findAnswer1 ownedBy none
+findAnswer1 cleanedBy none
+findAnswer1 borrows none
+findAnswer1 catch none
+findAnswer1 suppresses none
+
+tokenTest is test
+tokenTest purpose "strtok gives each token in turn and then NULL, a span counts the bytes in or out of a set, strsep cuts at a set"
+tokenTest verifies memberOf findsMember
+tokenTest verifies spanBytes countsSpan
+tokenTest verifies nextToken tokenizes
+tokenTest typeParameter none
+tokenTest input none
+tokenTest output none
+tokenTest outputOwnedBy none
+tokenTest raises none
+tokenTest effect use machine.memory
+tokenTest effect use system.calls
+tokenTest uses memoryAccess
+tokenTest uses systemCalls
+tokenTest memoryHeap false
+tokenTest async false
+tokenTest maxRecursion none
+tokenTest label begin loopKind none
+tokenTest label begin within none
+tokenTest let text1 String "a,b;;c" immutable
+tokenTest let text2 String ",;" immutable
+tokenTest let text3 String "a" immutable
+tokenTest let text4 String "b" immutable
+tokenTest let text5 String "c" immutable
+tokenTest let text6 String "aabxc" immutable
+tokenTest let text7 String "ab" immutable
+tokenTest let byte98 Byte 98 immutable
+tokenTest let no Bool false immutable
+tokenTest let three Int64 3 immutable
+tokenTest let text8 String "x" immutable
+tokenTest let yes Bool true immutable
+tokenTest let eight Int64 8 immutable
+tokenTest let text9 String "one two" immutable
+tokenTest let text10 String " " immutable
+tokenTest let text11 String "one" immutable
+tokenTest let text12 String "two" immutable
+tokenTest let text13 String "two" immutable
+tokenTest at begin do readNowhere
+tokenTest at begin do readText
+tokenTest at begin do readDelimiters
+tokenTest at begin do readFirst
+tokenTest at begin do readFirstIs
+tokenTest at begin do doAssertTrue
+tokenTest at begin do readSecond
+tokenTest at begin do readSecondIs
+tokenTest at begin do doAssertTrue2
+tokenTest at begin do readThird
+tokenTest at begin do readThirdIs
+tokenTest at begin do doAssertTrue3
+tokenTest at begin do readFourth
+tokenTest at begin do doAssertTrueStep1
+tokenTest at begin do doAssertTrue4
+tokenTest at begin do readLetters
+tokenTest at begin do readMembers
+tokenTest at begin do readIsMember
+tokenTest at begin do doAssertTrue5
+tokenTest at begin do readInside
+tokenTest at begin do doAssertEqualInt64
+tokenTest at begin do readStops
+tokenTest at begin do readOutside
+tokenTest at begin do doAssertEqualInt642
+tokenTest at begin do readCell
+tokenTest at begin do readWords
+tokenTest at begin do doStoreAddress
+tokenTest at begin do readSpaces
+tokenTest at begin do readWord
+tokenTest at begin do readWordIs
+tokenTest at begin do doAssertTrue6
+tokenTest at begin do readRest
+tokenTest at begin do readRestIs
+tokenTest at begin do doAssertTrue7
+tokenTest at begin do readLast
+tokenTest at begin do readLastIs
+tokenTest at begin do doAssertTrue8
+tokenTest at begin do readAfter
+tokenTest at begin do doAssertTrueStep2
+tokenTest at begin do doAssertTrue9
+tokenTest at begin return ok none
+
+readNowhere is call
+readNowhere in tokenTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readText is call
+readText in tokenTest
+readText invokes textOf
+readText argument text String text1 lend
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+readDelimiters is call
+readDelimiters in tokenTest
+readDelimiters invokes textOf
+readDelimiters argument text String text2 lend
+readDelimiters result delimiters machine.Address
+readDelimiters ownedBy none
+readDelimiters cleanedBy none
+readDelimiters borrows none
+readDelimiters catch none
+readDelimiters suppresses none
+
+readFirst is call
+readFirst in tokenTest
+readFirst invokes nextToken
+readFirst argument text machine.Address text copy
+readFirst argument delimiters machine.Address delimiters copy
+readFirst result first machine.Address
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+readFirstIs is call
+readFirstIs in tokenTest
+readFirstIs invokes textIs
+readFirstIs argument address machine.Address first copy
+readFirstIs argument text String text3 lend
+readFirstIs result firstIs Bool
+readFirstIs ownedBy none
+readFirstIs cleanedBy none
+readFirstIs borrows none
+readFirstIs catch none
+readFirstIs suppresses none
+
+doAssertTrue is call
+doAssertTrue in tokenTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool firstIs copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readSecond is call
+readSecond in tokenTest
+readSecond invokes nextToken
+readSecond argument text machine.Address nowhere copy
+readSecond argument delimiters machine.Address delimiters copy
+readSecond result second machine.Address
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+readSecond suppresses none
+
+readSecondIs is call
+readSecondIs in tokenTest
+readSecondIs invokes textIs
+readSecondIs argument address machine.Address second copy
+readSecondIs argument text String text4 lend
+readSecondIs result secondIs Bool
+readSecondIs ownedBy none
+readSecondIs cleanedBy none
+readSecondIs borrows none
+readSecondIs catch none
+readSecondIs suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in tokenTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool secondIs copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+readThird is call
+readThird in tokenTest
+readThird invokes nextToken
+readThird argument text machine.Address nowhere copy
+readThird argument delimiters machine.Address delimiters copy
+readThird result third machine.Address
+readThird ownedBy none
+readThird cleanedBy none
+readThird borrows none
+readThird catch none
+readThird suppresses none
+
+readThirdIs is call
+readThirdIs in tokenTest
+readThirdIs invokes textIs
+readThirdIs argument address machine.Address third copy
+readThirdIs argument text String text5 lend
+readThirdIs result thirdIs Bool
+readThirdIs ownedBy none
+readThirdIs cleanedBy none
+readThirdIs borrows none
+readThirdIs catch none
+readThirdIs suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in tokenTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool thirdIs copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+readFourth is call
+readFourth in tokenTest
+readFourth invokes nextToken
+readFourth argument text machine.Address nowhere copy
+readFourth argument delimiters machine.Address delimiters copy
+readFourth result fourth machine.Address
+readFourth ownedBy none
+readFourth cleanedBy none
+readFourth borrows none
+readFourth catch none
+readFourth suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in tokenTest
+doAssertTrueStep1 invokes machine.equal
+doAssertTrueStep1 argument left machine.Address fourth copy
+doAssertTrueStep1 argument right machine.Address nowhere copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in tokenTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool doAssertTruePart1 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+readLetters is call
+readLetters in tokenTest
+readLetters invokes textOf
+readLetters argument text String text6 lend
+readLetters result letters machine.Address
+readLetters ownedBy none
+readLetters cleanedBy none
+readLetters borrows none
+readLetters catch none
+readLetters suppresses none
+
+readMembers is call
+readMembers in tokenTest
+readMembers invokes textOf
+readMembers argument text String text7 lend
+readMembers result members machine.Address
+readMembers ownedBy none
+readMembers cleanedBy none
+readMembers borrows none
+readMembers catch none
+readMembers suppresses none
+
+readIsMember is call
+readIsMember in tokenTest
+readIsMember invokes memberOf
+readIsMember argument value Byte byte98 copy
+readIsMember argument set machine.Address members copy
+readIsMember result isMember Bool
+readIsMember ownedBy none
+readIsMember cleanedBy none
+readIsMember borrows none
+readIsMember catch none
+readIsMember suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in tokenTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool isMember copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+readInside is call
+readInside in tokenTest
+readInside invokes spanBytes
+readInside argument text machine.Address letters copy
+readInside argument set machine.Address members copy
+readInside argument outside Bool no copy
+readInside result inside Int64
+readInside ownedBy none
+readInside cleanedBy none
+readInside borrows none
+readInside catch none
+readInside suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in tokenTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 three copy
+doAssertEqualInt64 argument actual Int64 inside copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readStops is call
+readStops in tokenTest
+readStops invokes textOf
+readStops argument text String text8 lend
+readStops result stops machine.Address
+readStops ownedBy none
+readStops cleanedBy none
+readStops borrows none
+readStops catch none
+readStops suppresses none
+
+readOutside is call
+readOutside in tokenTest
+readOutside invokes spanBytes
+readOutside argument text machine.Address letters copy
+readOutside argument set machine.Address stops copy
+readOutside argument outside Bool yes copy
+readOutside result outside Int64
+readOutside ownedBy none
+readOutside cleanedBy none
+readOutside borrows none
+readOutside catch none
+readOutside suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in tokenTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 three copy
+doAssertEqualInt642 argument actual Int64 outside copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+readCell is call
+readCell in tokenTest
+readCell invokes heap.take
+readCell argument bytes Int64 eight copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+readWords is call
+readWords in tokenTest
+readWords invokes textOf
+readWords argument text String text9 lend
+readWords result words machine.Address
+readWords ownedBy none
+readWords cleanedBy none
+readWords borrows none
+readWords catch none
+readWords suppresses none
+
+doStoreAddress is call
+doStoreAddress in tokenTest
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address cell copy
+doStoreAddress argument value machine.Address words copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+readSpaces is call
+readSpaces in tokenTest
+readSpaces invokes textOf
+readSpaces argument text String text10 lend
+readSpaces result spaces machine.Address
+readSpaces ownedBy none
+readSpaces cleanedBy none
+readSpaces borrows none
+readSpaces catch none
+readSpaces suppresses none
+
+readWord is call
+readWord in tokenTest
+readWord invokes separate
+readWord argument cell machine.Address cell copy
+readWord argument delimiters machine.Address spaces copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+readWordIs is call
+readWordIs in tokenTest
+readWordIs invokes textIs
+readWordIs argument address machine.Address word copy
+readWordIs argument text String text11 lend
+readWordIs result wordIs Bool
+readWordIs ownedBy none
+readWordIs cleanedBy none
+readWordIs borrows none
+readWordIs catch none
+readWordIs suppresses none
+
+doAssertTrue6 is call
+doAssertTrue6 in tokenTest
+doAssertTrue6 invokes test.assertTrue
+doAssertTrue6 argument value Bool wordIs copy
+doAssertTrue6 result none
+doAssertTrue6 ownedBy none
+doAssertTrue6 cleanedBy none
+doAssertTrue6 borrows none
+doAssertTrue6 catch none
+doAssertTrue6 suppresses none
+
+readRest is call
+readRest in tokenTest
+readRest invokes machine.loadAddress
+readRest argument address machine.Address cell copy
+readRest result rest machine.Address
+readRest ownedBy none
+readRest cleanedBy none
+readRest borrows none
+readRest catch none
+readRest suppresses none
+
+readRestIs is call
+readRestIs in tokenTest
+readRestIs invokes textIs
+readRestIs argument address machine.Address rest copy
+readRestIs argument text String text12 lend
+readRestIs result restIs Bool
+readRestIs ownedBy none
+readRestIs cleanedBy none
+readRestIs borrows none
+readRestIs catch none
+readRestIs suppresses none
+
+doAssertTrue7 is call
+doAssertTrue7 in tokenTest
+doAssertTrue7 invokes test.assertTrue
+doAssertTrue7 argument value Bool restIs copy
+doAssertTrue7 result none
+doAssertTrue7 ownedBy none
+doAssertTrue7 cleanedBy none
+doAssertTrue7 borrows none
+doAssertTrue7 catch none
+doAssertTrue7 suppresses none
+
+readLast is call
+readLast in tokenTest
+readLast invokes separate
+readLast argument cell machine.Address cell copy
+readLast argument delimiters machine.Address spaces copy
+readLast result last machine.Address
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch none
+readLast suppresses none
+
+readLastIs is call
+readLastIs in tokenTest
+readLastIs invokes textIs
+readLastIs argument address machine.Address last copy
+readLastIs argument text String text13 lend
+readLastIs result lastIs Bool
+readLastIs ownedBy none
+readLastIs cleanedBy none
+readLastIs borrows none
+readLastIs catch none
+readLastIs suppresses none
+
+doAssertTrue8 is call
+doAssertTrue8 in tokenTest
+doAssertTrue8 invokes test.assertTrue
+doAssertTrue8 argument value Bool lastIs copy
+doAssertTrue8 result none
+doAssertTrue8 ownedBy none
+doAssertTrue8 cleanedBy none
+doAssertTrue8 borrows none
+doAssertTrue8 catch none
+doAssertTrue8 suppresses none
+
+readAfter is call
+readAfter in tokenTest
+readAfter invokes machine.loadAddress
+readAfter argument address machine.Address cell copy
+readAfter result after machine.Address
+readAfter ownedBy none
+readAfter cleanedBy none
+readAfter borrows none
+readAfter catch none
+readAfter suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in tokenTest
+doAssertTrueStep2 invokes machine.equal
+doAssertTrueStep2 argument left machine.Address after copy
+doAssertTrueStep2 argument right machine.Address nowhere copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue9 is call
+doAssertTrue9 in tokenTest
+doAssertTrue9 invokes test.assertTrue
+doAssertTrue9 argument value Bool doAssertTruePart2 copy
+doAssertTrue9 result none
+doAssertTrue9 ownedBy none
+doAssertTrue9 cleanedBy none
+doAssertTrue9 borrows none
+doAssertTrue9 catch none
+doAssertTrue9 suppresses none
+
+localeTest is test
+localeTest purpose "setlocale takes C, POSIX, the empty name, and NULL and refuses others; localeconv holds glibc's C values"
+localeTest verifies setLocale onlyC
+localeTest verifies localeConventions givesC
+localeTest typeParameter none
+localeTest input none
+localeTest output none
+localeTest outputOwnedBy none
+localeTest raises none
+localeTest effect use machine.memory
+localeTest effect use system.calls
+localeTest uses memoryAccess
+localeTest uses systemCalls
+localeTest memoryHeap false
+localeTest async false
+localeTest maxRecursion none
+localeTest label begin loopKind none
+localeTest label begin within none
+localeTest let int326 Int32 6 immutable
+localeTest let text1 String "C" immutable
+localeTest let text2 String "POSIX" immutable
+localeTest let text3 String "C" immutable
+localeTest let text4 String "" immutable
+localeTest let int320 Int32 0 immutable
+localeTest let text5 String "C" immutable
+localeTest let text6 String "de_DE.UTF-8" immutable
+localeTest let text7 String "." immutable
+localeTest let eight Int64 8 immutable
+localeTest let text8 String "" immutable
+localeTest let n80 Int64 80 immutable
+localeTest let n127 Int64 127 immutable
+localeTest let n93 Int64 93 immutable
+localeTest at begin do readNowhere
+localeTest at begin do readCurrent
+localeTest at begin do readCurrentIs
+localeTest at begin do doAssertTrue
+localeTest at begin do readPosix
+localeTest at begin do readSetPosix
+localeTest at begin do readPosixIs
+localeTest at begin do doAssertTrue2
+localeTest at begin do readPlain
+localeTest at begin do readSetPlain
+localeTest at begin do readPlainIs
+localeTest at begin do doAssertTrue3
+localeTest at begin do readOther
+localeTest at begin do readSetOther
+localeTest at begin do doAssertTrueStep1
+localeTest at begin do doAssertTrue4
+localeTest at begin do readConventions
+localeTest at begin do readPoint
+localeTest at begin do readPointIs
+localeTest at begin do doAssertTrue5
+localeTest at begin do findSecondSlot1
+localeTest at begin do readSecond
+localeTest at begin do readSecondIs
+localeTest at begin do doAssertTrue6
+localeTest at begin do findDigitsSlot1
+localeTest at begin do readDigits
+localeTest at begin do readDigitsWide
+localeTest at begin do doAssertEqualInt64
+localeTest at begin do findLastSlot1
+localeTest at begin do readLastDigit
+localeTest at begin do readLastWide
+localeTest at begin do doAssertEqualInt642
+localeTest at begin return ok none
+
+readNowhere is call
+readNowhere in localeTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readCurrent is call
+readCurrent in localeTest
+readCurrent invokes setLocale
+readCurrent argument category Int32 int326 copy
+readCurrent argument name machine.Address nowhere copy
+readCurrent result current machine.Address
+readCurrent ownedBy none
+readCurrent cleanedBy none
+readCurrent borrows none
+readCurrent catch none
+readCurrent suppresses none
+
+readCurrentIs is call
+readCurrentIs in localeTest
+readCurrentIs invokes textIs
+readCurrentIs argument address machine.Address current copy
+readCurrentIs argument text String text1 lend
+readCurrentIs result currentIs Bool
+readCurrentIs ownedBy none
+readCurrentIs cleanedBy none
+readCurrentIs borrows none
+readCurrentIs catch none
+readCurrentIs suppresses none
+
+doAssertTrue is call
+doAssertTrue in localeTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool currentIs copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readPosix is call
+readPosix in localeTest
+readPosix invokes textOf
+readPosix argument text String text2 lend
+readPosix result posix machine.Address
+readPosix ownedBy none
+readPosix cleanedBy none
+readPosix borrows none
+readPosix catch none
+readPosix suppresses none
+
+readSetPosix is call
+readSetPosix in localeTest
+readSetPosix invokes setLocale
+readSetPosix argument category Int32 int326 copy
+readSetPosix argument name machine.Address posix copy
+readSetPosix result setPosix machine.Address
+readSetPosix ownedBy none
+readSetPosix cleanedBy none
+readSetPosix borrows none
+readSetPosix catch none
+readSetPosix suppresses none
+
+readPosixIs is call
+readPosixIs in localeTest
+readPosixIs invokes textIs
+readPosixIs argument address machine.Address setPosix copy
+readPosixIs argument text String text3 lend
+readPosixIs result posixIs Bool
+readPosixIs ownedBy none
+readPosixIs cleanedBy none
+readPosixIs borrows none
+readPosixIs catch none
+readPosixIs suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in localeTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool posixIs copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+readPlain is call
+readPlain in localeTest
+readPlain invokes textOf
+readPlain argument text String text4 lend
+readPlain result plain machine.Address
+readPlain ownedBy none
+readPlain cleanedBy none
+readPlain borrows none
+readPlain catch none
+readPlain suppresses none
+
+readSetPlain is call
+readSetPlain in localeTest
+readSetPlain invokes setLocale
+readSetPlain argument category Int32 int320 copy
+readSetPlain argument name machine.Address plain copy
+readSetPlain result setPlain machine.Address
+readSetPlain ownedBy none
+readSetPlain cleanedBy none
+readSetPlain borrows none
+readSetPlain catch none
+readSetPlain suppresses none
+
+readPlainIs is call
+readPlainIs in localeTest
+readPlainIs invokes textIs
+readPlainIs argument address machine.Address setPlain copy
+readPlainIs argument text String text5 lend
+readPlainIs result plainIs Bool
+readPlainIs ownedBy none
+readPlainIs cleanedBy none
+readPlainIs borrows none
+readPlainIs catch none
+readPlainIs suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in localeTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool plainIs copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+readOther is call
+readOther in localeTest
+readOther invokes textOf
+readOther argument text String text6 lend
+readOther result other machine.Address
+readOther ownedBy none
+readOther cleanedBy none
+readOther borrows none
+readOther catch none
+readOther suppresses none
+
+readSetOther is call
+readSetOther in localeTest
+readSetOther invokes setLocale
+readSetOther argument category Int32 int326 copy
+readSetOther argument name machine.Address other copy
+readSetOther result setOther machine.Address
+readSetOther ownedBy none
+readSetOther cleanedBy none
+readSetOther borrows none
+readSetOther catch none
+readSetOther suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in localeTest
+doAssertTrueStep1 invokes machine.equal
+doAssertTrueStep1 argument left machine.Address setOther copy
+doAssertTrueStep1 argument right machine.Address nowhere copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in localeTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool doAssertTruePart1 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+readConventions is call
+readConventions in localeTest
+readConventions invokes localeConventions
+readConventions argument none
+readConventions result conventions machine.Address
+readConventions ownedBy none
+readConventions cleanedBy none
+readConventions borrows none
+readConventions catch none
+readConventions suppresses none
+
+readPoint is call
+readPoint in localeTest
+readPoint invokes machine.loadAddress
+readPoint argument address machine.Address conventions copy
+readPoint result point machine.Address
+readPoint ownedBy none
+readPoint cleanedBy none
+readPoint borrows none
+readPoint catch none
+readPoint suppresses none
+
+readPointIs is call
+readPointIs in localeTest
+readPointIs invokes textIs
+readPointIs argument address machine.Address point copy
+readPointIs argument text String text7 lend
+readPointIs result pointIs Bool
+readPointIs ownedBy none
+readPointIs cleanedBy none
+readPointIs borrows none
+readPointIs catch none
+readPointIs suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in localeTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool pointIs copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+findSecondSlot1 is call
+findSecondSlot1 in localeTest
+findSecondSlot1 invokes machine.offset
+findSecondSlot1 argument address machine.Address conventions copy
+findSecondSlot1 argument bytes Int64 eight copy
+findSecondSlot1 result secondSlot machine.Address
+findSecondSlot1 ownedBy none
+findSecondSlot1 cleanedBy none
+findSecondSlot1 borrows none
+findSecondSlot1 catch none
+findSecondSlot1 suppresses none
+
+readSecond is call
+readSecond in localeTest
+readSecond invokes machine.loadAddress
+readSecond argument address machine.Address secondSlot copy
+readSecond result second machine.Address
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+readSecond suppresses none
+
+readSecondIs is call
+readSecondIs in localeTest
+readSecondIs invokes textIs
+readSecondIs argument address machine.Address second copy
+readSecondIs argument text String text8 lend
+readSecondIs result secondIs Bool
+readSecondIs ownedBy none
+readSecondIs cleanedBy none
+readSecondIs borrows none
+readSecondIs catch none
+readSecondIs suppresses none
+
+doAssertTrue6 is call
+doAssertTrue6 in localeTest
+doAssertTrue6 invokes test.assertTrue
+doAssertTrue6 argument value Bool secondIs copy
+doAssertTrue6 result none
+doAssertTrue6 ownedBy none
+doAssertTrue6 cleanedBy none
+doAssertTrue6 borrows none
+doAssertTrue6 catch none
+doAssertTrue6 suppresses none
+
+findDigitsSlot1 is call
+findDigitsSlot1 in localeTest
+findDigitsSlot1 invokes machine.offset
+findDigitsSlot1 argument address machine.Address conventions copy
+findDigitsSlot1 argument bytes Int64 n80 copy
+findDigitsSlot1 result digitsSlot machine.Address
+findDigitsSlot1 ownedBy none
+findDigitsSlot1 cleanedBy none
+findDigitsSlot1 borrows none
+findDigitsSlot1 catch none
+findDigitsSlot1 suppresses none
+
+readDigits is call
+readDigits in localeTest
+readDigits invokes machine.loadByte
+readDigits argument address machine.Address digitsSlot copy
+readDigits result digits Byte
+readDigits ownedBy none
+readDigits cleanedBy none
+readDigits borrows none
+readDigits catch none
+readDigits suppresses none
+
+readDigitsWide is call
+readDigitsWide in localeTest
+readDigitsWide invokes convert.byteToInt64
+readDigitsWide argument value Byte digits copy
+readDigitsWide result digitsWide Int64
+readDigitsWide ownedBy none
+readDigitsWide cleanedBy none
+readDigitsWide borrows none
+readDigitsWide catch none
+readDigitsWide suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in localeTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 n127 copy
+doAssertEqualInt64 argument actual Int64 digitsWide copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+findLastSlot1 is call
+findLastSlot1 in localeTest
+findLastSlot1 invokes machine.offset
+findLastSlot1 argument address machine.Address conventions copy
+findLastSlot1 argument bytes Int64 n93 copy
+findLastSlot1 result lastSlot machine.Address
+findLastSlot1 ownedBy none
+findLastSlot1 cleanedBy none
+findLastSlot1 borrows none
+findLastSlot1 catch none
+findLastSlot1 suppresses none
+
+readLastDigit is call
+readLastDigit in localeTest
+readLastDigit invokes machine.loadByte
+readLastDigit argument address machine.Address lastSlot copy
+readLastDigit result lastDigit Byte
+readLastDigit ownedBy none
+readLastDigit cleanedBy none
+readLastDigit borrows none
+readLastDigit catch none
+readLastDigit suppresses none
+
+readLastWide is call
+readLastWide in localeTest
+readLastWide invokes convert.byteToInt64
+readLastWide argument value Byte lastDigit copy
+readLastWide result lastWide Int64
+readLastWide ownedBy none
+readLastWide cleanedBy none
+readLastWide borrows none
+readLastWide catch none
+readLastWide suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in localeTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 n127 copy
+doAssertEqualInt642 argument actual Int64 lastWide copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+randomTest is test
+randomTest purpose "rand follows glibc for srand(1) and srand(0) and starts as srand(1)"
+randomTest verifies randomNumber followsGlibc
+randomTest typeParameter none
+randomTest input none
+randomTest output none
+randomTest outputOwnedBy none
+randomTest raises none
+randomTest effect use machine.memory
+randomTest uses memoryAccess
+randomTest memoryHeap false
+randomTest async false
+randomTest maxRecursion none
+randomTest label begin loopKind none
+randomTest label begin within none
+randomTest let int321 Int32 1 immutable
+randomTest let n1804289383 Int64 1804289383 immutable
+randomTest let n846930886 Int64 846930886 immutable
+randomTest let n1681692777 Int64 1681692777 immutable
+randomTest let n1714636915 Int64 1714636915 immutable
+randomTest let int320 Int32 0 immutable
+randomTest let zero Int64 0 immutable
+randomTest at begin do doSeedRandom
+randomTest at begin do readDirect
+randomTest at begin do readDirectWide
+randomTest at begin do doAssertEqualInt64
+randomTest at begin do readR1
+randomTest at begin do doAssertTrue
+randomTest at begin do readR2
+randomTest at begin do doAssertTrue2
+randomTest at begin do readR3
+randomTest at begin do doAssertTrue3
+randomTest at begin do doSeedRandom2
+randomTest at begin do readR0
+randomTest at begin do doAssertTrue4
+randomTest at begin do readMade
+randomTest at begin do doStoreInt64
+randomTest at begin do readFresh
+randomTest at begin do doAssertTrue5
+randomTest at begin return ok none
+
+doSeedRandom is call
+doSeedRandom in randomTest
+doSeedRandom invokes seedRandom
+doSeedRandom argument seed Int32 int321 copy
+doSeedRandom result none
+doSeedRandom ownedBy none
+doSeedRandom cleanedBy none
+doSeedRandom borrows none
+doSeedRandom catch none
+doSeedRandom suppresses none
+
+readDirect is call
+readDirect in randomTest
+readDirect invokes randomNumber
+readDirect argument none
+readDirect result direct Int32
+readDirect ownedBy none
+readDirect cleanedBy none
+readDirect borrows none
+readDirect catch none
+readDirect suppresses none
+
+readDirectWide is call
+readDirectWide in randomTest
+readDirectWide invokes convert.int32ToInt64
+readDirectWide argument value Int32 direct copy
+readDirectWide result directWide Int64
+readDirectWide ownedBy none
+readDirectWide cleanedBy none
+readDirectWide borrows none
+readDirectWide catch none
+readDirectWide suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in randomTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 n1804289383 copy
+doAssertEqualInt64 argument actual Int64 directWide copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readR1 is call
+readR1 in randomTest
+readR1 invokes randomIs
+readR1 argument expected Int64 n846930886 copy
+readR1 result r1 Bool
+readR1 ownedBy none
+readR1 cleanedBy none
+readR1 borrows none
+readR1 catch none
+readR1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in randomTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool r1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readR2 is call
+readR2 in randomTest
+readR2 invokes randomIs
+readR2 argument expected Int64 n1681692777 copy
+readR2 result r2 Bool
+readR2 ownedBy none
+readR2 cleanedBy none
+readR2 borrows none
+readR2 catch none
+readR2 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in randomTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool r2 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+readR3 is call
+readR3 in randomTest
+readR3 invokes randomIs
+readR3 argument expected Int64 n1714636915 copy
+readR3 result r3 Bool
+readR3 ownedBy none
+readR3 cleanedBy none
+readR3 borrows none
+readR3 catch none
+readR3 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in randomTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool r3 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+doSeedRandom2 is call
+doSeedRandom2 in randomTest
+doSeedRandom2 invokes seedRandom
+doSeedRandom2 argument seed Int32 int320 copy
+doSeedRandom2 result none
+doSeedRandom2 ownedBy none
+doSeedRandom2 cleanedBy none
+doSeedRandom2 borrows none
+doSeedRandom2 catch none
+doSeedRandom2 suppresses none
+
+readR0 is call
+readR0 in randomTest
+readR0 invokes randomIs
+readR0 argument expected Int64 n1804289383 copy
+readR0 result r0 Bool
+readR0 ownedBy none
+readR0 cleanedBy none
+readR0 borrows none
+readR0 catch none
+readR0 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in randomTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool r0 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+readMade is call
+readMade in randomTest
+readMade invokes kernel.stateAt
+readMade argument offset Int64 madeAt copy
+readMade result made machine.Address
+readMade ownedBy none
+readMade cleanedBy none
+readMade borrows none
+readMade catch none
+readMade suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in randomTest
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address made copy
+doStoreInt64 argument value Int64 zero copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+readFresh is call
+readFresh in randomTest
+readFresh invokes randomIs
+readFresh argument expected Int64 n1804289383 copy
+readFresh result fresh Bool
+readFresh ownedBy none
+readFresh cleanedBy none
+readFresh borrows none
+readFresh catch none
+readFresh suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in randomTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool fresh copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+singleTest is test
+singleTest purpose "strtof rounds to the nearest float, a number just above a halfway case up and just below down, and sets ERANGE past the floats"
+singleTest verifies toSingle roundsToFloat
+singleTest typeParameter none
+singleTest input none
+singleTest output none
+singleTest outputOwnedBy none
+singleTest raises none
+singleTest effect use machine.memory
+singleTest effect use system.calls
+singleTest uses memoryAccess
+singleTest uses systemCalls
+singleTest memoryHeap false
+singleTest async false
+singleTest maxRecursion none
+singleTest label begin loopKind none
+singleTest label begin within none
+singleTest let text1 String "2" immutable
+singleTest let n4611686018427387904 Int64 4611686018427387904 immutable
+singleTest let text2 String "0.1" immutable
+singleTest let n4591870180174331904 Int64 4591870180174331904 immutable
+singleTest let text3 String "1.00000005960464477539062500000001" immutable
+singleTest let n4607182419336888320 Int64 4607182419336888320 immutable
+singleTest let text4 String "1.000000059604644775390625" immutable
+singleTest let n4607182418800017408 Int64 4607182418800017408 immutable
+singleTest let text5 String "1.00000005960464477539062499999999" immutable
+singleTest let text6 String "0x1.00000100000000000000000001p0" immutable
+singleTest let text7 String "16777217" immutable
+singleTest let n4715268809856909312 Int64 4715268809856909312 immutable
+singleTest let text8 String "3.40282356e38" immutable
+singleTest let n5183643170566569984 Int64 5183643170566569984 immutable
+singleTest let zero Int64 0 immutable
+singleTest let text9 String "1e39" immutable
+singleTest let n9218868437227405312 Int64 9218868437227405312 immutable
+singleTest let n34 Int64 34 immutable
+singleTest let text10 String "1e-45" immutable
+singleTest let n3936146074321813504 Int64 3936146074321813504 immutable
+singleTest let text11 String "-0x1.8p1" immutable
+singleTest let minus4609434218613702656 Int64 -4609434218613702656 immutable
+singleTest at begin do readSample
+singleTest at begin do readNowhere
+singleTest at begin do readDirect
+singleTest at begin do readDirectWide
+singleTest at begin do readDirectBits
+singleTest at begin do readDirectInt
+singleTest at begin do doAssertEqualInt64
+singleTest at begin do readTenth
+singleTest at begin do readTenthWide
+singleTest at begin do doAssertEqualInt642
+singleTest at begin do readAbove
+singleTest at begin do readAboveWide
+singleTest at begin do doAssertEqualInt643
+singleTest at begin do readTie
+singleTest at begin do readTieWide
+singleTest at begin do doAssertEqualInt644
+singleTest at begin do readBelow
+singleTest at begin do readBelowWide
+singleTest at begin do doAssertEqualInt645
+singleTest at begin do readHexAbove
+singleTest at begin do readHexAboveWide
+singleTest at begin do doAssertEqualInt646
+singleTest at begin do readBig
+singleTest at begin do readBigWide
+singleTest at begin do doAssertEqualInt647
+singleTest at begin do readLargest
+singleTest at begin do readLargestWide
+singleTest at begin do doAssertEqualInt648
+singleTest at begin do readClean
+singleTest at begin do doAssertEqualInt64Step1
+singleTest at begin do doAssertEqualInt649
+singleTest at begin do readOver
+singleTest at begin do readOverWide
+singleTest at begin do doAssertEqualInt6410
+singleTest at begin do readOverErrno
+singleTest at begin do doAssertEqualInt64Step2
+singleTest at begin do doAssertEqualInt6411
+singleTest at begin do readSmall
+singleTest at begin do readSmallWide
+singleTest at begin do doAssertEqualInt6412
+singleTest at begin do readSmallErrno
+singleTest at begin do doAssertEqualInt64Step3
+singleTest at begin do doAssertEqualInt6413
+singleTest at begin do readMinus
+singleTest at begin do readMinusWide
+singleTest at begin do doAssertEqualInt6414
+singleTest at begin return ok none
+
+readSample is call
+readSample in singleTest
+readSample invokes textOf
+readSample argument text String text1 lend
+readSample result sample machine.Address
+readSample ownedBy none
+readSample cleanedBy none
+readSample borrows none
+readSample catch none
+readSample suppresses none
+
+readNowhere is call
+readNowhere in singleTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readDirect is call
+readDirect in singleTest
+readDirect invokes toSingle
+readDirect argument text machine.Address sample copy
+readDirect argument endAt machine.Address nowhere copy
+readDirect result direct Float32
+readDirect ownedBy none
+readDirect cleanedBy none
+readDirect borrows none
+readDirect catch none
+readDirect suppresses none
+
+readDirectWide is call
+readDirectWide in singleTest
+readDirectWide invokes convert.float32ToFloat64
+readDirectWide argument value Float32 direct copy
+readDirectWide result directWide Float64
+readDirectWide ownedBy none
+readDirectWide cleanedBy none
+readDirectWide borrows none
+readDirectWide catch none
+readDirectWide suppresses none
+
+readDirectBits is call
+readDirectBits in singleTest
+readDirectBits invokes convert.float64BitsToUInt64
+readDirectBits argument value Float64 directWide copy
+readDirectBits result directBits UInt64
+readDirectBits ownedBy none
+readDirectBits cleanedBy none
+readDirectBits borrows none
+readDirectBits catch none
+readDirectBits suppresses none
+
+readDirectInt is call
+readDirectInt in singleTest
+readDirectInt invokes convert.uint64BitsToInt64
+readDirectInt argument value UInt64 directBits copy
+readDirectInt result directInt Int64
+readDirectInt ownedBy none
+readDirectInt cleanedBy none
+readDirectInt borrows none
+readDirectInt catch none
+readDirectInt suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in singleTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 n4611686018427387904 copy
+doAssertEqualInt64 argument actual Int64 directInt copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readTenth is call
+readTenth in singleTest
+readTenth invokes floatBitsOf
+readTenth argument text String text2 lend
+readTenth result tenth UInt64
+readTenth ownedBy none
+readTenth cleanedBy none
+readTenth borrows none
+readTenth catch none
+readTenth suppresses none
+
+readTenthWide is call
+readTenthWide in singleTest
+readTenthWide invokes convert.uint64BitsToInt64
+readTenthWide argument value UInt64 tenth copy
+readTenthWide result tenthWide Int64
+readTenthWide ownedBy none
+readTenthWide cleanedBy none
+readTenthWide borrows none
+readTenthWide catch none
+readTenthWide suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in singleTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 n4591870180174331904 copy
+doAssertEqualInt642 argument actual Int64 tenthWide copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+readAbove is call
+readAbove in singleTest
+readAbove invokes floatBitsOf
+readAbove argument text String text3 lend
+readAbove result above UInt64
+readAbove ownedBy none
+readAbove cleanedBy none
+readAbove borrows none
+readAbove catch none
+readAbove suppresses none
+
+readAboveWide is call
+readAboveWide in singleTest
+readAboveWide invokes convert.uint64BitsToInt64
+readAboveWide argument value UInt64 above copy
+readAboveWide result aboveWide Int64
+readAboveWide ownedBy none
+readAboveWide cleanedBy none
+readAboveWide borrows none
+readAboveWide catch none
+readAboveWide suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in singleTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 n4607182419336888320 copy
+doAssertEqualInt643 argument actual Int64 aboveWide copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+readTie is call
+readTie in singleTest
+readTie invokes floatBitsOf
+readTie argument text String text4 lend
+readTie result tie UInt64
+readTie ownedBy none
+readTie cleanedBy none
+readTie borrows none
+readTie catch none
+readTie suppresses none
+
+readTieWide is call
+readTieWide in singleTest
+readTieWide invokes convert.uint64BitsToInt64
+readTieWide argument value UInt64 tie copy
+readTieWide result tieWide Int64
+readTieWide ownedBy none
+readTieWide cleanedBy none
+readTieWide borrows none
+readTieWide catch none
+readTieWide suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in singleTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 n4607182418800017408 copy
+doAssertEqualInt644 argument actual Int64 tieWide copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+readBelow is call
+readBelow in singleTest
+readBelow invokes floatBitsOf
+readBelow argument text String text5 lend
+readBelow result below UInt64
+readBelow ownedBy none
+readBelow cleanedBy none
+readBelow borrows none
+readBelow catch none
+readBelow suppresses none
+
+readBelowWide is call
+readBelowWide in singleTest
+readBelowWide invokes convert.uint64BitsToInt64
+readBelowWide argument value UInt64 below copy
+readBelowWide result belowWide Int64
+readBelowWide ownedBy none
+readBelowWide cleanedBy none
+readBelowWide borrows none
+readBelowWide catch none
+readBelowWide suppresses none
+
+doAssertEqualInt645 is call
+doAssertEqualInt645 in singleTest
+doAssertEqualInt645 invokes test.assertEqualInt64
+doAssertEqualInt645 argument expected Int64 n4607182418800017408 copy
+doAssertEqualInt645 argument actual Int64 belowWide copy
+doAssertEqualInt645 result none
+doAssertEqualInt645 ownedBy none
+doAssertEqualInt645 cleanedBy none
+doAssertEqualInt645 borrows none
+doAssertEqualInt645 catch none
+doAssertEqualInt645 suppresses none
+
+readHexAbove is call
+readHexAbove in singleTest
+readHexAbove invokes floatBitsOf
+readHexAbove argument text String text6 lend
+readHexAbove result hexAbove UInt64
+readHexAbove ownedBy none
+readHexAbove cleanedBy none
+readHexAbove borrows none
+readHexAbove catch none
+readHexAbove suppresses none
+
+readHexAboveWide is call
+readHexAboveWide in singleTest
+readHexAboveWide invokes convert.uint64BitsToInt64
+readHexAboveWide argument value UInt64 hexAbove copy
+readHexAboveWide result hexAboveWide Int64
+readHexAboveWide ownedBy none
+readHexAboveWide cleanedBy none
+readHexAboveWide borrows none
+readHexAboveWide catch none
+readHexAboveWide suppresses none
+
+doAssertEqualInt646 is call
+doAssertEqualInt646 in singleTest
+doAssertEqualInt646 invokes test.assertEqualInt64
+doAssertEqualInt646 argument expected Int64 n4607182419336888320 copy
+doAssertEqualInt646 argument actual Int64 hexAboveWide copy
+doAssertEqualInt646 result none
+doAssertEqualInt646 ownedBy none
+doAssertEqualInt646 cleanedBy none
+doAssertEqualInt646 borrows none
+doAssertEqualInt646 catch none
+doAssertEqualInt646 suppresses none
+
+readBig is call
+readBig in singleTest
+readBig invokes floatBitsOf
+readBig argument text String text7 lend
+readBig result big UInt64
+readBig ownedBy none
+readBig cleanedBy none
+readBig borrows none
+readBig catch none
+readBig suppresses none
+
+readBigWide is call
+readBigWide in singleTest
+readBigWide invokes convert.uint64BitsToInt64
+readBigWide argument value UInt64 big copy
+readBigWide result bigWide Int64
+readBigWide ownedBy none
+readBigWide cleanedBy none
+readBigWide borrows none
+readBigWide catch none
+readBigWide suppresses none
+
+doAssertEqualInt647 is call
+doAssertEqualInt647 in singleTest
+doAssertEqualInt647 invokes test.assertEqualInt64
+doAssertEqualInt647 argument expected Int64 n4715268809856909312 copy
+doAssertEqualInt647 argument actual Int64 bigWide copy
+doAssertEqualInt647 result none
+doAssertEqualInt647 ownedBy none
+doAssertEqualInt647 cleanedBy none
+doAssertEqualInt647 borrows none
+doAssertEqualInt647 catch none
+doAssertEqualInt647 suppresses none
+
+readLargest is call
+readLargest in singleTest
+readLargest invokes floatBitsOf
+readLargest argument text String text8 lend
+readLargest result largest UInt64
+readLargest ownedBy none
+readLargest cleanedBy none
+readLargest borrows none
+readLargest catch none
+readLargest suppresses none
+
+readLargestWide is call
+readLargestWide in singleTest
+readLargestWide invokes convert.uint64BitsToInt64
+readLargestWide argument value UInt64 largest copy
+readLargestWide result largestWide Int64
+readLargestWide ownedBy none
+readLargestWide cleanedBy none
+readLargestWide borrows none
+readLargestWide catch none
+readLargestWide suppresses none
+
+doAssertEqualInt648 is call
+doAssertEqualInt648 in singleTest
+doAssertEqualInt648 invokes test.assertEqualInt64
+doAssertEqualInt648 argument expected Int64 n5183643170566569984 copy
+doAssertEqualInt648 argument actual Int64 largestWide copy
+doAssertEqualInt648 result none
+doAssertEqualInt648 ownedBy none
+doAssertEqualInt648 cleanedBy none
+doAssertEqualInt648 borrows none
+doAssertEqualInt648 catch none
+doAssertEqualInt648 suppresses none
+
+readClean is call
+readClean in singleTest
+readClean invokes currentErrno
+readClean argument none
+readClean result clean Int32
+readClean ownedBy none
+readClean cleanedBy none
+readClean borrows none
+readClean catch none
+readClean suppresses none
+
+doAssertEqualInt64Step1 is call
+doAssertEqualInt64Step1 in singleTest
+doAssertEqualInt64Step1 invokes convert.int32ToInt64
+doAssertEqualInt64Step1 argument value Int32 clean copy
+doAssertEqualInt64Step1 result doAssertEqualInt64Part1 Int64
+doAssertEqualInt64Step1 ownedBy none
+doAssertEqualInt64Step1 cleanedBy none
+doAssertEqualInt64Step1 borrows none
+doAssertEqualInt64Step1 catch none
+doAssertEqualInt64Step1 suppresses none
+
+doAssertEqualInt649 is call
+doAssertEqualInt649 in singleTest
+doAssertEqualInt649 invokes test.assertEqualInt64
+doAssertEqualInt649 argument expected Int64 zero copy
+doAssertEqualInt649 argument actual Int64 doAssertEqualInt64Part1 copy
+doAssertEqualInt649 result none
+doAssertEqualInt649 ownedBy none
+doAssertEqualInt649 cleanedBy none
+doAssertEqualInt649 borrows none
+doAssertEqualInt649 catch none
+doAssertEqualInt649 suppresses none
+
+readOver is call
+readOver in singleTest
+readOver invokes floatBitsOf
+readOver argument text String text9 lend
+readOver result over UInt64
+readOver ownedBy none
+readOver cleanedBy none
+readOver borrows none
+readOver catch none
+readOver suppresses none
+
+readOverWide is call
+readOverWide in singleTest
+readOverWide invokes convert.uint64BitsToInt64
+readOverWide argument value UInt64 over copy
+readOverWide result overWide Int64
+readOverWide ownedBy none
+readOverWide cleanedBy none
+readOverWide borrows none
+readOverWide catch none
+readOverWide suppresses none
+
+doAssertEqualInt6410 is call
+doAssertEqualInt6410 in singleTest
+doAssertEqualInt6410 invokes test.assertEqualInt64
+doAssertEqualInt6410 argument expected Int64 n9218868437227405312 copy
+doAssertEqualInt6410 argument actual Int64 overWide copy
+doAssertEqualInt6410 result none
+doAssertEqualInt6410 ownedBy none
+doAssertEqualInt6410 cleanedBy none
+doAssertEqualInt6410 borrows none
+doAssertEqualInt6410 catch none
+doAssertEqualInt6410 suppresses none
+
+readOverErrno is call
+readOverErrno in singleTest
+readOverErrno invokes currentErrno
+readOverErrno argument none
+readOverErrno result overErrno Int32
+readOverErrno ownedBy none
+readOverErrno cleanedBy none
+readOverErrno borrows none
+readOverErrno catch none
+readOverErrno suppresses none
+
+doAssertEqualInt64Step2 is call
+doAssertEqualInt64Step2 in singleTest
+doAssertEqualInt64Step2 invokes convert.int32ToInt64
+doAssertEqualInt64Step2 argument value Int32 overErrno copy
+doAssertEqualInt64Step2 result doAssertEqualInt64Part2 Int64
+doAssertEqualInt64Step2 ownedBy none
+doAssertEqualInt64Step2 cleanedBy none
+doAssertEqualInt64Step2 borrows none
+doAssertEqualInt64Step2 catch none
+doAssertEqualInt64Step2 suppresses none
+
+doAssertEqualInt6411 is call
+doAssertEqualInt6411 in singleTest
+doAssertEqualInt6411 invokes test.assertEqualInt64
+doAssertEqualInt6411 argument expected Int64 n34 copy
+doAssertEqualInt6411 argument actual Int64 doAssertEqualInt64Part2 copy
+doAssertEqualInt6411 result none
+doAssertEqualInt6411 ownedBy none
+doAssertEqualInt6411 cleanedBy none
+doAssertEqualInt6411 borrows none
+doAssertEqualInt6411 catch none
+doAssertEqualInt6411 suppresses none
+
+readSmall is call
+readSmall in singleTest
+readSmall invokes floatBitsOf
+readSmall argument text String text10 lend
+readSmall result small UInt64
+readSmall ownedBy none
+readSmall cleanedBy none
+readSmall borrows none
+readSmall catch none
+readSmall suppresses none
+
+readSmallWide is call
+readSmallWide in singleTest
+readSmallWide invokes convert.uint64BitsToInt64
+readSmallWide argument value UInt64 small copy
+readSmallWide result smallWide Int64
+readSmallWide ownedBy none
+readSmallWide cleanedBy none
+readSmallWide borrows none
+readSmallWide catch none
+readSmallWide suppresses none
+
+doAssertEqualInt6412 is call
+doAssertEqualInt6412 in singleTest
+doAssertEqualInt6412 invokes test.assertEqualInt64
+doAssertEqualInt6412 argument expected Int64 n3936146074321813504 copy
+doAssertEqualInt6412 argument actual Int64 smallWide copy
+doAssertEqualInt6412 result none
+doAssertEqualInt6412 ownedBy none
+doAssertEqualInt6412 cleanedBy none
+doAssertEqualInt6412 borrows none
+doAssertEqualInt6412 catch none
+doAssertEqualInt6412 suppresses none
+
+readSmallErrno is call
+readSmallErrno in singleTest
+readSmallErrno invokes currentErrno
+readSmallErrno argument none
+readSmallErrno result smallErrno Int32
+readSmallErrno ownedBy none
+readSmallErrno cleanedBy none
+readSmallErrno borrows none
+readSmallErrno catch none
+readSmallErrno suppresses none
+
+doAssertEqualInt64Step3 is call
+doAssertEqualInt64Step3 in singleTest
+doAssertEqualInt64Step3 invokes convert.int32ToInt64
+doAssertEqualInt64Step3 argument value Int32 smallErrno copy
+doAssertEqualInt64Step3 result doAssertEqualInt64Part3 Int64
+doAssertEqualInt64Step3 ownedBy none
+doAssertEqualInt64Step3 cleanedBy none
+doAssertEqualInt64Step3 borrows none
+doAssertEqualInt64Step3 catch none
+doAssertEqualInt64Step3 suppresses none
+
+doAssertEqualInt6413 is call
+doAssertEqualInt6413 in singleTest
+doAssertEqualInt6413 invokes test.assertEqualInt64
+doAssertEqualInt6413 argument expected Int64 n34 copy
+doAssertEqualInt6413 argument actual Int64 doAssertEqualInt64Part3 copy
+doAssertEqualInt6413 result none
+doAssertEqualInt6413 ownedBy none
+doAssertEqualInt6413 cleanedBy none
+doAssertEqualInt6413 borrows none
+doAssertEqualInt6413 catch none
+doAssertEqualInt6413 suppresses none
+
+readMinus is call
+readMinus in singleTest
+readMinus invokes floatBitsOf
+readMinus argument text String text11 lend
+readMinus result minus UInt64
+readMinus ownedBy none
+readMinus cleanedBy none
+readMinus borrows none
+readMinus catch none
+readMinus suppresses none
+
+readMinusWide is call
+readMinusWide in singleTest
+readMinusWide invokes convert.uint64BitsToInt64
+readMinusWide argument value UInt64 minus copy
+readMinusWide result minusWide Int64
+readMinusWide ownedBy none
+readMinusWide cleanedBy none
+readMinusWide borrows none
+readMinusWide catch none
+readMinusWide suppresses none
+
+doAssertEqualInt6414 is call
+doAssertEqualInt6414 in singleTest
+doAssertEqualInt6414 invokes test.assertEqualInt64
+doAssertEqualInt6414 argument expected Int64 minus4609434218613702656 copy
+doAssertEqualInt6414 argument actual Int64 minusWide copy
+doAssertEqualInt6414 result none
+doAssertEqualInt6414 ownedBy none
+doAssertEqualInt6414 cleanedBy none
+doAssertEqualInt6414 borrows none
+doAssertEqualInt6414 catch none
+doAssertEqualInt6414 suppresses none

@@ -2812,6 +2812,20 @@ with glibc. Decided by delegation:
   is ERANGE on overflow, on underflow to 0 and at poles, EDOM on invalid arguments (glibc's ERANGE for an inexact
   subnormal result of exp is not set). An invalid result is the default NaN with its sign bit set, as on x86_64.
 
+- **D-183** The rest of string.h and stdlib.h, and locale.h, assert.h, and inttypes.h (`cextra`): strtok (its save
+  pointer at machine.state, left at the string's end as glibc leaves it), strtok_r, strsep, strcoll and strxfrm (the C
+  locale's byte order), memccpy, mempcpy, stpcpy, stpncpy, strchrnul, memrchr; strtof, correctly rounded (the double
+  from clibrary's reader, rounded to float on integer bits, and a text that lands on a float midpoint compared with it
+  exactly in bignum, so it never rounds twice), with hex floats, inf, nan, subnormals, and ERANGE; rand and srand as
+  glibc's TYPE_3 generator (rand before srand as srand(1), srand(0) as srand(1)), rand_r as glibc's three-step LCG;
+  aligned_alloc (a non-power-of-two alignment is NULL with EINVAL, as glibc 2.38 has it) and posix_memalign; setlocale
+  ("C", "POSIX", "" and NULL give "C", any other name NULL) and localeconv (glibc's C values in its x86_64 struct
+  lconv layout); `__assert_fail` with glibc's message, then abort; imaxabs, strtoimax, strtoumax, wcstoimax,
+  wcstoumax. Aligned blocks above 16 bytes of alignment are a known weakness: on Linux they are carved from a larger
+  block or mapped pages that free does not give back whole, and on Windows, where HeapAlloc cannot align, they are
+  found by taking blocks until one is aligned, so a large aligned request there can fail. errno is set through
+  clibrary's setErrno (per thread, D-166). machine.state 26880 to 27903.
+
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3563,6 +3577,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
 | 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
 | 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |
+| 2026-11-15 | D-183 | The runtime in SemanticScript, the whole C library: the rest of string.h and stdlib.h (strtok, strtof correctly rounded, glibc's rand), locale.h, assert.h, inttypes.h (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

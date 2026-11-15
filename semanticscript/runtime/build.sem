@@ -35,6 +35,7 @@ runtime includesModule cstreams
 runtime includesModule cstart
 runtime includesModule cprocess
 runtime includesModule cthreads
+runtime includesModule cextra
 runtime includesModule cmathexp
 runtime includesModule cmathtrig
 runtime includesModule cmathspecial
