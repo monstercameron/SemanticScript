@@ -172,7 +172,10 @@ class Models:
     llround = lround
 
     def remainder(self, t, x, y):
-        return self.remquo(t, x, y)[0]
+        r = self.remquo(t, x, y)[0]
+        if r != r and x == x and y == y:
+            return from_dbits(0x7ff8000000000000)  # glibc's remainder gives the positive NaN, remquo the hardware's
+        return r
 
     def remquo(self, t, x, y):
         if x != x:

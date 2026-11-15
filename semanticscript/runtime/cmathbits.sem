@@ -5677,6 +5677,7 @@ remainderCore typeParameter none
 remainderCore input x Float64 copied
 remainderCore input y Float64 copied
 remainderCore input quoAt machine.Address copied
+remainderCore input positiveInvalid Bool copied
 remainderCore output Float64
 remainderCore outputOwnedBy none
 remainderCore raises none
@@ -5689,6 +5690,10 @@ remainderCore label begin loopKind none
 remainderCore label begin within none
 remainderCore label makeNan loopKind none
 remainderCore label makeNan within none
+remainderCore label givePositive loopKind none
+remainderCore label givePositive within none
+remainderCore label giveComputed loopKind none
+remainderCore label giveComputed within none
 remainderCore label checkZero loopKind none
 remainderCore label checkZero within none
 remainderCore label checkInfinity loopKind none
@@ -5736,6 +5741,7 @@ remainderCore label zeroResult loopKind none
 remainderCore label zeroResult within none
 remainderCore label nonzero loopKind none
 remainderCore label nonzero within none
+remainderCore let positiveNan UInt64 9221120237041090560 immutable
 remainderCore let ax UInt64 0 mutable
 remainderCore let ay UInt64 0 mutable
 remainderCore let ex Int64 0 mutable
@@ -5775,11 +5781,18 @@ remainderCore at begin do findInvalid1
 remainderCore at begin branch if invalid goto makeNan else goto checkZero
 remainderCore at makeNan do findProduct1
 remainderCore at makeNan do findNanValue1
-remainderCore at makeNan return ok nanValue
-remainderCore at checkZero do findCheck11
-remainderCore at checkZero branch if check1 goto giveX else goto checkInfinity
-remainderCore at checkInfinity do findCheck21
-remainderCore at checkInfinity branch if check2 goto giveX else goto normalize
+remainderCore at makeNan do noInputNanStep1
+remainderCore at makeNan do noInputNanStep2
+remainderCore at makeNan do findNoInputNan1
+remainderCore at makeNan do findCheck11
+remainderCore at makeNan branch if check1 goto givePositive else goto giveComputed
+remainderCore at givePositive do readPositive
+remainderCore at givePositive return ok positive
+remainderCore at giveComputed return ok nanValue
+remainderCore at checkZero do findCheck21
+remainderCore at checkZero branch if check2 goto giveX else goto checkInfinity
+remainderCore at checkInfinity do findCheck31
+remainderCore at checkInfinity branch if check3 goto giveX else goto normalize
 remainderCore at giveX do doStoreQuotient
 remainderCore at giveX return ok x
 remainderCore at normalize do findAxNext11
@@ -5790,12 +5803,12 @@ remainderCore at normalize do findAyNext11
 remainderCore at normalize set ay ayNext1
 remainderCore at normalize do findEyNext11
 remainderCore at normalize set ey eyNext1
-remainderCore at normalize do check3Step1
-remainderCore at normalize do findCheck31
-remainderCore at normalize branch if check3 goto giveX else goto near
-remainderCore at near do check4Step1
-remainderCore at near do findCheck41
-remainderCore at near branch if check4 goto adjacent else goto divide
+remainderCore at normalize do check4Step1
+remainderCore at normalize do findCheck41
+remainderCore at normalize branch if check4 goto giveX else goto near
+remainderCore at near do check5Step1
+remainderCore at near do findCheck51
+remainderCore at near branch if check5 goto adjacent else goto divide
 remainderCore at adjacent do findAyNext21
 remainderCore at adjacent set ay ayNext2
 remainderCore at adjacent set ey ex
@@ -5803,10 +5816,10 @@ remainderCore at adjacent goto decide
 remainderCore at divide do findStepsNext11
 remainderCore at divide set steps stepsNext1
 remainderCore at divide goto eachStep
-remainderCore at eachStep do findCheck51
-remainderCore at eachStep branch if check5 goto lastStep else goto step
-remainderCore at step do findCheck61
-remainderCore at step branch if check6 goto takeOne else goto takeZero
+remainderCore at eachStep do findCheck61
+remainderCore at eachStep branch if check6 goto lastStep else goto step
+remainderCore at step do findCheck71
+remainderCore at step branch if check7 goto takeOne else goto takeZero
 remainderCore at takeOne do axStep1
 remainderCore at takeOne do findAxNext21
 remainderCore at takeOne set ax axNext2
@@ -5822,8 +5835,8 @@ remainderCore at takeZero goto stepped
 remainderCore at stepped do findStepsNext21
 remainderCore at stepped set steps stepsNext2
 remainderCore at stepped goto eachStep
-remainderCore at lastStep do findCheck71
-remainderCore at lastStep branch if check7 goto lastOne else goto lastZero
+remainderCore at lastStep do findCheck81
+remainderCore at lastStep branch if check8 goto lastOne else goto lastZero
 remainderCore at lastOne do findAxNext41
 remainderCore at lastOne set ax axNext4
 remainderCore at lastOne do qStep2
@@ -5851,22 +5864,22 @@ remainderCore at reduceUp do lowStep1
 remainderCore at reduceUp do lowStep2
 remainderCore at reduceUp do findLowNext21
 remainderCore at reduceUp set low lowNext2
-remainderCore at reduceUp do findCheck81
-remainderCore at reduceUp branch if check8 goto eight else goto finish
+remainderCore at reduceUp do findCheck91
+remainderCore at reduceUp branch if check9 goto eight else goto finish
 remainderCore at eight set low uInt648
 remainderCore at eight goto finish
 remainderCore at finish do findLowLong1
 remainderCore at finish set signedQuotient lowLong
-remainderCore at finish do check9Step1
-remainderCore at finish do check9Step2
-remainderCore at finish do findCheck91
-remainderCore at finish branch if check9 goto negate else goto report
+remainderCore at finish do check10Step1
+remainderCore at finish do check10Step2
+remainderCore at finish do findCheck101
+remainderCore at finish branch if check10 goto negate else goto report
 remainderCore at negate do findSignedQuotientNext11
 remainderCore at negate set signedQuotient signedQuotientNext1
 remainderCore at negate goto report
 remainderCore at report do doStoreQuotient2
-remainderCore at report do findCheck101
-remainderCore at report branch if check10 goto zeroResult else goto nonzero
+remainderCore at report do findCheck111
+remainderCore at report branch if check11 goto zeroResult else goto nonzero
 remainderCore at zeroResult do readZeroValue
 remainderCore at zeroResult return ok zeroValue
 remainderCore at nonzero do asFloatStep1
@@ -6057,11 +6070,47 @@ findNanValue1 borrows none
 findNanValue1 catch none
 findNanValue1 suppresses none
 
+noInputNanStep1 is call
+noInputNanStep1 in remainderCore
+noInputNanStep1 invokes compare.lessOrEqualUInt64
+noInputNanStep1 argument left UInt64 xm copy
+noInputNanStep1 argument right UInt64 uInt649218868437227405312 copy
+noInputNanStep1 result noInputNanPart1 Bool
+noInputNanStep1 ownedBy none
+noInputNanStep1 cleanedBy none
+noInputNanStep1 borrows none
+noInputNanStep1 catch none
+noInputNanStep1 suppresses none
+
+noInputNanStep2 is call
+noInputNanStep2 in remainderCore
+noInputNanStep2 invokes compare.lessOrEqualUInt64
+noInputNanStep2 argument left UInt64 ym copy
+noInputNanStep2 argument right UInt64 uInt649218868437227405312 copy
+noInputNanStep2 result noInputNanPart2 Bool
+noInputNanStep2 ownedBy none
+noInputNanStep2 cleanedBy none
+noInputNanStep2 borrows none
+noInputNanStep2 catch none
+noInputNanStep2 suppresses none
+
+findNoInputNan1 is call
+findNoInputNan1 in remainderCore
+findNoInputNan1 invokes logic.and
+findNoInputNan1 argument left Bool noInputNanPart1 copy
+findNoInputNan1 argument right Bool noInputNanPart2 copy
+findNoInputNan1 result noInputNan Bool
+findNoInputNan1 ownedBy none
+findNoInputNan1 cleanedBy none
+findNoInputNan1 borrows none
+findNoInputNan1 catch none
+findNoInputNan1 suppresses none
+
 findCheck11 is call
 findCheck11 in remainderCore
-findCheck11 invokes compare.equalUInt64
-findCheck11 argument left UInt64 xm copy
-findCheck11 argument right UInt64 uInt640 copy
+findCheck11 invokes logic.and
+findCheck11 argument left Bool positiveInvalid copy
+findCheck11 argument right Bool noInputNan copy
 findCheck11 result check1 Bool
 findCheck11 ownedBy none
 findCheck11 cleanedBy none
@@ -6069,17 +6118,40 @@ findCheck11 borrows none
 findCheck11 catch none
 findCheck11 suppresses none
 
+readPositive is call
+readPositive in remainderCore
+readPositive invokes convert.uint64BitsToFloat64
+readPositive argument value UInt64 positiveNan copy
+readPositive result positive Float64
+readPositive ownedBy none
+readPositive cleanedBy none
+readPositive borrows none
+readPositive catch none
+readPositive suppresses none
+
 findCheck21 is call
 findCheck21 in remainderCore
-findCheck21 invokes compare.equalInt64
-findCheck21 argument left Int64 yField copy
-findCheck21 argument right Int64 n2047 copy
+findCheck21 invokes compare.equalUInt64
+findCheck21 argument left UInt64 xm copy
+findCheck21 argument right UInt64 uInt640 copy
 findCheck21 result check2 Bool
 findCheck21 ownedBy none
 findCheck21 cleanedBy none
 findCheck21 borrows none
 findCheck21 catch none
 findCheck21 suppresses none
+
+findCheck31 is call
+findCheck31 in remainderCore
+findCheck31 invokes compare.equalInt64
+findCheck31 argument left Int64 yField copy
+findCheck31 argument right Int64 n2047 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
 
 doStoreQuotient is call
 doStoreQuotient in remainderCore
@@ -6137,30 +6209,6 @@ findEyNext11 borrows none
 findEyNext11 catch none
 findEyNext11 suppresses none
 
-check3Step1 is call
-check3Step1 in remainderCore
-check3Step1 invokes math.subtractInt64
-check3Step1 argument left Int64 ey copy
-check3Step1 argument right Int64 one copy
-check3Step1 result check3Part1 Int64
-check3Step1 ownedBy none
-check3Step1 cleanedBy none
-check3Step1 borrows none
-check3Step1 catch none
-check3Step1 suppresses none
-
-findCheck31 is call
-findCheck31 in remainderCore
-findCheck31 invokes compare.lessThanInt64
-findCheck31 argument left Int64 ex copy
-findCheck31 argument right Int64 check3Part1 copy
-findCheck31 result check3 Bool
-findCheck31 ownedBy none
-findCheck31 cleanedBy none
-findCheck31 borrows none
-findCheck31 catch none
-findCheck31 suppresses none
-
 check4Step1 is call
 check4Step1 in remainderCore
 check4Step1 invokes math.subtractInt64
@@ -6175,7 +6223,7 @@ check4Step1 suppresses none
 
 findCheck41 is call
 findCheck41 in remainderCore
-findCheck41 invokes compare.equalInt64
+findCheck41 invokes compare.lessThanInt64
 findCheck41 argument left Int64 ex copy
 findCheck41 argument right Int64 check4Part1 copy
 findCheck41 result check4 Bool
@@ -6184,6 +6232,30 @@ findCheck41 cleanedBy none
 findCheck41 borrows none
 findCheck41 catch none
 findCheck41 suppresses none
+
+check5Step1 is call
+check5Step1 in remainderCore
+check5Step1 invokes math.subtractInt64
+check5Step1 argument left Int64 ey copy
+check5Step1 argument right Int64 one copy
+check5Step1 result check5Part1 Int64
+check5Step1 ownedBy none
+check5Step1 cleanedBy none
+check5Step1 borrows none
+check5Step1 catch none
+check5Step1 suppresses none
+
+findCheck51 is call
+findCheck51 in remainderCore
+findCheck51 invokes compare.equalInt64
+findCheck51 argument left Int64 ex copy
+findCheck51 argument right Int64 check5Part1 copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
 
 findAyNext21 is call
 findAyNext21 in remainderCore
@@ -6209,29 +6281,29 @@ findStepsNext11 borrows none
 findStepsNext11 catch none
 findStepsNext11 suppresses none
 
-findCheck51 is call
-findCheck51 in remainderCore
-findCheck51 invokes compare.equalInt64
-findCheck51 argument left Int64 steps copy
-findCheck51 argument right Int64 zero copy
-findCheck51 result check5 Bool
-findCheck51 ownedBy none
-findCheck51 cleanedBy none
-findCheck51 borrows none
-findCheck51 catch none
-findCheck51 suppresses none
-
 findCheck61 is call
 findCheck61 in remainderCore
-findCheck61 invokes compare.greaterOrEqualUInt64
-findCheck61 argument left UInt64 ax copy
-findCheck61 argument right UInt64 ay copy
+findCheck61 invokes compare.equalInt64
+findCheck61 argument left Int64 steps copy
+findCheck61 argument right Int64 zero copy
 findCheck61 result check6 Bool
 findCheck61 ownedBy none
 findCheck61 cleanedBy none
 findCheck61 borrows none
 findCheck61 catch none
 findCheck61 suppresses none
+
+findCheck71 is call
+findCheck71 in remainderCore
+findCheck71 invokes compare.greaterOrEqualUInt64
+findCheck71 argument left UInt64 ax copy
+findCheck71 argument right UInt64 ay copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
 
 axStep1 is call
 axStep1 in remainderCore
@@ -6317,17 +6389,17 @@ findStepsNext21 borrows none
 findStepsNext21 catch none
 findStepsNext21 suppresses none
 
-findCheck71 is call
-findCheck71 in remainderCore
-findCheck71 invokes compare.greaterOrEqualUInt64
-findCheck71 argument left UInt64 ax copy
-findCheck71 argument right UInt64 ay copy
-findCheck71 result check7 Bool
-findCheck71 ownedBy none
-findCheck71 cleanedBy none
-findCheck71 borrows none
-findCheck71 catch none
-findCheck71 suppresses none
+findCheck81 is call
+findCheck81 in remainderCore
+findCheck81 invokes compare.greaterOrEqualUInt64
+findCheck81 argument left UInt64 ax copy
+findCheck81 argument right UInt64 ay copy
+findCheck81 result check8 Bool
+findCheck81 ownedBy none
+findCheck81 cleanedBy none
+findCheck81 borrows none
+findCheck81 catch none
+findCheck81 suppresses none
 
 findAxNext41 is call
 findAxNext41 in remainderCore
@@ -6521,17 +6593,17 @@ findLowNext21 borrows none
 findLowNext21 catch none
 findLowNext21 suppresses none
 
-findCheck81 is call
-findCheck81 in remainderCore
-findCheck81 invokes compare.equalUInt64
-findCheck81 argument left UInt64 low copy
-findCheck81 argument right UInt64 uInt640 copy
-findCheck81 result check8 Bool
-findCheck81 ownedBy none
-findCheck81 cleanedBy none
-findCheck81 borrows none
-findCheck81 catch none
-findCheck81 suppresses none
+findCheck91 is call
+findCheck91 in remainderCore
+findCheck91 invokes compare.equalUInt64
+findCheck91 argument left UInt64 low copy
+findCheck91 argument right UInt64 uInt640 copy
+findCheck91 result check9 Bool
+findCheck91 ownedBy none
+findCheck91 cleanedBy none
+findCheck91 borrows none
+findCheck91 catch none
+findCheck91 suppresses none
 
 findLowLong1 is call
 findLowLong1 in remainderCore
@@ -6544,41 +6616,41 @@ findLowLong1 borrows none
 findLowLong1 catch none
 findLowLong1 suppresses none
 
-check9Step1 is call
-check9Step1 in remainderCore
-check9Step1 invokes bits.xorUInt64
-check9Step1 argument left UInt64 xb copy
-check9Step1 argument right UInt64 yb copy
-check9Step1 result check9Part1 UInt64
-check9Step1 ownedBy none
-check9Step1 cleanedBy none
-check9Step1 borrows none
-check9Step1 catch none
-check9Step1 suppresses none
+check10Step1 is call
+check10Step1 in remainderCore
+check10Step1 invokes bits.xorUInt64
+check10Step1 argument left UInt64 xb copy
+check10Step1 argument right UInt64 yb copy
+check10Step1 result check10Part1 UInt64
+check10Step1 ownedBy none
+check10Step1 cleanedBy none
+check10Step1 borrows none
+check10Step1 catch none
+check10Step1 suppresses none
 
-check9Step2 is call
-check9Step2 in remainderCore
-check9Step2 invokes bits.shiftRightUInt64
-check9Step2 argument value UInt64 check9Part1 copy
-check9Step2 argument amount Int64 n63 copy
-check9Step2 result check9Part2 UInt64
-check9Step2 ownedBy none
-check9Step2 cleanedBy none
-check9Step2 borrows none
-check9Step2 catch none
-check9Step2 suppresses none
+check10Step2 is call
+check10Step2 in remainderCore
+check10Step2 invokes bits.shiftRightUInt64
+check10Step2 argument value UInt64 check10Part1 copy
+check10Step2 argument amount Int64 n63 copy
+check10Step2 result check10Part2 UInt64
+check10Step2 ownedBy none
+check10Step2 cleanedBy none
+check10Step2 borrows none
+check10Step2 catch none
+check10Step2 suppresses none
 
-findCheck91 is call
-findCheck91 in remainderCore
-findCheck91 invokes compare.equalUInt64
-findCheck91 argument left UInt64 check9Part2 copy
-findCheck91 argument right UInt64 uInt641 copy
-findCheck91 result check9 Bool
-findCheck91 ownedBy none
-findCheck91 cleanedBy none
-findCheck91 borrows none
-findCheck91 catch none
-findCheck91 suppresses none
+findCheck101 is call
+findCheck101 in remainderCore
+findCheck101 invokes compare.equalUInt64
+findCheck101 argument left UInt64 check10Part2 copy
+findCheck101 argument right UInt64 uInt641 copy
+findCheck101 result check10 Bool
+findCheck101 ownedBy none
+findCheck101 cleanedBy none
+findCheck101 borrows none
+findCheck101 catch none
+findCheck101 suppresses none
 
 findSignedQuotientNext11 is call
 findSignedQuotientNext11 in remainderCore
@@ -6604,17 +6676,17 @@ doStoreQuotient2 borrows none
 doStoreQuotient2 catch none
 doStoreQuotient2 suppresses none
 
-findCheck101 is call
-findCheck101 in remainderCore
-findCheck101 invokes compare.equalUInt64
-findCheck101 argument left UInt64 mm copy
-findCheck101 argument right UInt64 uInt640 copy
-findCheck101 result check10 Bool
-findCheck101 ownedBy none
-findCheck101 cleanedBy none
-findCheck101 borrows none
-findCheck101 catch none
-findCheck101 suppresses none
+findCheck111 is call
+findCheck111 in remainderCore
+findCheck111 invokes compare.equalUInt64
+findCheck111 argument left UInt64 mm copy
+findCheck111 argument right UInt64 uInt640 copy
+findCheck111 result check11 Bool
+findCheck111 ownedBy none
+findCheck111 cleanedBy none
+findCheck111 borrows none
+findCheck111 catch none
+findCheck111 suppresses none
 
 readZeroValue is call
 readZeroValue in remainderCore
@@ -9145,7 +9217,7 @@ remainderDouble maxRecursion none
 remainderDouble abi library "remainder"
 remainderDouble label begin loopKind none
 remainderDouble label begin within none
-remainderDouble let none
+remainderDouble let yes Bool true immutable
 remainderDouble at begin do readNowhere
 remainderDouble at begin do readResult
 remainderDouble at begin do doDomainSignals
@@ -9168,6 +9240,7 @@ readResult invokes remainderCore
 readResult argument x Float64 x copy
 readResult argument y Float64 y copy
 readResult argument quoAt machine.Address nowhere copy
+readResult argument positiveInvalid Bool yes copy
 readResult result result Float64
 readResult ownedBy none
 readResult cleanedBy none
@@ -9204,7 +9277,7 @@ remainderSingle maxRecursion none
 remainderSingle abi library "remainderf"
 remainderSingle label begin loopKind none
 remainderSingle label begin within none
-remainderSingle let none
+remainderSingle let yes Bool true immutable
 remainderSingle at begin do readNowhere
 remainderSingle at begin do readWideX
 remainderSingle at begin do readWideY
@@ -9252,6 +9325,7 @@ readResult invokes remainderCore
 readResult argument x Float64 wideX copy
 readResult argument y Float64 wideY copy
 readResult argument quoAt machine.Address nowhere copy
+readResult argument positiveInvalid Bool yes copy
 readResult result result Float64
 readResult ownedBy none
 readResult cleanedBy none
@@ -9300,7 +9374,7 @@ remquoDouble maxRecursion none
 remquoDouble abi library "remquo"
 remquoDouble label begin loopKind none
 remquoDouble label begin within none
-remquoDouble let none
+remquoDouble let no Bool false immutable
 remquoDouble at begin do readResult
 remquoDouble at begin do doDomainSignals
 remquoDouble at begin return ok result
@@ -9311,6 +9385,7 @@ readResult invokes remainderCore
 readResult argument x Float64 x copy
 readResult argument y Float64 y copy
 readResult argument quoAt machine.Address quoAt copy
+readResult argument positiveInvalid Bool no copy
 readResult result result Float64
 readResult ownedBy none
 readResult cleanedBy none
@@ -9348,7 +9423,7 @@ remquoSingle maxRecursion none
 remquoSingle abi library "remquof"
 remquoSingle label begin loopKind none
 remquoSingle label begin within none
-remquoSingle let none
+remquoSingle let no Bool false immutable
 remquoSingle at begin do readWideX
 remquoSingle at begin do readWideY
 remquoSingle at begin do readResult
@@ -9384,6 +9459,7 @@ readResult invokes remainderCore
 readResult argument x Float64 wideX copy
 readResult argument y Float64 wideY copy
 readResult argument quoAt machine.Address quoAt copy
+readResult argument positiveInvalid Bool no copy
 readResult result result Float64
 readResult ownedBy none
 readResult cleanedBy none

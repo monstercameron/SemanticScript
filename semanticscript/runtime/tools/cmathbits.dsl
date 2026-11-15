@@ -674,9 +674,11 @@ op remainderCore "IEEE remainder x - n*y, n the nearest whole number to x/y (hal
   input x Float64 copied
   input y Float64 copied
   input quoAt machine.Address copied
+  input positiveInvalid Bool copied
   output Float64
   effect use machine.memory
   uses memoryAccess
+  let positiveNan UInt64 9221120237041090560
   let ax UInt64 0 mut
   let ay UInt64 0 mut
   let ex Int64 0 mut
@@ -699,6 +701,12 @@ op remainderCore "IEEE remainder x - n*y, n the nearest whole number to x/y (hal
 :makeNan
   calc product = x * y
   calc nanValue = product / product
+  calc noInputNan = xm <= 0x7ff0000000000000 && ym <= 0x7ff0000000000000
+  when positiveInvalid && noInputNan givePositive giveComputed
+:givePositive
+  positive = convert.uint64BitsToFloat64(positiveNan)
+  return positive
+:giveComputed
   return nanValue
 :checkZero
   when xm == 0 giveX checkInfinity
@@ -1280,9 +1288,10 @@ op remainderDouble "remainder: x - n*y for the whole number n nearest x/y (halve
   effect use machine.memory
   uses memoryAccess
   abi library "remainder"
+  let yes Bool true
 :begin
   nowhere = machine.zero()
-  result = remainderCore(x, y, nowhere)
+  result = remainderCore(x, y, nowhere, yes)
   domainSignals(x, y)
   return result
 
@@ -1293,11 +1302,12 @@ op remainderSingle "remainderf: x - n*y for the whole number n nearest x/y (halv
   effect use machine.memory
   uses memoryAccess
   abi library "remainderf"
+  let yes Bool true
 :begin
   nowhere = machine.zero()
   wideX = convert.float32ToFloat64(x)
   wideY = convert.float32ToFloat64(y)
-  result = remainderCore(wideX, wideY, nowhere)
+  result = remainderCore(wideX, wideY, nowhere, yes)
   domainSignals(wideX, wideY)
   narrowed = narrow(result)
   return narrowed
@@ -1310,8 +1320,9 @@ op remquoDouble "remquo: remainder, and through the pointer the sign of x/y with
   effect use machine.memory
   uses memoryAccess
   abi library "remquo"
+  let no Bool false
 :begin
-  result = remainderCore(x, y, quoAt)
+  result = remainderCore(x, y, quoAt, no)
   domainSignals(x, y)
   return result
 
@@ -1323,10 +1334,11 @@ op remquoSingle "remquof: remainderf, and through the pointer the sign of x/y wi
   effect use machine.memory
   uses memoryAccess
   abi library "remquof"
+  let no Bool false
 :begin
   wideX = convert.float32ToFloat64(x)
   wideY = convert.float32ToFloat64(y)
-  result = remainderCore(wideX, wideY, quoAt)
+  result = remainderCore(wideX, wideY, quoAt, no)
   domainSignals(wideX, wideY)
   narrowed = narrow(result)
   return narrowed
