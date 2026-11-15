@@ -37,6 +37,7 @@ runtime includesModule cprocess
 runtime includesModule cthreads
 runtime includesModule cextra
 runtime includesModule cwide
+runtime includesModule cmathbits
 runtime includesModule cmathexp
 runtime includesModule cmathtrig
 runtime includesModule cmathspecial

@@ -2837,6 +2837,18 @@ with glibc. Decided by delegation:
   Linux comparison with glibc decides each of these: the tour prints whether a classifier's result is nonzero, not
   its value, and every high byte's conversion both ways.
 
+- **D-185** math.h's exact operations and fenv.h (`cmathbits`): frexp, ldexp, scalbn, scalbln, ilogb, logb, modf,
+  rint, nearbyint, lrint, llrint, lround, llround, remainder, remquo, fdim, fmax, fmin, fma, nextafter, nan, their
+  `f` forms, and feclearexcept, fetestexcept, feraiseexcept, fegetround, fesetround, fegetenv, fesetenv,
+  feholdexcept, feupdateenv, fegetexceptflag, fesetexceptflag. Each is exact in IEEE arithmetic, so each is bit for
+  bit, signed zeros and NaN payloads included (the tour's 5996 lines match). fenv.h acts on the processor's own state
+  through machine.loadFloatControl and storeFloatControl (D-167), with each architecture's FE_* values: fenv_t is
+  glibc's 32 bytes on x86_64 (a fresh x87 environment, MXCSR at offset 28; only the SSE state is mirrored) and FPCR
+  and FPSR as two words on AArch64. rint, nearbyint, lrint, and llrint round in the current mode; rint raises inexact
+  when it changes a value, nearbyint never; an out-of-range lrint or lround is LONG_MIN on x86_64 and saturates on
+  AArch64, as the instructions do. fma is machine.fusedMultiplyAdd, correctly rounded. nexttoward and nexttowardf
+  are not provided: their second argument is a long double (D-186).
+
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3590,6 +3602,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |
 | 2026-11-15 | D-183 | The runtime in SemanticScript, the whole C library: the rest of string.h and stdlib.h (strtok, strtof correctly rounded, glibc's rand), locale.h, assert.h, inttypes.h (by delegation) |
 | 2026-11-15 | D-184 | The runtime in SemanticScript, the whole C library: wchar.h, wctype.h, uchar.h, and the multibyte functions in the C locale, wchar_t 32 bits everywhere (by delegation) |
+| 2026-11-15 | D-185 | The runtime in SemanticScript, the whole C library: math.h's exact operations bit for bit, and fenv.h on the processor's own state (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

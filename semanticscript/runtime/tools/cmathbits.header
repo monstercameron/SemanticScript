@@ -1,0 +1,5 @@
+# math.h's exact functions and fenv.h, written in SemanticScript: frexp, ldexp, scalbn, scalbln, ilogb, logb,
+# modf, rint, nearbyint, lrint, llrint, lround, llround, remainder, remquo, fdim, fmax, fmin, fma, nan, and nextafter,
+# each in a double and a float form, and the fenv.h functions over an emulated environment.
+#
+# This module is generated from tools/cmathbits.dsl by tools/build.py.
