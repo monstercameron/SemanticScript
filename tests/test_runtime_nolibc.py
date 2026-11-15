@@ -358,9 +358,12 @@ C_LIBRARY = {
     # D-181: math.h's trigonometric functions (cmathtrig)
     "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinf", "cosf", "tanf", "asinf", "acosf", "atanf",
     "atan2f",
+    # D-182: math.h's exponential, logarithmic, and power functions (cmathexp)
+    "exp", "expf", "exp2", "exp2f", "expm1", "expm1f", "log", "logf", "log2", "log2f", "log10", "log10f", "log1p",
+    "log1pf", "pow", "powf", "cbrt", "cbrtf", "hypot", "hypotf",
 }
 # the modules whose `abi library` operations make up the C library (D-153, D-159, D-160, D-164, D-180)
-C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem")
+C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem")
 
 
 @pytest.mark.skipif(WINDOWS or not PLATFORM, reason="the runtime's loader maps ELF shared libraries on Linux")
@@ -735,9 +738,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 98 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 103 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "98 of 98 tests passed" in tested.stdout
+    assert "103 of 103 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

@@ -1,0 +1,3 @@
+# math.h exponentials, logarithms, pow, cbrt and hypot for the runtime C library, written in SemanticScript.
+#
+# This module is generated from tools/cmathexp.dsl (itself written by tools/cmathexpgen.py) by tools/build.py.

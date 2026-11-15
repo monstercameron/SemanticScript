@@ -368,6 +368,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | `_FORTIFY_SOURCE` | the `__*_chk` names of stdio.h and string.h, and `__chk_fail` with glibc's message (D-165) | Done |
 | math.h | sinh, cosh, tanh, asinh, acosh, atanh, erf, erfc, tgamma, lgamma, their `f` forms, lgamma_r, lgammaf_r, within 1 ulp (D-180) | Done |
 | math.h | sin, cos, tan, asin, acos, atan, atan2 and their `f` forms, within 1 ulp for every double (D-181) | Done |
+| math.h | exp, exp2, expm1, log, log2, log10, log1p, pow, cbrt, hypot and their `f` forms, within 1 ulp (D-182) | Done |
 | string.h | strerror: `Unknown error N` for every number (glibc's messages are a known gap) | Gap |
 
 - **stdio** (D-159, D-160). `printf` and its kin read their arguments from the system's own `va_list` (x86_64 Linux,

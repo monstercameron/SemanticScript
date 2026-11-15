@@ -2799,6 +2799,19 @@ with glibc. Decided by delegation:
   forms compute in double and round once (within 1 ulp, not glibc's sinf bit for bit). In the runtime's DSL a NaN
   test is `!(x == x)`: `!=` on floats is an ordered comparison.
 
+- **D-182** math.h's exponential, logarithmic, and power functions (`cmathexp`): exp, exp2, expm1, log, log2, log10,
+  log1p, pow, cbrt, hypot, and their `f` forms, each within 1 ulp of the correctly rounded value (the tour: 2523 of
+  2524 values correctly rounded against a 110-digit Decimal reference, the one miss pow(DBL_MAX, 0.5) by 1 ulp).
+  They are table-free double-double algorithms (Dekker and Knuth), not glibc's table-driven ones from ARM's
+  optimized-routines, whose tables cannot be reproduced bit for bit from what is published in words; so they are not
+  claimed identical to glibc's, and on Linux the test holds them within 2 ulp of glibc's (cbrt within 4), with NaN,
+  the infinities, and the sign of zero equal. exp and its kin reduce by ln 2 in parts, take expm1 of r/8 by a Taylor
+  series and double it back three times, and scale in two exact steps; the logarithms are 2 atanh((m-1)/(m+1)); pow is
+  exp(y log|x|) in double-double; cbrt is Newton's method with one double-double correction; hypot corrects a square
+  root of double-double squares. Every constant is computed with Decimal and Fraction by tools/cmathexpgen.py. errno
+  is ERANGE on overflow, on underflow to 0 and at poles, EDOM on invalid arguments (glibc's ERANGE for an inexact
+  subnormal result of exp is not set). An invalid result is the default NaN with its sign bit set, as on x86_64.
+
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3521,6 +3534,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-165 | The runtime in SemanticScript, the whole C library: the `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call (by delegation) |
 | 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
 | 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
+| 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |
