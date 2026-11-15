@@ -22,6 +22,8 @@ cformat imports clong
 cformat exports cursorNew
 cformat exports cursorFree
 cformat exports formatAll
+cformat exports formatAllAs
+cformat exports addUnit
 cformat exports decimalDigits
 cformat exports roundingMode
 cformat exports readWord
@@ -14721,173 +14723,211 @@ formatAll async false
 formatAll maxRecursion none
 formatAll label begin loopKind none
 formatAll label begin within none
-formatAll label eachByte loopKind while
-formatAll label eachByte within none
-formatAll label eachByte maxIterations forever
-formatAll label notEnd loopKind none
-formatAll label notEnd within eachByte
-formatAll label plain loopKind none
-formatAll label plain within eachByte
-formatAll label plainRun loopKind while
-formatAll label plainRun within eachByte
-formatAll label plainRun maxIterations forever
-formatAll label plainWrite loopKind none
-formatAll label plainWrite within eachByte
-formatAll label percentSign loopKind none
-formatAll label percentSign within eachByte
-formatAll label percent loopKind none
-formatAll label percent within eachByte
-formatAll label parse loopKind none
-formatAll label parse within eachByte
-formatAll label starWidth loopKind none
-formatAll label starWidth within eachByte
-formatAll label negativeWidth loopKind none
-formatAll label negativeWidth within eachByte
-formatAll label positiveWidth loopKind none
-formatAll label positiveWidth within eachByte
-formatAll label precisionStar loopKind none
-formatAll label precisionStar within eachByte
-formatAll label starPrecision loopKind none
-formatAll label starPrecision within eachByte
-formatAll label noPrecision loopKind none
-formatAll label noPrecision within eachByte
-formatAll label givenPrecision loopKind none
-formatAll label givenPrecision within eachByte
-formatAll label convertIt loopKind none
-formatAll label convertIt within eachByte
-formatAll label known loopKind none
-formatAll label known within eachByte
-formatAll label truncated loopKind none
-formatAll label truncated within none
-formatAll label finish loopKind none
-formatAll label finish within none
-formatAll label tooLong loopKind none
-formatAll label tooLong within none
-formatAll label done loopKind none
-formatAll label done within none
-formatAll let place Int64 0 mutable
-formatAll let counter Int64 0 mutable
-formatAll let flags Int64 0 mutable
-formatAll let width Int64 0 mutable
-formatAll let precision Int64 0 mutable
-formatAll let failed Int64 -1 immutable
-formatAll let runStart Int64 0 mutable
-formatAll let n96 Int64 96 immutable
-formatAll let byte0 Byte 0 immutable
-formatAll let byte37 Byte 37 immutable
-formatAll let one Int64 1 immutable
-formatAll let two Int64 2 immutable
-formatAll let sixtyFour Int64 64 immutable
-formatAll let eight Int64 8 immutable
-formatAll let n24 Int64 24 immutable
-formatAll let sixteen Int64 16 immutable
-formatAll let zero Int64 0 immutable
-formatAll let thirtyTwo Int64 32 immutable
-formatAll let minus1 Int64 -1 immutable
-formatAll let n48 Int64 48 immutable
-formatAll let n56 Int64 56 immutable
-formatAll let n40 Int64 40 immutable
-formatAll let n2147483647 Int64 2147483647 immutable
-formatAll at begin do readValues
-formatAll at begin do readSpec
-formatAll at begin goto eachByte
-formatAll at eachByte do readCurrent
-formatAll at eachByte do findCheck11
-formatAll at eachByte branch if check1 goto finish else goto notEnd
-formatAll at notEnd do findCheck21
-formatAll at notEnd branch if check2 goto percentSign else goto plain
-formatAll at plain set runStart place
-formatAll at plain goto plainRun
-formatAll at plainRun do findPlaceNext11
-formatAll at plainRun set place placeNext1
-formatAll at plainRun do readFollowing
-formatAll at plainRun do check3Step1
-formatAll at plainRun do check3Step2
-formatAll at plainRun do findCheck31
-formatAll at plainRun branch if check3 goto plainWrite else goto plainRun
-formatAll at plainWrite do findRunAt1
-formatAll at plainWrite do findRunBytes1
-formatAll at plainWrite do doBuilderAdd
-formatAll at plainWrite goto eachByte
-formatAll at percentSign do findStart1
-formatAll at percentSign do readSecond
-formatAll at percentSign do findCheck41
-formatAll at percentSign branch if check4 goto percent else goto parse
-formatAll at percent do doBuilderAddByte
-formatAll at percent do findPlaceNext21
-formatAll at percent set place placeNext2
-formatAll at percent goto eachByte
-formatAll at parse do findCounterNext11
-formatAll at parse set counter counterNext1
-formatAll at parse do readEndCell
-formatAll at parse do findPlaceNext31
-formatAll at parse set place placeNext3
-formatAll at parse do findFlagsNext11
-formatAll at parse set flags flagsNext1
-formatAll at parse do readWidthCell
-formatAll at parse do findWidthNext11
-formatAll at parse set width widthNext1
-formatAll at parse do readPrecisionCell
-formatAll at parse do findPrecisionNext11
-formatAll at parse set precision precisionNext1
-formatAll at parse do readWidthArgumentCell
-formatAll at parse do readWidthArgument
-formatAll at parse do findCheck51
-formatAll at parse branch if check5 goto starWidth else goto precisionStar
-formatAll at starWidth do readWidthAt
-formatAll at starWidth do readWidthWord
-formatAll at starWidth do widthValueStep1
-formatAll at starWidth do findWidthValue1
-formatAll at starWidth do findCheck61
-formatAll at starWidth branch if check6 goto negativeWidth else goto positiveWidth
-formatAll at negativeWidth do findFlagsNext21
-formatAll at negativeWidth set flags flagsNext2
-formatAll at negativeWidth do findWidthNext21
-formatAll at negativeWidth set width widthNext2
-formatAll at negativeWidth goto precisionStar
-formatAll at positiveWidth set width widthValue
-formatAll at positiveWidth goto precisionStar
-formatAll at precisionStar do readPrecisionArgumentCell
-formatAll at precisionStar do readPrecisionArgument
-formatAll at precisionStar do findCheck71
-formatAll at precisionStar branch if check7 goto starPrecision else goto convertIt
-formatAll at starPrecision do readPrecisionAt
-formatAll at starPrecision do readPrecisionWord
-formatAll at starPrecision do precisionValueStep1
-formatAll at starPrecision do findPrecisionValue1
-formatAll at starPrecision do findCheck81
-formatAll at starPrecision branch if check8 goto noPrecision else goto givenPrecision
-formatAll at noPrecision set precision minus1
-formatAll at noPrecision goto convertIt
-formatAll at givenPrecision set precision precisionValue
-formatAll at givenPrecision goto convertIt
-formatAll at convertIt do readConversionCell
-formatAll at convertIt do readConversion
-formatAll at convertIt do findCheck91
-formatAll at convertIt branch if check9 goto truncated else goto known
-formatAll at known do readArgumentCell
-formatAll at known do readArgument
-formatAll at known do readValueAt
-formatAll at known do readLengthCell
-formatAll at known do readLength
-formatAll at known do readWritten
-formatAll at known do doConvertOne
-formatAll at known goto eachByte
-formatAll at truncated do doGive
-formatAll at truncated do doGive2
-formatAll at truncated do doSetErrno
-formatAll at truncated return ok failed
-formatAll at finish do doGive3
-formatAll at finish do doGive4
-formatAll at finish do readTotal
-formatAll at finish do findCheck101
-formatAll at finish branch if check10 goto tooLong else goto done
-formatAll at tooLong do doSetErrno2
-formatAll at tooLong return ok failed
-formatAll at done return ok total
+formatAll let no Bool false immutable
+formatAll at begin do readCount
+formatAll at begin return ok count
+
+readCount is call
+readCount in formatAll
+readCount invokes formatAllAs
+readCount argument format machine.Address format copy
+readCount argument cursor machine.Address cursor copy
+readCount argument builder machine.Address builder copy
+readCount argument wideMode Bool no copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+formatAllAs is operation
+formatAllAs purpose "printf's engine, for bytes or (wide mode) for wprintf: in wide mode the format is a wide format made bytes by unitText, %c %s %lc %ls write wide characters (unitText's bytes) padded and cut by characters, and %n and the count are in characters"
+formatAllAs invariant writesWideCharacters "\"In wide mode %lc and %ls keep characters past 255, padded and cut by characters, and the count is of characters\""
+formatAllAs typeParameter none
+formatAllAs input format machine.Address copied
+formatAllAs input cursor machine.Address copied
+formatAllAs input builder machine.Address copied
+formatAllAs input wideMode Bool copied
+formatAllAs output Int64
+formatAllAs outputOwnedBy none
+formatAllAs raises none
+formatAllAs effect use machine.memory
+formatAllAs effect use system.calls
+formatAllAs uses memoryAccess
+formatAllAs uses systemCalls
+formatAllAs memoryHeap false
+formatAllAs async false
+formatAllAs maxRecursion none
+formatAllAs label begin loopKind none
+formatAllAs label begin within none
+formatAllAs label eachByte loopKind while
+formatAllAs label eachByte within none
+formatAllAs label eachByte maxIterations forever
+formatAllAs label notEnd loopKind none
+formatAllAs label notEnd within eachByte
+formatAllAs label plain loopKind none
+formatAllAs label plain within eachByte
+formatAllAs label plainRun loopKind while
+formatAllAs label plainRun within eachByte
+formatAllAs label plainRun maxIterations forever
+formatAllAs label plainWrite loopKind none
+formatAllAs label plainWrite within eachByte
+formatAllAs label percentSign loopKind none
+formatAllAs label percentSign within eachByte
+formatAllAs label percent loopKind none
+formatAllAs label percent within eachByte
+formatAllAs label parse loopKind none
+formatAllAs label parse within eachByte
+formatAllAs label starWidth loopKind none
+formatAllAs label starWidth within eachByte
+formatAllAs label negativeWidth loopKind none
+formatAllAs label negativeWidth within eachByte
+formatAllAs label positiveWidth loopKind none
+formatAllAs label positiveWidth within eachByte
+formatAllAs label precisionStar loopKind none
+formatAllAs label precisionStar within eachByte
+formatAllAs label starPrecision loopKind none
+formatAllAs label starPrecision within eachByte
+formatAllAs label noPrecision loopKind none
+formatAllAs label noPrecision within eachByte
+formatAllAs label givenPrecision loopKind none
+formatAllAs label givenPrecision within eachByte
+formatAllAs label convertIt loopKind none
+formatAllAs label convertIt within eachByte
+formatAllAs label known loopKind none
+formatAllAs label known within eachByte
+formatAllAs label truncated loopKind none
+formatAllAs label truncated within none
+formatAllAs label finish loopKind none
+formatAllAs label finish within none
+formatAllAs label tooLong loopKind none
+formatAllAs label tooLong within none
+formatAllAs label done loopKind none
+formatAllAs label done within none
+formatAllAs let place Int64 0 mutable
+formatAllAs let counter Int64 0 mutable
+formatAllAs let flags Int64 0 mutable
+formatAllAs let width Int64 0 mutable
+formatAllAs let precision Int64 0 mutable
+formatAllAs let failed Int64 -1 immutable
+formatAllAs let runStart Int64 0 mutable
+formatAllAs let n96 Int64 96 immutable
+formatAllAs let byte0 Byte 0 immutable
+formatAllAs let byte37 Byte 37 immutable
+formatAllAs let one Int64 1 immutable
+formatAllAs let two Int64 2 immutable
+formatAllAs let sixtyFour Int64 64 immutable
+formatAllAs let eight Int64 8 immutable
+formatAllAs let n24 Int64 24 immutable
+formatAllAs let sixteen Int64 16 immutable
+formatAllAs let zero Int64 0 immutable
+formatAllAs let thirtyTwo Int64 32 immutable
+formatAllAs let minus1 Int64 -1 immutable
+formatAllAs let n48 Int64 48 immutable
+formatAllAs let n56 Int64 56 immutable
+formatAllAs let n40 Int64 40 immutable
+formatAllAs let n2147483647 Int64 2147483647 immutable
+formatAllAs at begin do readValues
+formatAllAs at begin do readSpec
+formatAllAs at begin goto eachByte
+formatAllAs at eachByte do readCurrent
+formatAllAs at eachByte do findCheck11
+formatAllAs at eachByte branch if check1 goto finish else goto notEnd
+formatAllAs at notEnd do findCheck21
+formatAllAs at notEnd branch if check2 goto percentSign else goto plain
+formatAllAs at plain set runStart place
+formatAllAs at plain goto plainRun
+formatAllAs at plainRun do findPlaceNext11
+formatAllAs at plainRun set place placeNext1
+formatAllAs at plainRun do readFollowing
+formatAllAs at plainRun do check3Step1
+formatAllAs at plainRun do check3Step2
+formatAllAs at plainRun do findCheck31
+formatAllAs at plainRun branch if check3 goto plainWrite else goto plainRun
+formatAllAs at plainWrite do findRunAt1
+formatAllAs at plainWrite do findRunBytes1
+formatAllAs at plainWrite do doBuilderAdd
+formatAllAs at plainWrite goto eachByte
+formatAllAs at percentSign do findStart1
+formatAllAs at percentSign do readSecond
+formatAllAs at percentSign do findCheck41
+formatAllAs at percentSign branch if check4 goto percent else goto parse
+formatAllAs at percent do doBuilderAddByte
+formatAllAs at percent do findPlaceNext21
+formatAllAs at percent set place placeNext2
+formatAllAs at percent goto eachByte
+formatAllAs at parse do findCounterNext11
+formatAllAs at parse set counter counterNext1
+formatAllAs at parse do readEndCell
+formatAllAs at parse do findPlaceNext31
+formatAllAs at parse set place placeNext3
+formatAllAs at parse do findFlagsNext11
+formatAllAs at parse set flags flagsNext1
+formatAllAs at parse do readWidthCell
+formatAllAs at parse do findWidthNext11
+formatAllAs at parse set width widthNext1
+formatAllAs at parse do readPrecisionCell
+formatAllAs at parse do findPrecisionNext11
+formatAllAs at parse set precision precisionNext1
+formatAllAs at parse do readWidthArgumentCell
+formatAllAs at parse do readWidthArgument
+formatAllAs at parse do findCheck51
+formatAllAs at parse branch if check5 goto starWidth else goto precisionStar
+formatAllAs at starWidth do readWidthAt
+formatAllAs at starWidth do readWidthWord
+formatAllAs at starWidth do widthValueStep1
+formatAllAs at starWidth do findWidthValue1
+formatAllAs at starWidth do findCheck61
+formatAllAs at starWidth branch if check6 goto negativeWidth else goto positiveWidth
+formatAllAs at negativeWidth do findFlagsNext21
+formatAllAs at negativeWidth set flags flagsNext2
+formatAllAs at negativeWidth do findWidthNext21
+formatAllAs at negativeWidth set width widthNext2
+formatAllAs at negativeWidth goto precisionStar
+formatAllAs at positiveWidth set width widthValue
+formatAllAs at positiveWidth goto precisionStar
+formatAllAs at precisionStar do readPrecisionArgumentCell
+formatAllAs at precisionStar do readPrecisionArgument
+formatAllAs at precisionStar do findCheck71
+formatAllAs at precisionStar branch if check7 goto starPrecision else goto convertIt
+formatAllAs at starPrecision do readPrecisionAt
+formatAllAs at starPrecision do readPrecisionWord
+formatAllAs at starPrecision do precisionValueStep1
+formatAllAs at starPrecision do findPrecisionValue1
+formatAllAs at starPrecision do findCheck81
+formatAllAs at starPrecision branch if check8 goto noPrecision else goto givenPrecision
+formatAllAs at noPrecision set precision minus1
+formatAllAs at noPrecision goto convertIt
+formatAllAs at givenPrecision set precision precisionValue
+formatAllAs at givenPrecision goto convertIt
+formatAllAs at convertIt do readConversionCell
+formatAllAs at convertIt do readConversion
+formatAllAs at convertIt do findCheck91
+formatAllAs at convertIt branch if check9 goto truncated else goto known
+formatAllAs at known do readArgumentCell
+formatAllAs at known do readArgument
+formatAllAs at known do readValueAt
+formatAllAs at known do readLengthCell
+formatAllAs at known do readLength
+formatAllAs at known do readWritten
+formatAllAs at known do doConvertOne
+formatAllAs at known goto eachByte
+formatAllAs at truncated do doGive
+formatAllAs at truncated do doGive2
+formatAllAs at truncated do doSetErrno
+formatAllAs at truncated return ok failed
+formatAllAs at finish do doGive3
+formatAllAs at finish do doGive4
+formatAllAs at finish do readTotal
+formatAllAs at finish do findCheck101
+formatAllAs at finish branch if check10 goto tooLong else goto done
+formatAllAs at tooLong do doSetErrno2
+formatAllAs at tooLong return ok failed
+formatAllAs at done return ok total
 
 readValues is call
-readValues in formatAll
+readValues in formatAllAs
 readValues invokes readArguments
 readValues argument format machine.Address format copy
 readValues argument cursor machine.Address cursor copy
@@ -14899,7 +14939,7 @@ readValues catch none
 readValues suppresses none
 
 readSpec is call
-readSpec in formatAll
+readSpec in formatAllAs
 readSpec invokes heap.take
 readSpec argument bytes Int64 n96 copy
 readSpec result spec machine.Address
@@ -14910,7 +14950,7 @@ readSpec catch none
 readSpec suppresses none
 
 readCurrent is call
-readCurrent in formatAll
+readCurrent in formatAllAs
 readCurrent invokes clibrary.byteAt
 readCurrent argument base machine.Address format copy
 readCurrent argument at Int64 place copy
@@ -14922,7 +14962,7 @@ readCurrent catch none
 readCurrent suppresses none
 
 findCheck11 is call
-findCheck11 in formatAll
+findCheck11 in formatAllAs
 findCheck11 invokes compare.equalByte
 findCheck11 argument left Byte current copy
 findCheck11 argument right Byte byte0 copy
@@ -14934,7 +14974,7 @@ findCheck11 catch none
 findCheck11 suppresses none
 
 findCheck21 is call
-findCheck21 in formatAll
+findCheck21 in formatAllAs
 findCheck21 invokes compare.equalByte
 findCheck21 argument left Byte current copy
 findCheck21 argument right Byte byte37 copy
@@ -14946,7 +14986,7 @@ findCheck21 catch none
 findCheck21 suppresses none
 
 findPlaceNext11 is call
-findPlaceNext11 in formatAll
+findPlaceNext11 in formatAllAs
 findPlaceNext11 invokes math.addInt64
 findPlaceNext11 argument left Int64 place copy
 findPlaceNext11 argument right Int64 one copy
@@ -14958,7 +14998,7 @@ findPlaceNext11 catch none
 findPlaceNext11 suppresses none
 
 readFollowing is call
-readFollowing in formatAll
+readFollowing in formatAllAs
 readFollowing invokes clibrary.byteAt
 readFollowing argument base machine.Address format copy
 readFollowing argument at Int64 place copy
@@ -14970,7 +15010,7 @@ readFollowing catch none
 readFollowing suppresses none
 
 check3Step1 is call
-check3Step1 in formatAll
+check3Step1 in formatAllAs
 check3Step1 invokes compare.equalByte
 check3Step1 argument left Byte following copy
 check3Step1 argument right Byte byte0 copy
@@ -14982,7 +15022,7 @@ check3Step1 catch none
 check3Step1 suppresses none
 
 check3Step2 is call
-check3Step2 in formatAll
+check3Step2 in formatAllAs
 check3Step2 invokes compare.equalByte
 check3Step2 argument left Byte following copy
 check3Step2 argument right Byte byte37 copy
@@ -14994,7 +15034,7 @@ check3Step2 catch none
 check3Step2 suppresses none
 
 findCheck31 is call
-findCheck31 in formatAll
+findCheck31 in formatAllAs
 findCheck31 invokes logic.or
 findCheck31 argument left Bool check3Part1 copy
 findCheck31 argument right Bool check3Part2 copy
@@ -15006,7 +15046,7 @@ findCheck31 catch none
 findCheck31 suppresses none
 
 findRunAt1 is call
-findRunAt1 in formatAll
+findRunAt1 in formatAllAs
 findRunAt1 invokes machine.offset
 findRunAt1 argument address machine.Address format copy
 findRunAt1 argument bytes Int64 runStart copy
@@ -15018,7 +15058,7 @@ findRunAt1 catch none
 findRunAt1 suppresses none
 
 findRunBytes1 is call
-findRunBytes1 in formatAll
+findRunBytes1 in formatAllAs
 findRunBytes1 invokes math.subtractInt64
 findRunBytes1 argument left Int64 place copy
 findRunBytes1 argument right Int64 runStart copy
@@ -15030,7 +15070,7 @@ findRunBytes1 catch none
 findRunBytes1 suppresses none
 
 doBuilderAdd is call
-doBuilderAdd in formatAll
+doBuilderAdd in formatAllAs
 doBuilderAdd invokes wide.builderAdd
 doBuilderAdd argument builder machine.Address builder copy
 doBuilderAdd argument data machine.Address runAt copy
@@ -15043,7 +15083,7 @@ doBuilderAdd catch none
 doBuilderAdd suppresses none
 
 findStart1 is call
-findStart1 in formatAll
+findStart1 in formatAllAs
 findStart1 invokes math.addInt64
 findStart1 argument left Int64 place copy
 findStart1 argument right Int64 one copy
@@ -15055,7 +15095,7 @@ findStart1 catch none
 findStart1 suppresses none
 
 readSecond is call
-readSecond in formatAll
+readSecond in formatAllAs
 readSecond invokes clibrary.byteAt
 readSecond argument base machine.Address format copy
 readSecond argument at Int64 start copy
@@ -15067,7 +15107,7 @@ readSecond catch none
 readSecond suppresses none
 
 findCheck41 is call
-findCheck41 in formatAll
+findCheck41 in formatAllAs
 findCheck41 invokes compare.equalByte
 findCheck41 argument left Byte second copy
 findCheck41 argument right Byte byte37 copy
@@ -15079,7 +15119,7 @@ findCheck41 catch none
 findCheck41 suppresses none
 
 doBuilderAddByte is call
-doBuilderAddByte in formatAll
+doBuilderAddByte in formatAllAs
 doBuilderAddByte invokes wide.builderAddByte
 doBuilderAddByte argument builder machine.Address builder copy
 doBuilderAddByte argument byte Byte byte37 copy
@@ -15091,7 +15131,7 @@ doBuilderAddByte catch none
 doBuilderAddByte suppresses none
 
 findPlaceNext21 is call
-findPlaceNext21 in formatAll
+findPlaceNext21 in formatAllAs
 findPlaceNext21 invokes math.addInt64
 findPlaceNext21 argument left Int64 place copy
 findPlaceNext21 argument right Int64 two copy
@@ -15103,7 +15143,7 @@ findPlaceNext21 catch none
 findPlaceNext21 suppresses none
 
 findCounterNext11 is call
-findCounterNext11 in formatAll
+findCounterNext11 in formatAllAs
 findCounterNext11 invokes parseSpec
 findCounterNext11 argument format machine.Address format copy
 findCounterNext11 argument at Int64 start copy
@@ -15117,7 +15157,7 @@ findCounterNext11 catch none
 findCounterNext11 suppresses none
 
 readEndCell is call
-readEndCell in formatAll
+readEndCell in formatAllAs
 readEndCell invokes machine.offset
 readEndCell argument address machine.Address spec copy
 readEndCell argument bytes Int64 sixtyFour copy
@@ -15129,7 +15169,7 @@ readEndCell catch none
 readEndCell suppresses none
 
 findPlaceNext31 is call
-findPlaceNext31 in formatAll
+findPlaceNext31 in formatAllAs
 findPlaceNext31 invokes machine.loadInt64
 findPlaceNext31 argument address machine.Address endCell copy
 findPlaceNext31 result placeNext3 Int64
@@ -15140,7 +15180,7 @@ findPlaceNext31 catch none
 findPlaceNext31 suppresses none
 
 findFlagsNext11 is call
-findFlagsNext11 in formatAll
+findFlagsNext11 in formatAllAs
 findFlagsNext11 invokes machine.loadInt64
 findFlagsNext11 argument address machine.Address spec copy
 findFlagsNext11 result flagsNext1 Int64
@@ -15151,7 +15191,7 @@ findFlagsNext11 catch none
 findFlagsNext11 suppresses none
 
 readWidthCell is call
-readWidthCell in formatAll
+readWidthCell in formatAllAs
 readWidthCell invokes machine.offset
 readWidthCell argument address machine.Address spec copy
 readWidthCell argument bytes Int64 eight copy
@@ -15163,7 +15203,7 @@ readWidthCell catch none
 readWidthCell suppresses none
 
 findWidthNext11 is call
-findWidthNext11 in formatAll
+findWidthNext11 in formatAllAs
 findWidthNext11 invokes machine.loadInt64
 findWidthNext11 argument address machine.Address widthCell copy
 findWidthNext11 result widthNext1 Int64
@@ -15174,7 +15214,7 @@ findWidthNext11 catch none
 findWidthNext11 suppresses none
 
 readPrecisionCell is call
-readPrecisionCell in formatAll
+readPrecisionCell in formatAllAs
 readPrecisionCell invokes machine.offset
 readPrecisionCell argument address machine.Address spec copy
 readPrecisionCell argument bytes Int64 n24 copy
@@ -15186,7 +15226,7 @@ readPrecisionCell catch none
 readPrecisionCell suppresses none
 
 findPrecisionNext11 is call
-findPrecisionNext11 in formatAll
+findPrecisionNext11 in formatAllAs
 findPrecisionNext11 invokes machine.loadInt64
 findPrecisionNext11 argument address machine.Address precisionCell copy
 findPrecisionNext11 result precisionNext1 Int64
@@ -15197,7 +15237,7 @@ findPrecisionNext11 catch none
 findPrecisionNext11 suppresses none
 
 readWidthArgumentCell is call
-readWidthArgumentCell in formatAll
+readWidthArgumentCell in formatAllAs
 readWidthArgumentCell invokes machine.offset
 readWidthArgumentCell argument address machine.Address spec copy
 readWidthArgumentCell argument bytes Int64 sixteen copy
@@ -15209,7 +15249,7 @@ readWidthArgumentCell catch none
 readWidthArgumentCell suppresses none
 
 readWidthArgument is call
-readWidthArgument in formatAll
+readWidthArgument in formatAllAs
 readWidthArgument invokes machine.loadInt64
 readWidthArgument argument address machine.Address widthArgumentCell copy
 readWidthArgument result widthArgument Int64
@@ -15220,7 +15260,7 @@ readWidthArgument catch none
 readWidthArgument suppresses none
 
 findCheck51 is call
-findCheck51 in formatAll
+findCheck51 in formatAllAs
 findCheck51 invokes compare.greaterThanInt64
 findCheck51 argument left Int64 widthArgument copy
 findCheck51 argument right Int64 zero copy
@@ -15232,7 +15272,7 @@ findCheck51 catch none
 findCheck51 suppresses none
 
 readWidthAt is call
-readWidthAt in formatAll
+readWidthAt in formatAllAs
 readWidthAt invokes argumentAt
 readWidthAt argument values machine.Address values copy
 readWidthAt argument number Int64 widthArgument copy
@@ -15244,7 +15284,7 @@ readWidthAt catch none
 readWidthAt suppresses none
 
 readWidthWord is call
-readWidthWord in formatAll
+readWidthWord in formatAllAs
 readWidthWord invokes machine.loadInt64
 readWidthWord argument address machine.Address widthAt copy
 readWidthWord result widthWord Int64
@@ -15255,7 +15295,7 @@ readWidthWord catch none
 readWidthWord suppresses none
 
 widthValueStep1 is call
-widthValueStep1 in formatAll
+widthValueStep1 in formatAllAs
 widthValueStep1 invokes clibrary.lowInt32
 widthValueStep1 argument value Int64 widthWord copy
 widthValueStep1 result widthValuePart1 Int32
@@ -15266,7 +15306,7 @@ widthValueStep1 catch none
 widthValueStep1 suppresses none
 
 findWidthValue1 is call
-findWidthValue1 in formatAll
+findWidthValue1 in formatAllAs
 findWidthValue1 invokes convert.int32ToInt64
 findWidthValue1 argument value Int32 widthValuePart1 copy
 findWidthValue1 result widthValue Int64
@@ -15277,7 +15317,7 @@ findWidthValue1 catch none
 findWidthValue1 suppresses none
 
 findCheck61 is call
-findCheck61 in formatAll
+findCheck61 in formatAllAs
 findCheck61 invokes compare.lessThanInt64
 findCheck61 argument left Int64 widthValue copy
 findCheck61 argument right Int64 zero copy
@@ -15289,7 +15329,7 @@ findCheck61 catch none
 findCheck61 suppresses none
 
 findFlagsNext21 is call
-findFlagsNext21 in formatAll
+findFlagsNext21 in formatAllAs
 findFlagsNext21 invokes bits.orInt64
 findFlagsNext21 argument left Int64 flags copy
 findFlagsNext21 argument right Int64 flagMinus copy
@@ -15301,7 +15341,7 @@ findFlagsNext21 catch none
 findFlagsNext21 suppresses none
 
 findWidthNext21 is call
-findWidthNext21 in formatAll
+findWidthNext21 in formatAllAs
 findWidthNext21 invokes math.subtractInt64
 findWidthNext21 argument left Int64 zero copy
 findWidthNext21 argument right Int64 widthValue copy
@@ -15313,7 +15353,7 @@ findWidthNext21 catch none
 findWidthNext21 suppresses none
 
 readPrecisionArgumentCell is call
-readPrecisionArgumentCell in formatAll
+readPrecisionArgumentCell in formatAllAs
 readPrecisionArgumentCell invokes machine.offset
 readPrecisionArgumentCell argument address machine.Address spec copy
 readPrecisionArgumentCell argument bytes Int64 thirtyTwo copy
@@ -15325,7 +15365,7 @@ readPrecisionArgumentCell catch none
 readPrecisionArgumentCell suppresses none
 
 readPrecisionArgument is call
-readPrecisionArgument in formatAll
+readPrecisionArgument in formatAllAs
 readPrecisionArgument invokes machine.loadInt64
 readPrecisionArgument argument address machine.Address precisionArgumentCell copy
 readPrecisionArgument result precisionArgument Int64
@@ -15336,7 +15376,7 @@ readPrecisionArgument catch none
 readPrecisionArgument suppresses none
 
 findCheck71 is call
-findCheck71 in formatAll
+findCheck71 in formatAllAs
 findCheck71 invokes compare.greaterThanInt64
 findCheck71 argument left Int64 precisionArgument copy
 findCheck71 argument right Int64 zero copy
@@ -15348,7 +15388,7 @@ findCheck71 catch none
 findCheck71 suppresses none
 
 readPrecisionAt is call
-readPrecisionAt in formatAll
+readPrecisionAt in formatAllAs
 readPrecisionAt invokes argumentAt
 readPrecisionAt argument values machine.Address values copy
 readPrecisionAt argument number Int64 precisionArgument copy
@@ -15360,7 +15400,7 @@ readPrecisionAt catch none
 readPrecisionAt suppresses none
 
 readPrecisionWord is call
-readPrecisionWord in formatAll
+readPrecisionWord in formatAllAs
 readPrecisionWord invokes machine.loadInt64
 readPrecisionWord argument address machine.Address precisionAt copy
 readPrecisionWord result precisionWord Int64
@@ -15371,7 +15411,7 @@ readPrecisionWord catch none
 readPrecisionWord suppresses none
 
 precisionValueStep1 is call
-precisionValueStep1 in formatAll
+precisionValueStep1 in formatAllAs
 precisionValueStep1 invokes clibrary.lowInt32
 precisionValueStep1 argument value Int64 precisionWord copy
 precisionValueStep1 result precisionValuePart1 Int32
@@ -15382,7 +15422,7 @@ precisionValueStep1 catch none
 precisionValueStep1 suppresses none
 
 findPrecisionValue1 is call
-findPrecisionValue1 in formatAll
+findPrecisionValue1 in formatAllAs
 findPrecisionValue1 invokes convert.int32ToInt64
 findPrecisionValue1 argument value Int32 precisionValuePart1 copy
 findPrecisionValue1 result precisionValue Int64
@@ -15393,7 +15433,7 @@ findPrecisionValue1 catch none
 findPrecisionValue1 suppresses none
 
 findCheck81 is call
-findCheck81 in formatAll
+findCheck81 in formatAllAs
 findCheck81 invokes compare.lessThanInt64
 findCheck81 argument left Int64 precisionValue copy
 findCheck81 argument right Int64 zero copy
@@ -15405,7 +15445,7 @@ findCheck81 catch none
 findCheck81 suppresses none
 
 readConversionCell is call
-readConversionCell in formatAll
+readConversionCell in formatAllAs
 readConversionCell invokes machine.offset
 readConversionCell argument address machine.Address spec copy
 readConversionCell argument bytes Int64 n48 copy
@@ -15417,7 +15457,7 @@ readConversionCell catch none
 readConversionCell suppresses none
 
 readConversion is call
-readConversion in formatAll
+readConversion in formatAllAs
 readConversion invokes machine.loadInt64
 readConversion argument address machine.Address conversionCell copy
 readConversion result conversion Int64
@@ -15428,7 +15468,7 @@ readConversion catch none
 readConversion suppresses none
 
 findCheck91 is call
-findCheck91 in formatAll
+findCheck91 in formatAllAs
 findCheck91 invokes compare.equalInt64
 findCheck91 argument left Int64 conversion copy
 findCheck91 argument right Int64 zero copy
@@ -15440,7 +15480,7 @@ findCheck91 catch none
 findCheck91 suppresses none
 
 readArgumentCell is call
-readArgumentCell in formatAll
+readArgumentCell in formatAllAs
 readArgumentCell invokes machine.offset
 readArgumentCell argument address machine.Address spec copy
 readArgumentCell argument bytes Int64 n56 copy
@@ -15452,7 +15492,7 @@ readArgumentCell catch none
 readArgumentCell suppresses none
 
 readArgument is call
-readArgument in formatAll
+readArgument in formatAllAs
 readArgument invokes machine.loadInt64
 readArgument argument address machine.Address argumentCell copy
 readArgument result argument Int64
@@ -15463,7 +15503,7 @@ readArgument catch none
 readArgument suppresses none
 
 readValueAt is call
-readValueAt in formatAll
+readValueAt in formatAllAs
 readValueAt invokes argumentAt
 readValueAt argument values machine.Address values copy
 readValueAt argument number Int64 argument copy
@@ -15475,7 +15515,7 @@ readValueAt catch none
 readValueAt suppresses none
 
 readLengthCell is call
-readLengthCell in formatAll
+readLengthCell in formatAllAs
 readLengthCell invokes machine.offset
 readLengthCell argument address machine.Address spec copy
 readLengthCell argument bytes Int64 n40 copy
@@ -15487,7 +15527,7 @@ readLengthCell catch none
 readLengthCell suppresses none
 
 readLength is call
-readLength in formatAll
+readLength in formatAllAs
 readLength invokes machine.loadInt64
 readLength argument address machine.Address lengthCell copy
 readLength result length Int64
@@ -15498,9 +15538,10 @@ readLength catch none
 readLength suppresses none
 
 readWritten is call
-readWritten in formatAll
-readWritten invokes wide.builderLength
+readWritten in formatAllAs
+readWritten invokes countWritten
 readWritten argument builder machine.Address builder copy
+readWritten argument wideMode Bool wideMode copy
 readWritten result written Int64
 readWritten ownedBy none
 readWritten cleanedBy none
@@ -15509,7 +15550,7 @@ readWritten catch none
 readWritten suppresses none
 
 doConvertOne is call
-doConvertOne in formatAll
+doConvertOne in formatAllAs
 doConvertOne invokes convertOne
 doConvertOne argument builder machine.Address builder copy
 doConvertOne argument conversion Int64 conversion copy
@@ -15522,6 +15563,7 @@ doConvertOne argument written Int64 written copy
 doConvertOne argument format machine.Address format copy
 doConvertOne argument start Int64 start copy
 doConvertOne argument end Int64 place copy
+doConvertOne argument wideMode Bool wideMode copy
 doConvertOne result none
 doConvertOne ownedBy none
 doConvertOne cleanedBy none
@@ -15530,7 +15572,7 @@ doConvertOne catch none
 doConvertOne suppresses none
 
 doGive is call
-doGive in formatAll
+doGive in formatAllAs
 doGive invokes heap.give
 doGive argument block machine.Address values copy
 doGive result none
@@ -15541,7 +15583,7 @@ doGive catch none
 doGive suppresses none
 
 doGive2 is call
-doGive2 in formatAll
+doGive2 in formatAllAs
 doGive2 invokes heap.give
 doGive2 argument block machine.Address spec copy
 doGive2 result none
@@ -15552,7 +15594,7 @@ doGive2 catch none
 doGive2 suppresses none
 
 doSetErrno is call
-doSetErrno in formatAll
+doSetErrno in formatAllAs
 doSetErrno invokes clibrary.setErrno
 doSetErrno argument value Int32 invalidError copy
 doSetErrno result none
@@ -15563,7 +15605,7 @@ doSetErrno catch none
 doSetErrno suppresses none
 
 doGive3 is call
-doGive3 in formatAll
+doGive3 in formatAllAs
 doGive3 invokes heap.give
 doGive3 argument block machine.Address values copy
 doGive3 result none
@@ -15574,7 +15616,7 @@ doGive3 catch none
 doGive3 suppresses none
 
 doGive4 is call
-doGive4 in formatAll
+doGive4 in formatAllAs
 doGive4 invokes heap.give
 doGive4 argument block machine.Address spec copy
 doGive4 result none
@@ -15585,9 +15627,10 @@ doGive4 catch none
 doGive4 suppresses none
 
 readTotal is call
-readTotal in formatAll
-readTotal invokes wide.builderLength
+readTotal in formatAllAs
+readTotal invokes countWritten
 readTotal argument builder machine.Address builder copy
+readTotal argument wideMode Bool wideMode copy
 readTotal result total Int64
 readTotal ownedBy none
 readTotal cleanedBy none
@@ -15596,7 +15639,7 @@ readTotal catch none
 readTotal suppresses none
 
 findCheck101 is call
-findCheck101 in formatAll
+findCheck101 in formatAllAs
 findCheck101 invokes compare.greaterThanInt64
 findCheck101 argument left Int64 total copy
 findCheck101 argument right Int64 n2147483647 copy
@@ -15608,7 +15651,7 @@ findCheck101 catch none
 findCheck101 suppresses none
 
 doSetErrno2 is call
-doSetErrno2 in formatAll
+doSetErrno2 in formatAllAs
 doSetErrno2 invokes clibrary.setErrno
 doSetErrno2 argument value Int32 overflowError copy
 doSetErrno2 result none
@@ -15633,6 +15676,7 @@ convertOne input written Int64 copied
 convertOne input format machine.Address copied
 convertOne input start Int64 copied
 convertOne input end Int64 copied
+convertOne input wideMode Bool copied
 convertOne output none
 convertOne outputOwnedBy none
 convertOne raises none
@@ -15645,6 +15689,24 @@ convertOne async false
 convertOne maxRecursion none
 convertOne label begin loopKind none
 convertOne label begin within none
+convertOne label wideCheck loopKind none
+convertOne label wideCheck within none
+convertOne label unitByte loopKind none
+convertOne label unitByte within none
+convertOne label wideStringCheck loopKind none
+convertOne label wideStringCheck within none
+convertOne label unitBytes loopKind none
+convertOne label unitBytes within none
+convertOne label wideCharacterCheck loopKind none
+convertOne label wideCharacterCheck within none
+convertOne label unitWide loopKind none
+convertOne label unitWide within none
+convertOne label wideTextCheck loopKind none
+convertOne label wideTextCheck within none
+convertOne label unitWideText loopKind none
+convertOne label unitWideText within none
+convertOne label notWideMode loopKind none
+convertOne label notWideMode within none
 convertOne label signedInteger loopKind none
 convertOne label signedInteger within none
 convertOne label notSigned loopKind none
@@ -15694,6 +15756,13 @@ convertOne label percent within none
 convertOne label notPercent loopKind none
 convertOne label notPercent within none
 convertOne let nilWord String "(nil)" immutable
+convertOne let n99 Int64 99 immutable
+convertOne let three Int64 3 immutable
+convertOne let one Int64 1 immutable
+convertOne let n115 Int64 115 immutable
+convertOne let n67 Int64 67 immutable
+convertOne let four Int64 4 immutable
+convertOne let n83 Int64 83 immutable
 convertOne let n100 Int64 100 immutable
 convertOne let n105 Int64 105 immutable
 convertOne let zero Int64 0 immutable
@@ -15706,41 +15775,64 @@ convertOne let no Bool false immutable
 convertOne let n112 Int64 112 immutable
 convertOne let byte0 Byte 0 immutable
 convertOne let five Int64 5 immutable
-convertOne let n99 Int64 99 immutable
-convertOne let three Int64 3 immutable
-convertOne let n115 Int64 115 immutable
 convertOne let n110 Int64 110 immutable
 convertOne let n109 Int64 109 immutable
-convertOne let n67 Int64 67 immutable
-convertOne let n83 Int64 83 immutable
 convertOne let n37 Int64 37 immutable
 convertOne let byte37 Byte 37 immutable
-convertOne let one Int64 1 immutable
-convertOne at begin do readWord2
-convertOne at begin do check1Step1
-convertOne at begin do check1Step2
-convertOne at begin do findCheck11
-convertOne at begin branch if check1 goto signedInteger else goto notSigned
+convertOne at begin branch if wideMode goto wideCheck else goto notWideMode
+convertOne at wideCheck do check1Step1
+convertOne at wideCheck do check1Step2
+convertOne at wideCheck do findCheck11
+convertOne at wideCheck branch if check1 goto unitByte else goto wideStringCheck
+convertOne at unitByte do doFormatUnits
+convertOne at unitByte return ok none
+convertOne at wideStringCheck do check2Step1
+convertOne at wideStringCheck do check2Step2
+convertOne at wideStringCheck do findCheck21
+convertOne at wideStringCheck branch if check2 goto unitBytes else goto wideCharacterCheck
+convertOne at unitBytes do byteTextStep1
+convertOne at unitBytes do findByteText1
+convertOne at unitBytes do doFormatUnitString
+convertOne at unitBytes return ok none
+convertOne at wideCharacterCheck do check3Step1
+convertOne at wideCharacterCheck do check3Step2
+convertOne at wideCharacterCheck do findCheck31
+convertOne at wideCharacterCheck branch if check3 goto unitWide else goto wideTextCheck
+convertOne at unitWide do doFormatUnits2
+convertOne at unitWide return ok none
+convertOne at wideTextCheck do check4Step1
+convertOne at wideTextCheck do check4Step2
+convertOne at wideTextCheck do findCheck41
+convertOne at wideTextCheck branch if check4 goto unitWideText else goto notWideMode
+convertOne at unitWideText do unitTextStep1
+convertOne at unitWideText do findUnitText1
+convertOne at unitWideText do doFormatUnitString2
+convertOne at unitWideText return ok none
+convertOne at notWideMode do readWord2
+convertOne at notWideMode do check5Step1
+convertOne at notWideMode do check5Step2
+convertOne at notWideMode do findCheck51
+convertOne at notWideMode branch if check5 goto signedInteger else goto notSigned
 convertOne at signedInteger do findSignedValue1
 convertOne at signedInteger do findNegative1
 convertOne at signedInteger do findMagnitude1
 convertOne at signedInteger do doFormatInteger
 convertOne at signedInteger return ok none
-convertOne at notSigned do check2Step1
-convertOne at notSigned do check2Step2
-convertOne at notSigned do check2Step3
-convertOne at notSigned do check2Step4
-convertOne at notSigned do check2Step5
-convertOne at notSigned do check2Step6
-convertOne at notSigned do findCheck21
-convertOne at notSigned branch if check2 goto unsignedInteger else goto notUnsigned
+convertOne at notSigned do check6Step1
+convertOne at notSigned do check6Step2
+convertOne at notSigned do check6Step3
+convertOne at notSigned do check6Step4
+convertOne at notSigned do check6Step5
+convertOne at notSigned do check6Step6
+convertOne at notSigned do findCheck61
+convertOne at notSigned branch if check6 goto unsignedInteger else goto notUnsigned
 convertOne at unsignedInteger do findUnsignedValue1
 convertOne at unsignedInteger do doFormatInteger2
 convertOne at unsignedInteger return ok none
-convertOne at notUnsigned do findCheck31
-convertOne at notUnsigned branch if check3 goto pointer else goto notPointer
-convertOne at pointer do findCheck41
-convertOne at pointer branch if check4 goto nilPointer else goto realPointer
+convertOne at notUnsigned do findCheck71
+convertOne at notUnsigned branch if check7 goto pointer else goto notPointer
+convertOne at pointer do findCheck81
+convertOne at pointer branch if check8 goto nilPointer else goto realPointer
 convertOne at nilPointer do readNilText
 convertOne at nilPointer do readNowhere
 convertOne at nilPointer do doEmitPadded
@@ -15748,47 +15840,47 @@ convertOne at nilPointer return ok none
 convertOne at realPointer do findPointerValue1
 convertOne at realPointer do doFormatInteger3
 convertOne at realPointer return ok none
-convertOne at notPointer do check5Step1
-convertOne at notPointer do check5Step2
-convertOne at notPointer do findCheck51
-convertOne at notPointer branch if check5 goto character else goto notCharacter
+convertOne at notPointer do check9Step1
+convertOne at notPointer do check9Step2
+convertOne at notPointer do findCheck91
+convertOne at notPointer branch if check9 goto character else goto notCharacter
 convertOne at character do doFormatChar
 convertOne at character return ok none
-convertOne at notCharacter do check6Step1
-convertOne at notCharacter do check6Step2
-convertOne at notCharacter do findCheck61
-convertOne at notCharacter branch if check6 goto stringConversion else goto notString
+convertOne at notCharacter do check10Step1
+convertOne at notCharacter do check10Step2
+convertOne at notCharacter do findCheck101
+convertOne at notCharacter branch if check10 goto stringConversion else goto notString
 convertOne at stringConversion do findText1
 convertOne at stringConversion do doFormatString
 convertOne at stringConversion return ok none
-convertOne at notString do findCheck71
-convertOne at notString branch if check7 goto countConversion else goto notCount
+convertOne at notString do findCheck111
+convertOne at notString branch if check11 goto countConversion else goto notCount
 convertOne at countConversion do doStoreCount
 convertOne at countConversion return ok none
 convertOne at notCount do readIsReal
 convertOne at notCount branch if isReal goto realConversion else goto notReal
 convertOne at realConversion do doFormatRealArgument
 convertOne at realConversion return ok none
-convertOne at notReal do findCheck81
-convertOne at notReal branch if check8 goto errorConversion else goto notErrorConversion
+convertOne at notReal do findCheck121
+convertOne at notReal branch if check12 goto errorConversion else goto notErrorConversion
 convertOne at errorConversion do readErrorAt
 convertOne at errorConversion do doFormatString2
 convertOne at errorConversion return ok none
-convertOne at notErrorConversion do check9Step1
-convertOne at notErrorConversion do check9Step2
-convertOne at notErrorConversion do findCheck91
-convertOne at notErrorConversion branch if check9 goto wideCharacter else goto notWideCharacter
+convertOne at notErrorConversion do check13Step1
+convertOne at notErrorConversion do check13Step2
+convertOne at notErrorConversion do findCheck131
+convertOne at notErrorConversion branch if check13 goto wideCharacter else goto notWideCharacter
 convertOne at wideCharacter do doFormatWideChar
 convertOne at wideCharacter return ok none
-convertOne at notWideCharacter do check10Step1
-convertOne at notWideCharacter do check10Step2
-convertOne at notWideCharacter do findCheck101
-convertOne at notWideCharacter branch if check10 goto wideString else goto unknown
+convertOne at notWideCharacter do check14Step1
+convertOne at notWideCharacter do check14Step2
+convertOne at notWideCharacter do findCheck141
+convertOne at notWideCharacter branch if check14 goto wideString else goto unknown
 convertOne at wideString do findWideText1
 convertOne at wideString do doFormatWideString
 convertOne at wideString return ok none
-convertOne at unknown do findCheck111
-convertOne at unknown branch if check11 goto percent else goto notPercent
+convertOne at unknown do findCheck151
+convertOne at unknown branch if check15 goto percent else goto notPercent
 convertOne at percent do doBuilderAddByte
 convertOne at percent return ok none
 convertOne at notPercent do percentAtStep1
@@ -15798,6 +15890,258 @@ convertOne at notPercent do unknownBytesStep1
 convertOne at notPercent do findUnknownBytes1
 convertOne at notPercent do doBuilderAdd
 convertOne at notPercent return ok none
+
+check1Step1 is call
+check1Step1 in convertOne
+check1Step1 invokes compare.equalInt64
+check1Step1 argument left Int64 conversion copy
+check1Step1 argument right Int64 n99 copy
+check1Step1 result check1Part1 Bool
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in convertOne
+check1Step2 invokes compare.notEqualInt64
+check1Step2 argument left Int64 length copy
+check1Step2 argument right Int64 three copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+findCheck11 is call
+findCheck11 in convertOne
+findCheck11 invokes logic.and
+findCheck11 argument left Bool check1Part1 copy
+findCheck11 argument right Bool check1Part2 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doFormatUnits is call
+doFormatUnits in convertOne
+doFormatUnits invokes formatUnits
+doFormatUnits argument builder machine.Address builder copy
+doFormatUnits argument flags Int64 flags copy
+doFormatUnits argument width Int64 width copy
+doFormatUnits argument count Int64 one copy
+doFormatUnits argument units machine.Address valueAt copy
+doFormatUnits argument unitBytes Int64 one copy
+doFormatUnits result none
+doFormatUnits ownedBy none
+doFormatUnits cleanedBy none
+doFormatUnits borrows none
+doFormatUnits catch none
+doFormatUnits suppresses none
+
+check2Step1 is call
+check2Step1 in convertOne
+check2Step1 invokes compare.equalInt64
+check2Step1 argument left Int64 conversion copy
+check2Step1 argument right Int64 n115 copy
+check2Step1 result check2Part1 Bool
+check2Step1 ownedBy none
+check2Step1 cleanedBy none
+check2Step1 borrows none
+check2Step1 catch none
+check2Step1 suppresses none
+
+check2Step2 is call
+check2Step2 in convertOne
+check2Step2 invokes compare.notEqualInt64
+check2Step2 argument left Int64 length copy
+check2Step2 argument right Int64 three copy
+check2Step2 result check2Part2 Bool
+check2Step2 ownedBy none
+check2Step2 cleanedBy none
+check2Step2 borrows none
+check2Step2 catch none
+check2Step2 suppresses none
+
+findCheck21 is call
+findCheck21 in convertOne
+findCheck21 invokes logic.and
+findCheck21 argument left Bool check2Part1 copy
+findCheck21 argument right Bool check2Part2 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+byteTextStep1 is call
+byteTextStep1 in convertOne
+byteTextStep1 invokes machine.loadInt64
+byteTextStep1 argument address machine.Address valueAt copy
+byteTextStep1 result byteTextPart1 Int64
+byteTextStep1 ownedBy none
+byteTextStep1 cleanedBy none
+byteTextStep1 borrows none
+byteTextStep1 catch none
+byteTextStep1 suppresses none
+
+findByteText1 is call
+findByteText1 in convertOne
+findByteText1 invokes machine.fromInt64
+findByteText1 argument value Int64 byteTextPart1 copy
+findByteText1 result byteText machine.Address
+findByteText1 ownedBy none
+findByteText1 cleanedBy none
+findByteText1 borrows none
+findByteText1 catch none
+findByteText1 suppresses none
+
+doFormatUnitString is call
+doFormatUnitString in convertOne
+doFormatUnitString invokes formatUnitString
+doFormatUnitString argument builder machine.Address builder copy
+doFormatUnitString argument flags Int64 flags copy
+doFormatUnitString argument width Int64 width copy
+doFormatUnitString argument precision Int64 precision copy
+doFormatUnitString argument text machine.Address byteText copy
+doFormatUnitString argument unitBytes Int64 one copy
+doFormatUnitString result none
+doFormatUnitString ownedBy none
+doFormatUnitString cleanedBy none
+doFormatUnitString borrows none
+doFormatUnitString catch none
+doFormatUnitString suppresses none
+
+check3Step1 is call
+check3Step1 in convertOne
+check3Step1 invokes compare.equalInt64
+check3Step1 argument left Int64 conversion copy
+check3Step1 argument right Int64 n99 copy
+check3Step1 result check3Part1 Bool
+check3Step1 ownedBy none
+check3Step1 cleanedBy none
+check3Step1 borrows none
+check3Step1 catch none
+check3Step1 suppresses none
+
+check3Step2 is call
+check3Step2 in convertOne
+check3Step2 invokes compare.equalInt64
+check3Step2 argument left Int64 conversion copy
+check3Step2 argument right Int64 n67 copy
+check3Step2 result check3Part2 Bool
+check3Step2 ownedBy none
+check3Step2 cleanedBy none
+check3Step2 borrows none
+check3Step2 catch none
+check3Step2 suppresses none
+
+findCheck31 is call
+findCheck31 in convertOne
+findCheck31 invokes logic.or
+findCheck31 argument left Bool check3Part1 copy
+findCheck31 argument right Bool check3Part2 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+doFormatUnits2 is call
+doFormatUnits2 in convertOne
+doFormatUnits2 invokes formatUnits
+doFormatUnits2 argument builder machine.Address builder copy
+doFormatUnits2 argument flags Int64 flags copy
+doFormatUnits2 argument width Int64 width copy
+doFormatUnits2 argument count Int64 one copy
+doFormatUnits2 argument units machine.Address valueAt copy
+doFormatUnits2 argument unitBytes Int64 four copy
+doFormatUnits2 result none
+doFormatUnits2 ownedBy none
+doFormatUnits2 cleanedBy none
+doFormatUnits2 borrows none
+doFormatUnits2 catch none
+doFormatUnits2 suppresses none
+
+check4Step1 is call
+check4Step1 in convertOne
+check4Step1 invokes compare.equalInt64
+check4Step1 argument left Int64 conversion copy
+check4Step1 argument right Int64 n115 copy
+check4Step1 result check4Part1 Bool
+check4Step1 ownedBy none
+check4Step1 cleanedBy none
+check4Step1 borrows none
+check4Step1 catch none
+check4Step1 suppresses none
+
+check4Step2 is call
+check4Step2 in convertOne
+check4Step2 invokes compare.equalInt64
+check4Step2 argument left Int64 conversion copy
+check4Step2 argument right Int64 n83 copy
+check4Step2 result check4Part2 Bool
+check4Step2 ownedBy none
+check4Step2 cleanedBy none
+check4Step2 borrows none
+check4Step2 catch none
+check4Step2 suppresses none
+
+findCheck41 is call
+findCheck41 in convertOne
+findCheck41 invokes logic.or
+findCheck41 argument left Bool check4Part1 copy
+findCheck41 argument right Bool check4Part2 copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+unitTextStep1 is call
+unitTextStep1 in convertOne
+unitTextStep1 invokes machine.loadInt64
+unitTextStep1 argument address machine.Address valueAt copy
+unitTextStep1 result unitTextPart1 Int64
+unitTextStep1 ownedBy none
+unitTextStep1 cleanedBy none
+unitTextStep1 borrows none
+unitTextStep1 catch none
+unitTextStep1 suppresses none
+
+findUnitText1 is call
+findUnitText1 in convertOne
+findUnitText1 invokes machine.fromInt64
+findUnitText1 argument value Int64 unitTextPart1 copy
+findUnitText1 result unitText machine.Address
+findUnitText1 ownedBy none
+findUnitText1 cleanedBy none
+findUnitText1 borrows none
+findUnitText1 catch none
+findUnitText1 suppresses none
+
+doFormatUnitString2 is call
+doFormatUnitString2 in convertOne
+doFormatUnitString2 invokes formatUnitString
+doFormatUnitString2 argument builder machine.Address builder copy
+doFormatUnitString2 argument flags Int64 flags copy
+doFormatUnitString2 argument width Int64 width copy
+doFormatUnitString2 argument precision Int64 precision copy
+doFormatUnitString2 argument text machine.Address unitText copy
+doFormatUnitString2 argument unitBytes Int64 four copy
+doFormatUnitString2 result none
+doFormatUnitString2 ownedBy none
+doFormatUnitString2 cleanedBy none
+doFormatUnitString2 borrows none
+doFormatUnitString2 catch none
+doFormatUnitString2 suppresses none
 
 readWord2 is call
 readWord2 in convertOne
@@ -15810,41 +16154,41 @@ readWord2 borrows none
 readWord2 catch none
 readWord2 suppresses none
 
-check1Step1 is call
-check1Step1 in convertOne
-check1Step1 invokes compare.equalInt64
-check1Step1 argument left Int64 conversion copy
-check1Step1 argument right Int64 n100 copy
-check1Step1 result check1Part1 Bool
-check1Step1 ownedBy none
-check1Step1 cleanedBy none
-check1Step1 borrows none
-check1Step1 catch none
-check1Step1 suppresses none
+check5Step1 is call
+check5Step1 in convertOne
+check5Step1 invokes compare.equalInt64
+check5Step1 argument left Int64 conversion copy
+check5Step1 argument right Int64 n100 copy
+check5Step1 result check5Part1 Bool
+check5Step1 ownedBy none
+check5Step1 cleanedBy none
+check5Step1 borrows none
+check5Step1 catch none
+check5Step1 suppresses none
 
-check1Step2 is call
-check1Step2 in convertOne
-check1Step2 invokes compare.equalInt64
-check1Step2 argument left Int64 conversion copy
-check1Step2 argument right Int64 n105 copy
-check1Step2 result check1Part2 Bool
-check1Step2 ownedBy none
-check1Step2 cleanedBy none
-check1Step2 borrows none
-check1Step2 catch none
-check1Step2 suppresses none
+check5Step2 is call
+check5Step2 in convertOne
+check5Step2 invokes compare.equalInt64
+check5Step2 argument left Int64 conversion copy
+check5Step2 argument right Int64 n105 copy
+check5Step2 result check5Part2 Bool
+check5Step2 ownedBy none
+check5Step2 cleanedBy none
+check5Step2 borrows none
+check5Step2 catch none
+check5Step2 suppresses none
 
-findCheck11 is call
-findCheck11 in convertOne
-findCheck11 invokes logic.or
-findCheck11 argument left Bool check1Part1 copy
-findCheck11 argument right Bool check1Part2 copy
-findCheck11 result check1 Bool
-findCheck11 ownedBy none
-findCheck11 cleanedBy none
-findCheck11 borrows none
-findCheck11 catch none
-findCheck11 suppresses none
+findCheck51 is call
+findCheck51 in convertOne
+findCheck51 invokes logic.or
+findCheck51 argument left Bool check5Part1 copy
+findCheck51 argument right Bool check5Part2 copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
 
 findSignedValue1 is call
 findSignedValue1 in convertOne
@@ -15899,89 +16243,89 @@ doFormatInteger borrows none
 doFormatInteger catch none
 doFormatInteger suppresses none
 
-check2Step1 is call
-check2Step1 in convertOne
-check2Step1 invokes compare.equalInt64
-check2Step1 argument left Int64 conversion copy
-check2Step1 argument right Int64 n117 copy
-check2Step1 result check2Part1 Bool
-check2Step1 ownedBy none
-check2Step1 cleanedBy none
-check2Step1 borrows none
-check2Step1 catch none
-check2Step1 suppresses none
+check6Step1 is call
+check6Step1 in convertOne
+check6Step1 invokes compare.equalInt64
+check6Step1 argument left Int64 conversion copy
+check6Step1 argument right Int64 n117 copy
+check6Step1 result check6Part1 Bool
+check6Step1 ownedBy none
+check6Step1 cleanedBy none
+check6Step1 borrows none
+check6Step1 catch none
+check6Step1 suppresses none
 
-check2Step2 is call
-check2Step2 in convertOne
-check2Step2 invokes compare.equalInt64
-check2Step2 argument left Int64 conversion copy
-check2Step2 argument right Int64 n111 copy
-check2Step2 result check2Part2 Bool
-check2Step2 ownedBy none
-check2Step2 cleanedBy none
-check2Step2 borrows none
-check2Step2 catch none
-check2Step2 suppresses none
+check6Step2 is call
+check6Step2 in convertOne
+check6Step2 invokes compare.equalInt64
+check6Step2 argument left Int64 conversion copy
+check6Step2 argument right Int64 n111 copy
+check6Step2 result check6Part2 Bool
+check6Step2 ownedBy none
+check6Step2 cleanedBy none
+check6Step2 borrows none
+check6Step2 catch none
+check6Step2 suppresses none
 
-check2Step3 is call
-check2Step3 in convertOne
-check2Step3 invokes logic.or
-check2Step3 argument left Bool check2Part1 copy
-check2Step3 argument right Bool check2Part2 copy
-check2Step3 result check2Part3 Bool
-check2Step3 ownedBy none
-check2Step3 cleanedBy none
-check2Step3 borrows none
-check2Step3 catch none
-check2Step3 suppresses none
+check6Step3 is call
+check6Step3 in convertOne
+check6Step3 invokes logic.or
+check6Step3 argument left Bool check6Part1 copy
+check6Step3 argument right Bool check6Part2 copy
+check6Step3 result check6Part3 Bool
+check6Step3 ownedBy none
+check6Step3 cleanedBy none
+check6Step3 borrows none
+check6Step3 catch none
+check6Step3 suppresses none
 
-check2Step4 is call
-check2Step4 in convertOne
-check2Step4 invokes compare.equalInt64
-check2Step4 argument left Int64 conversion copy
-check2Step4 argument right Int64 n120 copy
-check2Step4 result check2Part4 Bool
-check2Step4 ownedBy none
-check2Step4 cleanedBy none
-check2Step4 borrows none
-check2Step4 catch none
-check2Step4 suppresses none
+check6Step4 is call
+check6Step4 in convertOne
+check6Step4 invokes compare.equalInt64
+check6Step4 argument left Int64 conversion copy
+check6Step4 argument right Int64 n120 copy
+check6Step4 result check6Part4 Bool
+check6Step4 ownedBy none
+check6Step4 cleanedBy none
+check6Step4 borrows none
+check6Step4 catch none
+check6Step4 suppresses none
 
-check2Step5 is call
-check2Step5 in convertOne
-check2Step5 invokes logic.or
-check2Step5 argument left Bool check2Part3 copy
-check2Step5 argument right Bool check2Part4 copy
-check2Step5 result check2Part5 Bool
-check2Step5 ownedBy none
-check2Step5 cleanedBy none
-check2Step5 borrows none
-check2Step5 catch none
-check2Step5 suppresses none
+check6Step5 is call
+check6Step5 in convertOne
+check6Step5 invokes logic.or
+check6Step5 argument left Bool check6Part3 copy
+check6Step5 argument right Bool check6Part4 copy
+check6Step5 result check6Part5 Bool
+check6Step5 ownedBy none
+check6Step5 cleanedBy none
+check6Step5 borrows none
+check6Step5 catch none
+check6Step5 suppresses none
 
-check2Step6 is call
-check2Step6 in convertOne
-check2Step6 invokes compare.equalInt64
-check2Step6 argument left Int64 conversion copy
-check2Step6 argument right Int64 n88 copy
-check2Step6 result check2Part6 Bool
-check2Step6 ownedBy none
-check2Step6 cleanedBy none
-check2Step6 borrows none
-check2Step6 catch none
-check2Step6 suppresses none
+check6Step6 is call
+check6Step6 in convertOne
+check6Step6 invokes compare.equalInt64
+check6Step6 argument left Int64 conversion copy
+check6Step6 argument right Int64 n88 copy
+check6Step6 result check6Part6 Bool
+check6Step6 ownedBy none
+check6Step6 cleanedBy none
+check6Step6 borrows none
+check6Step6 catch none
+check6Step6 suppresses none
 
-findCheck21 is call
-findCheck21 in convertOne
-findCheck21 invokes logic.or
-findCheck21 argument left Bool check2Part5 copy
-findCheck21 argument right Bool check2Part6 copy
-findCheck21 result check2 Bool
-findCheck21 ownedBy none
-findCheck21 cleanedBy none
-findCheck21 borrows none
-findCheck21 catch none
-findCheck21 suppresses none
+findCheck61 is call
+findCheck61 in convertOne
+findCheck61 invokes logic.or
+findCheck61 argument left Bool check6Part5 copy
+findCheck61 argument right Bool check6Part6 copy
+findCheck61 result check6 Bool
+findCheck61 ownedBy none
+findCheck61 cleanedBy none
+findCheck61 borrows none
+findCheck61 catch none
+findCheck61 suppresses none
 
 findUnsignedValue1 is call
 findUnsignedValue1 in convertOne
@@ -16013,29 +16357,29 @@ doFormatInteger2 borrows none
 doFormatInteger2 catch none
 doFormatInteger2 suppresses none
 
-findCheck31 is call
-findCheck31 in convertOne
-findCheck31 invokes compare.equalInt64
-findCheck31 argument left Int64 conversion copy
-findCheck31 argument right Int64 n112 copy
-findCheck31 result check3 Bool
-findCheck31 ownedBy none
-findCheck31 cleanedBy none
-findCheck31 borrows none
-findCheck31 catch none
-findCheck31 suppresses none
+findCheck71 is call
+findCheck71 in convertOne
+findCheck71 invokes compare.equalInt64
+findCheck71 argument left Int64 conversion copy
+findCheck71 argument right Int64 n112 copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
 
-findCheck41 is call
-findCheck41 in convertOne
-findCheck41 invokes compare.equalInt64
-findCheck41 argument left Int64 word copy
-findCheck41 argument right Int64 zero copy
-findCheck41 result check4 Bool
-findCheck41 ownedBy none
-findCheck41 cleanedBy none
-findCheck41 borrows none
-findCheck41 catch none
-findCheck41 suppresses none
+findCheck81 is call
+findCheck81 in convertOne
+findCheck81 invokes compare.equalInt64
+findCheck81 argument left Int64 word copy
+findCheck81 argument right Int64 zero copy
+findCheck81 result check8 Bool
+findCheck81 ownedBy none
+findCheck81 cleanedBy none
+findCheck81 borrows none
+findCheck81 catch none
+findCheck81 suppresses none
 
 readNilText is call
 readNilText in convertOne
@@ -16107,41 +16451,41 @@ doFormatInteger3 borrows none
 doFormatInteger3 catch none
 doFormatInteger3 suppresses none
 
-check5Step1 is call
-check5Step1 in convertOne
-check5Step1 invokes compare.equalInt64
-check5Step1 argument left Int64 conversion copy
-check5Step1 argument right Int64 n99 copy
-check5Step1 result check5Part1 Bool
-check5Step1 ownedBy none
-check5Step1 cleanedBy none
-check5Step1 borrows none
-check5Step1 catch none
-check5Step1 suppresses none
+check9Step1 is call
+check9Step1 in convertOne
+check9Step1 invokes compare.equalInt64
+check9Step1 argument left Int64 conversion copy
+check9Step1 argument right Int64 n99 copy
+check9Step1 result check9Part1 Bool
+check9Step1 ownedBy none
+check9Step1 cleanedBy none
+check9Step1 borrows none
+check9Step1 catch none
+check9Step1 suppresses none
 
-check5Step2 is call
-check5Step2 in convertOne
-check5Step2 invokes compare.notEqualInt64
-check5Step2 argument left Int64 length copy
-check5Step2 argument right Int64 three copy
-check5Step2 result check5Part2 Bool
-check5Step2 ownedBy none
-check5Step2 cleanedBy none
-check5Step2 borrows none
-check5Step2 catch none
-check5Step2 suppresses none
+check9Step2 is call
+check9Step2 in convertOne
+check9Step2 invokes compare.notEqualInt64
+check9Step2 argument left Int64 length copy
+check9Step2 argument right Int64 three copy
+check9Step2 result check9Part2 Bool
+check9Step2 ownedBy none
+check9Step2 cleanedBy none
+check9Step2 borrows none
+check9Step2 catch none
+check9Step2 suppresses none
 
-findCheck51 is call
-findCheck51 in convertOne
-findCheck51 invokes logic.and
-findCheck51 argument left Bool check5Part1 copy
-findCheck51 argument right Bool check5Part2 copy
-findCheck51 result check5 Bool
-findCheck51 ownedBy none
-findCheck51 cleanedBy none
-findCheck51 borrows none
-findCheck51 catch none
-findCheck51 suppresses none
+findCheck91 is call
+findCheck91 in convertOne
+findCheck91 invokes logic.and
+findCheck91 argument left Bool check9Part1 copy
+findCheck91 argument right Bool check9Part2 copy
+findCheck91 result check9 Bool
+findCheck91 ownedBy none
+findCheck91 cleanedBy none
+findCheck91 borrows none
+findCheck91 catch none
+findCheck91 suppresses none
 
 doFormatChar is call
 doFormatChar in convertOne
@@ -16157,41 +16501,41 @@ doFormatChar borrows none
 doFormatChar catch none
 doFormatChar suppresses none
 
-check6Step1 is call
-check6Step1 in convertOne
-check6Step1 invokes compare.equalInt64
-check6Step1 argument left Int64 conversion copy
-check6Step1 argument right Int64 n115 copy
-check6Step1 result check6Part1 Bool
-check6Step1 ownedBy none
-check6Step1 cleanedBy none
-check6Step1 borrows none
-check6Step1 catch none
-check6Step1 suppresses none
+check10Step1 is call
+check10Step1 in convertOne
+check10Step1 invokes compare.equalInt64
+check10Step1 argument left Int64 conversion copy
+check10Step1 argument right Int64 n115 copy
+check10Step1 result check10Part1 Bool
+check10Step1 ownedBy none
+check10Step1 cleanedBy none
+check10Step1 borrows none
+check10Step1 catch none
+check10Step1 suppresses none
 
-check6Step2 is call
-check6Step2 in convertOne
-check6Step2 invokes compare.notEqualInt64
-check6Step2 argument left Int64 length copy
-check6Step2 argument right Int64 three copy
-check6Step2 result check6Part2 Bool
-check6Step2 ownedBy none
-check6Step2 cleanedBy none
-check6Step2 borrows none
-check6Step2 catch none
-check6Step2 suppresses none
+check10Step2 is call
+check10Step2 in convertOne
+check10Step2 invokes compare.notEqualInt64
+check10Step2 argument left Int64 length copy
+check10Step2 argument right Int64 three copy
+check10Step2 result check10Part2 Bool
+check10Step2 ownedBy none
+check10Step2 cleanedBy none
+check10Step2 borrows none
+check10Step2 catch none
+check10Step2 suppresses none
 
-findCheck61 is call
-findCheck61 in convertOne
-findCheck61 invokes logic.and
-findCheck61 argument left Bool check6Part1 copy
-findCheck61 argument right Bool check6Part2 copy
-findCheck61 result check6 Bool
-findCheck61 ownedBy none
-findCheck61 cleanedBy none
-findCheck61 borrows none
-findCheck61 catch none
-findCheck61 suppresses none
+findCheck101 is call
+findCheck101 in convertOne
+findCheck101 invokes logic.and
+findCheck101 argument left Bool check10Part1 copy
+findCheck101 argument right Bool check10Part2 copy
+findCheck101 result check10 Bool
+findCheck101 ownedBy none
+findCheck101 cleanedBy none
+findCheck101 borrows none
+findCheck101 catch none
+findCheck101 suppresses none
 
 findText1 is call
 findText1 in convertOne
@@ -16219,17 +16563,17 @@ doFormatString borrows none
 doFormatString catch none
 doFormatString suppresses none
 
-findCheck71 is call
-findCheck71 in convertOne
-findCheck71 invokes compare.equalInt64
-findCheck71 argument left Int64 conversion copy
-findCheck71 argument right Int64 n110 copy
-findCheck71 result check7 Bool
-findCheck71 ownedBy none
-findCheck71 cleanedBy none
-findCheck71 borrows none
-findCheck71 catch none
-findCheck71 suppresses none
+findCheck111 is call
+findCheck111 in convertOne
+findCheck111 invokes compare.equalInt64
+findCheck111 argument left Int64 conversion copy
+findCheck111 argument right Int64 n110 copy
+findCheck111 result check11 Bool
+findCheck111 ownedBy none
+findCheck111 cleanedBy none
+findCheck111 borrows none
+findCheck111 catch none
+findCheck111 suppresses none
 
 doStoreCount is call
 doStoreCount in convertOne
@@ -16272,17 +16616,17 @@ doFormatRealArgument borrows none
 doFormatRealArgument catch none
 doFormatRealArgument suppresses none
 
-findCheck81 is call
-findCheck81 in convertOne
-findCheck81 invokes compare.equalInt64
-findCheck81 argument left Int64 conversion copy
-findCheck81 argument right Int64 n109 copy
-findCheck81 result check8 Bool
-findCheck81 ownedBy none
-findCheck81 cleanedBy none
-findCheck81 borrows none
-findCheck81 catch none
-findCheck81 suppresses none
+findCheck121 is call
+findCheck121 in convertOne
+findCheck121 invokes compare.equalInt64
+findCheck121 argument left Int64 conversion copy
+findCheck121 argument right Int64 n109 copy
+findCheck121 result check12 Bool
+findCheck121 ownedBy none
+findCheck121 cleanedBy none
+findCheck121 borrows none
+findCheck121 catch none
+findCheck121 suppresses none
 
 readErrorAt is call
 readErrorAt in convertOne
@@ -16310,41 +16654,41 @@ doFormatString2 borrows none
 doFormatString2 catch none
 doFormatString2 suppresses none
 
-check9Step1 is call
-check9Step1 in convertOne
-check9Step1 invokes compare.equalInt64
-check9Step1 argument left Int64 conversion copy
-check9Step1 argument right Int64 n99 copy
-check9Step1 result check9Part1 Bool
-check9Step1 ownedBy none
-check9Step1 cleanedBy none
-check9Step1 borrows none
-check9Step1 catch none
-check9Step1 suppresses none
+check13Step1 is call
+check13Step1 in convertOne
+check13Step1 invokes compare.equalInt64
+check13Step1 argument left Int64 conversion copy
+check13Step1 argument right Int64 n99 copy
+check13Step1 result check13Part1 Bool
+check13Step1 ownedBy none
+check13Step1 cleanedBy none
+check13Step1 borrows none
+check13Step1 catch none
+check13Step1 suppresses none
 
-check9Step2 is call
-check9Step2 in convertOne
-check9Step2 invokes compare.equalInt64
-check9Step2 argument left Int64 conversion copy
-check9Step2 argument right Int64 n67 copy
-check9Step2 result check9Part2 Bool
-check9Step2 ownedBy none
-check9Step2 cleanedBy none
-check9Step2 borrows none
-check9Step2 catch none
-check9Step2 suppresses none
+check13Step2 is call
+check13Step2 in convertOne
+check13Step2 invokes compare.equalInt64
+check13Step2 argument left Int64 conversion copy
+check13Step2 argument right Int64 n67 copy
+check13Step2 result check13Part2 Bool
+check13Step2 ownedBy none
+check13Step2 cleanedBy none
+check13Step2 borrows none
+check13Step2 catch none
+check13Step2 suppresses none
 
-findCheck91 is call
-findCheck91 in convertOne
-findCheck91 invokes logic.or
-findCheck91 argument left Bool check9Part1 copy
-findCheck91 argument right Bool check9Part2 copy
-findCheck91 result check9 Bool
-findCheck91 ownedBy none
-findCheck91 cleanedBy none
-findCheck91 borrows none
-findCheck91 catch none
-findCheck91 suppresses none
+findCheck131 is call
+findCheck131 in convertOne
+findCheck131 invokes logic.or
+findCheck131 argument left Bool check13Part1 copy
+findCheck131 argument right Bool check13Part2 copy
+findCheck131 result check13 Bool
+findCheck131 ownedBy none
+findCheck131 cleanedBy none
+findCheck131 borrows none
+findCheck131 catch none
+findCheck131 suppresses none
 
 doFormatWideChar is call
 doFormatWideChar in convertOne
@@ -16360,41 +16704,41 @@ doFormatWideChar borrows none
 doFormatWideChar catch none
 doFormatWideChar suppresses none
 
-check10Step1 is call
-check10Step1 in convertOne
-check10Step1 invokes compare.equalInt64
-check10Step1 argument left Int64 conversion copy
-check10Step1 argument right Int64 n115 copy
-check10Step1 result check10Part1 Bool
-check10Step1 ownedBy none
-check10Step1 cleanedBy none
-check10Step1 borrows none
-check10Step1 catch none
-check10Step1 suppresses none
+check14Step1 is call
+check14Step1 in convertOne
+check14Step1 invokes compare.equalInt64
+check14Step1 argument left Int64 conversion copy
+check14Step1 argument right Int64 n115 copy
+check14Step1 result check14Part1 Bool
+check14Step1 ownedBy none
+check14Step1 cleanedBy none
+check14Step1 borrows none
+check14Step1 catch none
+check14Step1 suppresses none
 
-check10Step2 is call
-check10Step2 in convertOne
-check10Step2 invokes compare.equalInt64
-check10Step2 argument left Int64 conversion copy
-check10Step2 argument right Int64 n83 copy
-check10Step2 result check10Part2 Bool
-check10Step2 ownedBy none
-check10Step2 cleanedBy none
-check10Step2 borrows none
-check10Step2 catch none
-check10Step2 suppresses none
+check14Step2 is call
+check14Step2 in convertOne
+check14Step2 invokes compare.equalInt64
+check14Step2 argument left Int64 conversion copy
+check14Step2 argument right Int64 n83 copy
+check14Step2 result check14Part2 Bool
+check14Step2 ownedBy none
+check14Step2 cleanedBy none
+check14Step2 borrows none
+check14Step2 catch none
+check14Step2 suppresses none
 
-findCheck101 is call
-findCheck101 in convertOne
-findCheck101 invokes logic.or
-findCheck101 argument left Bool check10Part1 copy
-findCheck101 argument right Bool check10Part2 copy
-findCheck101 result check10 Bool
-findCheck101 ownedBy none
-findCheck101 cleanedBy none
-findCheck101 borrows none
-findCheck101 catch none
-findCheck101 suppresses none
+findCheck141 is call
+findCheck141 in convertOne
+findCheck141 invokes logic.or
+findCheck141 argument left Bool check14Part1 copy
+findCheck141 argument right Bool check14Part2 copy
+findCheck141 result check14 Bool
+findCheck141 ownedBy none
+findCheck141 cleanedBy none
+findCheck141 borrows none
+findCheck141 catch none
+findCheck141 suppresses none
 
 findWideText1 is call
 findWideText1 in convertOne
@@ -16422,17 +16766,17 @@ doFormatWideString borrows none
 doFormatWideString catch none
 doFormatWideString suppresses none
 
-findCheck111 is call
-findCheck111 in convertOne
-findCheck111 invokes compare.equalInt64
-findCheck111 argument left Int64 conversion copy
-findCheck111 argument right Int64 n37 copy
-findCheck111 result check11 Bool
-findCheck111 ownedBy none
-findCheck111 cleanedBy none
-findCheck111 borrows none
-findCheck111 catch none
-findCheck111 suppresses none
+findCheck151 is call
+findCheck151 in convertOne
+findCheck151 invokes compare.equalInt64
+findCheck151 argument left Int64 conversion copy
+findCheck151 argument right Int64 n37 copy
+findCheck151 result check15 Bool
+findCheck151 ownedBy none
+findCheck151 cleanedBy none
+findCheck151 borrows none
+findCheck151 catch none
+findCheck151 suppresses none
 
 doBuilderAddByte is call
 doBuilderAddByte in convertOne
@@ -18349,6 +18693,1008 @@ doGive3 cleanedBy none
 doGive3 borrows none
 doGive3 catch none
 doGive3 suppresses none
+
+# ---------------------------------------------------------------- wide mode (D-176)
+#
+# The wide printf family runs this engine in wide mode over its wide format made bytes: a wide character below 255
+# is its byte, any other is 255 and six bytes of 0x80 plus six of its bits each (highest first), bytes no format
+# reads as anything but text; the wide functions turn the result back into wide characters the same way.
+addUnit is operation
+addUnit purpose "Add a wide character to a wide mode text: its byte below 255, else 255 and six bytes of its bits"
+addUnit invariant escapesPastByte "\"Adds one byte below 255, seven bytes from 255 up\""
+addUnit typeParameter none
+addUnit input builder machine.Address copied
+addUnit input code Int64 copied
+addUnit output none
+addUnit outputOwnedBy none
+addUnit raises none
+addUnit effect use machine.memory
+addUnit effect use system.calls
+addUnit uses memoryAccess
+addUnit uses systemCalls
+addUnit memoryHeap false
+addUnit async false
+addUnit maxRecursion none
+addUnit label begin loopKind none
+addUnit label begin within none
+addUnit label single loopKind none
+addUnit label single within none
+addUnit label escaped loopKind none
+addUnit label escaped within none
+addUnit label eachPiece loopKind while
+addUnit label eachPiece within none
+addUnit label eachPiece maxIterations forever
+addUnit label addPiece loopKind none
+addUnit label addPiece within eachPiece
+addUnit label done loopKind none
+addUnit label done within none
+addUnit let shift Int64 30 mutable
+addUnit let n4294967295 Int64 4294967295 immutable
+addUnit let n255 Int64 255 immutable
+addUnit let zero Int64 0 immutable
+addUnit let n128 Int64 128 immutable
+addUnit let n63 Int64 63 immutable
+addUnit let six Int64 6 immutable
+addUnit at begin do findUnsigned1
+addUnit at begin do findCheck11
+addUnit at begin branch if check1 goto single else goto escaped
+addUnit at single do doBuilderAddByteStep1
+addUnit at single do doBuilderAddByte
+addUnit at single return ok none
+addUnit at escaped do doBuilderAddByteStep2
+addUnit at escaped do doBuilderAddByte2
+addUnit at escaped goto eachPiece
+addUnit at eachPiece do findCheck21
+addUnit at eachPiece branch if check2 goto done else goto addPiece
+addUnit at addPiece do pieceStep1
+addUnit at addPiece do pieceStep2
+addUnit at addPiece do findPiece1
+addUnit at addPiece do doBuilderAddByteStep3
+addUnit at addPiece do doBuilderAddByte3
+addUnit at addPiece do findShiftNext11
+addUnit at addPiece set shift shiftNext1
+addUnit at addPiece goto eachPiece
+addUnit at done return ok none
+
+findUnsigned1 is call
+findUnsigned1 in addUnit
+findUnsigned1 invokes bits.andInt64
+findUnsigned1 argument left Int64 code copy
+findUnsigned1 argument right Int64 n4294967295 copy
+findUnsigned1 result unsigned Int64
+findUnsigned1 ownedBy none
+findUnsigned1 cleanedBy none
+findUnsigned1 borrows none
+findUnsigned1 catch none
+findUnsigned1 suppresses none
+
+findCheck11 is call
+findCheck11 in addUnit
+findCheck11 invokes compare.lessThanInt64
+findCheck11 argument left Int64 unsigned copy
+findCheck11 argument right Int64 n255 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doBuilderAddByteStep1 is call
+doBuilderAddByteStep1 in addUnit
+doBuilderAddByteStep1 invokes convert.int64ToByte
+doBuilderAddByteStep1 argument value Int64 unsigned copy
+doBuilderAddByteStep1 result doBuilderAddBytePart1 Byte
+doBuilderAddByteStep1 ownedBy none
+doBuilderAddByteStep1 cleanedBy none
+doBuilderAddByteStep1 borrows none
+doBuilderAddByteStep1 catch none
+doBuilderAddByteStep1 suppresses none
+
+doBuilderAddByte is call
+doBuilderAddByte in addUnit
+doBuilderAddByte invokes wide.builderAddByte
+doBuilderAddByte argument builder machine.Address builder copy
+doBuilderAddByte argument byte Byte doBuilderAddBytePart1 copy
+doBuilderAddByte result none
+doBuilderAddByte ownedBy none
+doBuilderAddByte cleanedBy none
+doBuilderAddByte borrows none
+doBuilderAddByte catch none
+doBuilderAddByte suppresses none
+
+doBuilderAddByteStep2 is call
+doBuilderAddByteStep2 in addUnit
+doBuilderAddByteStep2 invokes convert.int64ToByte
+doBuilderAddByteStep2 argument value Int64 n255 copy
+doBuilderAddByteStep2 result doBuilderAddBytePart2 Byte
+doBuilderAddByteStep2 ownedBy none
+doBuilderAddByteStep2 cleanedBy none
+doBuilderAddByteStep2 borrows none
+doBuilderAddByteStep2 catch none
+doBuilderAddByteStep2 suppresses none
+
+doBuilderAddByte2 is call
+doBuilderAddByte2 in addUnit
+doBuilderAddByte2 invokes wide.builderAddByte
+doBuilderAddByte2 argument builder machine.Address builder copy
+doBuilderAddByte2 argument byte Byte doBuilderAddBytePart2 copy
+doBuilderAddByte2 result none
+doBuilderAddByte2 ownedBy none
+doBuilderAddByte2 cleanedBy none
+doBuilderAddByte2 borrows none
+doBuilderAddByte2 catch none
+doBuilderAddByte2 suppresses none
+
+findCheck21 is call
+findCheck21 in addUnit
+findCheck21 invokes compare.lessThanInt64
+findCheck21 argument left Int64 shift copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+pieceStep1 is call
+pieceStep1 in addUnit
+pieceStep1 invokes bits.shiftRightInt64
+pieceStep1 argument value Int64 unsigned copy
+pieceStep1 argument amount Int64 shift copy
+pieceStep1 result piecePart1 Int64
+pieceStep1 ownedBy none
+pieceStep1 cleanedBy none
+pieceStep1 borrows none
+pieceStep1 catch none
+pieceStep1 suppresses none
+
+pieceStep2 is call
+pieceStep2 in addUnit
+pieceStep2 invokes bits.andInt64
+pieceStep2 argument left Int64 piecePart1 copy
+pieceStep2 argument right Int64 n63 copy
+pieceStep2 result piecePart2 Int64
+pieceStep2 ownedBy none
+pieceStep2 cleanedBy none
+pieceStep2 borrows none
+pieceStep2 catch none
+pieceStep2 suppresses none
+
+findPiece1 is call
+findPiece1 in addUnit
+findPiece1 invokes bits.orInt64
+findPiece1 argument left Int64 n128 copy
+findPiece1 argument right Int64 piecePart2 copy
+findPiece1 result piece Int64
+findPiece1 ownedBy none
+findPiece1 cleanedBy none
+findPiece1 borrows none
+findPiece1 catch none
+findPiece1 suppresses none
+
+doBuilderAddByteStep3 is call
+doBuilderAddByteStep3 in addUnit
+doBuilderAddByteStep3 invokes convert.int64ToByte
+doBuilderAddByteStep3 argument value Int64 piece copy
+doBuilderAddByteStep3 result doBuilderAddBytePart3 Byte
+doBuilderAddByteStep3 ownedBy none
+doBuilderAddByteStep3 cleanedBy none
+doBuilderAddByteStep3 borrows none
+doBuilderAddByteStep3 catch none
+doBuilderAddByteStep3 suppresses none
+
+doBuilderAddByte3 is call
+doBuilderAddByte3 in addUnit
+doBuilderAddByte3 invokes wide.builderAddByte
+doBuilderAddByte3 argument builder machine.Address builder copy
+doBuilderAddByte3 argument byte Byte doBuilderAddBytePart3 copy
+doBuilderAddByte3 result none
+doBuilderAddByte3 ownedBy none
+doBuilderAddByte3 cleanedBy none
+doBuilderAddByte3 borrows none
+doBuilderAddByte3 catch none
+doBuilderAddByte3 suppresses none
+
+findShiftNext11 is call
+findShiftNext11 in addUnit
+findShiftNext11 invokes math.subtractInt64
+findShiftNext11 argument left Int64 shift copy
+findShiftNext11 argument right Int64 six copy
+findShiftNext11 result shiftNext1 Int64
+findShiftNext11 ownedBy none
+findShiftNext11 cleanedBy none
+findShiftNext11 borrows none
+findShiftNext11 catch none
+findShiftNext11 suppresses none
+
+countWritten is operation
+countWritten purpose "How much a text being written holds: its bytes, or in wide mode its wide characters (an escape of seven bytes counts one)"
+countWritten invariant none
+countWritten typeParameter none
+countWritten input builder machine.Address copied
+countWritten input wideMode Bool copied
+countWritten output Int64
+countWritten outputOwnedBy none
+countWritten raises none
+countWritten effect use machine.memory
+countWritten uses memoryAccess
+countWritten memoryHeap false
+countWritten async false
+countWritten maxRecursion none
+countWritten label begin loopKind none
+countWritten label begin within none
+countWritten label plain loopKind none
+countWritten label plain within none
+countWritten label measure loopKind none
+countWritten label measure within none
+countWritten label eachByte loopKind while
+countWritten label eachByte within none
+countWritten label eachByte maxIterations forever
+countWritten label step loopKind none
+countWritten label step within eachByte
+countWritten label skipEscape loopKind none
+countWritten label skipEscape within eachByte
+countWritten label skipOne loopKind none
+countWritten label skipOne within eachByte
+countWritten label counted loopKind none
+countWritten label counted within none
+countWritten let at Int64 0 mutable
+countWritten let count Int64 0 mutable
+countWritten let one Int64 1 immutable
+countWritten let byte255 Byte 255 immutable
+countWritten let seven Int64 7 immutable
+countWritten at begin do readLength
+countWritten at begin branch if wideMode goto measure else goto plain
+countWritten at plain return ok length
+countWritten at measure do readText
+countWritten at measure goto eachByte
+countWritten at eachByte do findCheck11
+countWritten at eachByte branch if check1 goto counted else goto step
+countWritten at step do readCurrent
+countWritten at step do findCountNext11
+countWritten at step set count countNext1
+countWritten at step do findCheck21
+countWritten at step branch if check2 goto skipEscape else goto skipOne
+countWritten at skipEscape do findAtNext11
+countWritten at skipEscape set at atNext1
+countWritten at skipEscape goto eachByte
+countWritten at skipOne do findAtNext21
+countWritten at skipOne set at atNext2
+countWritten at skipOne goto eachByte
+countWritten at counted return ok count
+
+readLength is call
+readLength in countWritten
+readLength invokes wide.builderLength
+readLength argument builder machine.Address builder copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+readText is call
+readText in countWritten
+readText invokes wide.builderText
+readText argument builder machine.Address builder copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+findCheck11 is call
+findCheck11 in countWritten
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 at copy
+findCheck11 argument right Int64 length copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readCurrent is call
+readCurrent in countWritten
+readCurrent invokes clibrary.byteAt
+readCurrent argument base machine.Address text copy
+readCurrent argument at Int64 at copy
+readCurrent result current Byte
+readCurrent ownedBy none
+readCurrent cleanedBy none
+readCurrent borrows none
+readCurrent catch none
+readCurrent suppresses none
+
+findCountNext11 is call
+findCountNext11 in countWritten
+findCountNext11 invokes math.addInt64
+findCountNext11 argument left Int64 count copy
+findCountNext11 argument right Int64 one copy
+findCountNext11 result countNext1 Int64
+findCountNext11 ownedBy none
+findCountNext11 cleanedBy none
+findCountNext11 borrows none
+findCountNext11 catch none
+findCountNext11 suppresses none
+
+findCheck21 is call
+findCheck21 in countWritten
+findCheck21 invokes compare.equalByte
+findCheck21 argument left Byte current copy
+findCheck21 argument right Byte byte255 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findAtNext11 is call
+findAtNext11 in countWritten
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 seven copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+findAtNext21 is call
+findAtNext21 in countWritten
+findAtNext21 invokes math.addInt64
+findAtNext21 argument left Int64 at copy
+findAtNext21 argument right Int64 one copy
+findAtNext21 result atNext2 Int64
+findAtNext21 ownedBy none
+findAtNext21 cleanedBy none
+findAtNext21 borrows none
+findAtNext21 catch none
+findAtNext21 suppresses none
+
+formatUnits is operation
+formatUnits purpose "Write wide characters (bytes of 1 or wchar_t of 4 at an address) padded with spaces to a width (after them for `-`)"
+formatUnits invariant none
+formatUnits typeParameter none
+formatUnits input builder machine.Address copied
+formatUnits input flags Int64 copied
+formatUnits input width Int64 copied
+formatUnits input count Int64 copied
+formatUnits input units machine.Address copied
+formatUnits input unitBytes Int64 copied
+formatUnits output none
+formatUnits outputOwnedBy none
+formatUnits raises none
+formatUnits effect use machine.memory
+formatUnits effect use system.calls
+formatUnits uses memoryAccess
+formatUnits uses systemCalls
+formatUnits memoryHeap false
+formatUnits async false
+formatUnits maxRecursion none
+formatUnits label begin loopKind none
+formatUnits label begin within none
+formatUnits label padFirst loopKind none
+formatUnits label padFirst within none
+formatUnits label eachUnit loopKind while
+formatUnits label eachUnit within none
+formatUnits label eachUnit maxIterations forever
+formatUnits label addOne loopKind none
+formatUnits label addOne within eachUnit
+formatUnits label readByte loopKind none
+formatUnits label readByte within eachUnit
+formatUnits label readWide loopKind none
+formatUnits label readWide within eachUnit
+formatUnits label advance loopKind none
+formatUnits label advance within eachUnit
+formatUnits label padded loopKind none
+formatUnits label padded within none
+formatUnits label padAfter loopKind none
+formatUnits label padAfter within none
+formatUnits label done loopKind none
+formatUnits label done within none
+formatUnits let at Int64 0 mutable
+formatUnits let zero Int64 0 immutable
+formatUnits let thirtyTwo Int64 32 immutable
+formatUnits let one Int64 1 immutable
+formatUnits at begin do leftStep1
+formatUnits at begin do findLeft1
+formatUnits at begin do findPadding1
+formatUnits at begin branch if left goto eachUnit else goto padFirst
+formatUnits at padFirst do doPutRepeatedStep1
+formatUnits at padFirst do doPutRepeated
+formatUnits at padFirst goto eachUnit
+formatUnits at eachUnit do findCheck11
+formatUnits at eachUnit branch if check1 goto padded else goto addOne
+formatUnits at addOne do unitAtStep1
+formatUnits at addOne do findUnitAt1
+formatUnits at addOne do findCheck21
+formatUnits at addOne branch if check2 goto readByte else goto readWide
+formatUnits at readByte do byteCodeStep1
+formatUnits at readByte do findByteCode1
+formatUnits at readByte do doAddUnit
+formatUnits at readByte goto advance
+formatUnits at readWide do wideCodeStep1
+formatUnits at readWide do findWideCode1
+formatUnits at readWide do doAddUnit2
+formatUnits at readWide goto advance
+formatUnits at advance do findAtNext11
+formatUnits at advance set at atNext1
+formatUnits at advance goto eachUnit
+formatUnits at padded branch if left goto padAfter else goto done
+formatUnits at padAfter do doPutRepeatedStep2
+formatUnits at padAfter do doPutRepeated2
+formatUnits at padAfter return ok none
+formatUnits at done return ok none
+
+leftStep1 is call
+leftStep1 in formatUnits
+leftStep1 invokes bits.andInt64
+leftStep1 argument left Int64 flags copy
+leftStep1 argument right Int64 flagMinus copy
+leftStep1 result leftPart1 Int64
+leftStep1 ownedBy none
+leftStep1 cleanedBy none
+leftStep1 borrows none
+leftStep1 catch none
+leftStep1 suppresses none
+
+findLeft1 is call
+findLeft1 in formatUnits
+findLeft1 invokes compare.notEqualInt64
+findLeft1 argument left Int64 leftPart1 copy
+findLeft1 argument right Int64 zero copy
+findLeft1 result left Bool
+findLeft1 ownedBy none
+findLeft1 cleanedBy none
+findLeft1 borrows none
+findLeft1 catch none
+findLeft1 suppresses none
+
+findPadding1 is call
+findPadding1 in formatUnits
+findPadding1 invokes math.subtractInt64
+findPadding1 argument left Int64 width copy
+findPadding1 argument right Int64 count copy
+findPadding1 result padding Int64
+findPadding1 ownedBy none
+findPadding1 cleanedBy none
+findPadding1 borrows none
+findPadding1 catch none
+findPadding1 suppresses none
+
+doPutRepeatedStep1 is call
+doPutRepeatedStep1 in formatUnits
+doPutRepeatedStep1 invokes convert.int64ToByte
+doPutRepeatedStep1 argument value Int64 thirtyTwo copy
+doPutRepeatedStep1 result doPutRepeatedPart1 Byte
+doPutRepeatedStep1 ownedBy none
+doPutRepeatedStep1 cleanedBy none
+doPutRepeatedStep1 borrows none
+doPutRepeatedStep1 catch none
+doPutRepeatedStep1 suppresses none
+
+doPutRepeated is call
+doPutRepeated in formatUnits
+doPutRepeated invokes putRepeated
+doPutRepeated argument builder machine.Address builder copy
+doPutRepeated argument value Byte doPutRepeatedPart1 copy
+doPutRepeated argument count Int64 padding copy
+doPutRepeated result none
+doPutRepeated ownedBy none
+doPutRepeated cleanedBy none
+doPutRepeated borrows none
+doPutRepeated catch none
+doPutRepeated suppresses none
+
+findCheck11 is call
+findCheck11 in formatUnits
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 at copy
+findCheck11 argument right Int64 count copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+unitAtStep1 is call
+unitAtStep1 in formatUnits
+unitAtStep1 invokes math.multiplyInt64
+unitAtStep1 argument left Int64 at copy
+unitAtStep1 argument right Int64 unitBytes copy
+unitAtStep1 result unitAtPart1 Int64
+unitAtStep1 ownedBy none
+unitAtStep1 cleanedBy none
+unitAtStep1 borrows none
+unitAtStep1 catch none
+unitAtStep1 suppresses none
+
+findUnitAt1 is call
+findUnitAt1 in formatUnits
+findUnitAt1 invokes machine.offset
+findUnitAt1 argument address machine.Address units copy
+findUnitAt1 argument bytes Int64 unitAtPart1 copy
+findUnitAt1 result unitAt machine.Address
+findUnitAt1 ownedBy none
+findUnitAt1 cleanedBy none
+findUnitAt1 borrows none
+findUnitAt1 catch none
+findUnitAt1 suppresses none
+
+findCheck21 is call
+findCheck21 in formatUnits
+findCheck21 invokes compare.equalInt64
+findCheck21 argument left Int64 unitBytes copy
+findCheck21 argument right Int64 one copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+byteCodeStep1 is call
+byteCodeStep1 in formatUnits
+byteCodeStep1 invokes machine.loadByte
+byteCodeStep1 argument address machine.Address unitAt copy
+byteCodeStep1 result byteCodePart1 Byte
+byteCodeStep1 ownedBy none
+byteCodeStep1 cleanedBy none
+byteCodeStep1 borrows none
+byteCodeStep1 catch none
+byteCodeStep1 suppresses none
+
+findByteCode1 is call
+findByteCode1 in formatUnits
+findByteCode1 invokes convert.byteToInt64
+findByteCode1 argument value Byte byteCodePart1 copy
+findByteCode1 result byteCode Int64
+findByteCode1 ownedBy none
+findByteCode1 cleanedBy none
+findByteCode1 borrows none
+findByteCode1 catch none
+findByteCode1 suppresses none
+
+doAddUnit is call
+doAddUnit in formatUnits
+doAddUnit invokes addUnit
+doAddUnit argument builder machine.Address builder copy
+doAddUnit argument code Int64 byteCode copy
+doAddUnit result none
+doAddUnit ownedBy none
+doAddUnit cleanedBy none
+doAddUnit borrows none
+doAddUnit catch none
+doAddUnit suppresses none
+
+wideCodeStep1 is call
+wideCodeStep1 in formatUnits
+wideCodeStep1 invokes machine.loadInt32
+wideCodeStep1 argument address machine.Address unitAt copy
+wideCodeStep1 result wideCodePart1 Int32
+wideCodeStep1 ownedBy none
+wideCodeStep1 cleanedBy none
+wideCodeStep1 borrows none
+wideCodeStep1 catch none
+wideCodeStep1 suppresses none
+
+findWideCode1 is call
+findWideCode1 in formatUnits
+findWideCode1 invokes convert.int32ToInt64
+findWideCode1 argument value Int32 wideCodePart1 copy
+findWideCode1 result wideCode Int64
+findWideCode1 ownedBy none
+findWideCode1 cleanedBy none
+findWideCode1 borrows none
+findWideCode1 catch none
+findWideCode1 suppresses none
+
+doAddUnit2 is call
+doAddUnit2 in formatUnits
+doAddUnit2 invokes addUnit
+doAddUnit2 argument builder machine.Address builder copy
+doAddUnit2 argument code Int64 wideCode copy
+doAddUnit2 result none
+doAddUnit2 ownedBy none
+doAddUnit2 cleanedBy none
+doAddUnit2 borrows none
+doAddUnit2 catch none
+doAddUnit2 suppresses none
+
+findAtNext11 is call
+findAtNext11 in formatUnits
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+doPutRepeatedStep2 is call
+doPutRepeatedStep2 in formatUnits
+doPutRepeatedStep2 invokes convert.int64ToByte
+doPutRepeatedStep2 argument value Int64 thirtyTwo copy
+doPutRepeatedStep2 result doPutRepeatedPart2 Byte
+doPutRepeatedStep2 ownedBy none
+doPutRepeatedStep2 cleanedBy none
+doPutRepeatedStep2 borrows none
+doPutRepeatedStep2 catch none
+doPutRepeatedStep2 suppresses none
+
+doPutRepeated2 is call
+doPutRepeated2 in formatUnits
+doPutRepeated2 invokes putRepeated
+doPutRepeated2 argument builder machine.Address builder copy
+doPutRepeated2 argument value Byte doPutRepeatedPart2 copy
+doPutRepeated2 argument count Int64 padding copy
+doPutRepeated2 result none
+doPutRepeated2 ownedBy none
+doPutRepeated2 cleanedBy none
+doPutRepeated2 borrows none
+doPutRepeated2 catch none
+doPutRepeated2 suppresses none
+
+formatUnitString is operation
+formatUnitString purpose "Write %s or %ls in wide mode: a string of bytes (1) or wchar_t (4), at most `precision` characters of it, `(null)` for the address 0 (nothing when the precision is below 6), padded with spaces"
+formatUnitString invariant none
+formatUnitString typeParameter none
+formatUnitString input builder machine.Address copied
+formatUnitString input flags Int64 copied
+formatUnitString input width Int64 copied
+formatUnitString input precision Int64 copied
+formatUnitString input text machine.Address copied
+formatUnitString input unitBytes Int64 copied
+formatUnitString output none
+formatUnitString outputOwnedBy none
+formatUnitString raises none
+formatUnitString effect use machine.memory
+formatUnitString effect use system.calls
+formatUnitString uses memoryAccess
+formatUnitString uses systemCalls
+formatUnitString memoryHeap false
+formatUnitString async false
+formatUnitString maxRecursion none
+formatUnitString label begin loopKind none
+formatUnitString label begin within none
+formatUnitString label nullCase loopKind none
+formatUnitString label nullCase within none
+formatUnitString label showNull loopKind none
+formatUnitString label showNull within none
+formatUnitString label showNothing loopKind none
+formatUnitString label showNothing within none
+formatUnitString label eachUnit loopKind while
+formatUnitString label eachUnit within none
+formatUnitString label eachUnit maxIterations forever
+formatUnitString label readUnit loopKind none
+formatUnitString label readUnit within eachUnit
+formatUnitString label byteUnit loopKind none
+formatUnitString label byteUnit within eachUnit
+formatUnitString label wideUnit loopKind none
+formatUnitString label wideUnit within eachUnit
+formatUnitString label countIt loopKind none
+formatUnitString label countIt within eachUnit
+formatUnitString label measured loopKind none
+formatUnitString label measured within none
+formatUnitString let count Int64 0 mutable
+formatUnitString let nullText String "(null)" immutable
+formatUnitString let zero Int64 0 immutable
+formatUnitString let six Int64 6 immutable
+formatUnitString let one Int64 1 immutable
+formatUnitString at begin do readNowhere
+formatUnitString at begin do findIsNull1
+formatUnitString at begin branch if isNull goto nullCase else goto eachUnit
+formatUnitString at nullCase do check1Step1
+formatUnitString at nullCase do check1Step2
+formatUnitString at nullCase do findCheck11
+formatUnitString at nullCase branch if check1 goto showNull else goto showNothing
+formatUnitString at showNull do readNullAt
+formatUnitString at showNull do doFormatUnits
+formatUnitString at showNull return ok none
+formatUnitString at showNothing do doFormatUnits2
+formatUnitString at showNothing return ok none
+formatUnitString at eachUnit do check2Step1
+formatUnitString at eachUnit do check2Step2
+formatUnitString at eachUnit do findCheck21
+formatUnitString at eachUnit branch if check2 goto measured else goto readUnit
+formatUnitString at readUnit do unitAtStep1
+formatUnitString at readUnit do findUnitAt1
+formatUnitString at readUnit do findCheck31
+formatUnitString at readUnit branch if check3 goto byteUnit else goto wideUnit
+formatUnitString at byteUnit do byteCodeStep1
+formatUnitString at byteUnit do findByteCode1
+formatUnitString at byteUnit do findCheck41
+formatUnitString at byteUnit branch if check4 goto measured else goto countIt
+formatUnitString at wideUnit do wideCodeStep1
+formatUnitString at wideUnit do findWideCode1
+formatUnitString at wideUnit do findCheck51
+formatUnitString at wideUnit branch if check5 goto measured else goto countIt
+formatUnitString at countIt do findCountNext11
+formatUnitString at countIt set count countNext1
+formatUnitString at countIt goto eachUnit
+formatUnitString at measured do doFormatUnits3
+formatUnitString at measured return ok none
+
+readNowhere is call
+readNowhere in formatUnitString
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findIsNull1 is call
+findIsNull1 in formatUnitString
+findIsNull1 invokes machine.equal
+findIsNull1 argument left machine.Address text copy
+findIsNull1 argument right machine.Address nowhere copy
+findIsNull1 result isNull Bool
+findIsNull1 ownedBy none
+findIsNull1 cleanedBy none
+findIsNull1 borrows none
+findIsNull1 catch none
+findIsNull1 suppresses none
+
+check1Step1 is call
+check1Step1 in formatUnitString
+check1Step1 invokes compare.lessThanInt64
+check1Step1 argument left Int64 precision copy
+check1Step1 argument right Int64 zero copy
+check1Step1 result check1Part1 Bool
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in formatUnitString
+check1Step2 invokes compare.greaterOrEqualInt64
+check1Step2 argument left Int64 precision copy
+check1Step2 argument right Int64 six copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+findCheck11 is call
+findCheck11 in formatUnitString
+findCheck11 invokes logic.or
+findCheck11 argument left Bool check1Part1 copy
+findCheck11 argument right Bool check1Part2 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readNullAt is call
+readNullAt in formatUnitString
+readNullAt invokes machine.addressOfString
+readNullAt argument text String nullText lend
+readNullAt result nullAt machine.Address
+readNullAt ownedBy none
+readNullAt cleanedBy none
+readNullAt borrows none
+readNullAt catch none
+readNullAt suppresses none
+
+doFormatUnits is call
+doFormatUnits in formatUnitString
+doFormatUnits invokes formatUnits
+doFormatUnits argument builder machine.Address builder copy
+doFormatUnits argument flags Int64 flags copy
+doFormatUnits argument width Int64 width copy
+doFormatUnits argument count Int64 six copy
+doFormatUnits argument units machine.Address nullAt copy
+doFormatUnits argument unitBytes Int64 one copy
+doFormatUnits result none
+doFormatUnits ownedBy none
+doFormatUnits cleanedBy none
+doFormatUnits borrows none
+doFormatUnits catch none
+doFormatUnits suppresses none
+
+doFormatUnits2 is call
+doFormatUnits2 in formatUnitString
+doFormatUnits2 invokes formatUnits
+doFormatUnits2 argument builder machine.Address builder copy
+doFormatUnits2 argument flags Int64 flags copy
+doFormatUnits2 argument width Int64 width copy
+doFormatUnits2 argument count Int64 zero copy
+doFormatUnits2 argument units machine.Address text copy
+doFormatUnits2 argument unitBytes Int64 one copy
+doFormatUnits2 result none
+doFormatUnits2 ownedBy none
+doFormatUnits2 cleanedBy none
+doFormatUnits2 borrows none
+doFormatUnits2 catch none
+doFormatUnits2 suppresses none
+
+check2Step1 is call
+check2Step1 in formatUnitString
+check2Step1 invokes compare.greaterOrEqualInt64
+check2Step1 argument left Int64 precision copy
+check2Step1 argument right Int64 zero copy
+check2Step1 result check2Part1 Bool
+check2Step1 ownedBy none
+check2Step1 cleanedBy none
+check2Step1 borrows none
+check2Step1 catch none
+check2Step1 suppresses none
+
+check2Step2 is call
+check2Step2 in formatUnitString
+check2Step2 invokes compare.greaterOrEqualInt64
+check2Step2 argument left Int64 count copy
+check2Step2 argument right Int64 precision copy
+check2Step2 result check2Part2 Bool
+check2Step2 ownedBy none
+check2Step2 cleanedBy none
+check2Step2 borrows none
+check2Step2 catch none
+check2Step2 suppresses none
+
+findCheck21 is call
+findCheck21 in formatUnitString
+findCheck21 invokes logic.and
+findCheck21 argument left Bool check2Part1 copy
+findCheck21 argument right Bool check2Part2 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+unitAtStep1 is call
+unitAtStep1 in formatUnitString
+unitAtStep1 invokes math.multiplyInt64
+unitAtStep1 argument left Int64 count copy
+unitAtStep1 argument right Int64 unitBytes copy
+unitAtStep1 result unitAtPart1 Int64
+unitAtStep1 ownedBy none
+unitAtStep1 cleanedBy none
+unitAtStep1 borrows none
+unitAtStep1 catch none
+unitAtStep1 suppresses none
+
+findUnitAt1 is call
+findUnitAt1 in formatUnitString
+findUnitAt1 invokes machine.offset
+findUnitAt1 argument address machine.Address text copy
+findUnitAt1 argument bytes Int64 unitAtPart1 copy
+findUnitAt1 result unitAt machine.Address
+findUnitAt1 ownedBy none
+findUnitAt1 cleanedBy none
+findUnitAt1 borrows none
+findUnitAt1 catch none
+findUnitAt1 suppresses none
+
+findCheck31 is call
+findCheck31 in formatUnitString
+findCheck31 invokes compare.equalInt64
+findCheck31 argument left Int64 unitBytes copy
+findCheck31 argument right Int64 one copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+byteCodeStep1 is call
+byteCodeStep1 in formatUnitString
+byteCodeStep1 invokes machine.loadByte
+byteCodeStep1 argument address machine.Address unitAt copy
+byteCodeStep1 result byteCodePart1 Byte
+byteCodeStep1 ownedBy none
+byteCodeStep1 cleanedBy none
+byteCodeStep1 borrows none
+byteCodeStep1 catch none
+byteCodeStep1 suppresses none
+
+findByteCode1 is call
+findByteCode1 in formatUnitString
+findByteCode1 invokes convert.byteToInt64
+findByteCode1 argument value Byte byteCodePart1 copy
+findByteCode1 result byteCode Int64
+findByteCode1 ownedBy none
+findByteCode1 cleanedBy none
+findByteCode1 borrows none
+findByteCode1 catch none
+findByteCode1 suppresses none
+
+findCheck41 is call
+findCheck41 in formatUnitString
+findCheck41 invokes compare.equalInt64
+findCheck41 argument left Int64 byteCode copy
+findCheck41 argument right Int64 zero copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+wideCodeStep1 is call
+wideCodeStep1 in formatUnitString
+wideCodeStep1 invokes machine.loadInt32
+wideCodeStep1 argument address machine.Address unitAt copy
+wideCodeStep1 result wideCodePart1 Int32
+wideCodeStep1 ownedBy none
+wideCodeStep1 cleanedBy none
+wideCodeStep1 borrows none
+wideCodeStep1 catch none
+wideCodeStep1 suppresses none
+
+findWideCode1 is call
+findWideCode1 in formatUnitString
+findWideCode1 invokes convert.int32ToInt64
+findWideCode1 argument value Int32 wideCodePart1 copy
+findWideCode1 result wideCode Int64
+findWideCode1 ownedBy none
+findWideCode1 cleanedBy none
+findWideCode1 borrows none
+findWideCode1 catch none
+findWideCode1 suppresses none
+
+findCheck51 is call
+findCheck51 in formatUnitString
+findCheck51 invokes compare.equalInt64
+findCheck51 argument left Int64 wideCode copy
+findCheck51 argument right Int64 zero copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+findCountNext11 is call
+findCountNext11 in formatUnitString
+findCountNext11 invokes math.addInt64
+findCountNext11 argument left Int64 count copy
+findCountNext11 argument right Int64 one copy
+findCountNext11 result countNext1 Int64
+findCountNext11 ownedBy none
+findCountNext11 cleanedBy none
+findCountNext11 borrows none
+findCountNext11 catch none
+findCountNext11 suppresses none
+
+doFormatUnits3 is call
+doFormatUnits3 in formatUnitString
+doFormatUnits3 invokes formatUnits
+doFormatUnits3 argument builder machine.Address builder copy
+doFormatUnits3 argument flags Int64 flags copy
+doFormatUnits3 argument width Int64 width copy
+doFormatUnits3 argument count Int64 count copy
+doFormatUnits3 argument units machine.Address text copy
+doFormatUnits3 argument unitBytes Int64 unitBytes copy
+doFormatUnits3 result none
+doFormatUnits3 ownedBy none
+doFormatUnits3 cleanedBy none
+doFormatUnits3 borrows none
+doFormatUnits3 catch none
+doFormatUnits3 suppresses none
 
 # ---------------------------------------------------------------- strtold (D-174)
 #

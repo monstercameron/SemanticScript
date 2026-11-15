@@ -3096,3 +3096,888 @@ doGive3 cleanedBy none
 doGive3 borrows none
 doGive3 catch none
 doGive3 suppresses none
+
+wideModeTest is test
+wideModeTest purpose "Wide mode keeps a character past 255 as an escape, pads and cuts %lc, %s, and %ls by characters, takes %c's byte as a character, and counts characters"
+wideModeTest verifies formatAllAs writesWideCharacters
+wideModeTest verifies addUnit escapesPastByte
+wideModeTest typeParameter none
+wideModeTest input none
+wideModeTest output none
+wideModeTest outputOwnedBy none
+wideModeTest raises none
+wideModeTest effect use machine.memory
+wideModeTest effect use system.calls
+wideModeTest uses memoryAccess
+wideModeTest uses systemCalls
+wideModeTest memoryHeap false
+wideModeTest async false
+wideModeTest maxRecursion none
+wideModeTest label begin loopKind none
+wideModeTest label begin within none
+wideModeTest let text1 String "[%3lc|%-4s|%.2ls|%c]" immutable
+wideModeTest let text2 String "ab" immutable
+wideModeTest let sixteen Int64 16 immutable
+wideModeTest let n65 Int64 65 immutable
+wideModeTest let four Int64 4 immutable
+wideModeTest let n128512 Int64 128512 immutable
+wideModeTest let eight Int64 8 immutable
+wideModeTest let n66 Int64 66 immutable
+wideModeTest let thirtyTwo Int64 32 immutable
+wideModeTest let n20013 Int64 20013 immutable
+wideModeTest let n24 Int64 24 immutable
+wideModeTest let n233 Int64 233 immutable
+wideModeTest let three Int64 3 immutable
+wideModeTest let yes Bool true immutable
+wideModeTest let n15 Int64 15 immutable
+wideModeTest let n27 Int64 27 immutable
+wideModeTest let byte255 Byte 255 immutable
+wideModeTest let nine Int64 9 immutable
+wideModeTest let n173 Int64 173 immutable
+wideModeTest let seven Int64 7 immutable
+wideModeTest let n132 Int64 132 immutable
+wideModeTest let n26 Int64 26 immutable
+wideModeTest let byte93 Byte 93 immutable
+wideModeTest let n25 Int64 25 immutable
+wideModeTest let byte233 Byte 233 immutable
+wideModeTest let n254 Int64 254 immutable
+wideModeTest let n255 Int64 255 immutable
+wideModeTest at begin do readFormat
+wideModeTest at begin do readBytes
+wideModeTest at begin do readUnits
+wideModeTest at begin do doStoreInt32Step1
+wideModeTest at begin do doStoreInt32
+wideModeTest at begin do findSecondUnit1
+wideModeTest at begin do doStoreInt32Step2
+wideModeTest at begin do doStoreInt322
+wideModeTest at begin do findThirdUnit1
+wideModeTest at begin do doStoreInt32Step3
+wideModeTest at begin do doStoreInt323
+wideModeTest at begin do readSlots
+wideModeTest at begin do doStoreInt64
+wideModeTest at begin do findBytesSlot1
+wideModeTest at begin do doStoreInt64Step1
+wideModeTest at begin do doStoreInt642
+wideModeTest at begin do findUnitsSlot1
+wideModeTest at begin do doStoreInt64Step2
+wideModeTest at begin do doStoreInt643
+wideModeTest at begin do findByteSlot1
+wideModeTest at begin do doStoreInt644
+wideModeTest at begin do readCell
+wideModeTest at begin do doStoreAddress
+wideModeTest at begin do readCursor
+wideModeTest at begin do doStoreInt645
+wideModeTest at begin do findListAt1
+wideModeTest at begin do doStoreAddress2
+wideModeTest at begin do readBuilder
+wideModeTest at begin do readCount
+wideModeTest at begin do doAssertEqualInt64
+wideModeTest at begin do readLength
+wideModeTest at begin do doAssertEqualInt642
+wideModeTest at begin do readText
+wideModeTest at begin do findEscapeAt1
+wideModeTest at begin do readEscapeStart
+wideModeTest at begin do doAssertTrueStep1
+wideModeTest at begin do doAssertTrue
+wideModeTest at begin do findLastPieceAt1
+wideModeTest at begin do readLastPiece
+wideModeTest at begin do doAssertEqualInt64Step1
+wideModeTest at begin do doAssertEqualInt643
+wideModeTest at begin do findFourthPieceAt1
+wideModeTest at begin do readFourthPiece
+wideModeTest at begin do doAssertEqualInt64Step2
+wideModeTest at begin do doAssertEqualInt644
+wideModeTest at begin do findClosingAt1
+wideModeTest at begin do readClosing
+wideModeTest at begin do doAssertTrueStep2
+wideModeTest at begin do doAssertTrue2
+wideModeTest at begin do findAccentAt1
+wideModeTest at begin do readAccent
+wideModeTest at begin do doAssertTrueStep3
+wideModeTest at begin do doAssertTrue3
+wideModeTest at begin do doGive
+wideModeTest at begin do doGive2
+wideModeTest at begin do readUnits2
+wideModeTest at begin do doAddUnit
+wideModeTest at begin do doAddUnit2
+wideModeTest at begin do readUnitsLength
+wideModeTest at begin do doAssertEqualInt645
+wideModeTest at begin do doGive3
+wideModeTest at begin do doGive4
+wideModeTest at begin do doGive5
+wideModeTest at begin do doGive6
+wideModeTest at begin do doGive7
+wideModeTest at begin do doGive8
+wideModeTest at begin do doGive9
+wideModeTest at begin return ok none
+
+readFormat is call
+readFormat in wideModeTest
+readFormat invokes cTextOf
+readFormat argument text String text1 lend
+readFormat result format machine.Address
+readFormat ownedBy none
+readFormat cleanedBy none
+readFormat borrows none
+readFormat catch none
+readFormat suppresses none
+
+readBytes is call
+readBytes in wideModeTest
+readBytes invokes cTextOf
+readBytes argument text String text2 lend
+readBytes result bytes machine.Address
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+readUnits is call
+readUnits in wideModeTest
+readUnits invokes heap.take
+readUnits argument bytes Int64 sixteen copy
+readUnits result units machine.Address
+readUnits ownedBy none
+readUnits cleanedBy none
+readUnits borrows none
+readUnits catch none
+readUnits suppresses none
+
+doStoreInt32Step1 is call
+doStoreInt32Step1 in wideModeTest
+doStoreInt32Step1 invokes clibrary.lowInt32
+doStoreInt32Step1 argument value Int64 n65 copy
+doStoreInt32Step1 result doStoreInt32Part1 Int32
+doStoreInt32Step1 ownedBy none
+doStoreInt32Step1 cleanedBy none
+doStoreInt32Step1 borrows none
+doStoreInt32Step1 catch none
+doStoreInt32Step1 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in wideModeTest
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address units copy
+doStoreInt32 argument value Int32 doStoreInt32Part1 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+findSecondUnit1 is call
+findSecondUnit1 in wideModeTest
+findSecondUnit1 invokes machine.offset
+findSecondUnit1 argument address machine.Address units copy
+findSecondUnit1 argument bytes Int64 four copy
+findSecondUnit1 result secondUnit machine.Address
+findSecondUnit1 ownedBy none
+findSecondUnit1 cleanedBy none
+findSecondUnit1 borrows none
+findSecondUnit1 catch none
+findSecondUnit1 suppresses none
+
+doStoreInt32Step2 is call
+doStoreInt32Step2 in wideModeTest
+doStoreInt32Step2 invokes clibrary.lowInt32
+doStoreInt32Step2 argument value Int64 n128512 copy
+doStoreInt32Step2 result doStoreInt32Part2 Int32
+doStoreInt32Step2 ownedBy none
+doStoreInt32Step2 cleanedBy none
+doStoreInt32Step2 borrows none
+doStoreInt32Step2 catch none
+doStoreInt32Step2 suppresses none
+
+doStoreInt322 is call
+doStoreInt322 in wideModeTest
+doStoreInt322 invokes machine.storeInt32
+doStoreInt322 argument address machine.Address secondUnit copy
+doStoreInt322 argument value Int32 doStoreInt32Part2 copy
+doStoreInt322 result none
+doStoreInt322 ownedBy none
+doStoreInt322 cleanedBy none
+doStoreInt322 borrows none
+doStoreInt322 catch none
+doStoreInt322 suppresses none
+
+findThirdUnit1 is call
+findThirdUnit1 in wideModeTest
+findThirdUnit1 invokes machine.offset
+findThirdUnit1 argument address machine.Address units copy
+findThirdUnit1 argument bytes Int64 eight copy
+findThirdUnit1 result thirdUnit machine.Address
+findThirdUnit1 ownedBy none
+findThirdUnit1 cleanedBy none
+findThirdUnit1 borrows none
+findThirdUnit1 catch none
+findThirdUnit1 suppresses none
+
+doStoreInt32Step3 is call
+doStoreInt32Step3 in wideModeTest
+doStoreInt32Step3 invokes clibrary.lowInt32
+doStoreInt32Step3 argument value Int64 n66 copy
+doStoreInt32Step3 result doStoreInt32Part3 Int32
+doStoreInt32Step3 ownedBy none
+doStoreInt32Step3 cleanedBy none
+doStoreInt32Step3 borrows none
+doStoreInt32Step3 catch none
+doStoreInt32Step3 suppresses none
+
+doStoreInt323 is call
+doStoreInt323 in wideModeTest
+doStoreInt323 invokes machine.storeInt32
+doStoreInt323 argument address machine.Address thirdUnit copy
+doStoreInt323 argument value Int32 doStoreInt32Part3 copy
+doStoreInt323 result none
+doStoreInt323 ownedBy none
+doStoreInt323 cleanedBy none
+doStoreInt323 borrows none
+doStoreInt323 catch none
+doStoreInt323 suppresses none
+
+readSlots is call
+readSlots in wideModeTest
+readSlots invokes heap.take
+readSlots argument bytes Int64 thirtyTwo copy
+readSlots result slots machine.Address
+readSlots ownedBy none
+readSlots cleanedBy none
+readSlots borrows none
+readSlots catch none
+readSlots suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in wideModeTest
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address slots copy
+doStoreInt64 argument value Int64 n20013 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+findBytesSlot1 is call
+findBytesSlot1 in wideModeTest
+findBytesSlot1 invokes machine.offset
+findBytesSlot1 argument address machine.Address slots copy
+findBytesSlot1 argument bytes Int64 eight copy
+findBytesSlot1 result bytesSlot machine.Address
+findBytesSlot1 ownedBy none
+findBytesSlot1 cleanedBy none
+findBytesSlot1 borrows none
+findBytesSlot1 catch none
+findBytesSlot1 suppresses none
+
+doStoreInt64Step1 is call
+doStoreInt64Step1 in wideModeTest
+doStoreInt64Step1 invokes machine.toInt64
+doStoreInt64Step1 argument address machine.Address bytes copy
+doStoreInt64Step1 result doStoreInt64Part1 Int64
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in wideModeTest
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address bytesSlot copy
+doStoreInt642 argument value Int64 doStoreInt64Part1 copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+findUnitsSlot1 is call
+findUnitsSlot1 in wideModeTest
+findUnitsSlot1 invokes machine.offset
+findUnitsSlot1 argument address machine.Address slots copy
+findUnitsSlot1 argument bytes Int64 sixteen copy
+findUnitsSlot1 result unitsSlot machine.Address
+findUnitsSlot1 ownedBy none
+findUnitsSlot1 cleanedBy none
+findUnitsSlot1 borrows none
+findUnitsSlot1 catch none
+findUnitsSlot1 suppresses none
+
+doStoreInt64Step2 is call
+doStoreInt64Step2 in wideModeTest
+doStoreInt64Step2 invokes machine.toInt64
+doStoreInt64Step2 argument address machine.Address units copy
+doStoreInt64Step2 result doStoreInt64Part2 Int64
+doStoreInt64Step2 ownedBy none
+doStoreInt64Step2 cleanedBy none
+doStoreInt64Step2 borrows none
+doStoreInt64Step2 catch none
+doStoreInt64Step2 suppresses none
+
+doStoreInt643 is call
+doStoreInt643 in wideModeTest
+doStoreInt643 invokes machine.storeInt64
+doStoreInt643 argument address machine.Address unitsSlot copy
+doStoreInt643 argument value Int64 doStoreInt64Part2 copy
+doStoreInt643 result none
+doStoreInt643 ownedBy none
+doStoreInt643 cleanedBy none
+doStoreInt643 borrows none
+doStoreInt643 catch none
+doStoreInt643 suppresses none
+
+findByteSlot1 is call
+findByteSlot1 in wideModeTest
+findByteSlot1 invokes machine.offset
+findByteSlot1 argument address machine.Address slots copy
+findByteSlot1 argument bytes Int64 n24 copy
+findByteSlot1 result byteSlot machine.Address
+findByteSlot1 ownedBy none
+findByteSlot1 cleanedBy none
+findByteSlot1 borrows none
+findByteSlot1 catch none
+findByteSlot1 suppresses none
+
+doStoreInt644 is call
+doStoreInt644 in wideModeTest
+doStoreInt644 invokes machine.storeInt64
+doStoreInt644 argument address machine.Address byteSlot copy
+doStoreInt644 argument value Int64 n233 copy
+doStoreInt644 result none
+doStoreInt644 ownedBy none
+doStoreInt644 cleanedBy none
+doStoreInt644 borrows none
+doStoreInt644 catch none
+doStoreInt644 suppresses none
+
+readCell is call
+readCell in wideModeTest
+readCell invokes heap.take
+readCell argument bytes Int64 eight copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+doStoreAddress is call
+doStoreAddress in wideModeTest
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address cell copy
+doStoreAddress argument value machine.Address slots copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+readCursor is call
+readCursor in wideModeTest
+readCursor invokes heap.take
+readCursor argument bytes Int64 sixteen copy
+readCursor result cursor machine.Address
+readCursor ownedBy none
+readCursor cleanedBy none
+readCursor borrows none
+readCursor catch none
+readCursor suppresses none
+
+doStoreInt645 is call
+doStoreInt645 in wideModeTest
+doStoreInt645 invokes machine.storeInt64
+doStoreInt645 argument address machine.Address cursor copy
+doStoreInt645 argument value Int64 three copy
+doStoreInt645 result none
+doStoreInt645 ownedBy none
+doStoreInt645 cleanedBy none
+doStoreInt645 borrows none
+doStoreInt645 catch none
+doStoreInt645 suppresses none
+
+findListAt1 is call
+findListAt1 in wideModeTest
+findListAt1 invokes machine.offset
+findListAt1 argument address machine.Address cursor copy
+findListAt1 argument bytes Int64 eight copy
+findListAt1 result listAt machine.Address
+findListAt1 ownedBy none
+findListAt1 cleanedBy none
+findListAt1 borrows none
+findListAt1 catch none
+findListAt1 suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in wideModeTest
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address listAt copy
+doStoreAddress2 argument value machine.Address cell copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+readBuilder is call
+readBuilder in wideModeTest
+readBuilder invokes wide.builderNew
+readBuilder argument none
+readBuilder result builder machine.Address
+readBuilder ownedBy none
+readBuilder cleanedBy none
+readBuilder borrows none
+readBuilder catch none
+readBuilder suppresses none
+
+readCount is call
+readCount in wideModeTest
+readCount invokes formatAllAs
+readCount argument format machine.Address format copy
+readCount argument cursor machine.Address cursor copy
+readCount argument builder machine.Address builder copy
+readCount argument wideMode Bool yes copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in wideModeTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 n15 copy
+doAssertEqualInt64 argument actual Int64 count copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readLength is call
+readLength in wideModeTest
+readLength invokes wide.builderLength
+readLength argument builder machine.Address builder copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in wideModeTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 n27 copy
+doAssertEqualInt642 argument actual Int64 length copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+readText is call
+readText in wideModeTest
+readText invokes wide.builderText
+readText argument builder machine.Address builder copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+findEscapeAt1 is call
+findEscapeAt1 in wideModeTest
+findEscapeAt1 invokes machine.offset
+findEscapeAt1 argument address machine.Address text copy
+findEscapeAt1 argument bytes Int64 three copy
+findEscapeAt1 result escapeAt machine.Address
+findEscapeAt1 ownedBy none
+findEscapeAt1 cleanedBy none
+findEscapeAt1 borrows none
+findEscapeAt1 catch none
+findEscapeAt1 suppresses none
+
+readEscapeStart is call
+readEscapeStart in wideModeTest
+readEscapeStart invokes machine.loadByte
+readEscapeStart argument address machine.Address escapeAt copy
+readEscapeStart result escapeStart Byte
+readEscapeStart ownedBy none
+readEscapeStart cleanedBy none
+readEscapeStart borrows none
+readEscapeStart catch none
+readEscapeStart suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in wideModeTest
+doAssertTrueStep1 invokes compare.equalByte
+doAssertTrueStep1 argument left Byte escapeStart copy
+doAssertTrueStep1 argument right Byte byte255 copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in wideModeTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+findLastPieceAt1 is call
+findLastPieceAt1 in wideModeTest
+findLastPieceAt1 invokes machine.offset
+findLastPieceAt1 argument address machine.Address text copy
+findLastPieceAt1 argument bytes Int64 nine copy
+findLastPieceAt1 result lastPieceAt machine.Address
+findLastPieceAt1 ownedBy none
+findLastPieceAt1 cleanedBy none
+findLastPieceAt1 borrows none
+findLastPieceAt1 catch none
+findLastPieceAt1 suppresses none
+
+readLastPiece is call
+readLastPiece in wideModeTest
+readLastPiece invokes machine.loadByte
+readLastPiece argument address machine.Address lastPieceAt copy
+readLastPiece result lastPiece Byte
+readLastPiece ownedBy none
+readLastPiece cleanedBy none
+readLastPiece borrows none
+readLastPiece catch none
+readLastPiece suppresses none
+
+doAssertEqualInt64Step1 is call
+doAssertEqualInt64Step1 in wideModeTest
+doAssertEqualInt64Step1 invokes convert.byteToInt64
+doAssertEqualInt64Step1 argument value Byte lastPiece copy
+doAssertEqualInt64Step1 result doAssertEqualInt64Part1 Int64
+doAssertEqualInt64Step1 ownedBy none
+doAssertEqualInt64Step1 cleanedBy none
+doAssertEqualInt64Step1 borrows none
+doAssertEqualInt64Step1 catch none
+doAssertEqualInt64Step1 suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in wideModeTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 n173 copy
+doAssertEqualInt643 argument actual Int64 doAssertEqualInt64Part1 copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+findFourthPieceAt1 is call
+findFourthPieceAt1 in wideModeTest
+findFourthPieceAt1 invokes machine.offset
+findFourthPieceAt1 argument address machine.Address text copy
+findFourthPieceAt1 argument bytes Int64 seven copy
+findFourthPieceAt1 result fourthPieceAt machine.Address
+findFourthPieceAt1 ownedBy none
+findFourthPieceAt1 cleanedBy none
+findFourthPieceAt1 borrows none
+findFourthPieceAt1 catch none
+findFourthPieceAt1 suppresses none
+
+readFourthPiece is call
+readFourthPiece in wideModeTest
+readFourthPiece invokes machine.loadByte
+readFourthPiece argument address machine.Address fourthPieceAt copy
+readFourthPiece result fourthPiece Byte
+readFourthPiece ownedBy none
+readFourthPiece cleanedBy none
+readFourthPiece borrows none
+readFourthPiece catch none
+readFourthPiece suppresses none
+
+doAssertEqualInt64Step2 is call
+doAssertEqualInt64Step2 in wideModeTest
+doAssertEqualInt64Step2 invokes convert.byteToInt64
+doAssertEqualInt64Step2 argument value Byte fourthPiece copy
+doAssertEqualInt64Step2 result doAssertEqualInt64Part2 Int64
+doAssertEqualInt64Step2 ownedBy none
+doAssertEqualInt64Step2 cleanedBy none
+doAssertEqualInt64Step2 borrows none
+doAssertEqualInt64Step2 catch none
+doAssertEqualInt64Step2 suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in wideModeTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 n132 copy
+doAssertEqualInt644 argument actual Int64 doAssertEqualInt64Part2 copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+findClosingAt1 is call
+findClosingAt1 in wideModeTest
+findClosingAt1 invokes machine.offset
+findClosingAt1 argument address machine.Address text copy
+findClosingAt1 argument bytes Int64 n26 copy
+findClosingAt1 result closingAt machine.Address
+findClosingAt1 ownedBy none
+findClosingAt1 cleanedBy none
+findClosingAt1 borrows none
+findClosingAt1 catch none
+findClosingAt1 suppresses none
+
+readClosing is call
+readClosing in wideModeTest
+readClosing invokes machine.loadByte
+readClosing argument address machine.Address closingAt copy
+readClosing result closing Byte
+readClosing ownedBy none
+readClosing cleanedBy none
+readClosing borrows none
+readClosing catch none
+readClosing suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in wideModeTest
+doAssertTrueStep2 invokes compare.equalByte
+doAssertTrueStep2 argument left Byte closing copy
+doAssertTrueStep2 argument right Byte byte93 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in wideModeTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool doAssertTruePart2 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+findAccentAt1 is call
+findAccentAt1 in wideModeTest
+findAccentAt1 invokes machine.offset
+findAccentAt1 argument address machine.Address text copy
+findAccentAt1 argument bytes Int64 n25 copy
+findAccentAt1 result accentAt machine.Address
+findAccentAt1 ownedBy none
+findAccentAt1 cleanedBy none
+findAccentAt1 borrows none
+findAccentAt1 catch none
+findAccentAt1 suppresses none
+
+readAccent is call
+readAccent in wideModeTest
+readAccent invokes machine.loadByte
+readAccent argument address machine.Address accentAt copy
+readAccent result accent Byte
+readAccent ownedBy none
+readAccent cleanedBy none
+readAccent borrows none
+readAccent catch none
+readAccent suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in wideModeTest
+doAssertTrueStep3 invokes compare.equalByte
+doAssertTrueStep3 argument left Byte accent copy
+doAssertTrueStep3 argument right Byte byte233 copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in wideModeTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart3 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+doGive is call
+doGive in wideModeTest
+doGive invokes heap.give
+doGive argument block machine.Address text copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in wideModeTest
+doGive2 invokes heap.give
+doGive2 argument block machine.Address builder copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+readUnits2 is call
+readUnits2 in wideModeTest
+readUnits2 invokes wide.builderNew
+readUnits2 argument none
+readUnits2 result units2 machine.Address
+readUnits2 ownedBy none
+readUnits2 cleanedBy none
+readUnits2 borrows none
+readUnits2 catch none
+readUnits2 suppresses none
+
+doAddUnit is call
+doAddUnit in wideModeTest
+doAddUnit invokes addUnit
+doAddUnit argument builder machine.Address units2 copy
+doAddUnit argument code Int64 n254 copy
+doAddUnit result none
+doAddUnit ownedBy none
+doAddUnit cleanedBy none
+doAddUnit borrows none
+doAddUnit catch none
+doAddUnit suppresses none
+
+doAddUnit2 is call
+doAddUnit2 in wideModeTest
+doAddUnit2 invokes addUnit
+doAddUnit2 argument builder machine.Address units2 copy
+doAddUnit2 argument code Int64 n255 copy
+doAddUnit2 result none
+doAddUnit2 ownedBy none
+doAddUnit2 cleanedBy none
+doAddUnit2 borrows none
+doAddUnit2 catch none
+doAddUnit2 suppresses none
+
+readUnitsLength is call
+readUnitsLength in wideModeTest
+readUnitsLength invokes wide.builderLength
+readUnitsLength argument builder machine.Address units2 copy
+readUnitsLength result unitsLength Int64
+readUnitsLength ownedBy none
+readUnitsLength cleanedBy none
+readUnitsLength borrows none
+readUnitsLength catch none
+readUnitsLength suppresses none
+
+doAssertEqualInt645 is call
+doAssertEqualInt645 in wideModeTest
+doAssertEqualInt645 invokes test.assertEqualInt64
+doAssertEqualInt645 argument expected Int64 eight copy
+doAssertEqualInt645 argument actual Int64 unitsLength copy
+doAssertEqualInt645 result none
+doAssertEqualInt645 ownedBy none
+doAssertEqualInt645 cleanedBy none
+doAssertEqualInt645 borrows none
+doAssertEqualInt645 catch none
+doAssertEqualInt645 suppresses none
+
+doGive3 is call
+doGive3 in wideModeTest
+doGive3 invokes heap.give
+doGive3 argument block machine.Address units2 copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+doGive4 is call
+doGive4 in wideModeTest
+doGive4 invokes heap.give
+doGive4 argument block machine.Address cursor copy
+doGive4 result none
+doGive4 ownedBy none
+doGive4 cleanedBy none
+doGive4 borrows none
+doGive4 catch none
+doGive4 suppresses none
+
+doGive5 is call
+doGive5 in wideModeTest
+doGive5 invokes heap.give
+doGive5 argument block machine.Address cell copy
+doGive5 result none
+doGive5 ownedBy none
+doGive5 cleanedBy none
+doGive5 borrows none
+doGive5 catch none
+doGive5 suppresses none
+
+doGive6 is call
+doGive6 in wideModeTest
+doGive6 invokes heap.give
+doGive6 argument block machine.Address slots copy
+doGive6 result none
+doGive6 ownedBy none
+doGive6 cleanedBy none
+doGive6 borrows none
+doGive6 catch none
+doGive6 suppresses none
+
+doGive7 is call
+doGive7 in wideModeTest
+doGive7 invokes heap.give
+doGive7 argument block machine.Address units copy
+doGive7 result none
+doGive7 ownedBy none
+doGive7 cleanedBy none
+doGive7 borrows none
+doGive7 catch none
+doGive7 suppresses none
+
+doGive8 is call
+doGive8 in wideModeTest
+doGive8 invokes heap.give
+doGive8 argument block machine.Address bytes copy
+doGive8 result none
+doGive8 ownedBy none
+doGive8 cleanedBy none
+doGive8 borrows none
+doGive8 catch none
+doGive8 suppresses none
+
+doGive9 is call
+doGive9 in wideModeTest
+doGive9 invokes heap.give
+doGive9 argument block machine.Address format copy
+doGive9 result none
+doGive9 ownedBy none
+doGive9 cleanedBy none
+doGive9 borrows none
+doGive9 catch none
+doGive9 suppresses none

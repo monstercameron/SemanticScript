@@ -1,0 +1,3 @@
+# wcsftime for the runtime's C library, written in SemanticScript (D-176): strftime's text as wide characters.
+#
+# This module is generated from tools/cwidetime.dsl by tools/build.py.

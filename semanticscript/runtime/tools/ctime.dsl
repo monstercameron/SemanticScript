@@ -1,7 +1,7 @@
 module ctime "time.h for the runtime's C library: the clocks, struct tm, gmtime, localtime with the time zone as glibc finds it, mktime, asctime, ctime, and strftime, all as glibc behaves in the C locale"
   path ctime
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test kernel heap clibrary
-  exports none
+  exports formatTime
 
 capability memoryAccess "Authority to read and write the memory C callers hand the library and the module's own state" use machine.memory none
 

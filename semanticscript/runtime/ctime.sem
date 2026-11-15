@@ -20,7 +20,7 @@ ctime imports standard.test
 ctime imports kernel
 ctime imports heap
 ctime imports clibrary
-ctime exports none
+ctime exports formatTime
 
 memoryAccess is capability
 memoryAccess purpose "Authority to read and write the memory C callers hand the library and the module's own state"

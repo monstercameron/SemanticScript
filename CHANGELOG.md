@@ -119,6 +119,8 @@ based on [Keep a Changelog](https://keepachangelog.com/).
 - long double as each platform's C has it, with the exact `l` functions of math.h worked on its parts, and strtold,
   wcstold, and scanf's `%Lf` correctly rounded (D-174); records of two numbers (complex numbers, ldiv_t) passed as
   the C ABI passes structs, through `abi library` and `ffi` (D-175).
+- Wide stdio: streams' orientation as glibc keeps it, wide character input and output, the wprintf and wscanf
+  families (printf's and scanf's engines in a wide mode), and wcsftime (D-176).
 
 ### The runtime in SemanticScript: `ffi` everywhere
 

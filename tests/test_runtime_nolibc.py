@@ -406,9 +406,18 @@ C_LIBRARY = {
     "cacosh", "catanh", "conj", "cproj", "cabs", "carg", "creal", "cimag", "cpow", "cexpf", "clogf", "csqrtf",
     "csinf", "ccosf", "ctanf", "casinf", "cacosf", "catanf", "csinhf", "ccoshf", "ctanhf", "casinhf", "cacoshf",
     "catanhf", "conjf", "cprojf", "cabsf", "cargf", "crealf", "cimagf", "cpowf",
+    # D-176: wcsftime (cwidetime)
+    "wcsftime",
+    # D-176: wchar.h's wide streams, in cstreams and cformat
+    "fwide", "fputwc", "putwc", "putwchar", "fputws", "fgetwc", "getwc", "getwchar", "fgetws", "__fgetws_chk",
+    "ungetwc", "wprintf", "fwprintf", "swprintf", "vwprintf", "vfwprintf", "vswprintf", "__wprintf_chk",
+    "__fwprintf_chk", "__swprintf_chk", "__vwprintf_chk", "__vfwprintf_chk", "__vswprintf_chk", "wscanf", "fwscanf",
+    "swscanf", "vwscanf", "vfwscanf", "vswscanf", "__isoc99_wscanf", "__isoc99_fwscanf", "__isoc99_swscanf",
+    "__isoc99_vwscanf", "__isoc99_vfwscanf", "__isoc99_vswscanf", "__isoc23_wscanf", "__isoc23_fwscanf",
+    "__isoc23_swscanf", "__isoc23_vwscanf", "__isoc23_vfwscanf", "__isoc23_vswscanf",
 }
 # the modules whose `abi library` operations make up the C library (D-153, D-159, D-160, D-164, D-180)
-C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem", "cthreads.sem", "cextra.sem", "cwide.sem", "cmathbits.sem", "ctime.sem", "clong.sem", "cformat.sem", "cmathcomplex.sem")
+C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem", "cthreads.sem", "cextra.sem", "cwide.sem", "cmathbits.sem", "ctime.sem", "clong.sem", "cformat.sem", "cmathcomplex.sem", "cwidetime.sem")
 
 
 @pytest.mark.skipif(WINDOWS or not PLATFORM, reason="the runtime's loader maps ELF shared libraries on Linux")
@@ -783,9 +792,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 142 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 145 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "142 of 142 tests passed" in tested.stdout
+    assert "145 of 145 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

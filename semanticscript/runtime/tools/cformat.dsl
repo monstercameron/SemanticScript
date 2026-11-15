@@ -1,7 +1,7 @@
 module cformat "printf's engine for the runtime's C library: every conversion as glibc writes it in the C locale, a floating value's digits exact (D-159)"
   path cformat
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test heap wide clibrary clong
-  exports cursorNew cursorFree formatAll decimalDigits roundingMode readWord parseLongAs scanLong
+  exports cursorNew cursorFree formatAll formatAllAs addUnit decimalDigits roundingMode readWord parseLongAs scanLong
 
 capability memoryAccess "Authority to read the format, the arguments, and the memory C callers hand the library" use machine.memory none
 
@@ -2022,6 +2022,21 @@ op formatAll "printf's engine: write a format and the arguments a cursor reads i
   effect use system.calls
   uses memoryAccess
   uses systemCalls
+:begin
+  count = formatAllAs(format, cursor, builder, false)
+  return count
+
+op formatAllAs "printf's engine, for bytes or (wide mode) for wprintf: in wide mode the format is a wide format made bytes by unitText, %c %s %lc %ls write wide characters (unitText's bytes) padded and cut by characters, and %n and the count are in characters"
+  invariant writesWideCharacters "In wide mode %lc and %ls keep characters past 255, padded and cut by characters, and the count is of characters"
+  input format machine.Address copied
+  input cursor machine.Address copied
+  input builder machine.Address copied
+  input wideMode Bool copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
   let place Int64 0 mut
   let counter Int64 0 mut
   let flags Int64 0 mut
@@ -2107,8 +2122,8 @@ op formatAll "printf's engine: write a format and the arguments a cursor reads i
   valueAt = argumentAt(values, argument)
   lengthCell = machine.offset(spec, 40)
   length = machine.loadInt64(lengthCell)
-  written = wide.builderLength(builder)
-  convertOne(builder, conversion, flags, width, precision, length, valueAt, written, format, start, place)
+  written = countWritten(builder, wideMode)
+  convertOne(builder, conversion, flags, width, precision, length, valueAt, written, format, start, place, wideMode)
   goto eachByte
 :truncated
   heap.give(values)
@@ -2118,7 +2133,7 @@ op formatAll "printf's engine: write a format and the arguments a cursor reads i
 :finish
   heap.give(values)
   heap.give(spec)
-  total = wide.builderLength(builder)
+  total = countWritten(builder, wideMode)
   when total > 2147483647 tooLong done
 :tooLong
   clibrary.setErrno(overflowError)
@@ -2138,12 +2153,37 @@ op convertOne "Write one conversion of an argument (its 16 bytes at an address) 
   input format machine.Address copied
   input start Int64 copied
   input end Int64 copied
+  input wideMode Bool copied
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
   let nilWord String "(nil)"
 :begin
+  if wideMode wideCheck notWideMode
+:wideCheck
+  when conversion == 99 && length != 3 unitByte wideStringCheck
+:unitByte
+  formatUnits(builder, flags, width, 1, valueAt, 1)
+  return
+:wideStringCheck
+  when conversion == 115 && length != 3 unitBytes wideCharacterCheck
+:unitBytes
+  calc byteText = machine.fromInt64(machine.loadInt64(valueAt))
+  formatUnitString(builder, flags, width, precision, byteText, 1)
+  return
+:wideCharacterCheck
+  when conversion == 99 || conversion == 67 unitWide wideTextCheck
+:unitWide
+  formatUnits(builder, flags, width, 1, valueAt, 4)
+  return
+:wideTextCheck
+  when conversion == 115 || conversion == 83 unitWideText notWideMode
+:unitWideText
+  calc unitText = machine.fromInt64(machine.loadInt64(valueAt))
+  formatUnitString(builder, flags, width, precision, unitText, 4)
+  return
+:notWideMode
   word = machine.loadInt64(valueAt)
   when conversion == 100 || conversion == 105 signedInteger notSigned
 :signedInteger
@@ -2474,6 +2514,158 @@ op formatWideString "Write %ls: a wide string's characters as the C locale's byt
   emitPadded(builder, flags, width, 0, nowhere, 0, narrowText, narrowBytes, false)
   heap.give(narrowText)
   heap.give(narrow)
+  return
+
+## ---------------------------------------------------------------- wide mode (D-176)
+##
+## The wide printf family runs this engine in wide mode over its wide format made bytes: a wide character below 255
+## is its byte, any other is 255 and six bytes of 0x80 plus six of its bits each (highest first), bytes no format
+## reads as anything but text; the wide functions turn the result back into wide characters the same way.
+
+op addUnit "Add a wide character to a wide mode text: its byte below 255, else 255 and six bytes of its bits"
+  invariant escapesPastByte "Adds one byte below 255, seven bytes from 255 up"
+  input builder machine.Address copied
+  input code Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let shift Int64 30 mut
+:begin
+  calc unsigned = code & 4294967295
+  when unsigned < 255 single escaped
+:single
+  wide.builderAddByte(builder, convert.int64ToByte(unsigned))
+  return
+:escaped
+  wide.builderAddByte(builder, convert.int64ToByte(255))
+  goto eachPiece
+:eachPiece loop=while max=forever
+  when shift < 0 done addPiece
+:addPiece in=eachPiece
+  calc piece = 128 | ((unsigned >> shift) & 63)
+  wide.builderAddByte(builder, convert.int64ToByte(piece))
+  calc shift := shift - 6
+  goto eachPiece
+:done
+  return
+
+op countWritten "How much a text being written holds: its bytes, or in wide mode its wide characters (an escape of seven bytes counts one)"
+  input builder machine.Address copied
+  input wideMode Bool copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  let at Int64 0 mut
+  let count Int64 0 mut
+:begin
+  length = wide.builderLength(builder)
+  if wideMode measure plain
+:plain
+  return length
+:measure
+  text = wide.builderText(builder)
+  goto eachByte
+:eachByte loop=while max=forever
+  when at >= length counted step
+:step in=eachByte
+  current = clibrary.byteAt(text, at)
+  calc count := count + 1
+  when current == 255 skipEscape skipOne
+:skipEscape in=eachByte
+  calc at := at + 7
+  goto eachByte
+:skipOne in=eachByte
+  calc at := at + 1
+  goto eachByte
+:counted
+  return count
+
+op formatUnits "Write wide characters (bytes of 1 or wchar_t of 4 at an address) padded with spaces to a width (after them for `-`)"
+  input builder machine.Address copied
+  input flags Int64 copied
+  input width Int64 copied
+  input count Int64 copied
+  input units machine.Address copied
+  input unitBytes Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+:begin
+  calc left = (flags & flagMinus) != 0
+  calc padding = width - count
+  if left eachUnit padFirst
+:padFirst
+  putRepeated(builder, convert.int64ToByte(32), padding)
+  goto eachUnit
+:eachUnit loop=while max=forever
+  when at >= count padded addOne
+:addOne in=eachUnit
+  calc unitAt = units + at * unitBytes
+  when unitBytes == 1 readByte readWide
+:readByte in=eachUnit
+  calc byteCode = convert.byteToInt64(machine.loadByte(unitAt))
+  addUnit(builder, byteCode)
+  goto advance
+:readWide in=eachUnit
+  calc wideCode = convert.int32ToInt64(machine.loadInt32(unitAt))
+  addUnit(builder, wideCode)
+  goto advance
+:advance in=eachUnit
+  calc at := at + 1
+  goto eachUnit
+:padded
+  if left padAfter done
+:padAfter
+  putRepeated(builder, convert.int64ToByte(32), padding)
+  return
+:done
+  return
+
+op formatUnitString "Write %s or %ls in wide mode: a string of bytes (1) or wchar_t (4), at most `precision` characters of it, `(null)` for the address 0 (nothing when the precision is below 6), padded with spaces"
+  input builder machine.Address copied
+  input flags Int64 copied
+  input width Int64 copied
+  input precision Int64 copied
+  input text machine.Address copied
+  input unitBytes Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let count Int64 0 mut
+  let nullText String "(null)"
+:begin
+  nowhere = machine.zero()
+  calc isNull = text == nowhere
+  if isNull nullCase eachUnit
+:nullCase
+  when precision < 0 || precision >= 6 showNull showNothing
+:showNull
+  nullAt = machine.addressOfString(nullText)
+  formatUnits(builder, flags, width, 6, nullAt, 1)
+  return
+:showNothing
+  formatUnits(builder, flags, width, 0, text, 1)
+  return
+:eachUnit loop=while max=forever
+  when precision >= 0 && count >= precision measured readUnit
+:readUnit in=eachUnit
+  calc unitAt = text + count * unitBytes
+  when unitBytes == 1 byteUnit wideUnit
+:byteUnit in=eachUnit
+  calc byteCode = convert.byteToInt64(machine.loadByte(unitAt))
+  when byteCode == 0 measured countIt
+:wideUnit in=eachUnit
+  calc wideCode = convert.int32ToInt64(machine.loadInt32(unitAt))
+  when wideCode == 0 measured countIt
+:countIt in=eachUnit
+  calc count := count + 1
+  goto eachUnit
+:measured
+  formatUnits(builder, flags, width, count, text, unitBytes)
   return
 
 ## ---------------------------------------------------------------- strtold (D-174)
@@ -3451,4 +3643,71 @@ test longTextTest "strtold reads as strtod for the double layout (bits, end, err
   heap.give(wanted)
   heap.give(scanned)
   heap.give(text)
+  return
+
+test wideModeTest "Wide mode keeps a character past 255 as an escape, pads and cuts %lc, %s, and %ls by characters, takes %c's byte as a character, and counts characters"
+  verifies formatAllAs writesWideCharacters
+  verifies addUnit escapesPastByte
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  format = cTextOf("[%3lc|%-4s|%.2ls|%c]")
+  bytes = cTextOf("ab")
+  units = heap.take(16)
+  machine.storeInt32(units, clibrary.lowInt32(65))
+  calc secondUnit = units + 4
+  machine.storeInt32(secondUnit, clibrary.lowInt32(128512))
+  calc thirdUnit = units + 8
+  machine.storeInt32(thirdUnit, clibrary.lowInt32(66))
+  slots = heap.take(32)
+  machine.storeInt64(slots, 20013)
+  calc bytesSlot = slots + 8
+  machine.storeInt64(bytesSlot, machine.toInt64(bytes))
+  calc unitsSlot = slots + 16
+  machine.storeInt64(unitsSlot, machine.toInt64(units))
+  calc byteSlot = slots + 24
+  machine.storeInt64(byteSlot, 233)
+  cell = heap.take(8)
+  machine.storeAddress(cell, slots)
+  cursor = heap.take(16)
+  machine.storeInt64(cursor, 3)
+  calc listAt = cursor + 8
+  machine.storeAddress(listAt, cell)
+  builder = wide.builderNew()
+  count = formatAllAs(format, cursor, builder, true)
+  test.assertEqualInt64(15, count)
+  length = wide.builderLength(builder)
+  test.assertEqualInt64(27, length)
+  text = wide.builderText(builder)
+  calc escapeAt = text + 3
+  escapeStart = machine.loadByte(escapeAt)
+  test.assertTrue(escapeStart == 255)
+  calc lastPieceAt = text + 9
+  lastPiece = machine.loadByte(lastPieceAt)
+  test.assertEqualInt64(173, convert.byteToInt64(lastPiece))
+  calc fourthPieceAt = text + 7
+  fourthPiece = machine.loadByte(fourthPieceAt)
+  test.assertEqualInt64(132, convert.byteToInt64(fourthPiece))
+  calc closingAt = text + 26
+  closing = machine.loadByte(closingAt)
+  test.assertTrue(closing == 93)
+  calc accentAt = text + 25
+  accent = machine.loadByte(accentAt)
+  test.assertTrue(accent == 233)
+  heap.give(text)
+  heap.give(builder)
+  units2 = wide.builderNew()
+  addUnit(units2, 254)
+  addUnit(units2, 255)
+  unitsLength = wide.builderLength(units2)
+  test.assertEqualInt64(8, unitsLength)
+  heap.give(units2)
+  heap.give(cursor)
+  heap.give(cell)
+  heap.give(slots)
+  heap.give(units)
+  heap.give(bytes)
+  heap.give(format)
   return

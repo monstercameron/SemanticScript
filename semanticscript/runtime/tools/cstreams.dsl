@@ -12,7 +12,8 @@ capability systemCalls "Authority to read, write, open, close, seek, rename, and
 ## buffered, 128 the buffer is the stream's own, 256 the buffering is decided, 512 closed), 8 the handle (a Linux
 ## descriptor, a Windows HANDLE), 16 the buffer, 24 its size, 32 where reading is in it, 40 where the bytes read
 ## end, 48 how many bytes wait to be written, 56 how many bytes ungetc pushed back, 64 those bytes (8 at most, the
-## last pushed first), 80 the next stream opened, 88 1 for a string sscanf reads. Buffering is glibc's: a stream
+## last pushed first), 80 the next stream opened, 88 1 for a string sscanf reads, 96 its orientation (0 none yet, 1
+## wide, -1 bytes: D-176). Buffering is glibc's: a stream
 ## that is a terminal is line buffered, any other fully buffered with a buffer of the file's block size (st_blksize,
 ## 4096 on Windows), and stderr unbuffered; end of file is sticky, as since glibc 2.28. Bytes are never translated
 ## (`b` is accepted and changes nothing, on Windows too). exit and fflush(NULL) flush every stream; a program of
@@ -61,6 +62,30 @@ constant closed "A FILE flag: fclose closed it" Int64 512
 constant badFile "EBADF: a stream that cannot be read or written that way" Int32 9
 
 constant invalid "EINVAL: an argument the function does not take" Int32 22
+
+## ---------------------------------------------------------------- orientation (D-176)
+##
+## A stream has no orientation until it is first used, then keeps the one that use gave it until freopen: the wide
+## functions make it wide, the byte functions make it bytes (fwide does either, or tells). As in glibc, printf,
+## scanf, fputs, puts, and fwrite on a wide stream fail (and wprintf, wscanf, fputwc, and fputws on a byte stream),
+## while getc, fgets, fread, and putc only orient a stream that has none.
+
+op orient "fwide's rule: a stream with no orientation takes the one wanted (1 wide, -1 bytes, 0 none); gives the stream's orientation after"
+  invariant keepsFirst "The first orientation a stream is given stays"
+  input stream machine.Address copied
+  input want Int64 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  current = field(stream, 96)
+  when current == 0 && want != 0 take keep
+:take
+  calc wanted = choose(want > 0, 1) - choose(want < 0, 1)
+  setField(stream, 96, wanted)
+  return wanted
+:keep
+  return current
 
 ## ---------------------------------------------------------------- fields
 
@@ -1075,6 +1100,7 @@ op reopenFile "freopen: close a stream's file and open another with a mode in th
   abi library "freopen"
 :begin
   ensureStandard()
+  setField(stream, 96, 0)
   nowhere = machine.zero()
   code = modeCode(mode)
   when code < 0 refuse flush
@@ -1150,6 +1176,7 @@ op putOne "Write one byte to a stream: the byte as an unsigned char, or EOF"
   let endOfFile Int32 -1
 :begin
   ensureStandard()
+  orient(stream, -1)
   cell = kernel.stateAt(byteAt)
   calc low = clibrary.charOf(value)
   machine.storeByte(cell, low)
@@ -1212,6 +1239,11 @@ op putStream "fputs: write a C string to a stream: a nonnegative number, or EOF"
   let endOfFile Int32 -1
 :begin
   ensureStandard()
+  orientation = orient(stream, -1)
+  when orientation != -1 wrongOrientation byteOriented
+:wrongOrientation
+  return endOfFile
+:byteOriented
   length = clibrary.cStringLength(text)
   taken = putBytes(stream, text, length)
   when taken == length wrote refuse
@@ -1232,6 +1264,11 @@ op putString "puts: a C string and a line feed on stdout: a nonnegative number, 
   let endOfFile Int32 -1
 :begin
   out = stdoutStream()
+  orientation = orient(out, -1)
+  when orientation != -1 wrongOrientation byteOriented
+:wrongOrientation
+  return endOfFile
+:byteOriented
   length = clibrary.cStringLength(text)
   taken = putBytes(out, text, length)
   when taken == length line refuse
@@ -1258,6 +1295,11 @@ op writeItems "fwrite: write a count of items of a size to a stream: how many it
   let nothing Int64 0
 :begin
   ensureStandard()
+  orientation = orient(stream, -1)
+  when orientation != -1 wrongOrientation byteOriented
+:wrongOrientation
+  return nothing
+:byteOriented
   when size == 0 || count == 0 noneCase some
 :some
   calc bytes = math.wrappingMultiplyInt64(size, count)
@@ -1277,6 +1319,7 @@ op getOne "fgetc: read a character from a stream as an unsigned char, or EOF"
   abi library "fgetc"
 :begin
   ensureStandard()
+  orient(stream, -1)
   value = getByte(stream)
   calc result = clibrary.lowInt32(value)
   return result
@@ -1337,6 +1380,7 @@ op getLine "fgets: read a line (its line feed kept) of at most n-1 bytes into a 
   let count Int64 0 mut
 :begin
   ensureStandard()
+  orient(stream, -1)
   nowhere = machine.zero()
   calc most = convert.int32ToInt64(limit) - 1
   when most < 0 refuse eachByte
@@ -1375,6 +1419,7 @@ op readItems "fread: read a count of items of a size from a stream: how many who
   let nothing Int64 0
 :begin
   ensureStandard()
+  orient(stream, -1)
   when size == 0 || count == 0 noneCase prepare
 :prepare
   calc bytes = math.wrappingMultiplyInt64(size, count)
@@ -2054,6 +2099,11 @@ op writeFormatted "Format into a stream: the bytes written as an int, or -1 when
   let failure Int32 -1
 :begin
   ensureStandard()
+  orientation = orient(stream, -1)
+  when orientation != -1 wrongOrientation byteOriented
+:wrongOrientation
+  return failure
+:byteOriented
   cursor = cformat.cursorNew(list)
   builder = wide.builderNew()
   count = cformat.formatAll(format, cursor, builder)
@@ -3219,7 +3269,13 @@ op scanWith "scanf's engine over the arguments a va_list holds (C23's %b and 0b 
   effect use system.calls
   uses memoryAccess
   uses systemCalls
+  let wrongWay Int32 -1
 :begin
+  orientation = orient(stream, -1)
+  when orientation != -1 wrongOrientation byteOriented
+:wrongOrientation
+  return wrongWay
+:byteOriented
   cursor = cformat.cursorNew(list)
   result = scanAll(stream, format, cursor, c23)
   cformat.cursorFree(cursor)
@@ -3646,6 +3702,1077 @@ op printListBoundedChecked "__vsnprintf_chk: vsnprintf, failing when its bound p
   releaseList(list)
   return result
 
+## ---------------------------------------------------------------- wide streams (D-176)
+##
+## A wide stream reads and writes the C locale's bytes, one for each wide character from 0 to 255 (as glibc 2.35 and
+## later have it); writing a wide character past 255 fails with EILSEQ and sets the stream's error, what came before
+## it written. A stream becomes wide through these functions and then refuses printf, fputs, and the other byte
+## functions that check (orientation above). The wide printf family runs cformat's engine in wide mode over the wide
+## format made bytes (cformat.addUnit), so %lc and %ls keep every character for swprintf; the wide scanf family runs
+## scanf's engine over the wide format's bytes up to its first character past 255, which no input of the C locale's
+## bytes could match, and swscanf reads its wide text's characters up to its first past 255.
+
+constant illegalSequence "EILSEQ: a wide character with no byte in the C locale" Int32 84
+
+op wideOrientation "fwide: give a stream wide (mode above 0) or byte (below 0) orientation unless it has one; gives the orientation, above 0 wide, below 0 bytes, 0 none"
+  input stream machine.Address copied
+  input mode Int32 copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "fwide"
+:begin
+  ensureStandard()
+  orientation = orient(stream, convert.int32ToInt64(mode))
+  calc result = clibrary.lowInt32(orientation)
+  return result
+
+op widePut "fputwc: write a wide character to a stream as its byte: the character, or WEOF for a byte stream, a character past 255 (EILSEQ, the error set), or a failed write"
+  input stream machine.Address copied
+  input value Int32 copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let endOfFile Int32 -1
+:begin
+  ensureStandard()
+  orientation = orient(stream, 1)
+  when orientation != 1 refuse oriented
+:oriented
+  calc code = convert.int32ToInt64(value) & 4294967295
+  when code > 255 noByte write
+:noByte
+  clibrary.setErrno(illegalSequence)
+  addFlag(stream, failed)
+  return endOfFile
+:write
+  cell = kernel.stateAt(byteAt)
+  machine.storeByte(cell, convert.int64ToByte(code))
+  taken = putBytes(stream, cell, 1)
+  when taken == 1 wrote refuse
+:wrote
+  return value
+:refuse
+  return endOfFile
+
+op widePutOn "fputwc: write a wide character to a stream"
+  input value Int32 copied
+  input stream machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "fputwc"
+:begin
+  result = widePut(stream, value)
+  return result
+
+op widePutStream "putwc: fputwc"
+  input value Int32 copied
+  input stream machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "putwc"
+:begin
+  result = widePut(stream, value)
+  return result
+
+op widePutStandard "putwchar: fputwc to stdout"
+  input value Int32 copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "putwchar"
+:begin
+  out = stdoutStream()
+  result = widePut(out, value)
+  return result
+
+op widePutText "fputws: write a wide string to a stream as its bytes: 1, or WEOF (-1) for a byte stream, a character past 255 (EILSEQ, the error set, the characters before it written), or a failed write"
+  input text machine.Address copied
+  input stream machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "fputws"
+  let count Int64 0 mut
+  let succeeded Int32 1
+  let endOfFile Int32 -1
+:begin
+  ensureStandard()
+  orientation = orient(stream, 1)
+  when orientation != 1 refuse measure
+:measure loop=while max=forever
+  calc unitAt = text + count * 4
+  calc code = convert.int32ToInt64(machine.loadInt32(unitAt)) & 4294967295
+  when code == 0 || code > 255 measured copyCheck
+:copyCheck in=measure
+  calc count := count + 1
+  goto measure
+:measured
+  calc bytes = heap.take(count + 1)
+  goto copyEach
+:copyEach
+  narrowUnits(text, count, bytes)
+  taken = putBytes(stream, bytes, count)
+  heap.give(bytes)
+  when taken == count written refuse
+:written
+  calc stopAt = text + count * 4
+  stopper = machine.loadInt32(stopAt)
+  when stopper == 0 wrote noByte
+:noByte
+  clibrary.setErrno(illegalSequence)
+  addFlag(stream, failed)
+  return endOfFile
+:wrote
+  return succeeded
+:refuse
+  return endOfFile
+
+op narrowUnits "Copy a count of wide characters (each below 256) as bytes"
+  input text machine.Address copied
+  input count Int64 copied
+  input bytes machine.Address copied
+  effect use machine.memory
+  uses memoryAccess
+  let at Int64 0 mut
+:begin
+  goto eachUnit
+:eachUnit loop=while max=forever
+  when at >= count done copyOne
+:copyOne in=eachUnit
+  calc unitAt = text + at * 4
+  calc byteCode = convert.int32ToInt64(machine.loadInt32(unitAt)) & 255
+  calc placeAt = bytes + at
+  machine.storeByte(placeAt, convert.int64ToByte(byteCode))
+  calc at := at + 1
+  goto eachUnit
+:done
+  return
+
+op wideGet "fgetwc: read a wide character from a stream (its byte), or WEOF at the end or on an error"
+  input stream machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  ensureStandard()
+  orient(stream, 1)
+  value = getByte(stream)
+  calc result = clibrary.lowInt32(value)
+  return result
+
+op wideGetOn "fgetwc: read a wide character from a stream"
+  input stream machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "fgetwc"
+:begin
+  result = wideGet(stream)
+  return result
+
+op wideGetStream "getwc: fgetwc"
+  input stream machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "getwc"
+:begin
+  result = wideGet(stream)
+  return result
+
+op wideGetStandard "getwchar: fgetwc from stdin"
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "getwchar"
+:begin
+  inStream = stdinStream()
+  result = wideGet(inStream)
+  return result
+
+op wideGetLine "fgetws: read a line (its line feed kept) of at most n-1 wide characters into a buffer and end it with 0: the buffer, or NULL when the end came before any character or a read failed"
+  input buffer machine.Address copied
+  input limit Int32 copied
+  input stream machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "fgetws"
+  let count Int64 0 mut
+:begin
+  ensureStandard()
+  orient(stream, 1)
+  nowhere = machine.zero()
+  calc most = convert.int32ToInt64(limit) - 1
+  when most < 0 refuse eachUnit
+:eachUnit loop=while max=forever
+  when count >= most finish read
+:read in=eachUnit
+  value = getByte(stream)
+  when value < 0 ended store
+:store in=eachUnit
+  calc at = buffer + count * 4
+  machine.storeInt32(at, clibrary.lowInt32(value))
+  calc count := count + 1
+  when value == 10 finish eachUnit
+:ended
+  readFailed = hasFlag(stream, failed)
+  when count == 0 || readFailed refuse finish
+:finish
+  calc endAt = buffer + count * 4
+  machine.storeInt32(endAt, clibrary.lowInt32(0))
+  return buffer
+:refuse
+  return nowhere
+
+op wideGetLineChecked "__fgetws_chk: fgetws, failing as __chk_fail does when the count passes the buffer's size in wide characters"
+  input buffer machine.Address copied
+  input room Int64 copied
+  input limit Int32 copied
+  input stream machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__fgetws_chk"
+:begin
+  calc wanted = convert.int32ToInt64(limit)
+  when wanted > 0 check read
+:check
+  clibrary.checkFits(wanted, room)
+  goto read
+:read
+  result = wideGetLine(buffer, limit, stream)
+  return result
+
+op wideUnget "ungetwc: push a wide character back onto a stream as its byte: the character, or WEOF for WEOF, a character past 255, or no room"
+  input value Int32 copied
+  input stream machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "ungetwc"
+  let endOfFile Int32 -1
+:begin
+  ensureStandard()
+  orient(stream, 1)
+  calc code = convert.int32ToInt64(value) & 4294967295
+  when code > 255 refuse push
+:push
+  pushed = ungetByte(stream, code)
+  when pushed < 0 refuse pushedBack
+:pushedBack
+  return value
+:refuse
+  return endOfFile
+
+## ---------------------------------------------------------------- wprintf
+
+op wideFormatBytes "A wide format as the bytes cformat's wide mode reads, in a new block ending with 0"
+  input text machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+:begin
+  builder = wide.builderNew()
+  goto eachUnit
+:eachUnit loop=while max=forever
+  calc unitAt = text + at * 4
+  calc code = convert.int32ToInt64(machine.loadInt32(unitAt))
+  when code == 0 finish addIt
+:addIt in=eachUnit
+  cformat.addUnit(builder, code)
+  calc at := at + 1
+  goto eachUnit
+:finish
+  wide.builderAddByte(builder, convert.int64ToByte(0))
+  bytes = wide.builderText(builder)
+  heap.give(builder)
+  return bytes
+
+op unitCodeAt "The wide character a wide mode text holds at a position: its byte, or the escape's bits after a 255"
+  input text machine.Address copied
+  input at Int64 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  let piece Int64 1 mut
+  let code Int64 0 mut
+:begin
+  first = clibrary.byteAt(text, at)
+  calc firstCode = convert.byteToInt64(first)
+  when firstCode == 255 escaped plain
+:plain
+  return firstCode
+:escaped loop=while max=forever
+  when piece > 6 decoded addPiece
+:addPiece in=escaped
+  calc pieceAt = at + piece
+  calc bits = convert.byteToInt64(clibrary.byteAt(text, pieceAt)) & 63
+  calc code := (code << 6) | bits
+  calc piece := piece + 1
+  goto escaped
+:decoded
+  calc unsigned = code & 4294967295
+  return unsigned
+
+op unitStep "How many bytes a wide mode text's character at a position takes: 7 for an escape, else 1"
+  input text machine.Address copied
+  input at Int64 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  let escape Int64 7
+  let single Int64 1
+:begin
+  first = clibrary.byteAt(text, at)
+  when first == 255 giveEscape giveSingle
+:giveEscape
+  return escape
+:giveSingle
+  return single
+
+op wideWriteFormatted "Format a wide format into a stream as wfprintf: the wide characters written as an int, or -1 for a byte stream, a format error, a character past 255 (EILSEQ, the error set, what came before written), or a failed write"
+  invariant writesWideBytes "Writes the C locale's byte of each wide character and counts characters"
+  input stream machine.Address copied
+  input format machine.Address copied
+  input cursor machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let failure Int32 -1
+  let at Int64 0 mut
+  let kept Int64 0 mut
+  let refused Bool false mut
+:begin
+  ensureStandard()
+  orientation = orient(stream, 1)
+  when orientation != 1 refuse formatIt
+:formatIt
+  formatBytes = wideFormatBytes(format)
+  builder = wide.builderNew()
+  count = cformat.formatAllAs(formatBytes, cursor, builder, true)
+  heap.give(formatBytes)
+  text = wide.builderText(builder)
+  length = wide.builderLength(builder)
+  heap.give(builder)
+  when count < 0 giveUp narrow
+:narrow
+  calc bytes = heap.take(length + 1)
+  goto eachUnit
+:eachUnit loop=while max=forever
+  when at >= length write convertUnit
+:convertUnit in=eachUnit
+  code = unitCodeAt(text, at)
+  when code > 255 noByte keep
+:noByte in=eachUnit
+  calc refused := true
+  goto write
+:keep in=eachUnit
+  calc keptAt = bytes + kept
+  machine.storeByte(keptAt, convert.int64ToByte(code))
+  calc kept := kept + 1
+  step = unitStep(text, at)
+  calc at := at + step
+  goto eachUnit
+:write
+  heap.give(text)
+  taken = putBytes(stream, bytes, kept)
+  heap.give(bytes)
+  when taken != kept refuse wroteAll
+:wroteAll
+  if refused failSequence wrote
+:failSequence
+  clibrary.setErrno(illegalSequence)
+  addFlag(stream, failed)
+  return failure
+:wrote
+  calc result = clibrary.lowInt32(count)
+  return result
+:giveUp
+  heap.give(text)
+  return failure
+:refuse
+  return failure
+
+op wideStoreFormatted "Format a wide format into wide memory as swprintf: at most limit - 1 characters and a 0; the characters written as an int, or -1 when they and the 0 do not fit (the first limit - 1 written, no 0) or the format fails"
+  invariant storesWide "Keeps every wide character, and refuses with -1 a text that does not fit with its 0"
+  input target machine.Address copied
+  input limit Int64 copied
+  input format machine.Address copied
+  input cursor machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let failure Int32 -1
+  let at Int64 0 mut
+  let stored Int64 0 mut
+:begin
+  when limit == 0 refuse formatIt
+:formatIt
+  formatBytes = wideFormatBytes(format)
+  builder = wide.builderNew()
+  count = cformat.formatAllAs(formatBytes, cursor, builder, true)
+  heap.give(formatBytes)
+  text = wide.builderText(builder)
+  length = wide.builderLength(builder)
+  heap.give(builder)
+  when count < 0 giveUp eachUnit
+:eachUnit loop=while max=forever
+  when at >= length || stored >= limit - 1 copied storeOne
+:storeOne in=eachUnit
+  code = unitCodeAt(text, at)
+  calc unitAt = target + stored * 4
+  machine.storeInt32(unitAt, clibrary.lowInt32(code))
+  calc stored := stored + 1
+  step = unitStep(text, at)
+  calc at := at + step
+  goto eachUnit
+:copied
+  heap.give(text)
+  when count > limit - 1 refuse terminate
+:terminate
+  calc endAt = target + stored * 4
+  machine.storeInt32(endAt, clibrary.lowInt32(0))
+  calc result = clibrary.lowInt32(count)
+  return result
+:giveUp
+  heap.give(text)
+  return failure
+:refuse
+  return failure
+
+op wideWriteList "wfprintf's work from a va_list's address (a v-function's argument made a list by listFor)"
+  input stream machine.Address copied
+  input format machine.Address copied
+  input list machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  cursor = cformat.cursorNew(list)
+  result = wideWriteFormatted(stream, format, cursor)
+  cformat.cursorFree(cursor)
+  return result
+
+op wideStoreList "swprintf's work from a va_list"
+  input target machine.Address copied
+  input limit Int64 copied
+  input format machine.Address copied
+  input list machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  cursor = cformat.cursorNew(list)
+  result = wideStoreFormatted(target, limit, format, cursor)
+  cformat.cursorFree(cursor)
+  return result
+
+op widePrintStandard "wprintf: format to stdout"
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "wprintf" variadic
+:begin
+  list = machine.variadicStart()
+  out = stdoutStream()
+  result = wideWriteList(out, format, list)
+  return result
+
+op widePrintStream "fwprintf: format to a stream"
+  input stream machine.Address copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "fwprintf" variadic
+:begin
+  list = machine.variadicStart()
+  result = wideWriteList(stream, format, list)
+  return result
+
+op widePrintInto "swprintf: format into wide memory, at most n - 1 characters and a 0, -1 when the text does not fit"
+  input target machine.Address copied
+  input limit Int64 copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "swprintf" variadic
+:begin
+  list = machine.variadicStart()
+  result = wideStoreList(target, limit, format, list)
+  return result
+
+op widePrintStandardList "vwprintf: format to stdout from a va_list"
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "vwprintf"
+:begin
+  list = listFor(arguments)
+  out = stdoutStream()
+  result = wideWriteList(out, format, list)
+  releaseList(list)
+  return result
+
+op widePrintStreamList "vfwprintf: format to a stream from a va_list"
+  input stream machine.Address copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "vfwprintf"
+:begin
+  list = listFor(arguments)
+  result = wideWriteList(stream, format, list)
+  releaseList(list)
+  return result
+
+op widePrintIntoList "vswprintf: format into wide memory from a va_list"
+  input target machine.Address copied
+  input limit Int64 copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "vswprintf"
+:begin
+  list = listFor(arguments)
+  result = wideStoreList(target, limit, format, list)
+  releaseList(list)
+  return result
+
+op widePrintStandardChecked "__wprintf_chk: wprintf (the flag asks for checks this library always makes)"
+  input flag Int32 copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__wprintf_chk" variadic
+:begin
+  list = machine.variadicStart()
+  out = stdoutStream()
+  result = wideWriteList(out, format, list)
+  return result
+
+op widePrintStreamChecked "__fwprintf_chk: fwprintf"
+  input stream machine.Address copied
+  input flag Int32 copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__fwprintf_chk" variadic
+:begin
+  list = machine.variadicStart()
+  result = wideWriteList(stream, format, list)
+  return result
+
+op widePrintIntoChecked "__swprintf_chk: swprintf, failing as __chk_fail does when its bound passes the target's size in wide characters"
+  input target machine.Address copied
+  input limit Int64 copied
+  input flag Int32 copied
+  input room Int64 copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__swprintf_chk" variadic
+:begin
+  list = machine.variadicStart()
+  clibrary.checkFits(limit, room)
+  result = wideStoreList(target, limit, format, list)
+  return result
+
+op widePrintStandardListChecked "__vwprintf_chk: vwprintf"
+  input flag Int32 copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__vwprintf_chk"
+:begin
+  list = listFor(arguments)
+  out = stdoutStream()
+  result = wideWriteList(out, format, list)
+  releaseList(list)
+  return result
+
+op widePrintStreamListChecked "__vfwprintf_chk: vfwprintf"
+  input stream machine.Address copied
+  input flag Int32 copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__vfwprintf_chk"
+:begin
+  list = listFor(arguments)
+  result = wideWriteList(stream, format, list)
+  releaseList(list)
+  return result
+
+op widePrintIntoListChecked "__vswprintf_chk: vswprintf, failing as __chk_fail does when its bound passes the target's size"
+  input target machine.Address copied
+  input limit Int64 copied
+  input flag Int32 copied
+  input room Int64 copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__vswprintf_chk"
+:begin
+  clibrary.checkFits(limit, room)
+  list = listFor(arguments)
+  result = wideStoreList(target, limit, format, list)
+  releaseList(list)
+  return result
+
+## ---------------------------------------------------------------- wscanf
+
+op wideScanBytes "A wide text's characters as bytes up to its end or its first character past 255, in a new block ending with 0"
+  input text machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let count Int64 0 mut
+:begin
+  goto measure
+:measure loop=while max=forever
+  calc unitAt = text + count * 4
+  calc code = convert.int32ToInt64(machine.loadInt32(unitAt)) & 4294967295
+  when code == 0 || code > 255 measured countIt
+:countIt in=measure
+  calc count := count + 1
+  goto measure
+:measured
+  calc bytes = heap.take(count + 1)
+  narrowUnits(text, count, bytes)
+  return bytes
+
+op wideScan "wscanf's engine: scanf's over a stream made wide, by the wide format's bytes; EOF (-1) for a byte stream"
+  invariant scansWide "Reads a wide stream by a wide format as scanf reads the same bytes"
+  input stream machine.Address copied
+  input format machine.Address copied
+  input cursor machine.Address copied
+  input c23 Bool copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let wrongWay Int32 -1
+:begin
+  ensureStandard()
+  orientation = orient(stream, 1)
+  when orientation != 1 refuse scan
+:scan
+  formatBytes = wideScanBytes(format)
+  result = scanAll(stream, formatBytes, cursor, c23)
+  heap.give(formatBytes)
+  return result
+:refuse
+  return wrongWay
+
+op wideScanText "swscanf's engine: scanf's over a wide text's characters, by the wide format's bytes"
+  invariant scansWideText "Reads a wide text by a wide format as sscanf reads the same bytes"
+  input text machine.Address copied
+  input format machine.Address copied
+  input cursor machine.Address copied
+  input c23 Bool copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  textBytes = wideScanBytes(text)
+  source = textStream(textBytes)
+  formatBytes = wideScanBytes(format)
+  result = scanAll(source, formatBytes, cursor, c23)
+  heap.give(formatBytes)
+  heap.give(source)
+  heap.give(textBytes)
+  return result
+
+op wideScanList "wscanf's engine over a va_list (C23's %b and 0b for the __isoc23_ forms)"
+  input stream machine.Address copied
+  input format machine.Address copied
+  input list machine.Address copied
+  input c23 Bool copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  cursor = cformat.cursorNew(list)
+  result = wideScan(stream, format, cursor, c23)
+  cformat.cursorFree(cursor)
+  return result
+
+op wideScanTextList "swscanf's engine over a va_list"
+  input text machine.Address copied
+  input format machine.Address copied
+  input list machine.Address copied
+  input c23 Bool copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  cursor = cformat.cursorNew(list)
+  result = wideScanText(text, format, cursor, c23)
+  cformat.cursorFree(cursor)
+  return result
+
+op wideScanStandard "wscanf: read stdin by a wide format"
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "wscanf" variadic
+:begin
+  list = machine.variadicStart()
+  inStream = stdinStream()
+  result = wideScanList(inStream, format, list, false)
+  return result
+
+op wideScanStream "fwscanf: read a stream by a wide format"
+  input stream machine.Address copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "fwscanf" variadic
+:begin
+  list = machine.variadicStart()
+  result = wideScanList(stream, format, list, false)
+  return result
+
+op wideScanString "swscanf: read a wide string by a wide format"
+  input text machine.Address copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "swscanf" variadic
+:begin
+  list = machine.variadicStart()
+  result = wideScanTextList(text, format, list, false)
+  return result
+
+op wideScanStandardList "vwscanf: read stdin by a wide format, from a va_list"
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "vwscanf"
+:begin
+  list = listFor(arguments)
+  inStream = stdinStream()
+  result = wideScanList(inStream, format, list, false)
+  releaseList(list)
+  return result
+
+op wideScanStreamList "vfwscanf: read a stream by a wide format, from a va_list"
+  input stream machine.Address copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "vfwscanf"
+:begin
+  list = listFor(arguments)
+  result = wideScanList(stream, format, list, false)
+  releaseList(list)
+  return result
+
+op wideScanStringList "vswscanf: read a wide string by a wide format, from a va_list"
+  input text machine.Address copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "vswscanf"
+:begin
+  list = listFor(arguments)
+  result = wideScanTextList(text, format, list, false)
+  releaseList(list)
+  return result
+
+op wideScanStandardC99 "wscanf: read stdin by a wide format (glibc's C99 name)"
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc99_wscanf" variadic
+:begin
+  list = machine.variadicStart()
+  inStream = stdinStream()
+  result = wideScanList(inStream, format, list, false)
+  return result
+
+op wideScanStreamC99 "fwscanf: read a stream by a wide format (glibc's C99 name)"
+  input stream machine.Address copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc99_fwscanf" variadic
+:begin
+  list = machine.variadicStart()
+  result = wideScanList(stream, format, list, false)
+  return result
+
+op wideScanStringC99 "swscanf: read a wide string by a wide format (glibc's C99 name)"
+  input text machine.Address copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc99_swscanf" variadic
+:begin
+  list = machine.variadicStart()
+  result = wideScanTextList(text, format, list, false)
+  return result
+
+op wideScanStandardListC99 "vwscanf: read stdin by a wide format, from a va_list (glibc's C99 name)"
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc99_vwscanf"
+:begin
+  list = listFor(arguments)
+  inStream = stdinStream()
+  result = wideScanList(inStream, format, list, false)
+  releaseList(list)
+  return result
+
+op wideScanStreamListC99 "vfwscanf: read a stream by a wide format, from a va_list (glibc's C99 name)"
+  input stream machine.Address copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc99_vfwscanf"
+:begin
+  list = listFor(arguments)
+  result = wideScanList(stream, format, list, false)
+  releaseList(list)
+  return result
+
+op wideScanStringListC99 "vswscanf: read a wide string by a wide format, from a va_list (glibc's C99 name)"
+  input text machine.Address copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc99_vswscanf"
+:begin
+  list = listFor(arguments)
+  result = wideScanTextList(text, format, list, false)
+  releaseList(list)
+  return result
+
+op wideScanStandardC23 "wscanf: read stdin by a wide format (glibc's C23 name: %b and 0b)"
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_wscanf" variadic
+:begin
+  list = machine.variadicStart()
+  inStream = stdinStream()
+  result = wideScanList(inStream, format, list, true)
+  return result
+
+op wideScanStreamC23 "fwscanf: read a stream by a wide format (glibc's C23 name: %b and 0b)"
+  input stream machine.Address copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_fwscanf" variadic
+:begin
+  list = machine.variadicStart()
+  result = wideScanList(stream, format, list, true)
+  return result
+
+op wideScanStringC23 "swscanf: read a wide string by a wide format (glibc's C23 name: %b and 0b)"
+  input text machine.Address copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_swscanf" variadic
+:begin
+  list = machine.variadicStart()
+  result = wideScanTextList(text, format, list, true)
+  return result
+
+op wideScanStandardListC23 "vwscanf: read stdin by a wide format, from a va_list (glibc's C23 name: %b and 0b)"
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_vwscanf"
+:begin
+  list = listFor(arguments)
+  inStream = stdinStream()
+  result = wideScanList(inStream, format, list, true)
+  releaseList(list)
+  return result
+
+op wideScanStreamListC23 "vfwscanf: read a stream by a wide format, from a va_list (glibc's C23 name: %b and 0b)"
+  input stream machine.Address copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_vfwscanf"
+:begin
+  list = listFor(arguments)
+  result = wideScanList(stream, format, list, true)
+  releaseList(list)
+  return result
+
+op wideScanStringListC23 "vswscanf: read a wide string by a wide format, from a va_list (glibc's C23 name: %b and 0b)"
+  input text machine.Address copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__isoc23_vswscanf"
+:begin
+  list = listFor(arguments)
+  result = wideScanTextList(text, format, list, true)
+  releaseList(list)
+  return result
+
 ## ---------------------------------------------------------------- the streams' lock (D-166)
 ##
 ## Once a C program starts a thread, the stream operations below hold one lock for every stream: a futex word at
@@ -4049,4 +5176,196 @@ test streamTest "A temporary file is written through its buffer, flushed, read b
   test.assertTrue(firstNumber == 12)
   counted = machine.loadInt32(secondCell)
   test.assertTrue(counted == 2)
+  return
+
+op wideOf "An ASCII text as a wide string (wchar_t of 4 bytes and a 0) in a new block"
+  input text String borrowed
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+:begin
+  bytes = string.byteLength(text)
+  textAt = machine.addressOfString(text)
+  calc block = heap.take(bytes * 4 + 4)
+  goto eachByte
+:eachByte loop=while max=forever
+  when at >= bytes done copyOne
+:copyOne in=eachByte
+  calc sourceAt = textAt + at
+  calc code = convert.byteToInt64(machine.loadByte(sourceAt))
+  calc unitAt = block + at * 4
+  machine.storeInt32(unitAt, clibrary.lowInt32(code))
+  calc at := at + 1
+  goto eachByte
+:done
+  return block
+
+op cursorOf "A cursor of the tests' layout (one 8-byte slot an argument) over three words, its slots' block stored at an address"
+  input first Int64 copied
+  input second Int64 copied
+  input third Int64 copied
+  input slotsAt machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  slots = heap.take(40)
+  machine.storeInt64(slots, first)
+  calc secondAt = slots + 8
+  machine.storeInt64(secondAt, second)
+  calc thirdAt = slots + 16
+  machine.storeInt64(thirdAt, third)
+  calc cellAt = slots + 32
+  machine.storeAddress(cellAt, slots)
+  cursor = heap.take(16)
+  machine.storeInt64(cursor, 3)
+  calc listPlace = cursor + 8
+  machine.storeAddress(listPlace, cellAt)
+  machine.storeAddress(slotsAt, slots)
+  return cursor
+
+op unitOf "The wide character at an index of a wide string"
+  input text machine.Address copied
+  input index Int64 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  calc unitAt = text + index * 4
+  unit = machine.loadInt32(unitAt)
+  calc code = convert.int32ToInt64(unit)
+  return code
+
+op narrowOf "A text as a C string in a new block"
+  input text String borrowed
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  bytes = string.byteLength(text)
+  textAt = machine.addressOfString(text)
+  calc block = heap.take(bytes + 1)
+  machine.copy(block, textAt, bytes)
+  return block
+
+test wideStreamTest "A stream made wide keeps its orientation and refuses fputs; fputwc, fwprintf's engine, fgetwc, fgetws, and ungetwc read and write the C locale's bytes; a character past 255 fails with EILSEQ; swprintf keeps every character and refuses what does not fit; swscanf and wscanf's engine read by wide formats"
+  verifies orient keepsFirst
+  verifies wideWriteFormatted writesWideBytes
+  verifies wideStoreFormatted storesWide
+  verifies wideScan scansWide
+  verifies wideScanText scansWideText
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let nowhere Int64 0
+:begin
+  stream = temporaryFile()
+  before = wideOrientation(stream, clibrary.lowInt32(0))
+  test.assertTrue(before == 0)
+  firstPut = widePut(stream, clibrary.lowInt32(104))
+  test.assertTrue(firstPut == 104)
+  kept = orient(stream, -1)
+  test.assertEqualInt64(1, kept)
+  bytes = narrowOf("x")
+  refused = putStream(bytes, stream)
+  test.assertTrue(refused == -1)
+  pieces = wideOf("ab")
+  slotsCell = heap.take(8)
+  cursor = cursorOf(machine.toInt64(pieces), 42, 120, slotsCell)
+  wideFormat = wideOf("%ls=%d|%3lc")
+  written = wideWriteFormatted(stream, wideFormat, cursor)
+  test.assertTrue(written == 9)
+  heap.give(cursor)
+  heap.give(machine.loadAddress(slotsCell))
+  heap.give(wideFormat)
+  noByte = widePut(stream, clibrary.lowInt32(20013))
+  test.assertTrue(noByte == -1)
+  errnoAt = clibrary.errnoCell()
+  code = machine.loadInt32(errnoAt)
+  test.assertTrue(code == 84)
+  clearErrors(stream)
+  rewindStream(stream)
+  again = wideGet(stream)
+  test.assertTrue(again == 104)
+  line = heap.take(80)
+  got = wideGetLine(line, clibrary.lowInt32(20), stream)
+  sameLine = machine.equal(got, line)
+  test.assertTrue(sameLine)
+  test.assertEqualInt64(97, unitOf(line, 0))
+  test.assertEqualInt64(52, unitOf(line, 3))
+  test.assertEqualInt64(120, unitOf(line, 8))
+  test.assertEqualInt64(0, unitOf(line, 9))
+  wideRefused = wideUnget(clibrary.lowInt32(20013), stream)
+  test.assertTrue(wideRefused == -1)
+  pushed = wideUnget(clibrary.lowInt32(122), stream)
+  test.assertTrue(pushed == 122)
+  back = wideGet(stream)
+  test.assertTrue(back == 122)
+  closeFile(stream)
+  target = heap.take(64)
+  longText = wideOf("abcdef")
+  longCursor = cursorOf(machine.toInt64(longText), 0, 0, slotsCell)
+  textFormat = wideOf("%ls")
+  tooLong = wideStoreFormatted(target, 4, textFormat, longCursor)
+  test.assertTrue(tooLong == -1)
+  test.assertEqualInt64(99, unitOf(target, 2))
+  heap.give(longCursor)
+  heap.give(machine.loadAddress(slotsCell))
+  fitCursor = cursorOf(machine.toInt64(longText), 0, 0, slotsCell)
+  fits = wideStoreFormatted(target, 10, textFormat, fitCursor)
+  test.assertTrue(fits == 6)
+  test.assertEqualInt64(102, unitOf(target, 5))
+  test.assertEqualInt64(0, unitOf(target, 6))
+  heap.give(fitCursor)
+  heap.give(machine.loadAddress(slotsCell))
+  charCursor = cursorOf(20013, 0, 0, slotsCell)
+  charFormat = wideOf("<%lc>")
+  oneChar = wideStoreFormatted(target, 10, charFormat, charCursor)
+  test.assertTrue(oneChar == 3)
+  test.assertEqualInt64(20013, unitOf(target, 1))
+  test.assertEqualInt64(62, unitOf(target, 2))
+  heap.give(charCursor)
+  heap.give(machine.loadAddress(slotsCell))
+  number = heap.take(8)
+  word = heap.take(64)
+  scanCursor = cursorOf(machine.toInt64(number), machine.toInt64(word), 0, slotsCell)
+  inputText = wideOf(" 12 ab")
+  scanFormat = wideOf("%d %ls")
+  assigned = wideScanText(inputText, scanFormat, scanCursor, false)
+  test.assertTrue(assigned == 2)
+  scanned = machine.loadInt32(number)
+  test.assertTrue(scanned == 12)
+  test.assertEqualInt64(97, unitOf(word, 0))
+  test.assertEqualInt64(98, unitOf(word, 1))
+  test.assertEqualInt64(0, unitOf(word, 2))
+  heap.give(scanCursor)
+  heap.give(machine.loadAddress(slotsCell))
+  fileStream = temporaryFile()
+  putStream(narrowOf("7 x"), fileStream)
+  rewindStream(fileStream)
+  byteCursor = cursorOf(machine.toInt64(number), 0, 0, slotsCell)
+  wideRead = wideScan(fileStream, scanFormat, byteCursor, false)
+  test.assertTrue(wideRead == -1)
+  heap.give(byteCursor)
+  heap.give(machine.loadAddress(slotsCell))
+  closeFile(fileStream)
+  heap.give(inputText)
+  heap.give(scanFormat)
+  heap.give(word)
+  heap.give(number)
+  heap.give(charFormat)
+  heap.give(textFormat)
+  heap.give(longText)
+  heap.give(target)
+  heap.give(line)
+  heap.give(pieces)
+  heap.give(slotsCell)
   return

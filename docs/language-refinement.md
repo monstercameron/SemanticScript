@@ -3103,6 +3103,27 @@ does in the C locale. Step one is stdio, which needs variadic functions. Decided
   integer registers. The compiler wraps the operation (`library_function`) or the call (`foreign_pair_call`) so the
   record's own value is what SemanticScript sees on each side.
 
+- **D-176** Wide stdio, as glibc has it in the C locale, whose multibyte encoding maps the bytes 0 to 255 one to one
+  with the wide characters 0 to 255 (D-184). A stream has an orientation (FILE offset 96: 0 none yet, 1 wide, -1
+  bytes), which its first use gives it and only freopen takes away: fwide sets or tells it; fputwc, fputws, the
+  wide printf family, and the wide scanf family make a stream wide and refuse a byte stream (WEOF, -1, EOF), and
+  printf, scanf, fputs, puts, and fwrite make it bytes and refuse a wide one, as glibc's do; fgetwc, fgetws, ungetwc,
+  getc, fgets, fread, and putc only orient a stream that has none. A wide stream reads and writes each wide
+  character as its byte; writing one past 255 fails with EILSEQ and sets the stream's error, what came before it
+  written (glibc buffers wide characters and fails when it converts them, at a flush: a recorded difference of
+  timing, not of the bytes written). The wide printf family (wprintf, fwprintf, swprintf, their v forms, and
+  `_FORTIFY_SOURCE`'s `__wprintf_chk`, `__fwprintf_chk`, `__swprintf_chk`, and their v forms) runs printf's engine
+  in a wide mode: the wide format is made bytes, a character past 254 as 255 and six bytes holding six of its bits
+  each (`cformat.addUnit`: no byte of it is `%` or 0), `%c`, `%s`, `%lc`, and `%ls` write wide characters padded and
+  cut by characters, `%n` and the result count characters, and the text is turned back into wide characters, so
+  swprintf keeps every character; swprintf gives -1 when the text and its 0 do not fit, the first n - 1 characters
+  written and no 0, as glibc does. The wide scanf family (wscanf, fwscanf, swscanf, their v forms, and their
+  `__isoc99_` and `__isoc23_` names) runs scanf's engine over the wide format's bytes up to its first character
+  past 255, which no byte of input could match, and swscanf reads its wide text's characters up to its first past
+  255 (a recorded limit: a wide string scanned for `%ls` stops there). fgetws has `__fgetws_chk`. wcsftime (module
+  `cwidetime`, after ctime) is strftime's text as wide characters, its format made bytes the same way and passed to
+  `ctime.formatTime`, which ctime now exports.
+
 ## The runtime in SemanticScript, the C library and a loader (2026-11-15)
 
 `ffi` was the one module an executable on Linux refused (D-145): `ffi.open("c")` asked for glibc, which a static
@@ -3713,6 +3734,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-173 | The runtime in SemanticScript, the whole C library: glibc's `__isoc23_` names with C23's binary numbers; `%5%` and scanf's `nan` as glibc (by delegation) |
 | 2026-11-15 | D-174 | The runtime in SemanticScript, the whole C library: long double as each platform's C has it, its exact functions on parts, strtold and wcstold correctly rounded, scanf's `%Lf` (by delegation) |
 | 2026-11-15 | D-175 | The runtime in SemanticScript, the whole C library: records of two numbers (complex numbers, ldiv_t) passed as the C ABI passes structs (by delegation) |
+| 2026-11-15 | D-176 | The runtime in SemanticScript, the whole C library: wide stdio with streams' orientation, the wide printf and scanf families, wcsftime (by delegation) |
 | 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
 | 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
 | 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |

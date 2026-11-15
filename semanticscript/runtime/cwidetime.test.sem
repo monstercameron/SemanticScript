@@ -1,0 +1,994 @@
+# Tests of the `cwidetime` module; generated from tools/cwidetime.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+wideOf is operation
+wideOf purpose "An ASCII text as a wide string in a new block, with one character replaced by a code at an index (-1 for none)"
+wideOf invariant none
+wideOf typeParameter none
+wideOf input text String borrowed
+wideOf input index Int64 copied
+wideOf input code Int64 copied
+wideOf output machine.Address
+wideOf outputOwnedBy none
+wideOf raises none
+wideOf effect use machine.memory
+wideOf effect use system.calls
+wideOf uses memoryAccess
+wideOf uses systemCalls
+wideOf memoryHeap false
+wideOf async false
+wideOf maxRecursion none
+wideOf label begin loopKind none
+wideOf label begin within none
+wideOf label eachByte loopKind while
+wideOf label eachByte within none
+wideOf label eachByte maxIterations forever
+wideOf label copyOne loopKind none
+wideOf label copyOne within eachByte
+wideOf label replace loopKind none
+wideOf label replace within none
+wideOf label put loopKind none
+wideOf label put within none
+wideOf label done loopKind none
+wideOf label done within none
+wideOf let at Int64 0 mutable
+wideOf let four Int64 4 immutable
+wideOf let one Int64 1 immutable
+wideOf let zero Int64 0 immutable
+wideOf at begin do readBytes
+wideOf at begin do readTextAt
+wideOf at begin do blockStep1
+wideOf at begin do blockStep2
+wideOf at begin do findBlock1
+wideOf at begin goto eachByte
+wideOf at eachByte do findCheck11
+wideOf at eachByte branch if check1 goto replace else goto copyOne
+wideOf at copyOne do findSourceAt1
+wideOf at copyOne do valueStep1
+wideOf at copyOne do findValue1
+wideOf at copyOne do unitAtStep1
+wideOf at copyOne do findUnitAt1
+wideOf at copyOne do doStoreInt32Step1
+wideOf at copyOne do doStoreInt32
+wideOf at copyOne do findAtNext11
+wideOf at copyOne set at atNext1
+wideOf at copyOne goto eachByte
+wideOf at replace do findCheck21
+wideOf at replace branch if check2 goto put else goto done
+wideOf at put do replaceAtStep1
+wideOf at put do findReplaceAt1
+wideOf at put do doStoreInt32Step2
+wideOf at put do doStoreInt322
+wideOf at put goto done
+wideOf at done return ok block
+
+readBytes is call
+readBytes in wideOf
+readBytes invokes string.byteLength
+readBytes argument text String text lend
+readBytes result bytes Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+readTextAt is call
+readTextAt in wideOf
+readTextAt invokes machine.addressOfString
+readTextAt argument text String text lend
+readTextAt result textAt machine.Address
+readTextAt ownedBy none
+readTextAt cleanedBy none
+readTextAt borrows none
+readTextAt catch none
+readTextAt suppresses none
+
+blockStep1 is call
+blockStep1 in wideOf
+blockStep1 invokes math.multiplyInt64
+blockStep1 argument left Int64 bytes copy
+blockStep1 argument right Int64 four copy
+blockStep1 result blockPart1 Int64
+blockStep1 ownedBy none
+blockStep1 cleanedBy none
+blockStep1 borrows none
+blockStep1 catch none
+blockStep1 suppresses none
+
+blockStep2 is call
+blockStep2 in wideOf
+blockStep2 invokes math.addInt64
+blockStep2 argument left Int64 blockPart1 copy
+blockStep2 argument right Int64 four copy
+blockStep2 result blockPart2 Int64
+blockStep2 ownedBy none
+blockStep2 cleanedBy none
+blockStep2 borrows none
+blockStep2 catch none
+blockStep2 suppresses none
+
+findBlock1 is call
+findBlock1 in wideOf
+findBlock1 invokes heap.take
+findBlock1 argument bytes Int64 blockPart2 copy
+findBlock1 result block machine.Address
+findBlock1 ownedBy none
+findBlock1 cleanedBy none
+findBlock1 borrows none
+findBlock1 catch none
+findBlock1 suppresses none
+
+findCheck11 is call
+findCheck11 in wideOf
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 at copy
+findCheck11 argument right Int64 bytes copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findSourceAt1 is call
+findSourceAt1 in wideOf
+findSourceAt1 invokes machine.offset
+findSourceAt1 argument address machine.Address textAt copy
+findSourceAt1 argument bytes Int64 at copy
+findSourceAt1 result sourceAt machine.Address
+findSourceAt1 ownedBy none
+findSourceAt1 cleanedBy none
+findSourceAt1 borrows none
+findSourceAt1 catch none
+findSourceAt1 suppresses none
+
+valueStep1 is call
+valueStep1 in wideOf
+valueStep1 invokes machine.loadByte
+valueStep1 argument address machine.Address sourceAt copy
+valueStep1 result valuePart1 Byte
+valueStep1 ownedBy none
+valueStep1 cleanedBy none
+valueStep1 borrows none
+valueStep1 catch none
+valueStep1 suppresses none
+
+findValue1 is call
+findValue1 in wideOf
+findValue1 invokes convert.byteToInt64
+findValue1 argument value Byte valuePart1 copy
+findValue1 result value Int64
+findValue1 ownedBy none
+findValue1 cleanedBy none
+findValue1 borrows none
+findValue1 catch none
+findValue1 suppresses none
+
+unitAtStep1 is call
+unitAtStep1 in wideOf
+unitAtStep1 invokes math.multiplyInt64
+unitAtStep1 argument left Int64 at copy
+unitAtStep1 argument right Int64 four copy
+unitAtStep1 result unitAtPart1 Int64
+unitAtStep1 ownedBy none
+unitAtStep1 cleanedBy none
+unitAtStep1 borrows none
+unitAtStep1 catch none
+unitAtStep1 suppresses none
+
+findUnitAt1 is call
+findUnitAt1 in wideOf
+findUnitAt1 invokes machine.offset
+findUnitAt1 argument address machine.Address block copy
+findUnitAt1 argument bytes Int64 unitAtPart1 copy
+findUnitAt1 result unitAt machine.Address
+findUnitAt1 ownedBy none
+findUnitAt1 cleanedBy none
+findUnitAt1 borrows none
+findUnitAt1 catch none
+findUnitAt1 suppresses none
+
+doStoreInt32Step1 is call
+doStoreInt32Step1 in wideOf
+doStoreInt32Step1 invokes clibrary.lowInt32
+doStoreInt32Step1 argument value Int64 value copy
+doStoreInt32Step1 result doStoreInt32Part1 Int32
+doStoreInt32Step1 ownedBy none
+doStoreInt32Step1 cleanedBy none
+doStoreInt32Step1 borrows none
+doStoreInt32Step1 catch none
+doStoreInt32Step1 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in wideOf
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address unitAt copy
+doStoreInt32 argument value Int32 doStoreInt32Part1 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+findAtNext11 is call
+findAtNext11 in wideOf
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+findCheck21 is call
+findCheck21 in wideOf
+findCheck21 invokes compare.greaterOrEqualInt64
+findCheck21 argument left Int64 index copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+replaceAtStep1 is call
+replaceAtStep1 in wideOf
+replaceAtStep1 invokes math.multiplyInt64
+replaceAtStep1 argument left Int64 index copy
+replaceAtStep1 argument right Int64 four copy
+replaceAtStep1 result replaceAtPart1 Int64
+replaceAtStep1 ownedBy none
+replaceAtStep1 cleanedBy none
+replaceAtStep1 borrows none
+replaceAtStep1 catch none
+replaceAtStep1 suppresses none
+
+findReplaceAt1 is call
+findReplaceAt1 in wideOf
+findReplaceAt1 invokes machine.offset
+findReplaceAt1 argument address machine.Address block copy
+findReplaceAt1 argument bytes Int64 replaceAtPart1 copy
+findReplaceAt1 result replaceAt machine.Address
+findReplaceAt1 ownedBy none
+findReplaceAt1 cleanedBy none
+findReplaceAt1 borrows none
+findReplaceAt1 catch none
+findReplaceAt1 suppresses none
+
+doStoreInt32Step2 is call
+doStoreInt32Step2 in wideOf
+doStoreInt32Step2 invokes clibrary.lowInt32
+doStoreInt32Step2 argument value Int64 code copy
+doStoreInt32Step2 result doStoreInt32Part2 Int32
+doStoreInt32Step2 ownedBy none
+doStoreInt32Step2 cleanedBy none
+doStoreInt32Step2 borrows none
+doStoreInt32Step2 catch none
+doStoreInt32Step2 suppresses none
+
+doStoreInt322 is call
+doStoreInt322 in wideOf
+doStoreInt322 invokes machine.storeInt32
+doStoreInt322 argument address machine.Address replaceAt copy
+doStoreInt322 argument value Int32 doStoreInt32Part2 copy
+doStoreInt322 result none
+doStoreInt322 ownedBy none
+doStoreInt322 cleanedBy none
+doStoreInt322 borrows none
+doStoreInt322 catch none
+doStoreInt322 suppresses none
+
+unitIs is operation
+unitIs purpose "Whether the wide character at an index of a wide string is a code"
+unitIs invariant none
+unitIs typeParameter none
+unitIs input text machine.Address copied
+unitIs input index Int64 copied
+unitIs input code Int64 copied
+unitIs output Bool
+unitIs outputOwnedBy none
+unitIs raises none
+unitIs effect use machine.memory
+unitIs uses memoryAccess
+unitIs memoryHeap false
+unitIs async false
+unitIs maxRecursion none
+unitIs label begin loopKind none
+unitIs label begin within none
+unitIs let four Int64 4 immutable
+unitIs at begin do unitAtStep1
+unitIs at begin do findUnitAt1
+unitIs at begin do readUnit
+unitIs at begin do sameStep1
+unitIs at begin do findSame1
+unitIs at begin return ok same
+
+unitAtStep1 is call
+unitAtStep1 in unitIs
+unitAtStep1 invokes math.multiplyInt64
+unitAtStep1 argument left Int64 index copy
+unitAtStep1 argument right Int64 four copy
+unitAtStep1 result unitAtPart1 Int64
+unitAtStep1 ownedBy none
+unitAtStep1 cleanedBy none
+unitAtStep1 borrows none
+unitAtStep1 catch none
+unitAtStep1 suppresses none
+
+findUnitAt1 is call
+findUnitAt1 in unitIs
+findUnitAt1 invokes machine.offset
+findUnitAt1 argument address machine.Address text copy
+findUnitAt1 argument bytes Int64 unitAtPart1 copy
+findUnitAt1 result unitAt machine.Address
+findUnitAt1 ownedBy none
+findUnitAt1 cleanedBy none
+findUnitAt1 borrows none
+findUnitAt1 catch none
+findUnitAt1 suppresses none
+
+readUnit is call
+readUnit in unitIs
+readUnit invokes machine.loadInt32
+readUnit argument address machine.Address unitAt copy
+readUnit result unit Int32
+readUnit ownedBy none
+readUnit cleanedBy none
+readUnit borrows none
+readUnit catch none
+readUnit suppresses none
+
+sameStep1 is call
+sameStep1 in unitIs
+sameStep1 invokes convert.int32ToInt64
+sameStep1 argument value Int32 unit copy
+sameStep1 result samePart1 Int64
+sameStep1 ownedBy none
+sameStep1 cleanedBy none
+sameStep1 borrows none
+sameStep1 catch none
+sameStep1 suppresses none
+
+findSame1 is call
+findSame1 in unitIs
+findSame1 invokes compare.equalInt64
+findSame1 argument left Int64 samePart1 copy
+findSame1 argument right Int64 code copy
+findSame1 result same Bool
+findSame1 ownedBy none
+findSame1 cleanedBy none
+findSame1 borrows none
+findSame1 catch none
+findSame1 suppresses none
+
+wideTimeTest is test
+wideTimeTest purpose "wcsftime writes strftime's text as wide characters, a format character past 255 kept, and gives 0 for a buffer too small"
+wideTimeTest verifies wideTime formatsWide
+wideTimeTest typeParameter none
+wideTimeTest input none
+wideTimeTest output none
+wideTimeTest outputOwnedBy none
+wideTimeTest raises none
+wideTimeTest effect use machine.memory
+wideTimeTest effect use system.calls
+wideTimeTest uses memoryAccess
+wideTimeTest uses systemCalls
+wideTimeTest memoryHeap false
+wideTimeTest async false
+wideTimeTest maxRecursion none
+wideTimeTest label begin loopKind none
+wideTimeTest label begin within none
+wideTimeTest let sixtyFour Int64 64 immutable
+wideTimeTest let nine Int64 9 immutable
+wideTimeTest let four Int64 4 immutable
+wideTimeTest let seven Int64 7 immutable
+wideTimeTest let eight Int64 8 immutable
+wideTimeTest let n13 Int64 13 immutable
+wideTimeTest let twelve Int64 12 immutable
+wideTimeTest let five Int64 5 immutable
+wideTimeTest let sixteen Int64 16 immutable
+wideTimeTest let two Int64 2 immutable
+wideTimeTest let n20 Int64 20 immutable
+wideTimeTest let n124 Int64 124 immutable
+wideTimeTest let n24 Int64 24 immutable
+wideTimeTest let n28 Int64 28 immutable
+wideTimeTest let text1 String "%Y-%m-%d %H:%M:%S X%a" immutable
+wideTimeTest let n18 Int64 18 immutable
+wideTimeTest let n20013 Int64 20013 immutable
+wideTimeTest let n256 Int64 256 immutable
+wideTimeTest let zero Int64 0 immutable
+wideTimeTest let n50 Int64 50 immutable
+wideTimeTest let ten Int64 10 immutable
+wideTimeTest let thirtyTwo Int64 32 immutable
+wideTimeTest let n21 Int64 21 immutable
+wideTimeTest let n84 Int64 84 immutable
+wideTimeTest let n23 Int64 23 immutable
+wideTimeTest let n101 Int64 101 immutable
+wideTimeTest at begin do readTm
+wideTimeTest at begin do doStoreInt32Step1
+wideTimeTest at begin do doStoreInt32
+wideTimeTest at begin do findMinuteAt1
+wideTimeTest at begin do doStoreInt32Step2
+wideTimeTest at begin do doStoreInt322
+wideTimeTest at begin do findHourAt1
+wideTimeTest at begin do doStoreInt32Step3
+wideTimeTest at begin do doStoreInt323
+wideTimeTest at begin do findDayAt1
+wideTimeTest at begin do doStoreInt32Step4
+wideTimeTest at begin do doStoreInt324
+wideTimeTest at begin do findMonthAt1
+wideTimeTest at begin do doStoreInt32Step5
+wideTimeTest at begin do doStoreInt325
+wideTimeTest at begin do findYearAt1
+wideTimeTest at begin do doStoreInt32Step6
+wideTimeTest at begin do doStoreInt326
+wideTimeTest at begin do findWeekdayAt1
+wideTimeTest at begin do doStoreInt32Step7
+wideTimeTest at begin do doStoreInt327
+wideTimeTest at begin do findYearDayAt1
+wideTimeTest at begin do doStoreInt32Step8
+wideTimeTest at begin do doStoreInt328
+wideTimeTest at begin do readFormat
+wideTimeTest at begin do readTarget
+wideTimeTest at begin do readWritten
+wideTimeTest at begin do doAssertEqualInt64
+wideTimeTest at begin do doAssertTrueStep1
+wideTimeTest at begin do doAssertTrueStep2
+wideTimeTest at begin do doAssertTrueStep3
+wideTimeTest at begin do doAssertTrueStep4
+wideTimeTest at begin do doAssertTrueStep5
+wideTimeTest at begin do doAssertTrueStep6
+wideTimeTest at begin do doAssertTrueStep7
+wideTimeTest at begin do doAssertTrueStep8
+wideTimeTest at begin do doAssertTrueStep9
+wideTimeTest at begin do doAssertTrueStep10
+wideTimeTest at begin do doAssertTrueStep11
+wideTimeTest at begin do doAssertTrue
+wideTimeTest at begin do readSmall
+wideTimeTest at begin do doAssertEqualInt642
+wideTimeTest at begin do doGive
+wideTimeTest at begin do doGive2
+wideTimeTest at begin do doGive3
+wideTimeTest at begin return ok none
+
+readTm is call
+readTm in wideTimeTest
+readTm invokes heap.take
+readTm argument bytes Int64 sixtyFour copy
+readTm result tm machine.Address
+readTm ownedBy none
+readTm cleanedBy none
+readTm borrows none
+readTm catch none
+readTm suppresses none
+
+doStoreInt32Step1 is call
+doStoreInt32Step1 in wideTimeTest
+doStoreInt32Step1 invokes clibrary.lowInt32
+doStoreInt32Step1 argument value Int64 nine copy
+doStoreInt32Step1 result doStoreInt32Part1 Int32
+doStoreInt32Step1 ownedBy none
+doStoreInt32Step1 cleanedBy none
+doStoreInt32Step1 borrows none
+doStoreInt32Step1 catch none
+doStoreInt32Step1 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in wideTimeTest
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address tm copy
+doStoreInt32 argument value Int32 doStoreInt32Part1 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+findMinuteAt1 is call
+findMinuteAt1 in wideTimeTest
+findMinuteAt1 invokes machine.offset
+findMinuteAt1 argument address machine.Address tm copy
+findMinuteAt1 argument bytes Int64 four copy
+findMinuteAt1 result minuteAt machine.Address
+findMinuteAt1 ownedBy none
+findMinuteAt1 cleanedBy none
+findMinuteAt1 borrows none
+findMinuteAt1 catch none
+findMinuteAt1 suppresses none
+
+doStoreInt32Step2 is call
+doStoreInt32Step2 in wideTimeTest
+doStoreInt32Step2 invokes clibrary.lowInt32
+doStoreInt32Step2 argument value Int64 seven copy
+doStoreInt32Step2 result doStoreInt32Part2 Int32
+doStoreInt32Step2 ownedBy none
+doStoreInt32Step2 cleanedBy none
+doStoreInt32Step2 borrows none
+doStoreInt32Step2 catch none
+doStoreInt32Step2 suppresses none
+
+doStoreInt322 is call
+doStoreInt322 in wideTimeTest
+doStoreInt322 invokes machine.storeInt32
+doStoreInt322 argument address machine.Address minuteAt copy
+doStoreInt322 argument value Int32 doStoreInt32Part2 copy
+doStoreInt322 result none
+doStoreInt322 ownedBy none
+doStoreInt322 cleanedBy none
+doStoreInt322 borrows none
+doStoreInt322 catch none
+doStoreInt322 suppresses none
+
+findHourAt1 is call
+findHourAt1 in wideTimeTest
+findHourAt1 invokes machine.offset
+findHourAt1 argument address machine.Address tm copy
+findHourAt1 argument bytes Int64 eight copy
+findHourAt1 result hourAt machine.Address
+findHourAt1 ownedBy none
+findHourAt1 cleanedBy none
+findHourAt1 borrows none
+findHourAt1 catch none
+findHourAt1 suppresses none
+
+doStoreInt32Step3 is call
+doStoreInt32Step3 in wideTimeTest
+doStoreInt32Step3 invokes clibrary.lowInt32
+doStoreInt32Step3 argument value Int64 n13 copy
+doStoreInt32Step3 result doStoreInt32Part3 Int32
+doStoreInt32Step3 ownedBy none
+doStoreInt32Step3 cleanedBy none
+doStoreInt32Step3 borrows none
+doStoreInt32Step3 catch none
+doStoreInt32Step3 suppresses none
+
+doStoreInt323 is call
+doStoreInt323 in wideTimeTest
+doStoreInt323 invokes machine.storeInt32
+doStoreInt323 argument address machine.Address hourAt copy
+doStoreInt323 argument value Int32 doStoreInt32Part3 copy
+doStoreInt323 result none
+doStoreInt323 ownedBy none
+doStoreInt323 cleanedBy none
+doStoreInt323 borrows none
+doStoreInt323 catch none
+doStoreInt323 suppresses none
+
+findDayAt1 is call
+findDayAt1 in wideTimeTest
+findDayAt1 invokes machine.offset
+findDayAt1 argument address machine.Address tm copy
+findDayAt1 argument bytes Int64 twelve copy
+findDayAt1 result dayAt machine.Address
+findDayAt1 ownedBy none
+findDayAt1 cleanedBy none
+findDayAt1 borrows none
+findDayAt1 catch none
+findDayAt1 suppresses none
+
+doStoreInt32Step4 is call
+doStoreInt32Step4 in wideTimeTest
+doStoreInt32Step4 invokes clibrary.lowInt32
+doStoreInt32Step4 argument value Int64 five copy
+doStoreInt32Step4 result doStoreInt32Part4 Int32
+doStoreInt32Step4 ownedBy none
+doStoreInt32Step4 cleanedBy none
+doStoreInt32Step4 borrows none
+doStoreInt32Step4 catch none
+doStoreInt32Step4 suppresses none
+
+doStoreInt324 is call
+doStoreInt324 in wideTimeTest
+doStoreInt324 invokes machine.storeInt32
+doStoreInt324 argument address machine.Address dayAt copy
+doStoreInt324 argument value Int32 doStoreInt32Part4 copy
+doStoreInt324 result none
+doStoreInt324 ownedBy none
+doStoreInt324 cleanedBy none
+doStoreInt324 borrows none
+doStoreInt324 catch none
+doStoreInt324 suppresses none
+
+findMonthAt1 is call
+findMonthAt1 in wideTimeTest
+findMonthAt1 invokes machine.offset
+findMonthAt1 argument address machine.Address tm copy
+findMonthAt1 argument bytes Int64 sixteen copy
+findMonthAt1 result monthAt machine.Address
+findMonthAt1 ownedBy none
+findMonthAt1 cleanedBy none
+findMonthAt1 borrows none
+findMonthAt1 catch none
+findMonthAt1 suppresses none
+
+doStoreInt32Step5 is call
+doStoreInt32Step5 in wideTimeTest
+doStoreInt32Step5 invokes clibrary.lowInt32
+doStoreInt32Step5 argument value Int64 two copy
+doStoreInt32Step5 result doStoreInt32Part5 Int32
+doStoreInt32Step5 ownedBy none
+doStoreInt32Step5 cleanedBy none
+doStoreInt32Step5 borrows none
+doStoreInt32Step5 catch none
+doStoreInt32Step5 suppresses none
+
+doStoreInt325 is call
+doStoreInt325 in wideTimeTest
+doStoreInt325 invokes machine.storeInt32
+doStoreInt325 argument address machine.Address monthAt copy
+doStoreInt325 argument value Int32 doStoreInt32Part5 copy
+doStoreInt325 result none
+doStoreInt325 ownedBy none
+doStoreInt325 cleanedBy none
+doStoreInt325 borrows none
+doStoreInt325 catch none
+doStoreInt325 suppresses none
+
+findYearAt1 is call
+findYearAt1 in wideTimeTest
+findYearAt1 invokes machine.offset
+findYearAt1 argument address machine.Address tm copy
+findYearAt1 argument bytes Int64 n20 copy
+findYearAt1 result yearAt machine.Address
+findYearAt1 ownedBy none
+findYearAt1 cleanedBy none
+findYearAt1 borrows none
+findYearAt1 catch none
+findYearAt1 suppresses none
+
+doStoreInt32Step6 is call
+doStoreInt32Step6 in wideTimeTest
+doStoreInt32Step6 invokes clibrary.lowInt32
+doStoreInt32Step6 argument value Int64 n124 copy
+doStoreInt32Step6 result doStoreInt32Part6 Int32
+doStoreInt32Step6 ownedBy none
+doStoreInt32Step6 cleanedBy none
+doStoreInt32Step6 borrows none
+doStoreInt32Step6 catch none
+doStoreInt32Step6 suppresses none
+
+doStoreInt326 is call
+doStoreInt326 in wideTimeTest
+doStoreInt326 invokes machine.storeInt32
+doStoreInt326 argument address machine.Address yearAt copy
+doStoreInt326 argument value Int32 doStoreInt32Part6 copy
+doStoreInt326 result none
+doStoreInt326 ownedBy none
+doStoreInt326 cleanedBy none
+doStoreInt326 borrows none
+doStoreInt326 catch none
+doStoreInt326 suppresses none
+
+findWeekdayAt1 is call
+findWeekdayAt1 in wideTimeTest
+findWeekdayAt1 invokes machine.offset
+findWeekdayAt1 argument address machine.Address tm copy
+findWeekdayAt1 argument bytes Int64 n24 copy
+findWeekdayAt1 result weekdayAt machine.Address
+findWeekdayAt1 ownedBy none
+findWeekdayAt1 cleanedBy none
+findWeekdayAt1 borrows none
+findWeekdayAt1 catch none
+findWeekdayAt1 suppresses none
+
+doStoreInt32Step7 is call
+doStoreInt32Step7 in wideTimeTest
+doStoreInt32Step7 invokes clibrary.lowInt32
+doStoreInt32Step7 argument value Int64 two copy
+doStoreInt32Step7 result doStoreInt32Part7 Int32
+doStoreInt32Step7 ownedBy none
+doStoreInt32Step7 cleanedBy none
+doStoreInt32Step7 borrows none
+doStoreInt32Step7 catch none
+doStoreInt32Step7 suppresses none
+
+doStoreInt327 is call
+doStoreInt327 in wideTimeTest
+doStoreInt327 invokes machine.storeInt32
+doStoreInt327 argument address machine.Address weekdayAt copy
+doStoreInt327 argument value Int32 doStoreInt32Part7 copy
+doStoreInt327 result none
+doStoreInt327 ownedBy none
+doStoreInt327 cleanedBy none
+doStoreInt327 borrows none
+doStoreInt327 catch none
+doStoreInt327 suppresses none
+
+findYearDayAt1 is call
+findYearDayAt1 in wideTimeTest
+findYearDayAt1 invokes machine.offset
+findYearDayAt1 argument address machine.Address tm copy
+findYearDayAt1 argument bytes Int64 n28 copy
+findYearDayAt1 result yearDayAt machine.Address
+findYearDayAt1 ownedBy none
+findYearDayAt1 cleanedBy none
+findYearDayAt1 borrows none
+findYearDayAt1 catch none
+findYearDayAt1 suppresses none
+
+doStoreInt32Step8 is call
+doStoreInt32Step8 in wideTimeTest
+doStoreInt32Step8 invokes clibrary.lowInt32
+doStoreInt32Step8 argument value Int64 sixtyFour copy
+doStoreInt32Step8 result doStoreInt32Part8 Int32
+doStoreInt32Step8 ownedBy none
+doStoreInt32Step8 cleanedBy none
+doStoreInt32Step8 borrows none
+doStoreInt32Step8 catch none
+doStoreInt32Step8 suppresses none
+
+doStoreInt328 is call
+doStoreInt328 in wideTimeTest
+doStoreInt328 invokes machine.storeInt32
+doStoreInt328 argument address machine.Address yearDayAt copy
+doStoreInt328 argument value Int32 doStoreInt32Part8 copy
+doStoreInt328 result none
+doStoreInt328 ownedBy none
+doStoreInt328 cleanedBy none
+doStoreInt328 borrows none
+doStoreInt328 catch none
+doStoreInt328 suppresses none
+
+readFormat is call
+readFormat in wideTimeTest
+readFormat invokes wideOf
+readFormat argument text String text1 lend
+readFormat argument index Int64 n18 copy
+readFormat argument code Int64 n20013 copy
+readFormat result format machine.Address
+readFormat ownedBy none
+readFormat cleanedBy none
+readFormat borrows none
+readFormat catch none
+readFormat suppresses none
+
+readTarget is call
+readTarget in wideTimeTest
+readTarget invokes heap.take
+readTarget argument bytes Int64 n256 copy
+readTarget result target machine.Address
+readTarget ownedBy none
+readTarget cleanedBy none
+readTarget borrows none
+readTarget catch none
+readTarget suppresses none
+
+readWritten is call
+readWritten in wideTimeTest
+readWritten invokes wideTime
+readWritten argument target machine.Address target copy
+readWritten argument size Int64 sixtyFour copy
+readWritten argument format machine.Address format copy
+readWritten argument tm machine.Address tm copy
+readWritten result written Int64
+readWritten ownedBy none
+readWritten cleanedBy none
+readWritten borrows none
+readWritten catch none
+readWritten suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in wideTimeTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 n24 copy
+doAssertEqualInt64 argument actual Int64 written copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in wideTimeTest
+doAssertTrueStep1 invokes unitIs
+doAssertTrueStep1 argument text machine.Address target copy
+doAssertTrueStep1 argument index Int64 zero copy
+doAssertTrueStep1 argument code Int64 n50 copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in wideTimeTest
+doAssertTrueStep2 invokes unitIs
+doAssertTrueStep2 argument text machine.Address target copy
+doAssertTrueStep2 argument index Int64 ten copy
+doAssertTrueStep2 argument code Int64 thirtyTwo copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in wideTimeTest
+doAssertTrueStep3 invokes logic.and
+doAssertTrueStep3 argument left Bool doAssertTruePart1 copy
+doAssertTrueStep3 argument right Bool doAssertTruePart2 copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrueStep4 is call
+doAssertTrueStep4 in wideTimeTest
+doAssertTrueStep4 invokes unitIs
+doAssertTrueStep4 argument text machine.Address target copy
+doAssertTrueStep4 argument index Int64 n20 copy
+doAssertTrueStep4 argument code Int64 n20013 copy
+doAssertTrueStep4 result doAssertTruePart4 Bool
+doAssertTrueStep4 ownedBy none
+doAssertTrueStep4 cleanedBy none
+doAssertTrueStep4 borrows none
+doAssertTrueStep4 catch none
+doAssertTrueStep4 suppresses none
+
+doAssertTrueStep5 is call
+doAssertTrueStep5 in wideTimeTest
+doAssertTrueStep5 invokes logic.and
+doAssertTrueStep5 argument left Bool doAssertTruePart3 copy
+doAssertTrueStep5 argument right Bool doAssertTruePart4 copy
+doAssertTrueStep5 result doAssertTruePart5 Bool
+doAssertTrueStep5 ownedBy none
+doAssertTrueStep5 cleanedBy none
+doAssertTrueStep5 borrows none
+doAssertTrueStep5 catch none
+doAssertTrueStep5 suppresses none
+
+doAssertTrueStep6 is call
+doAssertTrueStep6 in wideTimeTest
+doAssertTrueStep6 invokes unitIs
+doAssertTrueStep6 argument text machine.Address target copy
+doAssertTrueStep6 argument index Int64 n21 copy
+doAssertTrueStep6 argument code Int64 n84 copy
+doAssertTrueStep6 result doAssertTruePart6 Bool
+doAssertTrueStep6 ownedBy none
+doAssertTrueStep6 cleanedBy none
+doAssertTrueStep6 borrows none
+doAssertTrueStep6 catch none
+doAssertTrueStep6 suppresses none
+
+doAssertTrueStep7 is call
+doAssertTrueStep7 in wideTimeTest
+doAssertTrueStep7 invokes logic.and
+doAssertTrueStep7 argument left Bool doAssertTruePart5 copy
+doAssertTrueStep7 argument right Bool doAssertTruePart6 copy
+doAssertTrueStep7 result doAssertTruePart7 Bool
+doAssertTrueStep7 ownedBy none
+doAssertTrueStep7 cleanedBy none
+doAssertTrueStep7 borrows none
+doAssertTrueStep7 catch none
+doAssertTrueStep7 suppresses none
+
+doAssertTrueStep8 is call
+doAssertTrueStep8 in wideTimeTest
+doAssertTrueStep8 invokes unitIs
+doAssertTrueStep8 argument text machine.Address target copy
+doAssertTrueStep8 argument index Int64 n23 copy
+doAssertTrueStep8 argument code Int64 n101 copy
+doAssertTrueStep8 result doAssertTruePart8 Bool
+doAssertTrueStep8 ownedBy none
+doAssertTrueStep8 cleanedBy none
+doAssertTrueStep8 borrows none
+doAssertTrueStep8 catch none
+doAssertTrueStep8 suppresses none
+
+doAssertTrueStep9 is call
+doAssertTrueStep9 in wideTimeTest
+doAssertTrueStep9 invokes logic.and
+doAssertTrueStep9 argument left Bool doAssertTruePart7 copy
+doAssertTrueStep9 argument right Bool doAssertTruePart8 copy
+doAssertTrueStep9 result doAssertTruePart9 Bool
+doAssertTrueStep9 ownedBy none
+doAssertTrueStep9 cleanedBy none
+doAssertTrueStep9 borrows none
+doAssertTrueStep9 catch none
+doAssertTrueStep9 suppresses none
+
+doAssertTrueStep10 is call
+doAssertTrueStep10 in wideTimeTest
+doAssertTrueStep10 invokes unitIs
+doAssertTrueStep10 argument text machine.Address target copy
+doAssertTrueStep10 argument index Int64 n24 copy
+doAssertTrueStep10 argument code Int64 zero copy
+doAssertTrueStep10 result doAssertTruePart10 Bool
+doAssertTrueStep10 ownedBy none
+doAssertTrueStep10 cleanedBy none
+doAssertTrueStep10 borrows none
+doAssertTrueStep10 catch none
+doAssertTrueStep10 suppresses none
+
+doAssertTrueStep11 is call
+doAssertTrueStep11 in wideTimeTest
+doAssertTrueStep11 invokes logic.and
+doAssertTrueStep11 argument left Bool doAssertTruePart9 copy
+doAssertTrueStep11 argument right Bool doAssertTruePart10 copy
+doAssertTrueStep11 result doAssertTruePart11 Bool
+doAssertTrueStep11 ownedBy none
+doAssertTrueStep11 cleanedBy none
+doAssertTrueStep11 borrows none
+doAssertTrueStep11 catch none
+doAssertTrueStep11 suppresses none
+
+doAssertTrue is call
+doAssertTrue in wideTimeTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart11 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readSmall is call
+readSmall in wideTimeTest
+readSmall invokes wideTime
+readSmall argument target machine.Address target copy
+readSmall argument size Int64 n24 copy
+readSmall argument format machine.Address format copy
+readSmall argument tm machine.Address tm copy
+readSmall result small Int64
+readSmall ownedBy none
+readSmall cleanedBy none
+readSmall borrows none
+readSmall catch none
+readSmall suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in wideTimeTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 zero copy
+doAssertEqualInt642 argument actual Int64 small copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+doGive is call
+doGive in wideTimeTest
+doGive invokes heap.give
+doGive argument block machine.Address target copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in wideTimeTest
+doGive2 invokes heap.give
+doGive2 argument block machine.Address format copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doGive3 is call
+doGive3 in wideTimeTest
+doGive3 invokes heap.give
+doGive3 argument block machine.Address tm copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none

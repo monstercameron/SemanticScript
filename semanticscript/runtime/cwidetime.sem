@@ -1,0 +1,778 @@
+# wcsftime for the runtime's C library, written in SemanticScript (D-176): strftime's text as wide characters.
+#
+# This module is generated from tools/cwidetime.dsl by tools/build.py.
+
+cwidetime is module
+cwidetime purpose "wcsftime for the runtime's C library: strftime's text as wide characters (D-176)"
+cwidetime path cwidetime
+cwidetime imports standard.machine
+cwidetime imports standard.string
+cwidetime imports standard.math
+cwidetime imports standard.compare
+cwidetime imports standard.convert
+cwidetime imports standard.bits
+cwidetime imports standard.logic
+cwidetime imports standard.test
+cwidetime imports heap
+cwidetime imports wide
+cwidetime imports clibrary
+cwidetime imports cformat
+cwidetime imports ctime
+cwidetime exports none
+
+memoryAccess is capability
+memoryAccess purpose "Authority to read and write the memory C callers hand the library"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to take memory for the text strftime writes"
+systemCalls grants use system.calls none
+
+# D-176: wcsftime writes what strftime writes, as wide characters. Its wide format is made bytes as the wide printf
+# family makes its formats (cformat.addUnit: a character past 254 as 255 and six bytes of its bits), strftime
+# (ctime.formatTime) copies those bytes through as ordinary characters, and the text is read back into wide
+# characters; every conversion writes ASCII in the C locale. Like strftime it gives 0 when the characters and their
+# 0 do not fit.
+forever is constant
+forever purpose "The bound of a loop that ends by its own test"
+forever type Int64
+forever value 9223372036854775807
+
+wideTimeFormat is operation
+wideTimeFormat purpose "A wide format made bytes, a wide character past 254 as 255 and six bytes of its bits, in a new block ending with 0"
+wideTimeFormat invariant none
+wideTimeFormat typeParameter none
+wideTimeFormat input text machine.Address copied
+wideTimeFormat output machine.Address
+wideTimeFormat outputOwnedBy none
+wideTimeFormat raises none
+wideTimeFormat effect use machine.memory
+wideTimeFormat effect use system.calls
+wideTimeFormat uses memoryAccess
+wideTimeFormat uses systemCalls
+wideTimeFormat memoryHeap false
+wideTimeFormat async false
+wideTimeFormat maxRecursion none
+wideTimeFormat label begin loopKind none
+wideTimeFormat label begin within none
+wideTimeFormat label eachUnit loopKind while
+wideTimeFormat label eachUnit within none
+wideTimeFormat label eachUnit maxIterations forever
+wideTimeFormat label addIt loopKind none
+wideTimeFormat label addIt within eachUnit
+wideTimeFormat label finish loopKind none
+wideTimeFormat label finish within none
+wideTimeFormat let at Int64 0 mutable
+wideTimeFormat let four Int64 4 immutable
+wideTimeFormat let zero Int64 0 immutable
+wideTimeFormat let one Int64 1 immutable
+wideTimeFormat at begin do readBuilder
+wideTimeFormat at begin goto eachUnit
+wideTimeFormat at eachUnit do unitAtStep1
+wideTimeFormat at eachUnit do findUnitAt1
+wideTimeFormat at eachUnit do codeStep1
+wideTimeFormat at eachUnit do findCode1
+wideTimeFormat at eachUnit do findCheck11
+wideTimeFormat at eachUnit branch if check1 goto finish else goto addIt
+wideTimeFormat at addIt do doAddUnit
+wideTimeFormat at addIt do findAtNext11
+wideTimeFormat at addIt set at atNext1
+wideTimeFormat at addIt goto eachUnit
+wideTimeFormat at finish do doBuilderAddByteStep1
+wideTimeFormat at finish do doBuilderAddByte
+wideTimeFormat at finish do readBytes
+wideTimeFormat at finish do doGive
+wideTimeFormat at finish return ok bytes
+
+readBuilder is call
+readBuilder in wideTimeFormat
+readBuilder invokes wide.builderNew
+readBuilder argument none
+readBuilder result builder machine.Address
+readBuilder ownedBy none
+readBuilder cleanedBy none
+readBuilder borrows none
+readBuilder catch none
+readBuilder suppresses none
+
+unitAtStep1 is call
+unitAtStep1 in wideTimeFormat
+unitAtStep1 invokes math.multiplyInt64
+unitAtStep1 argument left Int64 at copy
+unitAtStep1 argument right Int64 four copy
+unitAtStep1 result unitAtPart1 Int64
+unitAtStep1 ownedBy none
+unitAtStep1 cleanedBy none
+unitAtStep1 borrows none
+unitAtStep1 catch none
+unitAtStep1 suppresses none
+
+findUnitAt1 is call
+findUnitAt1 in wideTimeFormat
+findUnitAt1 invokes machine.offset
+findUnitAt1 argument address machine.Address text copy
+findUnitAt1 argument bytes Int64 unitAtPart1 copy
+findUnitAt1 result unitAt machine.Address
+findUnitAt1 ownedBy none
+findUnitAt1 cleanedBy none
+findUnitAt1 borrows none
+findUnitAt1 catch none
+findUnitAt1 suppresses none
+
+codeStep1 is call
+codeStep1 in wideTimeFormat
+codeStep1 invokes machine.loadInt32
+codeStep1 argument address machine.Address unitAt copy
+codeStep1 result codePart1 Int32
+codeStep1 ownedBy none
+codeStep1 cleanedBy none
+codeStep1 borrows none
+codeStep1 catch none
+codeStep1 suppresses none
+
+findCode1 is call
+findCode1 in wideTimeFormat
+findCode1 invokes convert.int32ToInt64
+findCode1 argument value Int32 codePart1 copy
+findCode1 result code Int64
+findCode1 ownedBy none
+findCode1 cleanedBy none
+findCode1 borrows none
+findCode1 catch none
+findCode1 suppresses none
+
+findCheck11 is call
+findCheck11 in wideTimeFormat
+findCheck11 invokes compare.equalInt64
+findCheck11 argument left Int64 code copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doAddUnit is call
+doAddUnit in wideTimeFormat
+doAddUnit invokes cformat.addUnit
+doAddUnit argument builder machine.Address builder copy
+doAddUnit argument code Int64 code copy
+doAddUnit result none
+doAddUnit ownedBy none
+doAddUnit cleanedBy none
+doAddUnit borrows none
+doAddUnit catch none
+doAddUnit suppresses none
+
+findAtNext11 is call
+findAtNext11 in wideTimeFormat
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+doBuilderAddByteStep1 is call
+doBuilderAddByteStep1 in wideTimeFormat
+doBuilderAddByteStep1 invokes convert.int64ToByte
+doBuilderAddByteStep1 argument value Int64 zero copy
+doBuilderAddByteStep1 result doBuilderAddBytePart1 Byte
+doBuilderAddByteStep1 ownedBy none
+doBuilderAddByteStep1 cleanedBy none
+doBuilderAddByteStep1 borrows none
+doBuilderAddByteStep1 catch none
+doBuilderAddByteStep1 suppresses none
+
+doBuilderAddByte is call
+doBuilderAddByte in wideTimeFormat
+doBuilderAddByte invokes wide.builderAddByte
+doBuilderAddByte argument builder machine.Address builder copy
+doBuilderAddByte argument byte Byte doBuilderAddBytePart1 copy
+doBuilderAddByte result none
+doBuilderAddByte ownedBy none
+doBuilderAddByte cleanedBy none
+doBuilderAddByte borrows none
+doBuilderAddByte catch none
+doBuilderAddByte suppresses none
+
+readBytes is call
+readBytes in wideTimeFormat
+readBytes invokes wide.builderText
+readBytes argument builder machine.Address builder copy
+readBytes result bytes machine.Address
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+doGive is call
+doGive in wideTimeFormat
+doGive invokes heap.give
+doGive argument block machine.Address builder copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+wideTime is operation
+wideTime purpose "wcsftime: a struct tm written as a wide format says into a buffer of a size in wide characters: the characters written without the 0, or 0 when they and the 0 do not fit"
+wideTime invariant formatsWide "\"Writes strftime's text as wide characters, keeping the format's characters past 255, or gives 0 when it does not fit\""
+wideTime typeParameter none
+wideTime input target machine.Address copied
+wideTime input size Int64 copied
+wideTime input format machine.Address copied
+wideTime input tm machine.Address copied
+wideTime output Int64
+wideTime outputOwnedBy none
+wideTime raises none
+wideTime effect use machine.memory
+wideTime effect use system.calls
+wideTime uses memoryAccess
+wideTime uses systemCalls
+wideTime memoryHeap false
+wideTime async false
+wideTime maxRecursion none
+wideTime abi library "wcsftime"
+wideTime label begin loopKind none
+wideTime label begin within none
+wideTime label prepare loopKind none
+wideTime label prepare within none
+wideTime label eachByte loopKind while
+wideTime label eachByte within none
+wideTime label eachByte maxIterations forever
+wideTime label readOne loopKind none
+wideTime label readOne within eachByte
+wideTime label plain loopKind none
+wideTime label plain within eachByte
+wideTime label escape loopKind none
+wideTime label escape within eachByte
+wideTime label pieces loopKind while
+wideTime label pieces within eachByte
+wideTime label pieces maxIterations forever
+wideTime label addPiece loopKind none
+wideTime label addPiece within pieces
+wideTime label store loopKind none
+wideTime label store within eachByte
+wideTime label keep loopKind none
+wideTime label keep within eachByte
+wideTime label decoded loopKind none
+wideTime label decoded within none
+wideTime label tooLong loopKind none
+wideTime label tooLong within none
+wideTime label refuse loopKind none
+wideTime label refuse within none
+wideTime let at Int64 0 mutable
+wideTime let count Int64 0 mutable
+wideTime let code Int64 0 mutable
+wideTime let piece Int64 0 mutable
+wideTime let nothing Int64 0 immutable
+wideTime let zero Int64 0 immutable
+wideTime let n1048576 Int64 1048576 immutable
+wideTime let seven Int64 7 immutable
+wideTime let one Int64 1 immutable
+wideTime let n255 Int64 255 immutable
+wideTime let six Int64 6 immutable
+wideTime let n63 Int64 63 immutable
+wideTime let four Int64 4 immutable
+wideTime at begin do findCheck11
+wideTime at begin branch if check1 goto refuse else goto prepare
+wideTime at prepare do readFormatBytes
+wideTime at prepare do findMost1
+wideTime at prepare do roomStep1
+wideTime at prepare do findRoom1
+wideTime at prepare do findBytes1
+wideTime at prepare do readWritten
+wideTime at prepare do doGive
+wideTime at prepare goto eachByte
+wideTime at eachByte do findCheck21
+wideTime at eachByte branch if check2 goto decoded else goto readOne
+wideTime at readOne do firstStep1
+wideTime at readOne do findFirst1
+wideTime at readOne do findAtNext11
+wideTime at readOne set at atNext1
+wideTime at readOne do findCheck31
+wideTime at readOne branch if check3 goto escape else goto plain
+wideTime at plain set code first
+wideTime at plain goto store
+wideTime at escape set code zero
+wideTime at escape set piece zero
+wideTime at escape goto pieces
+wideTime at pieces do findCheck41
+wideTime at pieces branch if check4 goto store else goto addPiece
+wideTime at addPiece do bitsStep1
+wideTime at addPiece do bitsStep2
+wideTime at addPiece do findBits1
+wideTime at addPiece do codeStep1
+wideTime at addPiece do findCodeNext11
+wideTime at addPiece set code codeNext1
+wideTime at addPiece do findAtNext21
+wideTime at addPiece set at atNext2
+wideTime at addPiece do findPieceNext11
+wideTime at addPiece set piece pieceNext1
+wideTime at addPiece goto pieces
+wideTime at store do check5Step1
+wideTime at store do findCheck51
+wideTime at store branch if check5 goto tooLong else goto keep
+wideTime at keep do unitAtStep1
+wideTime at keep do findUnitAt1
+wideTime at keep do doStoreInt32Step1
+wideTime at keep do doStoreInt32
+wideTime at keep do findCountNext11
+wideTime at keep set count countNext1
+wideTime at keep goto eachByte
+wideTime at decoded do doGive2
+wideTime at decoded do endAtStep1
+wideTime at decoded do findEndAt1
+wideTime at decoded do doStoreInt32Step2
+wideTime at decoded do doStoreInt322
+wideTime at decoded return ok count
+wideTime at tooLong do doGive3
+wideTime at tooLong return ok nothing
+wideTime at refuse return ok nothing
+
+findCheck11 is call
+findCheck11 in wideTime
+findCheck11 invokes compare.lessOrEqualInt64
+findCheck11 argument left Int64 size copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readFormatBytes is call
+readFormatBytes in wideTime
+readFormatBytes invokes wideTimeFormat
+readFormatBytes argument text machine.Address format copy
+readFormatBytes result formatBytes machine.Address
+readFormatBytes ownedBy none
+readFormatBytes cleanedBy none
+readFormatBytes borrows none
+readFormatBytes catch none
+readFormatBytes suppresses none
+
+findMost1 is call
+findMost1 in wideTime
+findMost1 invokes lowestOf
+findMost1 argument left Int64 size copy
+findMost1 argument right Int64 n1048576 copy
+findMost1 result most Int64
+findMost1 ownedBy none
+findMost1 cleanedBy none
+findMost1 borrows none
+findMost1 catch none
+findMost1 suppresses none
+
+roomStep1 is call
+roomStep1 in wideTime
+roomStep1 invokes math.multiplyInt64
+roomStep1 argument left Int64 most copy
+roomStep1 argument right Int64 seven copy
+roomStep1 result roomPart1 Int64
+roomStep1 ownedBy none
+roomStep1 cleanedBy none
+roomStep1 borrows none
+roomStep1 catch none
+roomStep1 suppresses none
+
+findRoom1 is call
+findRoom1 in wideTime
+findRoom1 invokes math.addInt64
+findRoom1 argument left Int64 roomPart1 copy
+findRoom1 argument right Int64 one copy
+findRoom1 result room Int64
+findRoom1 ownedBy none
+findRoom1 cleanedBy none
+findRoom1 borrows none
+findRoom1 catch none
+findRoom1 suppresses none
+
+findBytes1 is call
+findBytes1 in wideTime
+findBytes1 invokes heap.take
+findBytes1 argument bytes Int64 room copy
+findBytes1 result bytes machine.Address
+findBytes1 ownedBy none
+findBytes1 cleanedBy none
+findBytes1 borrows none
+findBytes1 catch none
+findBytes1 suppresses none
+
+readWritten is call
+readWritten in wideTime
+readWritten invokes ctime.formatTime
+readWritten argument buffer machine.Address bytes copy
+readWritten argument size Int64 room copy
+readWritten argument format machine.Address formatBytes copy
+readWritten argument tm machine.Address tm copy
+readWritten result written Int64
+readWritten ownedBy none
+readWritten cleanedBy none
+readWritten borrows none
+readWritten catch none
+readWritten suppresses none
+
+doGive is call
+doGive in wideTime
+doGive invokes heap.give
+doGive argument block machine.Address formatBytes copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+findCheck21 is call
+findCheck21 in wideTime
+findCheck21 invokes compare.greaterOrEqualInt64
+findCheck21 argument left Int64 at copy
+findCheck21 argument right Int64 written copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+firstStep1 is call
+firstStep1 in wideTime
+firstStep1 invokes clibrary.byteAt
+firstStep1 argument base machine.Address bytes copy
+firstStep1 argument at Int64 at copy
+firstStep1 result firstPart1 Byte
+firstStep1 ownedBy none
+firstStep1 cleanedBy none
+firstStep1 borrows none
+firstStep1 catch none
+firstStep1 suppresses none
+
+findFirst1 is call
+findFirst1 in wideTime
+findFirst1 invokes convert.byteToInt64
+findFirst1 argument value Byte firstPart1 copy
+findFirst1 result first Int64
+findFirst1 ownedBy none
+findFirst1 cleanedBy none
+findFirst1 borrows none
+findFirst1 catch none
+findFirst1 suppresses none
+
+findAtNext11 is call
+findAtNext11 in wideTime
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+findCheck31 is call
+findCheck31 in wideTime
+findCheck31 invokes compare.equalInt64
+findCheck31 argument left Int64 first copy
+findCheck31 argument right Int64 n255 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+findCheck41 is call
+findCheck41 in wideTime
+findCheck41 invokes compare.greaterOrEqualInt64
+findCheck41 argument left Int64 piece copy
+findCheck41 argument right Int64 six copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+bitsStep1 is call
+bitsStep1 in wideTime
+bitsStep1 invokes clibrary.byteAt
+bitsStep1 argument base machine.Address bytes copy
+bitsStep1 argument at Int64 at copy
+bitsStep1 result bitsPart1 Byte
+bitsStep1 ownedBy none
+bitsStep1 cleanedBy none
+bitsStep1 borrows none
+bitsStep1 catch none
+bitsStep1 suppresses none
+
+bitsStep2 is call
+bitsStep2 in wideTime
+bitsStep2 invokes convert.byteToInt64
+bitsStep2 argument value Byte bitsPart1 copy
+bitsStep2 result bitsPart2 Int64
+bitsStep2 ownedBy none
+bitsStep2 cleanedBy none
+bitsStep2 borrows none
+bitsStep2 catch none
+bitsStep2 suppresses none
+
+findBits1 is call
+findBits1 in wideTime
+findBits1 invokes bits.andInt64
+findBits1 argument left Int64 bitsPart2 copy
+findBits1 argument right Int64 n63 copy
+findBits1 result bits Int64
+findBits1 ownedBy none
+findBits1 cleanedBy none
+findBits1 borrows none
+findBits1 catch none
+findBits1 suppresses none
+
+codeStep1 is call
+codeStep1 in wideTime
+codeStep1 invokes bits.shiftLeftInt64
+codeStep1 argument value Int64 code copy
+codeStep1 argument amount Int64 six copy
+codeStep1 result codePart1 Int64
+codeStep1 ownedBy none
+codeStep1 cleanedBy none
+codeStep1 borrows none
+codeStep1 catch none
+codeStep1 suppresses none
+
+findCodeNext11 is call
+findCodeNext11 in wideTime
+findCodeNext11 invokes bits.orInt64
+findCodeNext11 argument left Int64 codePart1 copy
+findCodeNext11 argument right Int64 bits copy
+findCodeNext11 result codeNext1 Int64
+findCodeNext11 ownedBy none
+findCodeNext11 cleanedBy none
+findCodeNext11 borrows none
+findCodeNext11 catch none
+findCodeNext11 suppresses none
+
+findAtNext21 is call
+findAtNext21 in wideTime
+findAtNext21 invokes math.addInt64
+findAtNext21 argument left Int64 at copy
+findAtNext21 argument right Int64 one copy
+findAtNext21 result atNext2 Int64
+findAtNext21 ownedBy none
+findAtNext21 cleanedBy none
+findAtNext21 borrows none
+findAtNext21 catch none
+findAtNext21 suppresses none
+
+findPieceNext11 is call
+findPieceNext11 in wideTime
+findPieceNext11 invokes math.addInt64
+findPieceNext11 argument left Int64 piece copy
+findPieceNext11 argument right Int64 one copy
+findPieceNext11 result pieceNext1 Int64
+findPieceNext11 ownedBy none
+findPieceNext11 cleanedBy none
+findPieceNext11 borrows none
+findPieceNext11 catch none
+findPieceNext11 suppresses none
+
+check5Step1 is call
+check5Step1 in wideTime
+check5Step1 invokes math.subtractInt64
+check5Step1 argument left Int64 size copy
+check5Step1 argument right Int64 one copy
+check5Step1 result check5Part1 Int64
+check5Step1 ownedBy none
+check5Step1 cleanedBy none
+check5Step1 borrows none
+check5Step1 catch none
+check5Step1 suppresses none
+
+findCheck51 is call
+findCheck51 in wideTime
+findCheck51 invokes compare.greaterOrEqualInt64
+findCheck51 argument left Int64 count copy
+findCheck51 argument right Int64 check5Part1 copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+unitAtStep1 is call
+unitAtStep1 in wideTime
+unitAtStep1 invokes math.multiplyInt64
+unitAtStep1 argument left Int64 count copy
+unitAtStep1 argument right Int64 four copy
+unitAtStep1 result unitAtPart1 Int64
+unitAtStep1 ownedBy none
+unitAtStep1 cleanedBy none
+unitAtStep1 borrows none
+unitAtStep1 catch none
+unitAtStep1 suppresses none
+
+findUnitAt1 is call
+findUnitAt1 in wideTime
+findUnitAt1 invokes machine.offset
+findUnitAt1 argument address machine.Address target copy
+findUnitAt1 argument bytes Int64 unitAtPart1 copy
+findUnitAt1 result unitAt machine.Address
+findUnitAt1 ownedBy none
+findUnitAt1 cleanedBy none
+findUnitAt1 borrows none
+findUnitAt1 catch none
+findUnitAt1 suppresses none
+
+doStoreInt32Step1 is call
+doStoreInt32Step1 in wideTime
+doStoreInt32Step1 invokes clibrary.lowInt32
+doStoreInt32Step1 argument value Int64 code copy
+doStoreInt32Step1 result doStoreInt32Part1 Int32
+doStoreInt32Step1 ownedBy none
+doStoreInt32Step1 cleanedBy none
+doStoreInt32Step1 borrows none
+doStoreInt32Step1 catch none
+doStoreInt32Step1 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in wideTime
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address unitAt copy
+doStoreInt32 argument value Int32 doStoreInt32Part1 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+findCountNext11 is call
+findCountNext11 in wideTime
+findCountNext11 invokes math.addInt64
+findCountNext11 argument left Int64 count copy
+findCountNext11 argument right Int64 one copy
+findCountNext11 result countNext1 Int64
+findCountNext11 ownedBy none
+findCountNext11 cleanedBy none
+findCountNext11 borrows none
+findCountNext11 catch none
+findCountNext11 suppresses none
+
+doGive2 is call
+doGive2 in wideTime
+doGive2 invokes heap.give
+doGive2 argument block machine.Address bytes copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+endAtStep1 is call
+endAtStep1 in wideTime
+endAtStep1 invokes math.multiplyInt64
+endAtStep1 argument left Int64 count copy
+endAtStep1 argument right Int64 four copy
+endAtStep1 result endAtPart1 Int64
+endAtStep1 ownedBy none
+endAtStep1 cleanedBy none
+endAtStep1 borrows none
+endAtStep1 catch none
+endAtStep1 suppresses none
+
+findEndAt1 is call
+findEndAt1 in wideTime
+findEndAt1 invokes machine.offset
+findEndAt1 argument address machine.Address target copy
+findEndAt1 argument bytes Int64 endAtPart1 copy
+findEndAt1 result endAt machine.Address
+findEndAt1 ownedBy none
+findEndAt1 cleanedBy none
+findEndAt1 borrows none
+findEndAt1 catch none
+findEndAt1 suppresses none
+
+doStoreInt32Step2 is call
+doStoreInt32Step2 in wideTime
+doStoreInt32Step2 invokes clibrary.lowInt32
+doStoreInt32Step2 argument value Int64 zero copy
+doStoreInt32Step2 result doStoreInt32Part2 Int32
+doStoreInt32Step2 ownedBy none
+doStoreInt32Step2 cleanedBy none
+doStoreInt32Step2 borrows none
+doStoreInt32Step2 catch none
+doStoreInt32Step2 suppresses none
+
+doStoreInt322 is call
+doStoreInt322 in wideTime
+doStoreInt322 invokes machine.storeInt32
+doStoreInt322 argument address machine.Address endAt copy
+doStoreInt322 argument value Int32 doStoreInt32Part2 copy
+doStoreInt322 result none
+doStoreInt322 ownedBy none
+doStoreInt322 cleanedBy none
+doStoreInt322 borrows none
+doStoreInt322 catch none
+doStoreInt322 suppresses none
+
+doGive3 is call
+doGive3 in wideTime
+doGive3 invokes heap.give
+doGive3 argument block machine.Address bytes copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+lowestOf is operation
+lowestOf purpose "The smaller of two whole numbers"
+lowestOf invariant none
+lowestOf typeParameter none
+lowestOf input left Int64 copied
+lowestOf input right Int64 copied
+lowestOf output Int64
+lowestOf outputOwnedBy none
+lowestOf raises none
+lowestOf effect none
+lowestOf uses none
+lowestOf memoryHeap false
+lowestOf async false
+lowestOf maxRecursion none
+lowestOf label begin loopKind none
+lowestOf label begin within none
+lowestOf label giveLeft loopKind none
+lowestOf label giveLeft within none
+lowestOf label giveRight loopKind none
+lowestOf label giveRight within none
+lowestOf let none
+lowestOf at begin do findCheck11
+lowestOf at begin branch if check1 goto giveLeft else goto giveRight
+lowestOf at giveLeft return ok left
+lowestOf at giveRight return ok right
+
+findCheck11 is call
+findCheck11 in lowestOf
+findCheck11 invokes compare.lessThanInt64
+findCheck11 argument left Int64 left copy
+findCheck11 argument right Int64 right copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
