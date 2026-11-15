@@ -141,7 +141,9 @@ def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
         triple = f"{parts[0]}-unknown-linux-{parts[2]}"  # `x86_64-linux-gnu` names no vendor
     windows = "mingw" in machine or "windows" in machine
     apple = "apple" in machine or "darwin" in machine
-    budget = STACK_BYTES - 8 * 1024 * 1024 if windows else 6 * 1024 * 1024
+    # Windows links the main thread with STACK_BYTES; elsewhere the program runs on a thread made with that
+    # stack, so a deep recursion reaches the same maxRecursion it reaches under the JIT.
+    budget = STACK_BYTES - 8 * 1024 * 1024
     with tempfile.TemporaryDirectory() as d:
         obj = os.path.join(d, "program.o")
         with open(obj, "wb") as fh:
@@ -149,17 +151,32 @@ def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
         symbol = ("_" if apple else "") + entry
         main_c = os.path.join(d, "main.c")
         with open(main_c, "w", encoding="utf-8") as fh:
-            fh.write("#include <stdint.h>\n"
-                     f'extern int32_t refined_entry(void) __asm__("{symbol}");\n'
-                     f'extern int64_t refined_stack_here(void) __asm__("{"_" if apple else ""}refined_stack_here");\n'
-                     "void refined_set_floor(int64_t floor);\n"
-                     "void refined_start(int argc, char **argv);\n"
-                     "int main(int argc, char **argv) { refined_start(argc, argv); "
-                     f"refined_set_floor(refined_stack_here() - {budget}LL); "
-                     "return (int)refined_entry(); }\n")
+            head = ("#include <stdint.h>\n"
+                    f'extern int32_t refined_entry(void) __asm__("{symbol}");\n'
+                    f'extern int64_t refined_stack_here(void) __asm__("{"_" if apple else ""}refined_stack_here");\n'
+                    "void refined_set_floor(int64_t floor);\n"
+                    "void refined_start(int argc, char **argv);\n")
+            if windows:
+                fh.write(head + "int main(int argc, char **argv) { refined_start(argc, argv); "
+                         f"refined_set_floor(refined_stack_here() - {budget}LL); "
+                         "return (int)refined_entry(); }\n")
+            else:
+                fh.write("#include <pthread.h>\n" + head +
+                         "static int32_t refined_result;\n"
+                         f"static int64_t refined_budget = {budget}LL;\n"
+                         "static void *refined_run(void *unused) { (void)unused; "
+                         "refined_set_floor(refined_stack_here() - refined_budget); "
+                         "refined_result = refined_entry(); return 0; }\n"
+                         "int main(int argc, char **argv) { refined_start(argc, argv); pthread_attr_t attr; "
+                         f"pthread_attr_init(&attr); pthread_attr_setstacksize(&attr, {STACK_BYTES}ULL); "
+                         "pthread_t thread; if (pthread_create(&thread, &attr, refined_run, 0) != 0) { "
+                         "refined_budget = 6LL * 1024 * 1024; refined_run(0); return (int)refined_result; } "
+                         "pthread_join(thread, 0); return (int)refined_result; }\n")
         base = cc + ["-O2", "-o", output, obj, _runtime_object(cc, machine, d), main_c]
         if windows:
             base += [f"-Wl,--stack,{STACK_BYTES}", "-lshell32"]
+        else:
+            base += ["-pthread"]
         last = None
         for extra in (["-static"], []):  # static when the platform's C library allows it
             proc = subprocess.run(base + extra, capture_output=True, text=True)

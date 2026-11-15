@@ -168,7 +168,18 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("grammar")
     p.add_argument("--textmate", action="store_true", help="emit the editor grammar instead of the Markdown reference")
     p.add_argument("--output", default=None, help="write to this file (LF line endings) instead of stdout")
+    # Everything after the first `--` is the program's, split off before argparse sees it: Python 3.11's
+    # argparse does not hand it to the `arguments` positional when an option stands between that and `path`.
+    argv = list(sys.argv[1:] if argv is None else argv)
+    program_arguments: list[str] = []
+    if "--" in argv:
+        cut = argv.index("--")
+        argv, program_arguments = argv[:cut], argv[cut + 1:]
     args = ap.parse_args(argv)
+    if program_arguments:
+        if not hasattr(args, "arguments"):
+            ap.error(f"`refined {args.command}` takes no program arguments after `--`")
+        args.arguments = list(args.arguments) + program_arguments
 
     if args.command == "grammar":
         text = (json.dumps(textmate_grammar(), indent=2) if args.textmate else grammar_markdown()) + "\n"

@@ -334,11 +334,11 @@ def test_program_sees_an_interrupt(tmp_path):
                  ("got", "do printGot"), ("got", "return ok okCode"), ("failed", "return ok failCode")],
                 output="ExitCode", effects=("read signal.interrupts", "write console.stdout"),
                 uses=("interruptReader", "stdoutWriter"), waits=True,
-                lets=('ready String "ready" immutable', 'got String "interrupted" immutable',
+                lets=('ready String "ready" immutable', 'gotText String "interrupted" immutable',
                       "tenSeconds Int64 10000 immutable", "okCode ExitCode 0 immutable",
                       "failCode ExitCode 1 immutable")))
     p.add(sb.printer("main", "printReady", "String", "ready"))
-    p.add(sb.printer("main", "printGot", "String", "got"))
+    p.add(sb.printer("main", "printGot", "String", "gotText"))
     p.add(sb.call("makeDeadline", "main", "time.Deadline.after", ("milliseconds Int64 tenSeconds copy",),
                   out="deadline time.Deadline"))
     p.add(sb.call("waitIt", "main", "signal.waitForInterrupt", ("deadline time.Deadline deadline copy",),
