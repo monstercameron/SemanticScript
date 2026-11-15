@@ -9566,7 +9566,7 @@ doGive2 suppresses none
 
 # ---------------------------------------------------------------- the zone at a time
 changeTime is operation
-changeTime purpose "The UTC time of a daylight-saving change in a year: the rule (five longs), the year, and the UTC offset in force before the change"
+changeTime purpose "The UTC time of a daylight-saving change in a year (glibc counts the days of a year up to 1970 from 1970-01-01, so a rule never changes the time before then): the rule (five longs), the year, and the UTC offset in force before the change"
 changeTime invariant none
 changeTime typeParameter none
 changeTime input rule machine.Address copied
@@ -9598,6 +9598,10 @@ changeTime label zeroBased loopKind none
 changeTime label zeroBased within none
 changeTime label done loopKind none
 changeTime label done within none
+changeTime label early loopKind none
+changeTime label early within none
+changeTime label late loopKind none
+changeTime label late within none
 changeTime let day Int64 0 mutable
 changeTime let eight Int64 8 immutable
 changeTime let sixteen Int64 16 immutable
@@ -9608,6 +9612,7 @@ changeTime let zero Int64 0 immutable
 changeTime let four Int64 4 immutable
 changeTime let seven Int64 7 immutable
 changeTime let n60 Int64 60 immutable
+changeTime let n1970 Int64 1970 immutable
 changeTime let n86400 Int64 86400 immutable
 changeTime at begin do readKind
 changeTime at begin do aStep1
@@ -9654,10 +9659,17 @@ changeTime at bump goto done
 changeTime at zeroBased do findDayNext51
 changeTime at zeroBased set day dayNext5
 changeTime at zeroBased goto done
-changeTime at done do changeStep1
-changeTime at done do changeStep2
-changeTime at done do findChange1
-changeTime at done return ok change
+changeTime at done do findCheck31
+changeTime at done branch if check3 goto early else goto late
+changeTime at early do earlyChangeStep1
+changeTime at early do earlyChangeStep2
+changeTime at early do earlyChangeStep3
+changeTime at early do findEarlyChange1
+changeTime at early return ok earlyChange
+changeTime at late do changeStep1
+changeTime at late do changeStep2
+changeTime at late do findChange1
+changeTime at late return ok change
 
 readKind is call
 readKind in changeTime
@@ -10038,6 +10050,66 @@ findDayNext51 cleanedBy none
 findDayNext51 borrows none
 findDayNext51 catch none
 findDayNext51 suppresses none
+
+findCheck31 is call
+findCheck31 in changeTime
+findCheck31 invokes compare.lessOrEqualInt64
+findCheck31 argument left Int64 year copy
+findCheck31 argument right Int64 n1970 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+earlyChangeStep1 is call
+earlyChangeStep1 in changeTime
+earlyChangeStep1 invokes math.subtractInt64
+earlyChangeStep1 argument left Int64 day copy
+earlyChangeStep1 argument right Int64 yearStart copy
+earlyChangeStep1 result earlyChangePart1 Int64
+earlyChangeStep1 ownedBy none
+earlyChangeStep1 cleanedBy none
+earlyChangeStep1 borrows none
+earlyChangeStep1 catch none
+earlyChangeStep1 suppresses none
+
+earlyChangeStep2 is call
+earlyChangeStep2 in changeTime
+earlyChangeStep2 invokes math.multiplyInt64
+earlyChangeStep2 argument left Int64 earlyChangePart1 copy
+earlyChangeStep2 argument right Int64 n86400 copy
+earlyChangeStep2 result earlyChangePart2 Int64
+earlyChangeStep2 ownedBy none
+earlyChangeStep2 cleanedBy none
+earlyChangeStep2 borrows none
+earlyChangeStep2 catch none
+earlyChangeStep2 suppresses none
+
+earlyChangeStep3 is call
+earlyChangeStep3 in changeTime
+earlyChangeStep3 invokes math.addInt64
+earlyChangeStep3 argument left Int64 earlyChangePart2 copy
+earlyChangeStep3 argument right Int64 seconds copy
+earlyChangeStep3 result earlyChangePart3 Int64
+earlyChangeStep3 ownedBy none
+earlyChangeStep3 cleanedBy none
+earlyChangeStep3 borrows none
+earlyChangeStep3 catch none
+earlyChangeStep3 suppresses none
+
+findEarlyChange1 is call
+findEarlyChange1 in changeTime
+findEarlyChange1 invokes math.subtractInt64
+findEarlyChange1 argument left Int64 earlyChangePart3 copy
+findEarlyChange1 argument right Int64 before copy
+findEarlyChange1 result earlyChange Int64
+findEarlyChange1 ownedBy none
+findEarlyChange1 cleanedBy none
+findEarlyChange1 borrows none
+findEarlyChange1 catch none
+findEarlyChange1 suppresses none
 
 changeStep1 is call
 changeStep1 in changeTime
@@ -15819,6 +15891,16 @@ makeTimeIn label probeAdopt loopKind none
 makeTimeIn label probeAdopt within probeEach
 makeTimeIn label exhausted loopKind none
 makeTimeIn label exhausted within none
+makeTimeIn label requestedStandard loopKind none
+makeTimeIn label requestedStandard within none
+makeTimeIn label requestedDaylight loopKind none
+makeTimeIn label requestedDaylight within none
+makeTimeIn label actualCheck loopKind none
+makeTimeIn label actualCheck within none
+makeTimeIn label actualStandard loopKind none
+makeTimeIn label actualStandard within none
+makeTimeIn label assume loopKind none
+makeTimeIn label assume within none
 makeTimeIn label found loopKind none
 makeTimeIn label found within none
 makeTimeIn label adjust loopKind none
@@ -15836,6 +15918,7 @@ makeTimeIn let daylightBefore Int64 0 mutable
 makeTimeIn let probes Int64 6 mutable
 makeTimeIn let step Int64 0 mutable
 makeTimeIn let secondsClamped Int64 0 mutable
+makeTimeIn let dstShift Int64 0 mutable
 makeTimeIn let thirtyTwo Int64 32 immutable
 makeTimeIn let zero Int64 0 immutable
 makeTimeIn let four Int64 4 immutable
@@ -15967,22 +16050,38 @@ makeTimeIn at probeFound do findCheck81
 makeTimeIn at probeFound branch if check8 goto probeNext else goto probeAdopt
 makeTimeIn at probeAdopt set t extrapolated
 makeTimeIn at probeAdopt goto found
-makeTimeIn at exhausted do doSetErrno
-makeTimeIn at exhausted return ok minus1
+makeTimeIn at exhausted set dstShift zero
+makeTimeIn at exhausted do findCheck91
+makeTimeIn at exhausted branch if check9 goto requestedStandard else goto requestedDaylight
+makeTimeIn at requestedStandard set dstShift one
+makeTimeIn at requestedStandard goto actualCheck
+makeTimeIn at requestedDaylight goto actualCheck
+makeTimeIn at actualCheck do findCheck101
+makeTimeIn at actualCheck branch if check10 goto actualStandard else goto assume
+makeTimeIn at actualStandard do findDstShiftNext11
+makeTimeIn at actualStandard set dstShift dstShiftNext1
+makeTimeIn at actualStandard goto assume
+makeTimeIn at assume do tStep1
+makeTimeIn at assume do findTNext21
+makeTimeIn at assume set t tNext2
+makeTimeIn at assume do fallbackStep1
+makeTimeIn at assume do readFallback
+makeTimeIn at assume do findCheck111
+makeTimeIn at assume branch if check11 goto found else goto failed
 makeTimeIn at found do findNewGuess1
 makeTimeIn at found do doStoreInt64Step1
 makeTimeIn at found do doStoreInt64
 makeTimeIn at found do findAdjustment1
-makeTimeIn at found do findCheck91
-makeTimeIn at found branch if check9 goto finish else goto adjust
-makeTimeIn at adjust do findTNext21
-makeTimeIn at adjust set t tNext2
+makeTimeIn at found do findCheck121
+makeTimeIn at found branch if check12 goto finish else goto adjust
+makeTimeIn at adjust do findTNext31
+makeTimeIn at adjust set t tNext3
 makeTimeIn at adjust goto finish
 makeTimeIn at finish do readFinal
-makeTimeIn at finish do findCheck101
-makeTimeIn at finish branch if check10 goto failed else goto done
+makeTimeIn at finish do findCheck131
+makeTimeIn at finish branch if check13 goto failed else goto done
 makeTimeIn at done return ok t
-makeTimeIn at failed do doSetErrno2
+makeTimeIn at failed do doSetErrno
 makeTimeIn at failed return ok minus1
 
 readSpace is call
@@ -16894,16 +16993,101 @@ findCheck81 borrows none
 findCheck81 catch none
 findCheck81 suppresses none
 
-doSetErrno is call
-doSetErrno in makeTimeIn
-doSetErrno invokes clibrary.setErrno
-doSetErrno argument value Int32 overflowError copy
-doSetErrno result none
-doSetErrno ownedBy none
-doSetErrno cleanedBy none
-doSetErrno borrows none
-doSetErrno catch none
-doSetErrno suppresses none
+findCheck91 is call
+findCheck91 in makeTimeIn
+findCheck91 invokes compare.equalInt64
+findCheck91 argument left Int64 isdst copy
+findCheck91 argument right Int64 zero copy
+findCheck91 result check9 Bool
+findCheck91 ownedBy none
+findCheck91 cleanedBy none
+findCheck91 borrows none
+findCheck91 catch none
+findCheck91 suppresses none
+
+findCheck101 is call
+findCheck101 in makeTimeIn
+findCheck101 invokes compare.equalInt64
+findCheck101 argument left Int64 dayFlag copy
+findCheck101 argument right Int64 zero copy
+findCheck101 result check10 Bool
+findCheck101 ownedBy none
+findCheck101 cleanedBy none
+findCheck101 borrows none
+findCheck101 catch none
+findCheck101 suppresses none
+
+findDstShiftNext11 is call
+findDstShiftNext11 in makeTimeIn
+findDstShiftNext11 invokes math.subtractInt64
+findDstShiftNext11 argument left Int64 dstShift copy
+findDstShiftNext11 argument right Int64 one copy
+findDstShiftNext11 result dstShiftNext1 Int64
+findDstShiftNext11 ownedBy none
+findDstShiftNext11 cleanedBy none
+findDstShiftNext11 borrows none
+findDstShiftNext11 catch none
+findDstShiftNext11 suppresses none
+
+tStep1 is call
+tStep1 in makeTimeIn
+tStep1 invokes math.multiplyInt64
+tStep1 argument left Int64 n3600 copy
+tStep1 argument right Int64 dstShift copy
+tStep1 result tPart1 Int64
+tStep1 ownedBy none
+tStep1 cleanedBy none
+tStep1 borrows none
+tStep1 catch none
+tStep1 suppresses none
+
+findTNext21 is call
+findTNext21 in makeTimeIn
+findTNext21 invokes math.addInt64
+findTNext21 argument left Int64 t copy
+findTNext21 argument right Int64 tPart1 copy
+findTNext21 result tNext2 Int64
+findTNext21 ownedBy none
+findTNext21 cleanedBy none
+findTNext21 borrows none
+findTNext21 catch none
+findTNext21 suppresses none
+
+fallbackStep1 is call
+fallbackStep1 in makeTimeIn
+fallbackStep1 invokes machine.offset
+fallbackStep1 argument address machine.Address space copy
+fallbackStep1 argument bytes Int64 n504 copy
+fallbackStep1 result fallbackPart1 machine.Address
+fallbackStep1 ownedBy none
+fallbackStep1 cleanedBy none
+fallbackStep1 borrows none
+fallbackStep1 catch none
+fallbackStep1 suppresses none
+
+readFallback is call
+readFallback in makeTimeIn
+readFallback invokes convertLocal
+readFallback argument t Int64 t copy
+readFallback argument tm machine.Address fallbackPart1 copy
+readFallback result fallback Int64
+readFallback ownedBy none
+readFallback cleanedBy none
+readFallback borrows none
+readFallback catch none
+readFallback suppresses none
+
+findCheck111 is call
+findCheck111 in makeTimeIn
+findCheck111 invokes compare.equalInt64
+findCheck111 argument left Int64 fallback copy
+findCheck111 argument right Int64 one copy
+findCheck111 result check11 Bool
+findCheck111 ownedBy none
+findCheck111 cleanedBy none
+findCheck111 borrows none
+findCheck111 catch none
+findCheck111 suppresses none
 
 findNewGuess1 is call
 findNewGuess1 in makeTimeIn
@@ -16953,29 +17137,29 @@ findAdjustment1 borrows none
 findAdjustment1 catch none
 findAdjustment1 suppresses none
 
-findCheck91 is call
-findCheck91 in makeTimeIn
-findCheck91 invokes compare.equalInt64
-findCheck91 argument left Int64 adjustment copy
-findCheck91 argument right Int64 zero copy
-findCheck91 result check9 Bool
-findCheck91 ownedBy none
-findCheck91 cleanedBy none
-findCheck91 borrows none
-findCheck91 catch none
-findCheck91 suppresses none
+findCheck121 is call
+findCheck121 in makeTimeIn
+findCheck121 invokes compare.equalInt64
+findCheck121 argument left Int64 adjustment copy
+findCheck121 argument right Int64 zero copy
+findCheck121 result check12 Bool
+findCheck121 ownedBy none
+findCheck121 cleanedBy none
+findCheck121 borrows none
+findCheck121 catch none
+findCheck121 suppresses none
 
-findTNext21 is call
-findTNext21 in makeTimeIn
-findTNext21 invokes math.addInt64
-findTNext21 argument left Int64 t copy
-findTNext21 argument right Int64 adjustment copy
-findTNext21 result tNext2 Int64
-findTNext21 ownedBy none
-findTNext21 cleanedBy none
-findTNext21 borrows none
-findTNext21 catch none
-findTNext21 suppresses none
+findTNext31 is call
+findTNext31 in makeTimeIn
+findTNext31 invokes math.addInt64
+findTNext31 argument left Int64 t copy
+findTNext31 argument right Int64 adjustment copy
+findTNext31 result tNext3 Int64
+findTNext31 ownedBy none
+findTNext31 cleanedBy none
+findTNext31 borrows none
+findTNext31 catch none
+findTNext31 suppresses none
 
 readFinal is call
 readFinal in makeTimeIn
@@ -16989,28 +17173,28 @@ readFinal borrows none
 readFinal catch none
 readFinal suppresses none
 
-findCheck101 is call
-findCheck101 in makeTimeIn
-findCheck101 invokes compare.equalInt64
-findCheck101 argument left Int64 final copy
-findCheck101 argument right Int64 zero copy
-findCheck101 result check10 Bool
-findCheck101 ownedBy none
-findCheck101 cleanedBy none
-findCheck101 borrows none
-findCheck101 catch none
-findCheck101 suppresses none
+findCheck131 is call
+findCheck131 in makeTimeIn
+findCheck131 invokes compare.equalInt64
+findCheck131 argument left Int64 final copy
+findCheck131 argument right Int64 zero copy
+findCheck131 result check13 Bool
+findCheck131 ownedBy none
+findCheck131 cleanedBy none
+findCheck131 borrows none
+findCheck131 catch none
+findCheck131 suppresses none
 
-doSetErrno2 is call
-doSetErrno2 in makeTimeIn
-doSetErrno2 invokes clibrary.setErrno
-doSetErrno2 argument value Int32 overflowError copy
-doSetErrno2 result none
-doSetErrno2 ownedBy none
-doSetErrno2 cleanedBy none
-doSetErrno2 borrows none
-doSetErrno2 catch none
-doSetErrno2 suppresses none
+doSetErrno is call
+doSetErrno in makeTimeIn
+doSetErrno invokes clibrary.setErrno
+doSetErrno argument value Int32 overflowError copy
+doSetErrno result none
+doSetErrno ownedBy none
+doSetErrno cleanedBy none
+doSetErrno borrows none
+doSetErrno catch none
+doSetErrno suppresses none
 
 makeTime is operation
 makeTime purpose "mktime: the time of a struct tm in the local zone, with the struct tm made to hold the normalized fields (see makeTimeIn)"
@@ -19950,7 +20134,7 @@ readStatus catch none
 readStatus suppresses none
 
 emitNumber is operation
-emitNumber purpose "Add a whole number to strftime's output as glibc's DO_NUMBER does: at least `digits` characters (the sign counts) or the width, padded with zeros after the sign, or with spaces before it for the _ flag (always for the spacepad conversions unless 0 or - was given), not at all for -"
+emitNumber purpose "Add a whole number to strftime's output as glibc's DO_NUMBER does: when the number (its sign counted) is shorter than `digits`, the _ flag (given, or forced for the spacepad conversions unless 0 or - was given) puts spaces before it and lets the width pad what is left, any other flag puts the sign, then zeros, and ignores the width; the - flag pads nothing; otherwise the width pads on the left with zeros for the 0 flag and spaces for none"
 emitNumber invariant none
 emitNumber typeParameter none
 emitNumber input value Int64 copied
@@ -19976,32 +20160,41 @@ emitNumber label wider loopKind none
 emitNumber label wider within none
 emitNumber label block loopKind none
 emitNumber label block within none
-emitNumber label minimal loopKind none
-emitNumber label minimal within none
-emitNumber label paddedCheck loopKind none
-emitNumber label paddedCheck within none
-emitNumber label spaces loopKind none
-emitNumber label spaces within none
-emitNumber label zeros loopKind none
-emitNumber label zeros within none
-emitNumber label negativeZeros loopKind none
-emitNumber label negativeZeros within none
-emitNumber label positiveZeros loopKind none
-emitNumber label positiveZeros within none
-emitNumber label emit loopKind none
-emitNumber label emit within none
+emitNumber label padded loopKind none
+emitNumber label padded within none
+emitNumber label underscore loopKind none
+emitNumber label underscore within none
+emitNumber label noRest loopKind none
+emitNumber label noRest within none
+emitNumber label withRest loopKind none
+emitNumber label withRest within none
+emitNumber label composeUnderscore loopKind none
+emitNumber label composeUnderscore within none
+emitNumber label zeroFill loopKind none
+emitNumber label zeroFill within none
+emitNumber label zeroNegative loopKind none
+emitNumber label zeroNegative within none
+emitNumber label zeroPositive loopKind none
+emitNumber label zeroPositive within none
+emitNumber label emitRaw loopKind none
+emitNumber label emitRaw within none
+emitNumber label emitPlain loopKind none
+emitNumber label emitPlain within none
 emitNumber let pad Int64 0 mutable
-emitNumber let wanted Int64 0 mutable
 emitNumber let length Int64 0 mutable
-emitNumber let zero Int64 0 immutable
+emitNumber let status Int64 0 mutable
+emitNumber let room Int64 0 mutable
+emitNumber let leftover Int64 0 mutable
 emitNumber let n656 Int64 656 immutable
 emitNumber let n680 Int64 680 immutable
 emitNumber let one Int64 1 immutable
 emitNumber let n48 Int64 48 immutable
 emitNumber let n45 Int64 45 immutable
 emitNumber let n95 Int64 95 immutable
+emitNumber let sixtyFour Int64 64 immutable
+emitNumber let zero Int64 0 immutable
+emitNumber let minus1 Int64 -1 immutable
 emitNumber at begin do readSpace
-emitNumber at begin set pad zero
 emitNumber at begin do storedStep1
 emitNumber at begin do readStored
 emitNumber at begin do widthStep1
@@ -20015,35 +20208,55 @@ emitNumber at begin do findSpaced1
 emitNumber at begin branch if spaced goto forceSpace else goto sizeIt
 emitNumber at forceSpace set pad n95
 emitNumber at forceSpace goto sizeIt
-emitNumber at sizeIt set wanted digits
+emitNumber at sizeIt set room digits
 emitNumber at sizeIt do findCheck11
 emitNumber at sizeIt branch if check1 goto wider else goto block
-emitNumber at wider set wanted width
+emitNumber at wider set room width
 emitNumber at wider goto block
 emitNumber at block do textStep1
+emitNumber at block do textStep2
 emitNumber at block do readText
-emitNumber at block do findCheck21
-emitNumber at block branch if check2 goto minimal else goto paddedCheck
-emitNumber at minimal do findLengthNext11
-emitNumber at minimal set length lengthNext1
-emitNumber at minimal goto emit
-emitNumber at paddedCheck do findCheck31
-emitNumber at paddedCheck branch if check3 goto spaces else goto zeros
-emitNumber at spaces do findLengthNext21
-emitNumber at spaces set length lengthNext2
-emitNumber at spaces goto emit
-emitNumber at zeros do findCheck41
-emitNumber at zeros branch if check4 goto negativeZeros else goto positiveZeros
-emitNumber at negativeZeros do lengthStep1
-emitNumber at negativeZeros do findLengthNext31
-emitNumber at negativeZeros set length lengthNext3
-emitNumber at negativeZeros goto emit
-emitNumber at positiveZeros do findLengthNext41
-emitNumber at positiveZeros set length lengthNext4
-emitNumber at positiveZeros goto emit
-emitNumber at emit do readStatus
-emitNumber at emit do doGive
-emitNumber at emit return ok status
+emitNumber at block do findLengthNext11
+emitNumber at block set length lengthNext1
+emitNumber at block do findPadding1
+emitNumber at block do plainStep1
+emitNumber at block do plainStep2
+emitNumber at block do findPlain1
+emitNumber at block branch if plain goto emitPlain else goto padded
+emitNumber at padded do findCheck21
+emitNumber at padded branch if check2 goto underscore else goto zeroFill
+emitNumber at underscore do findRest1
+emitNumber at underscore do findCheck31
+emitNumber at underscore branch if check3 goto noRest else goto withRest
+emitNumber at noRest set leftover zero
+emitNumber at noRest goto composeUnderscore
+emitNumber at withRest do findLeftoverNext11
+emitNumber at withRest set leftover leftoverNext1
+emitNumber at withRest goto composeUnderscore
+emitNumber at composeUnderscore do shownStep1
+emitNumber at composeUnderscore do findShown1
+emitNumber at composeUnderscore do findLengthNext21
+emitNumber at composeUnderscore set length lengthNext2
+emitNumber at composeUnderscore goto emitRaw
+emitNumber at zeroFill do findCheck41
+emitNumber at zeroFill branch if check4 goto zeroNegative else goto zeroPositive
+emitNumber at zeroNegative do lengthStep1
+emitNumber at zeroNegative do findLengthNext31
+emitNumber at zeroNegative set length lengthNext3
+emitNumber at zeroNegative goto emitRaw
+emitNumber at zeroPositive do findLengthNext41
+emitNumber at zeroPositive set length lengthNext4
+emitNumber at zeroPositive goto emitRaw
+emitNumber at emitRaw do doStoreInt64Step1
+emitNumber at emitRaw do doStoreInt64
+emitNumber at emitRaw do findStatusNext11
+emitNumber at emitRaw set status statusNext1
+emitNumber at emitRaw do doGive
+emitNumber at emitRaw return ok status
+emitNumber at emitPlain do findStatusNext21
+emitNumber at emitPlain set status statusNext2
+emitNumber at emitPlain do doGive2
+emitNumber at emitPlain return ok status
 
 readSpace is call
 readSpace in emitNumber
@@ -20177,8 +20390,8 @@ findCheck11 suppresses none
 textStep1 is call
 textStep1 in emitNumber
 textStep1 invokes math.addInt64
-textStep1 argument left Int64 wanted copy
-textStep1 argument right Int64 n48 copy
+textStep1 argument left Int64 room copy
+textStep1 argument right Int64 digits copy
 textStep1 result textPart1 Int64
 textStep1 ownedBy none
 textStep1 cleanedBy none
@@ -20186,28 +20399,28 @@ textStep1 borrows none
 textStep1 catch none
 textStep1 suppresses none
 
+textStep2 is call
+textStep2 in emitNumber
+textStep2 invokes math.addInt64
+textStep2 argument left Int64 textPart1 copy
+textStep2 argument right Int64 sixtyFour copy
+textStep2 result textPart2 Int64
+textStep2 ownedBy none
+textStep2 cleanedBy none
+textStep2 borrows none
+textStep2 catch none
+textStep2 suppresses none
+
 readText is call
 readText in emitNumber
 readText invokes heap.take
-readText argument bytes Int64 textPart1 copy
+readText argument bytes Int64 textPart2 copy
 readText result text machine.Address
 readText ownedBy none
 readText cleanedBy none
 readText borrows none
 readText catch none
 readText suppresses none
-
-findCheck21 is call
-findCheck21 in emitNumber
-findCheck21 invokes compare.equalInt64
-findCheck21 argument left Int64 pad copy
-findCheck21 argument right Int64 n45 copy
-findCheck21 result check2 Bool
-findCheck21 ownedBy none
-findCheck21 cleanedBy none
-findCheck21 borrows none
-findCheck21 catch none
-findCheck21 suppresses none
 
 findLengthNext11 is call
 findLengthNext11 in emitNumber
@@ -20223,11 +20436,83 @@ findLengthNext11 borrows none
 findLengthNext11 catch none
 findLengthNext11 suppresses none
 
+findPadding1 is call
+findPadding1 in emitNumber
+findPadding1 invokes math.subtractInt64
+findPadding1 argument left Int64 digits copy
+findPadding1 argument right Int64 length copy
+findPadding1 result padding Int64
+findPadding1 ownedBy none
+findPadding1 cleanedBy none
+findPadding1 borrows none
+findPadding1 catch none
+findPadding1 suppresses none
+
+plainStep1 is call
+plainStep1 in emitNumber
+plainStep1 invokes compare.equalInt64
+plainStep1 argument left Int64 pad copy
+plainStep1 argument right Int64 n45 copy
+plainStep1 result plainPart1 Bool
+plainStep1 ownedBy none
+plainStep1 cleanedBy none
+plainStep1 borrows none
+plainStep1 catch none
+plainStep1 suppresses none
+
+plainStep2 is call
+plainStep2 in emitNumber
+plainStep2 invokes compare.lessOrEqualInt64
+plainStep2 argument left Int64 padding copy
+plainStep2 argument right Int64 zero copy
+plainStep2 result plainPart2 Bool
+plainStep2 ownedBy none
+plainStep2 cleanedBy none
+plainStep2 borrows none
+plainStep2 catch none
+plainStep2 suppresses none
+
+findPlain1 is call
+findPlain1 in emitNumber
+findPlain1 invokes logic.or
+findPlain1 argument left Bool plainPart1 copy
+findPlain1 argument right Bool plainPart2 copy
+findPlain1 result plain Bool
+findPlain1 ownedBy none
+findPlain1 cleanedBy none
+findPlain1 borrows none
+findPlain1 catch none
+findPlain1 suppresses none
+
+findCheck21 is call
+findCheck21 in emitNumber
+findCheck21 invokes compare.equalInt64
+findCheck21 argument left Int64 pad copy
+findCheck21 argument right Int64 n95 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findRest1 is call
+findRest1 in emitNumber
+findRest1 invokes math.subtractInt64
+findRest1 argument left Int64 width copy
+findRest1 argument right Int64 padding copy
+findRest1 result rest Int64
+findRest1 ownedBy none
+findRest1 cleanedBy none
+findRest1 borrows none
+findRest1 catch none
+findRest1 suppresses none
+
 findCheck31 is call
 findCheck31 in emitNumber
-findCheck31 invokes compare.equalInt64
-findCheck31 argument left Int64 pad copy
-findCheck31 argument right Int64 n95 copy
+findCheck31 invokes compare.lessThanInt64
+findCheck31 argument left Int64 rest copy
+findCheck31 argument right Int64 length copy
 findCheck31 result check3 Bool
 findCheck31 ownedBy none
 findCheck31 cleanedBy none
@@ -20235,13 +20520,49 @@ findCheck31 borrows none
 findCheck31 catch none
 findCheck31 suppresses none
 
+findLeftoverNext11 is call
+findLeftoverNext11 in emitNumber
+findLeftoverNext11 invokes math.subtractInt64
+findLeftoverNext11 argument left Int64 rest copy
+findLeftoverNext11 argument right Int64 length copy
+findLeftoverNext11 result leftoverNext1 Int64
+findLeftoverNext11 ownedBy none
+findLeftoverNext11 cleanedBy none
+findLeftoverNext11 borrows none
+findLeftoverNext11 catch none
+findLeftoverNext11 suppresses none
+
+shownStep1 is call
+shownStep1 in emitNumber
+shownStep1 invokes math.addInt64
+shownStep1 argument left Int64 padding copy
+shownStep1 argument right Int64 leftover copy
+shownStep1 result shownPart1 Int64
+shownStep1 ownedBy none
+shownStep1 cleanedBy none
+shownStep1 borrows none
+shownStep1 catch none
+shownStep1 suppresses none
+
+findShown1 is call
+findShown1 in emitNumber
+findShown1 invokes math.addInt64
+findShown1 argument left Int64 shownPart1 copy
+findShown1 argument right Int64 length copy
+findShown1 result shown Int64
+findShown1 ownedBy none
+findShown1 cleanedBy none
+findShown1 borrows none
+findShown1 catch none
+findShown1 suppresses none
+
 findLengthNext21 is call
 findLengthNext21 in emitNumber
 findLengthNext21 invokes putNumber
 findLengthNext21 argument dest machine.Address text copy
 findLengthNext21 argument value Int64 value copy
 findLengthNext21 argument minDigits Int64 one copy
-findLengthNext21 argument width Int64 wanted copy
+findLengthNext21 argument width Int64 shown copy
 findLengthNext21 result lengthNext2 Int64
 findLengthNext21 ownedBy none
 findLengthNext21 cleanedBy none
@@ -20264,7 +20585,7 @@ findCheck41 suppresses none
 lengthStep1 is call
 lengthStep1 in emitNumber
 lengthStep1 invokes math.subtractInt64
-lengthStep1 argument left Int64 wanted copy
+lengthStep1 argument left Int64 digits copy
 lengthStep1 argument right Int64 one copy
 lengthStep1 result lengthPart1 Int64
 lengthStep1 ownedBy none
@@ -20292,7 +20613,7 @@ findLengthNext41 in emitNumber
 findLengthNext41 invokes putNumber
 findLengthNext41 argument dest machine.Address text copy
 findLengthNext41 argument value Int64 value copy
-findLengthNext41 argument minDigits Int64 wanted copy
+findLengthNext41 argument minDigits Int64 digits copy
 findLengthNext41 argument width Int64 zero copy
 findLengthNext41 result lengthNext4 Int64
 findLengthNext41 ownedBy none
@@ -20301,17 +20622,41 @@ findLengthNext41 borrows none
 findLengthNext41 catch none
 findLengthNext41 suppresses none
 
-readStatus is call
-readStatus in emitNumber
-readStatus invokes emitBytes
-readStatus argument source machine.Address text copy
-readStatus argument count Int64 length copy
-readStatus result status Int64
-readStatus ownedBy none
-readStatus cleanedBy none
-readStatus borrows none
-readStatus catch none
-readStatus suppresses none
+doStoreInt64Step1 is call
+doStoreInt64Step1 in emitNumber
+doStoreInt64Step1 invokes machine.offset
+doStoreInt64Step1 argument address machine.Address space copy
+doStoreInt64Step1 argument bytes Int64 n680 copy
+doStoreInt64Step1 result doStoreInt64Part1 machine.Address
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in emitNumber
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address doStoreInt64Part1 copy
+doStoreInt64 argument value Int64 minus1 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+findStatusNext11 is call
+findStatusNext11 in emitNumber
+findStatusNext11 invokes emitBytes
+findStatusNext11 argument source machine.Address text copy
+findStatusNext11 argument count Int64 length copy
+findStatusNext11 result statusNext1 Int64
+findStatusNext11 ownedBy none
+findStatusNext11 cleanedBy none
+findStatusNext11 borrows none
+findStatusNext11 catch none
+findStatusNext11 suppresses none
 
 doGive is call
 doGive in emitNumber
@@ -20323,6 +20668,29 @@ doGive cleanedBy none
 doGive borrows none
 doGive catch none
 doGive suppresses none
+
+findStatusNext21 is call
+findStatusNext21 in emitNumber
+findStatusNext21 invokes emitBytes
+findStatusNext21 argument source machine.Address text copy
+findStatusNext21 argument count Int64 length copy
+findStatusNext21 result statusNext2 Int64
+findStatusNext21 ownedBy none
+findStatusNext21 cleanedBy none
+findStatusNext21 borrows none
+findStatusNext21 catch none
+findStatusNext21 suppresses none
+
+doGive2 is call
+doGive2 in emitNumber
+doGive2 invokes heap.give
+doGive2 argument block machine.Address text copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
 
 nameLength is operation
 nameLength purpose "The length of a name in a table of cells of ten bytes, where each name ends at a space"
@@ -21097,7 +21465,6 @@ isoCompute let nextDays Int64 0 mutable
 isoCompute let n20 Int64 20 immutable
 isoCompute let n28 Int64 28 immutable
 isoCompute let n24 Int64 24 immutable
-isoCompute let n1900 Int64 1900 immutable
 isoCompute let zero Int64 0 immutable
 isoCompute let one Int64 1 immutable
 isoCompute let n366 Int64 366 immutable
@@ -21106,14 +21473,14 @@ isoCompute let seven Int64 7 immutable
 isoCompute at begin do readFieldYear
 isoCompute at begin do readYday
 isoCompute at begin do readWday
-isoCompute at begin do findYearNext11
-isoCompute at begin set year yearNext1
+isoCompute at begin do readFullIso
+isoCompute at begin set year fullIso
 isoCompute at begin do findDaysNext11
 isoCompute at begin set days daysNext1
 isoCompute at begin do findCheck11
 isoCompute at begin branch if check1 goto previous else goto following
-isoCompute at previous do findYearNext21
-isoCompute at previous set year yearNext2
+isoCompute at previous do findYearNext11
+isoCompute at previous set year yearNext1
 isoCompute at previous do readLeapPrevious
 isoCompute at previous branch if leapPrevious goto previousLeap else goto previousPlain
 isoCompute at previousLeap do daysStep1
@@ -21136,8 +21503,8 @@ isoCompute at thisPlain set nextDays nextDaysNext2
 isoCompute at thisPlain goto nextCheck
 isoCompute at nextCheck do findCheck21
 isoCompute at nextCheck branch if check2 goto nextYear else goto result
-isoCompute at nextYear do findYearNext31
-isoCompute at nextYear set year yearNext3
+isoCompute at nextYear do findYearNext21
+isoCompute at nextYear set year yearNext2
 isoCompute at nextYear set days nextDays
 isoCompute at nextYear goto result
 isoCompute at result do findCheck31
@@ -21183,17 +21550,16 @@ readWday borrows none
 readWday catch none
 readWday suppresses none
 
-findYearNext11 is call
-findYearNext11 in isoCompute
-findYearNext11 invokes math.addInt64
-findYearNext11 argument left Int64 fieldYear copy
-findYearNext11 argument right Int64 n1900 copy
-findYearNext11 result yearNext1 Int64
-findYearNext11 ownedBy none
-findYearNext11 cleanedBy none
-findYearNext11 borrows none
-findYearNext11 catch none
-findYearNext11 suppresses none
+readFullIso is call
+readFullIso in isoCompute
+readFullIso invokes wrappedYear
+readFullIso argument yearField Int64 fieldYear copy
+readFullIso result fullIso Int64
+readFullIso ownedBy none
+readFullIso cleanedBy none
+readFullIso borrows none
+readFullIso catch none
+readFullIso suppresses none
 
 findDaysNext11 is call
 findDaysNext11 in isoCompute
@@ -21219,17 +21585,17 @@ findCheck11 borrows none
 findCheck11 catch none
 findCheck11 suppresses none
 
-findYearNext21 is call
-findYearNext21 in isoCompute
-findYearNext21 invokes math.subtractInt64
-findYearNext21 argument left Int64 year copy
-findYearNext21 argument right Int64 one copy
-findYearNext21 result yearNext2 Int64
-findYearNext21 ownedBy none
-findYearNext21 cleanedBy none
-findYearNext21 borrows none
-findYearNext21 catch none
-findYearNext21 suppresses none
+findYearNext11 is call
+findYearNext11 in isoCompute
+findYearNext11 invokes math.subtractInt64
+findYearNext11 argument left Int64 year copy
+findYearNext11 argument right Int64 one copy
+findYearNext11 result yearNext1 Int64
+findYearNext11 ownedBy none
+findYearNext11 cleanedBy none
+findYearNext11 borrows none
+findYearNext11 catch none
+findYearNext11 suppresses none
 
 readLeapPrevious is call
 readLeapPrevious in isoCompute
@@ -21361,17 +21727,17 @@ findCheck21 borrows none
 findCheck21 catch none
 findCheck21 suppresses none
 
-findYearNext31 is call
-findYearNext31 in isoCompute
-findYearNext31 invokes math.addInt64
-findYearNext31 argument left Int64 year copy
-findYearNext31 argument right Int64 one copy
-findYearNext31 result yearNext3 Int64
-findYearNext31 ownedBy none
-findYearNext31 cleanedBy none
-findYearNext31 borrows none
-findYearNext31 catch none
-findYearNext31 suppresses none
+findYearNext21 is call
+findYearNext21 in isoCompute
+findYearNext21 invokes math.addInt64
+findYearNext21 argument left Int64 year copy
+findYearNext21 argument right Int64 one copy
+findYearNext21 result yearNext2 Int64
+findYearNext21 ownedBy none
+findYearNext21 cleanedBy none
+findYearNext21 borrows none
+findYearNext21 catch none
+findYearNext21 suppresses none
 
 findCheck31 is call
 findCheck31 in isoCompute
@@ -21408,6 +21774,61 @@ findWeek1 cleanedBy none
 findWeek1 borrows none
 findWeek1 catch none
 findWeek1 suppresses none
+
+wrappedYear is operation
+wrappedYear purpose "tm_year plus 1900 as a C int adds them, wrapping past its range"
+wrappedYear invariant none
+wrappedYear typeParameter none
+wrappedYear input yearField Int64 copied
+wrappedYear output Int64
+wrappedYear outputOwnedBy none
+wrappedYear raises none
+wrappedYear effect none
+wrappedYear uses none
+wrappedYear memoryHeap false
+wrappedYear async false
+wrappedYear maxRecursion none
+wrappedYear label begin loopKind none
+wrappedYear label begin within none
+wrappedYear let n1900 Int64 1900 immutable
+wrappedYear at begin do lowStep1
+wrappedYear at begin do readLow
+wrappedYear at begin do readWide
+wrappedYear at begin return ok wide
+
+lowStep1 is call
+lowStep1 in wrappedYear
+lowStep1 invokes math.addInt64
+lowStep1 argument left Int64 yearField copy
+lowStep1 argument right Int64 n1900 copy
+lowStep1 result lowPart1 Int64
+lowStep1 ownedBy none
+lowStep1 cleanedBy none
+lowStep1 borrows none
+lowStep1 catch none
+lowStep1 suppresses none
+
+readLow is call
+readLow in wrappedYear
+readLow invokes clibrary.lowInt32
+readLow argument value Int64 lowPart1 copy
+readLow result low Int32
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+readWide is call
+readWide in wrappedYear
+readWide invokes convert.int32ToInt64
+readWide argument value Int32 low copy
+readWide result wide Int64
+readWide ownedBy none
+readWide cleanedBy none
+readWide borrows none
+readWide catch none
+readWide suppresses none
 
 hashCase is operation
 hashCase purpose "Apply the # flag to the conversion being written: upper case for names (mode 0), lower case for the others (mode 1)"
@@ -22637,7 +23058,6 @@ emitSimple let n66 Int64 66 immutable
 emitSimple let two Int64 2 immutable
 emitSimple let n67 Int64 67 immutable
 emitSimple let n20 Int64 20 immutable
-emitSimple let n1900 Int64 1900 immutable
 emitSimple let n100 Int64 100 immutable
 emitSimple let twelve Int64 12 immutable
 emitSimple let n101 Int64 101 immutable
@@ -22712,7 +23132,7 @@ emitSimple at monthLong return ok statusD
 emitSimple at checkCentury do findCheck41
 emitSimple at checkCentury branch if check4 goto century else goto checkDay
 emitSimple at century do readYearC
-emitSimple at century do findFullC1
+emitSimple at century do readFullC
 emitSimple at century do adjustStep1
 emitSimple at century do findAdjust1
 emitSimple at century branch if adjust goto centuryDown else goto centuryUp
@@ -22882,8 +23302,8 @@ emitSimple at shortYear goto number
 emitSimple at checkYear do findCheck291
 emitSimple at checkYear branch if check29 goto year else goto checkOffset
 emitSimple at year do readYearZ
-emitSimple at year do findValueNext101
-emitSimple at year set value valueNext10
+emitSimple at year do readFullZ
+emitSimple at year set value fullZ
 emitSimple at year set digits one
 emitSimple at year goto number
 emitSimple at checkOffset do findCheck301
@@ -22905,8 +23325,8 @@ emitSimple at offsetNegative do findMinutesNegative1
 emitSimple at offsetNegative do valueStep16
 emitSimple at offsetNegative do valueStep17
 emitSimple at offsetNegative do valueStep18
-emitSimple at offsetNegative do findValueNext111
-emitSimple at offsetNegative set value valueNext11
+emitSimple at offsetNegative do findValueNext101
+emitSimple at offsetNegative set value valueNext10
 emitSimple at offsetNegative set digits four
 emitSimple at offsetNegative goto number
 emitSimple at offsetPlus do readStatusPlus
@@ -22916,8 +23336,8 @@ emitSimple at offsetPositive do findMinutesPositive1
 emitSimple at offsetPositive do valueStep19
 emitSimple at offsetPositive do valueStep20
 emitSimple at offsetPositive do valueStep21
-emitSimple at offsetPositive do findValueNext121
-emitSimple at offsetPositive set value valueNext12
+emitSimple at offsetPositive do findValueNext111
+emitSimple at offsetPositive set value valueNext11
 emitSimple at offsetPositive set digits four
 emitSimple at offsetPositive goto number
 emitSimple at checkZone do findCheck351
@@ -23203,17 +23623,16 @@ readYearC borrows none
 readYearC catch none
 readYearC suppresses none
 
-findFullC1 is call
-findFullC1 in emitSimple
-findFullC1 invokes math.addInt64
-findFullC1 argument left Int64 yearC copy
-findFullC1 argument right Int64 n1900 copy
-findFullC1 result fullC Int64
-findFullC1 ownedBy none
-findFullC1 cleanedBy none
-findFullC1 borrows none
-findFullC1 catch none
-findFullC1 suppresses none
+readFullC is call
+readFullC in emitSimple
+readFullC invokes wrappedYear
+readFullC argument yearField Int64 yearC copy
+readFullC result fullC Int64
+readFullC ownedBy none
+readFullC cleanedBy none
+readFullC borrows none
+readFullC catch none
+readFullC suppresses none
 
 adjustStep1 is call
 adjustStep1 in emitSimple
@@ -24252,17 +24671,16 @@ readYearZ borrows none
 readYearZ catch none
 readYearZ suppresses none
 
-findValueNext101 is call
-findValueNext101 in emitSimple
-findValueNext101 invokes math.addInt64
-findValueNext101 argument left Int64 yearZ copy
-findValueNext101 argument right Int64 n1900 copy
-findValueNext101 result valueNext10 Int64
-findValueNext101 ownedBy none
-findValueNext101 cleanedBy none
-findValueNext101 borrows none
-findValueNext101 catch none
-findValueNext101 suppresses none
+readFullZ is call
+readFullZ in emitSimple
+readFullZ invokes wrappedYear
+readFullZ argument yearField Int64 yearZ copy
+readFullZ result fullZ Int64
+readFullZ ownedBy none
+readFullZ cleanedBy none
+readFullZ borrows none
+readFullZ catch none
+readFullZ suppresses none
 
 findCheck301 is call
 findCheck301 in emitSimple
@@ -24418,17 +24836,17 @@ valueStep18 borrows none
 valueStep18 catch none
 valueStep18 suppresses none
 
-findValueNext111 is call
-findValueNext111 in emitSimple
-findValueNext111 invokes math.addInt64
-findValueNext111 argument left Int64 valuePart17 copy
-findValueNext111 argument right Int64 valuePart18 copy
-findValueNext111 result valueNext11 Int64
-findValueNext111 ownedBy none
-findValueNext111 cleanedBy none
-findValueNext111 borrows none
-findValueNext111 catch none
-findValueNext111 suppresses none
+findValueNext101 is call
+findValueNext101 in emitSimple
+findValueNext101 invokes math.addInt64
+findValueNext101 argument left Int64 valuePart17 copy
+findValueNext101 argument right Int64 valuePart18 copy
+findValueNext101 result valueNext10 Int64
+findValueNext101 ownedBy none
+findValueNext101 cleanedBy none
+findValueNext101 borrows none
+findValueNext101 catch none
+findValueNext101 suppresses none
 
 readStatusPlus is call
 readStatusPlus in emitSimple
@@ -24501,17 +24919,17 @@ valueStep21 borrows none
 valueStep21 catch none
 valueStep21 suppresses none
 
-findValueNext121 is call
-findValueNext121 in emitSimple
-findValueNext121 invokes math.addInt64
-findValueNext121 argument left Int64 valuePart20 copy
-findValueNext121 argument right Int64 valuePart21 copy
-findValueNext121 result valueNext12 Int64
-findValueNext121 ownedBy none
-findValueNext121 cleanedBy none
-findValueNext121 borrows none
-findValueNext121 catch none
-findValueNext121 suppresses none
+findValueNext111 is call
+findValueNext111 in emitSimple
+findValueNext111 invokes math.addInt64
+findValueNext111 argument left Int64 valuePart20 copy
+findValueNext111 argument right Int64 valuePart21 copy
+findValueNext111 result valueNext11 Int64
+findValueNext111 ownedBy none
+findValueNext111 cleanedBy none
+findValueNext111 borrows none
+findValueNext111 catch none
+findValueNext111 suppresses none
 
 findCheck351 is call
 findCheck351 in emitSimple

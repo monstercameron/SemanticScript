@@ -158,8 +158,10 @@ class Zone:
         if not self.dst:
             return self.std_off, 0, self.std
         year = civil_from_days(t // 86400)[0]
-        start = _nth_weekday(year, self.start[0], self.start[1], self.start[2]) * 86400 + self.start[3] - self.std_off
-        end = _nth_weekday(year, self.end[0], self.end[1], self.end[2]) * 86400 + self.end[3] - self.dst_off
+        # glibc counts the days of a year up to 1970 from 1970-01-01, so a rule never changes the time before then
+        base = days_from_civil(year, 1, 1) if year <= 1970 else 0
+        start = (_nth_weekday(year, self.start[0], self.start[1], self.start[2]) - base) * 86400 + self.start[3] - self.std_off
+        end = (_nth_weekday(year, self.end[0], self.end[1], self.end[2]) - base) * 86400 + self.end[3] - self.dst_off
         daylight = (t < end or t >= start) if start > end else (start <= t < end)
         return (self.dst_off, 1, self.dst) if daylight else (self.std_off, 0, self.std)
 
@@ -210,8 +212,11 @@ class Zone:
                         break
                 delta += 601200
             if not done:
-                self.failed = True
-                return -1
+                # no such time nearby: assume one hour of daylight time, as glibc does
+                t += 3600 * ((isdst == 0) - (dst == 0))
+                if self.localtime(t) is None:
+                    self.failed = True
+                    return -1
         self.guess = t - requested
         t += tm.sec - sec
         filled = self.localtime(t)
@@ -228,8 +233,12 @@ def _iso_days(yday: int, wday: int) -> int:
     return yday - (value - 7 * (value // 7)) + 3
 
 
+def wrap32(value: int) -> int:
+    return (value + 2 ** 31) % 2 ** 32 - 2 ** 31
+
+
 def iso_year_week(tm: Tm):
-    year = tm.year + 1900
+    year = wrap32(tm.year + 1900)
     days = _iso_days(tm.yday, tm.wday)
     if days < 0:
         year -= 1
@@ -266,19 +275,23 @@ def strftime(fmt: str, tm: Tm, size: int = 4096, mktime=None, tzname=("UTC", "UT
         return True
 
     def number(value: int, digits: int, space: bool, flags) -> bool:
+        """glibc's DO_NUMBER: padding to `digits` (the sign counts) is done by the _ flag with spaces before the
+        number (the width then pads the rest) and by any other flag with the sign, zeros, and no width; the - flag
+        pads nothing; with no padding due, the width pads on the left (zeros for the 0 flag, else spaces)."""
         pad = flags["pad"]
         if space and pad not in ("0", "-"):
             pad = "_"
-        wanted = max(digits, flags["width"])
-        text = str(abs(value))
         sign = "-" if value < 0 else ""
-        if pad == "-":
-            body = sign + text
-        elif pad == "_":
-            body = (sign + text).rjust(wanted)
-        else:
-            body = sign + text.rjust(wanted - len(sign), "0")
-        return add(body, flags)
+        text = sign + str(abs(value))
+        width = flags["width"]
+        padding = digits - len(text)
+        if pad != "-" and padding > 0:
+            raw = dict(flags, width=-1)
+            if pad == "_":
+                rest = width - padding if width > padding else 0
+                return add(" " * padding + text.rjust(rest), raw)
+            return add(sign + "0" * padding + str(abs(value)), raw)
+        return add(text, flags)
 
     def simple(c: str, flags) -> int:
         hour12 = tm.hour - 12 if tm.hour > 12 else (12 if tm.hour == 0 else tm.hour)
@@ -299,7 +312,7 @@ def strftime(fmt: str, tm: Tm, size: int = 4096, mktime=None, tzname=("UTC", "UT
         if c == "B":
             return add(MONTHS[tm.mon] if 0 <= tm.mon <= 11 else "?", flags)
         if c == "C":
-            y = tm.year + 1900
+            y = wrap32(tm.year + 1900)
             return number(int(y / 100) - (1 if int(y - 100 * int(y / 100)) < 0 else 0), 1, False, flags)
         if c == "d":
             return number(tm.mday, 2, False, flags)
@@ -353,7 +366,7 @@ def strftime(fmt: str, tm: Tm, size: int = 4096, mktime=None, tzname=("UTC", "UT
         if c == "y":
             return number(tm.year % 100, 2, False, flags)
         if c == "Y":
-            return number(tm.year + 1900, 1, False, flags)
+            return number(wrap32(tm.year + 1900), 1, False, flags)
         if c == "z":
             if tm.isdst < 0:
                 return True
@@ -620,6 +633,11 @@ optype FlushFunction "int fflush(FILE *)"
   input stream Int64 copied
   output Int32
 
+optype LocaleFunction "char *setlocale(int, const char *)"
+  input category Int32 copied
+  input name Int64 copied
+  output Int64
+
 optype CompareFunction "int memcmp(const void *, const void *, size_t)"
   input left Int64 copied
   input right Int64 copied
@@ -649,19 +667,21 @@ instance PutsBinding "Binds puts" ffi.Function PutsFunction
 instance FlushBinding "Binds fflush" ffi.Function FlushFunction
 
 instance CompareBinding "Binds memcmp" ffi.Function CompareFunction
+
+instance LocaleBinding "Binds setlocale" ffi.Function LocaleFunction
 '''
 
 SYMBOLS = {"time": "time", "clock": "clock", "difftime": "difftime", "mktime": "mktime", "gmtime": "gmtime",
            "gmtimeR": "gmtime_r", "localtime": "localtime", "localtimeR": "localtime_r", "asctime": "asctime",
            "asctimeR": "asctime_r", "ctime": "ctime", "ctimeR": "ctime_r", "strftime": "strftime",
            "timespecGet": "timespec_get", "calloc": "calloc", "memset": "memset", "sscanf": "sscanf", "puts": "puts",
-           "fflush": "fflush", "memcmp": "memcmp"}
+           "fflush": "fflush", "memcmp": "memcmp", "setlocale": "setlocale"}
 # the type of each binding, in the order main binds them
 BINDINGS = [("time", "Ptr"), ("clock", "Clock"), ("difftime", "Diff"), ("mktime", "Ptr"), ("gmtime", "Ptr"),
             ("gmtimeR", "Ptr2"), ("localtime", "Ptr"), ("localtimeR", "Ptr2"), ("asctime", "Ptr"), ("asctimeR", "Ptr2"),
             ("ctime", "Ptr"), ("ctimeR", "Ptr2"), ("strftime", "Strftime"), ("timespecGet", "Spec"),
             ("calloc", "Alloc"), ("memset", "Set"), ("sscanf", "Scan"), ("puts", "Puts"), ("fflush", "Flush"),
-            ("memcmp", "Compare")]
+            ("memcmp", "Compare"), ("setlocale", "Locale")]
 
 # the area calloc gives: where each thing lives
 TM_IN, TM_EXP, TM_OUT, TEXT, FORMAT_AT, BUF, CELL_T, CELL_U, SPEC_AT = 256, 320, 384, 1024, 2048, 4096, 8192, 8208, 8256
@@ -1140,6 +1160,9 @@ op main "Open the C library, call each function, and write what it gives"
   putText(memsetFn, oneAt, "%d")
   calc longAt = area + {SCANL}
   putText(memsetFn, longAt, "%ld")
+  calc localeAt = area + 1344
+  putText(memsetFn, localeAt, "C")
+  locale: unusedLocale = *setlocaleFn(allCategories=6, localeAt)
 {body}
   closeIt: ffi.close(libc)
   return okCode

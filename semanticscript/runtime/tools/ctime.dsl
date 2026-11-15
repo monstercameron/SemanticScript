@@ -951,7 +951,7 @@ op tryFile "Read the zone from a file that TZ or the system names (Linux): 1 whe
 
 ## ---------------------------------------------------------------- the zone at a time
 
-op changeTime "The UTC time of a daylight-saving change in a year: the rule (five longs), the year, and the UTC offset in force before the change"
+op changeTime "The UTC time of a daylight-saving change in a year (glibc counts the days of a year up to 1970 from 1970-01-01, so a rule never changes the time before then): the rule (five longs), the year, and the UTC offset in force before the change"
   input rule machine.Address copied
   input year Int64 copied
   input before Int64 copied
@@ -995,6 +995,11 @@ op changeTime "The UTC time of a daylight-saving change in a year: the rule (fiv
   calc day := yearStart + a
   goto done
 :done
+  when year <= 1970 early late
+:early
+  calc earlyChange = (day - yearStart) * 86400 + seconds - before
+  return earlyChange
+:late
   calc change = day * 86400 + seconds - before
   return change
 
@@ -1578,6 +1583,7 @@ op makeTimeIn "mktime for the zone already loaded: the time of a struct tm in it
   let probes Int64 6 mut
   let step Int64 0 mut
   let secondsClamped Int64 0 mut
+  let dstShift Int64 0 mut
 :begin
   space = workspace()
   isdst = fieldAt(tm, 32)
@@ -1659,8 +1665,22 @@ op makeTimeIn "mktime for the zone already loaded: the time of a struct tm in it
   calc t := extrapolated
   goto found
 :exhausted
-  clibrary.setErrno(overflowError)
-  return -1
+  calc dstShift := 0
+  when isdst == 0 requestedStandard requestedDaylight
+:requestedStandard
+  calc dstShift := 1
+  goto actualCheck
+:requestedDaylight
+  goto actualCheck
+:actualCheck
+  when dayFlag == 0 actualStandard assume
+:actualStandard
+  calc dstShift := dstShift - 1
+  goto assume
+:assume
+  calc t := t + 3600 * dstShift
+  fallback = convertLocal(t, space + 504)
+  when fallback == 1 found failed
 :found
   calc newGuess = t - requested
   machine.storeInt64(space + 176, newGuess)
@@ -1996,7 +2016,7 @@ op emitChar "Add one byte to strftime's output"
   status = emitBytes(space + 752, 1)
   return status
 
-op emitNumber "Add a whole number to strftime's output as glibc's DO_NUMBER does: at least `digits` characters (the sign counts) or the width, padded with zeros after the sign, or with spaces before it for the _ flag (always for the spacepad conversions unless 0 or - was given), not at all for -"
+op emitNumber "Add a whole number to strftime's output as glibc's DO_NUMBER does: when the number (its sign counted) is shorter than `digits`, the _ flag (given, or forced for the spacepad conversions unless 0 or - was given) puts spaces before it and lets the width pad what is left, any other flag puts the sign, then zeros, and ignores the width; the - flag pads nothing; otherwise the width pads on the left with zeros for the 0 flag and spaces for none"
   input value Int64 copied
   input digits Int64 copied
   input spacePad Int64 copied
@@ -2006,11 +2026,12 @@ op emitNumber "Add a whole number to strftime's output as glibc's DO_NUMBER does
   uses memoryAccess
   uses systemCalls
   let pad Int64 0 mut
-  let wanted Int64 0 mut
   let length Int64 0 mut
+  let status Int64 0 mut
+  let room Int64 0 mut
+  let leftover Int64 0 mut
 :begin
   space = workspace()
-  calc pad := 0
   stored = machine.loadInt64(space + 656)
   width = machine.loadInt64(space + 680)
   calc pad := stored
@@ -2020,32 +2041,47 @@ op emitNumber "Add a whole number to strftime's output as glibc's DO_NUMBER does
   calc pad := 95
   goto sizeIt
 :sizeIt
-  calc wanted := digits
+  calc room := digits
   when width > digits wider block
 :wider
-  calc wanted := width
+  calc room := width
   goto block
 :block
-  text = heap.take(wanted + 48)
-  when pad == 45 minimal paddedCheck
-:minimal
+  text = heap.take(room + digits + 64)
   calc length := putNumber(text, value, 1, 0)
-  goto emit
-:paddedCheck
-  when pad == 95 spaces zeros
-:spaces
-  calc length := putNumber(text, value, 1, wanted)
-  goto emit
-:zeros
-  when value < 0 negativeZeros positiveZeros
-:negativeZeros
-  calc length := putNumber(text, value, wanted - 1, 0)
-  goto emit
-:positiveZeros
-  calc length := putNumber(text, value, wanted, 0)
-  goto emit
-:emit
-  status = emitBytes(text, length)
+  calc padding = digits - length
+  calc plain = pad == 45 || padding <= 0
+  when plain emitPlain padded
+:padded
+  when pad == 95 underscore zeroFill
+:underscore
+  calc rest = width - padding
+  when rest < length noRest withRest
+:noRest
+  calc leftover := 0
+  goto composeUnderscore
+:withRest
+  calc leftover := rest - length
+  goto composeUnderscore
+:composeUnderscore
+  calc shown = padding + leftover + length
+  calc length := putNumber(text, value, 1, shown)
+  goto emitRaw
+:zeroFill
+  when value < 0 zeroNegative zeroPositive
+:zeroNegative
+  calc length := putNumber(text, value, digits - 1, 0)
+  goto emitRaw
+:zeroPositive
+  calc length := putNumber(text, value, digits, 0)
+  goto emitRaw
+:emitRaw
+  machine.storeInt64(space + 680, -1)
+  calc status := emitBytes(text, length)
+  heap.give(text)
+  return status
+:emitPlain
+  calc status := emitBytes(text, length)
   heap.give(text)
   return status
 
@@ -2136,7 +2172,8 @@ op isoCompute "A struct tm's ISO 8601 year (which 0) or week number (which 1)"
   fieldYear = fieldAt(tm, 20)
   yday = fieldAt(tm, 28)
   wday = fieldAt(tm, 24)
-  calc year := fieldYear + 1900
+  fullIso = wrappedYear(fieldYear)
+  calc year := fullIso
   calc days := isoDays(yday, wday)
   when days < 0 previous following
 :previous
@@ -2171,6 +2208,14 @@ op isoCompute "A struct tm's ISO 8601 year (which 0) or week number (which 1)"
 :giveWeek
   calc week = days / 7 + 1
   return week
+
+op wrappedYear "tm_year plus 1900 as a C int adds them, wrapping past its range"
+  input yearField Int64 copied
+  output Int64
+:begin
+  low = clibrary.lowInt32(yearField + 1900)
+  wide = convert.int32ToInt64(low)
+  return wide
 
 op hashCase "Apply the # flag to the conversion being written: upper case for names (mode 0), lower case for the others (mode 1)"
   input mode Int64 copied
@@ -2342,7 +2387,7 @@ op emitSimple "Add one conversion that is not a composite of others, as glibc wr
   when conv == 67 century checkDay
 :century
   yearC = fieldAt(tm, 20)
-  calc fullC = yearC + 1900
+  fullC = wrappedYear(yearC)
   calc adjust = fullC % 100 < 0
   when adjust centuryDown centuryUp
 :centuryDown
@@ -2512,7 +2557,8 @@ op emitSimple "Add one conversion that is not a composite of others, as glibc wr
   when conv == 89 year checkOffset
 :year
   yearZ = fieldAt(tm, 20)
-  calc value := yearZ + 1900
+  fullZ = wrappedYear(yearZ)
+  calc value := fullZ
   calc digits := 1
   goto number
 :checkOffset
@@ -3470,7 +3516,7 @@ test formatTest "strftime writes every conversion glibc has in the C locale, the
   test.assertTrue(verdict72)
   verdict73 = formatIs(tm, "%%", "%", 4096)
   test.assertTrue(verdict73)
-  verdict74 = formatIs(tm, "%-d|%_d|%^a|%#b|%05e|%_5m|%10Y|%-H", "10|10|SUN|MAR|00010|    3|0000002024|7", 4096)
+  verdict74 = formatIs(tm, "%-d|%_d|%^a|%#b|%05e|%_5m|%10Y|%-H", "10|10|SUN|MAR|00010|    3|      2024|7", 4096)
   test.assertTrue(verdict74)
   verdict75 = formatIs(tm, "%Ey %Od %EY %OH %Ec", "24 10 2024 07 Sun Mar 10 07:30:00 2024", 4096)
   test.assertTrue(verdict75)

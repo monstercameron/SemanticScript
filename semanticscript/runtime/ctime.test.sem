@@ -8543,7 +8543,7 @@ formatTest let text14 String "GMT +0000" immutable
 formatTest let text15 String "%%" immutable
 formatTest let text16 String "%" immutable
 formatTest let text17 String "%-d|%_d|%^a|%#b|%05e|%_5m|%10Y|%-H" immutable
-formatTest let text18 String "10|10|SUN|MAR|00010|    3|0000002024|7" immutable
+formatTest let text18 String "10|10|SUN|MAR|00010|    3|      2024|7" immutable
 formatTest let text19 String "%Ey %Od %EY %OH %Ec" immutable
 formatTest let text20 String "24 10 2024 07 Sun Mar 10 07:30:00 2024" immutable
 formatTest let text21 String "%Q %E %Ed %" immutable

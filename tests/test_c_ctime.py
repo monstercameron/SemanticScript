@@ -73,7 +73,7 @@ def _tour(tmp_path_factory, spec: str):
 def _same(got: str, want: str) -> None:
     if got != want:
         diff = list(difflib.unified_diff(want.splitlines(), got.splitlines(), "expected", "got", lineterm="", n=2))
-        raise AssertionError("\n".join(diff[:60]))
+        raise AssertionError("\n".join(diff[:400]))
 
 
 @base.needs_windows_cc
