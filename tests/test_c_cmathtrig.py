@@ -9,7 +9,8 @@ largest double, Payne and Hanek's reduction included (the measured worst case is
 the floats); Annex F's special values are exact: sin(+-0) = +-0, cos(+-0) = 1, tan(+-0) = +-0, sin, cos, and tan of an
 infinity are NaN, asin and acos outside -1 to 1 are NaN, asin(+-1) and acos(+-1) are exact, atan(+-inf) = +-pi/2, and
 atan2's cases for zeros and infinities. On Linux, where `refined run` calls glibc's libm through ctypes, the executable's
-results differ from glibc's by at most 2 ulp (both are within 1 ulp of the exact value; glibc's sinf and cosf are
+results differ from glibc's by at most 2 ulp (both are within 1 ulp of the exact value, except where glibc's own result is more than 2 ulp off, as its tan is
+near a pole after reduction of 5.319372648326541e+255, 14 ulp; glibc's sinf and cosf are
 ARM's optimized routines, whose method is not copied here, so the float forms are not bit-identical to them)."""
 from __future__ import annotations
 
@@ -196,7 +197,12 @@ def test_c_trigonometry_matches_glibc_on_linux(tour):
         single = name.endswith("f")
         for args, a, b in zip(cmathtrigtour.inputs(name), mine[name], theirs[name]):
             d = _distance(_to_float(a), _to_float(b), single)
-            assert d <= GLIBC_DIFFERENCE, (name, args, a, b, d)
+            if d > GLIBC_DIFFERENCE:
+                # glibc itself is far from the exact value there (its tan of 5.319372648326541e+255, near a pole, is 14
+                # ulp off; ours, held to 1 ulp by the first test, is 0.36): allowed only when glibc is the one that is off
+                base = name[:-1] if single else name
+                kind, want = _expected(base, args if isinstance(args, tuple) else (args,))
+                assert kind == "ulp" and cmathtriggen.ulp_error(_to_float(b), want, single=single) > GLIBC_DIFFERENCE,                     (name, args, a, b, d)
 
 
 def test_c_trigonometry_table_names_glibc_functions():
