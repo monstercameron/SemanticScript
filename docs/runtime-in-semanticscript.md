@@ -379,6 +379,9 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | threads.h | thrd_*, mtx_*, cnd_*, tss_*, call_once on Linux threads and futexes and on Windows threads; deadlines honoured; the heap and streams locked, errno per thread on Linux (D-166, D-168, D-169) | Done |
 | errno.h | glibc's numbers, the kernel's on Linux and a table of Windows error codes (D-171) | Done |
 | string.h | strerror: glibc's messages, read from glibc by the compiler on a glibc machine; `Unknown error N` when built elsewhere (D-172) | Done on Linux |
+| string.h | strerror built on Windows: the Microsoft C runtime's message for the error of the same symbolic name, `Unknown error N` for a name it lacks (D-190) | Done |
+| threads.h | Windows waits that block in the system: mutexes, condition variables, call_once, and the streams' lock on kernel32's SRW locks and condition variables, timed waits by milliseconds to the deadline (D-191) | Done |
+| setjmp.h | the Windows x64 routines as machine code, so x86_64 executables built on an ARM64 machine have them (D-192) | Done |
 | math.h, stdlib.h, wchar.h (long double) | long double as each platform's C has it (x87, binary128, double); fabsl, copysignl, frexpl, ldexpl, scalbnl, ilogbl, logbl, nanl, the rint and round families, modfl, fmodl, remainderl, remquol, sqrtl, nextafterl, nexttoward, fmaxl, fminl, fdiml exactly; strtold, wcstold, scanf's `%Lf` correctly rounded; complex numbers and ldiv_t passed as the C ABI passes structs (D-174, D-175) | Done; the transcendental `l` functions and fmal to come (`cmathlong`) |
 | wchar.h (wide stdio), time.h | fwide and streams' orientation, fputwc, putwc, putwchar, fputws, fgetwc, getwc, getwchar, fgetws, ungetwc, the wprintf and wscanf families with their v forms, `__isoc99_`, `__isoc23_`, and `__*_chk` names; wcsftime (D-176); the C locale's conversions are ASCII, as glibc's (D-177) | Done; a wide character past 127 fails at once, not at a flush |
 

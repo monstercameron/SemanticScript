@@ -29788,8 +29788,9 @@ doReleaseList suppresses none
 # ---------------------------------------------------------------- the streams' lock (D-166)
 #
 # Once a C program starts a thread, the stream operations below hold one lock for every stream: a futex word at
-# machine.state 28976 (0 free, 1 held, 2 held with waiters), its holder's thread id at 28984 and how many times it
-# holds it at 28992, so an operation that calls another under the lock takes it again.
+# machine.state 28976 (0 free, 1 held, 2 held with waiters) on Linux, an SRW lock there on Windows (D-191), its
+# holder's thread id at 28984 and how many times it holds it at 28992, so an operation that calls another under the
+# lock takes it again.
 lockStreams is operation
 lockStreams purpose "Take the streams' lock when threads were started; its holder takes it again"
 lockStreams invariant none
@@ -29813,6 +29814,10 @@ lockStreams label again loopKind none
 lockStreams label again within none
 lockStreams label acquire loopKind none
 lockStreams label acquire within none
+lockStreams label windows loopKind none
+lockStreams label windows within none
+lockStreams label linux loopKind none
+lockStreams label linux within none
 lockStreams label contended loopKind while
 lockStreams label contended within none
 lockStreams label contended maxIterations forever
@@ -29844,9 +29849,13 @@ lockStreams at again do readDepth
 lockStreams at again do doStoreInt64Step1
 lockStreams at again do doStoreInt64
 lockStreams at again return ok none
-lockStreams at acquire do readFirst
-lockStreams at acquire do findCheck21
-lockStreams at acquire branch if check2 goto held else goto contended
+lockStreams at acquire do readOnLinux
+lockStreams at acquire branch if onLinux goto linux else goto windows
+lockStreams at windows do doAcquireSRWLockExclusive
+lockStreams at windows goto held
+lockStreams at linux do readFirst
+lockStreams at linux do findCheck21
+lockStreams at linux branch if check2 goto held else goto contended
 lockStreams at contended do readPrevious
 lockStreams at contended do findCheck31
 lockStreams at contended branch if check3 goto retake else goto wait
@@ -29972,6 +29981,28 @@ doStoreInt64 cleanedBy none
 doStoreInt64 borrows none
 doStoreInt64 catch none
 doStoreInt64 suppresses none
+
+readOnLinux is call
+readOnLinux in lockStreams
+readOnLinux invokes system.posix
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+doAcquireSRWLockExclusive is call
+doAcquireSRWLockExclusive in lockStreams
+doAcquireSRWLockExclusive invokes system.acquireSRWLockExclusive
+doAcquireSRWLockExclusive argument lock machine.Address word copy
+doAcquireSRWLockExclusive result none
+doAcquireSRWLockExclusive ownedBy none
+doAcquireSRWLockExclusive cleanedBy none
+doAcquireSRWLockExclusive borrows none
+doAcquireSRWLockExclusive catch none
+doAcquireSRWLockExclusive suppresses none
 
 readFirst is call
 readFirst in lockStreams
@@ -30156,7 +30187,7 @@ findWideId1 catch none
 findWideId1 suppresses none
 
 waitOn is operation
-waitOn purpose "Wait on the lock's word: a futex wait while it holds 2 on Linux, a millisecond's sleep on Windows"
+waitOn purpose "Wait on the lock's word while it holds 2: a futex wait (Linux; Windows holds an SRW lock there instead, D-191)"
 waitOn invariant none
 waitOn typeParameter none
 waitOn input word machine.Address copied
@@ -30172,32 +30203,12 @@ waitOn async false
 waitOn maxRecursion none
 waitOn label begin loopKind none
 waitOn label begin within none
-waitOn label linux loopKind none
-waitOn label linux within none
-waitOn label windows loopKind none
-waitOn label windows within none
 waitOn let n128 Int64 128 immutable
 waitOn let two Int64 2 immutable
 waitOn let zero Int64 0 immutable
-waitOn let int321 Int32 1 immutable
-waitOn at begin do readOnLinux
-waitOn at begin branch if onLinux goto linux else goto windows
-waitOn at linux do readNowhere
-waitOn at linux do readUnusedFutex
-waitOn at linux return ok none
-waitOn at windows do doSleep
-waitOn at windows return ok none
-
-readOnLinux is call
-readOnLinux in waitOn
-readOnLinux invokes system.posix
-readOnLinux argument none
-readOnLinux result onLinux Bool
-readOnLinux ownedBy none
-readOnLinux cleanedBy none
-readOnLinux borrows none
-readOnLinux catch none
-readOnLinux suppresses none
+waitOn at begin do readNowhere
+waitOn at begin do readUnusedFutex
+waitOn at begin return ok none
 
 readNowhere is call
 readNowhere in waitOn
@@ -30226,19 +30237,8 @@ readUnusedFutex borrows none
 readUnusedFutex catch none
 readUnusedFutex suppresses none
 
-doSleep is call
-doSleep in waitOn
-doSleep invokes system.sleep
-doSleep argument milliseconds Int32 int321 copy
-doSleep result none
-doSleep ownedBy none
-doSleep cleanedBy none
-doSleep borrows none
-doSleep catch none
-doSleep suppresses none
-
 wakeOn is operation
-wakeOn purpose "Wake a waiter on the lock's word: a futex wake on Linux; on Windows the waiter looks again on its own"
+wakeOn purpose "Wake a waiter on the lock's word: a futex wake (Linux)"
 wakeOn invariant none
 wakeOn typeParameter none
 wakeOn input word machine.Address copied
@@ -30254,30 +30254,12 @@ wakeOn async false
 wakeOn maxRecursion none
 wakeOn label begin loopKind none
 wakeOn label begin within none
-wakeOn label linux loopKind none
-wakeOn label linux within none
-wakeOn label done loopKind none
-wakeOn label done within none
 wakeOn let n129 Int64 129 immutable
 wakeOn let one Int64 1 immutable
 wakeOn let zero Int64 0 immutable
-wakeOn at begin do readOnLinux
-wakeOn at begin branch if onLinux goto linux else goto done
-wakeOn at linux do readNowhere
-wakeOn at linux do readUnusedFutex
-wakeOn at linux return ok none
-wakeOn at done return ok none
-
-readOnLinux is call
-readOnLinux in wakeOn
-readOnLinux invokes system.posix
-readOnLinux argument none
-readOnLinux result onLinux Bool
-readOnLinux ownedBy none
-readOnLinux cleanedBy none
-readOnLinux borrows none
-readOnLinux catch none
-readOnLinux suppresses none
+wakeOn at begin do readNowhere
+wakeOn at begin do readUnusedFutex
+wakeOn at begin return ok none
 
 readNowhere is call
 readNowhere in wakeOn
@@ -30329,6 +30311,10 @@ unlockStreams label down loopKind none
 unlockStreams label down within none
 unlockStreams label free loopKind none
 unlockStreams label free within none
+unlockStreams label windows loopKind none
+unlockStreams label windows within none
+unlockStreams label linux loopKind none
+unlockStreams label linux within none
 unlockStreams label wake loopKind none
 unlockStreams label wake within none
 unlockStreams label done loopKind none
@@ -30354,9 +30340,13 @@ unlockStreams at down do doStoreInt64
 unlockStreams at down return ok none
 unlockStreams at free do doStoreInt642
 unlockStreams at free do doStoreInt643
-unlockStreams at free do readPrevious
-unlockStreams at free do findCheck21
-unlockStreams at free branch if check2 goto done else goto wake
+unlockStreams at free do readOnLinux
+unlockStreams at free branch if onLinux goto linux else goto windows
+unlockStreams at windows do doReleaseSRWLockExclusive
+unlockStreams at windows return ok none
+unlockStreams at linux do readPrevious
+unlockStreams at linux do findCheck21
+unlockStreams at linux branch if check2 goto done else goto wake
 unlockStreams at wake do readUnusedCompareExchange32
 unlockStreams at wake do doWakeOn
 unlockStreams at wake return ok none
@@ -30476,6 +30466,28 @@ doStoreInt643 cleanedBy none
 doStoreInt643 borrows none
 doStoreInt643 catch none
 doStoreInt643 suppresses none
+
+readOnLinux is call
+readOnLinux in unlockStreams
+readOnLinux invokes system.posix
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+doReleaseSRWLockExclusive is call
+doReleaseSRWLockExclusive in unlockStreams
+doReleaseSRWLockExclusive invokes system.releaseSRWLockExclusive
+doReleaseSRWLockExclusive argument lock machine.Address word copy
+doReleaseSRWLockExclusive result none
+doReleaseSRWLockExclusive ownedBy none
+doReleaseSRWLockExclusive cleanedBy none
+doReleaseSRWLockExclusive borrows none
+doReleaseSRWLockExclusive catch none
+doReleaseSRWLockExclusive suppresses none
 
 readPrevious is call
 readPrevious in unlockStreams

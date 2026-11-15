@@ -333,13 +333,33 @@ def _doubles():
     return ctour.DOUBLE_INPUTS
 
 
+# D-190: what a Windows executable's strerror gives for some of glibc's numbers, written out: the Microsoft C
+# runtime's message for the same error (ENOENT 2; EDEADLK 35, ucrt's 36; ELOOP 40, ucrt's 114; ECONNREFUSED 111,
+# ucrt's 107; EOPNOTSUPP 95, ucrt's 130), and `Unknown error N` for a name ucrt does not have (ENOTBLK 15, EHWPOISON
+# 133) or a number glibc has no name for (41, 58)
+UCRT_SAMPLES = {0: "No error", 2: "No such file or directory", 12: "Not enough space", 15: "Unknown error 15",
+                35: "Resource deadlock avoided", 40: "too many symbolic link levels", 41: "Unknown error 41",
+                58: "Unknown error 58", 95: "operation not supported", 111: "connection refused",
+                133: "Unknown error 133", 135: "Unknown error 135", -1: "Unknown error -1"}
+
+
 def error_text(number: int) -> str:
-    """D-172: what strerror gives: glibc's message where the compiler ran on glibc (Python's os.strerror is glibc's
-    strerror there, and the executable's table was read from it), `Unknown error N` elsewhere."""
+    """D-172, D-190: what strerror gives: glibc's message where the compiler ran on glibc (Python's os.strerror is
+    glibc's strerror there, and the executable's table was read from it); on Windows the Microsoft C runtime's
+    message for the error of the same name (the compiler's table, read from Python's os.strerror, which is ucrt's
+    there), `Unknown error N` for a number ucrt has no name for; `Unknown error N` elsewhere."""
     import os
     import platform
+    import sys
     if platform.libc_ver()[0] == "glibc":
         return os.strerror(number)
+    if sys.platform == "win32":
+        from refined.codegen import ucrt_messages
+        table = ucrt_messages()
+        text = table[number] if 0 <= number < len(table) else None
+        if number in UCRT_SAMPLES:
+            assert (text or f"Unknown error {number}") == UCRT_SAMPLES[number], (number, text)
+        return text or f"Unknown error {number}"
     return f"Unknown error {number}"
 
 

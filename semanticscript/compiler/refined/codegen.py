@@ -330,6 +330,72 @@ _CONTEXT_ROUTINES = {
         "ldp d8, d9, [x0, #112]", "ldp d10, d11, [x0, #128]", "ldp d12, d13, [x0, #144]", "ldp d14, d15, [x0, #160]",
         "cmp w1, #0", "csinc w0, w1, wzr, ne", "br x30"]),
 }
+# D-192: the Windows x64 routines above as their machine code, one instruction a line (as GNU as encodes them), so an
+# object for x86_64 needs no x86 assembler: llvmlite on an ARM64 machine has none (D-170)
+_X86_64_WINDOWS_CODE = {
+    "save": bytes.fromhex("".join([
+        "488919",              # movq %rbx, 0(%rcx)
+        "48896908",            # movq %rbp, 8(%rcx)
+        "4c896110",            # movq %r12, 16(%rcx)
+        "4c896918",            # movq %r13, 24(%rcx)
+        "4c897120",            # movq %r14, 32(%rcx)
+        "4c897928",            # movq %r15, 40(%rcx)
+        "488d542408",          # leaq 8(%rsp), %rdx: the caller's stack pointer
+        "48895130",            # movq %rdx, 48(%rcx)
+        "488b1424",            # movq (%rsp), %rdx: the return address
+        "48895138",            # movq %rdx, 56(%rcx)
+        "48897940",            # movq %rdi, 64(%rcx)
+        "48897148",            # movq %rsi, 72(%rcx)
+        "f30f7f7150",          # movdqu %xmm6, 80(%rcx)
+        "f30f7f7960",          # movdqu %xmm7, 96(%rcx)
+        "f3440f7f4170",        # movdqu %xmm8, 112(%rcx)
+        "f3440f7f8980000000",  # movdqu %xmm9, 128(%rcx)
+        "f3440f7f9190000000",  # movdqu %xmm10, 144(%rcx)
+        "f3440f7f99a0000000",  # movdqu %xmm11, 160(%rcx)
+        "f3440f7fa1b0000000",  # movdqu %xmm12, 176(%rcx)
+        "f3440f7fa9c0000000",  # movdqu %xmm13, 192(%rcx)
+        "f3440f7fb1d0000000",  # movdqu %xmm14, 208(%rcx)
+        "f3440f7fb9e0000000",  # movdqu %xmm15, 224(%rcx)
+        "31c0",                # xorl %eax, %eax
+        "c3",                  # retq
+    ])),
+    "resume": bytes.fromhex("".join([
+        "488b19",              # movq 0(%rcx), %rbx
+        "488b6908",            # movq 8(%rcx), %rbp
+        "4c8b6110",            # movq 16(%rcx), %r12
+        "4c8b6918",            # movq 24(%rcx), %r13
+        "4c8b7120",            # movq 32(%rcx), %r14
+        "4c8b7928",            # movq 40(%rcx), %r15
+        "488b7940",            # movq 64(%rcx), %rdi
+        "488b7148",            # movq 72(%rcx), %rsi
+        "f30f6f7150",          # movdqu 80(%rcx), %xmm6
+        "f30f6f7960",          # movdqu 96(%rcx), %xmm7
+        "f3440f6f4170",        # movdqu 112(%rcx), %xmm8
+        "f3440f6f8980000000",  # movdqu 128(%rcx), %xmm9
+        "f3440f6f9190000000",  # movdqu 144(%rcx), %xmm10
+        "f3440f6f99a0000000",  # movdqu 160(%rcx), %xmm11
+        "f3440f6fa1b0000000",  # movdqu 176(%rcx), %xmm12
+        "f3440f6fa9c0000000",  # movdqu 192(%rcx), %xmm13
+        "f3440f6fb1d0000000",  # movdqu 208(%rcx), %xmm14
+        "f3440f6fb9e0000000",  # movdqu 224(%rcx), %xmm15
+        "488b6130",            # movq 48(%rcx), %rsp
+        "89d0",                # movl %edx, %eax
+        "85c0",                # testl %eax, %eax
+        "7502",                # jnz 1f
+        "ffc0",                # incl %eax: longjmp(0) returns 1
+        "ff6138",              # 1: jmpq *56(%rcx)
+    ])),
+}
+
+
+class _MachineCodeFunction(ir.Function):
+    """D-192: a function whose body is machine code: written as an alias of a constant array of its bytes (`code`, in
+    a section the linker puts in .text), so callers and the C library's table refer to it by its own name."""
+
+    def descr(self, buf):
+        linkage = self.linkage if self.linkage not in ("", "external") else "internal"
+        buf.append(f"{self.get_reference()} = {linkage} alias {self.code.value_type}, {self.code.type} "
+                   f"{self.code.get_reference()}\n")
 # D-166: a thread's start: clone (CLONE_VM, FS, FILES, SIGHAND, THREAD, SYSVSEM, SETTLS, PARENT_SETTID, and
 # CHILD_CLEARTID) onto a new stack with the record and the function on it; the new thread calls the function
 # (refined_c_thread_main, which the compiler passes) with the record and ends
@@ -377,6 +443,63 @@ def _glibc_messages() -> list:
     while found and found[-1] is None:
         found.pop()
     return found
+
+
+# D-190: the runtime's errno numbers are glibc's (D-171); each one's symbolic name, from 1 to 133 (41 and 58 are
+# aliases in glibc, EWOULDBLOCK and EDEADLOCK, with no number of their own)
+GLIBC_ERRNO_NAMES = (
+    "EPERM ENOENT ESRCH EINTR EIO ENXIO E2BIG ENOEXEC EBADF ECHILD EAGAIN ENOMEM EACCES EFAULT ENOTBLK EBUSY EEXIST "
+    "EXDEV ENODEV ENOTDIR EISDIR EINVAL ENFILE EMFILE ENOTTY ETXTBSY EFBIG ENOSPC ESPIPE EROFS EMLINK EPIPE EDOM ERANGE "
+    "EDEADLK ENAMETOOLONG ENOLCK ENOSYS ENOTEMPTY ELOOP - ENOMSG EIDRM ECHRNG EL2NSYNC EL3HLT EL3RST ELNRNG EUNATCH "
+    "ENOCSI EL2HLT EBADE EBADR EXFULL ENOANO EBADRQC EBADSLT - EBFONT ENOSTR ENODATA ETIME ENOSR ENONET ENOPKG EREMOTE "
+    "ENOLINK EADV ESRMNT ECOMM EPROTO EMULTIHOP EDOTDOT EBADMSG EOVERFLOW ENOTUNIQ EBADFD EREMCHG ELIBACC ELIBBAD "
+    "ELIBSCN ELIBMAX ELIBEXEC EILSEQ ERESTART ESTRPIPE EUSERS ENOTSOCK EDESTADDRREQ EMSGSIZE EPROTOTYPE ENOPROTOOPT "
+    "EPROTONOSUPPORT ESOCKTNOSUPPORT EOPNOTSUPP EPFNOSUPPORT EAFNOSUPPORT EADDRINUSE EADDRNOTAVAIL ENETDOWN ENETUNREACH "
+    "ENETRESET ECONNABORTED ECONNRESET ENOBUFS EISCONN ENOTCONN ESHUTDOWN ETOOMANYREFS ETIMEDOUT ECONNREFUSED EHOSTDOWN "
+    "EHOSTUNREACH EALREADY EINPROGRESS ESTALE EUCLEAN ENOTNAM ENAVAIL EISNAM EREMOTEIO EDQUOT ENOMEDIUM EMEDIUMTYPE "
+    "ECANCELED ENOKEY EKEYEXPIRED EKEYREVOKED EKEYREJECTED EOWNERDEAD ENOTRECOVERABLE ERFKILL EHWPOISON").split()
+
+# D-190: the numbers the Microsoft C runtime's errno.h gives the POSIX names it shares with Winsock, which Python's
+# errno module on Windows gives Winsock's WSAE numbers instead (errno.ECONNREFUSED is 10061 there, whose strerror
+# is "Unknown error"); every other name's ucrt number is Python's own
+_UCRT_SOCKET_ERRNOS = {
+    "EADDRINUSE": 100, "EADDRNOTAVAIL": 101, "EAFNOSUPPORT": 102, "EALREADY": 103, "ECONNABORTED": 106,
+    "ECONNREFUSED": 107, "ECONNRESET": 108, "EDESTADDRREQ": 109, "EHOSTUNREACH": 110, "EINPROGRESS": 112,
+    "EISCONN": 113, "ELOOP": 114, "EMSGSIZE": 115, "ENETDOWN": 116, "ENETRESET": 117, "ENETUNREACH": 118,
+    "ENOBUFS": 119, "ENOPROTOOPT": 123, "ENOTCONN": 126, "ENOTSOCK": 128, "EOPNOTSUPP": 130,
+    "EPROTONOSUPPORT": 135, "EPROTOTYPE": 136, "ETIMEDOUT": 138,
+}
+
+
+def ucrt_messages() -> list:
+    """D-190: strerror's message for each of the runtime's (glibc's) numbers as the Microsoft C runtime gives it for
+    the same error: the number's symbolic name taken to ucrt's number for that name, and Python's os.strerror (ucrt's
+    strerror, on Windows) of it; 0 is ucrt's message for 0. A name ucrt does not have, or one whose message is ucrt's
+    bare "Unknown error", is None (the runtime then says `Unknown error N`). Only meaningful where Python's C library
+    is ucrt, a Windows machine."""
+    import errno as host_errno
+    import os as host_os
+    found = [host_os.strerror(0)]
+    for name in GLIBC_ERRNO_NAMES:
+        number = _UCRT_SOCKET_ERRNOS.get(name, getattr(host_errno, name, None) if name != "-" else None)
+        if number is None or number >= 10000:
+            found.append(None)
+            continue
+        text = host_os.strerror(number)
+        found.append(None if text.startswith("Unknown error") else text)
+    while found and found[-1] is None:
+        found.pop()
+    return found
+
+
+def _host_messages(target: str) -> list:
+    """D-172, D-190: strerror's table as the build machine's C library has it: glibc's messages on a glibc system,
+    and for a Windows target built on Windows the Microsoft C runtime's (ucrt's) for the same errors; else empty."""
+    import sys as host_sys
+    messages = _glibc_messages()
+    if not messages and host_sys.platform == "win32" and target == "windows":
+        messages = ucrt_messages()
+    return messages
 
 
 def _host_assembles_x86() -> bool:
@@ -526,12 +649,13 @@ class Backend:
 
     def error_messages(self) -> ir.GlobalVariable:
         """D-172: strerror's table: the count, then each number's message (a C string) or null. The messages are
-        glibc's own, read when the compiler runs on a glibc system (os.strerror calls glibc's strerror there);
-        anywhere else the table is empty and strerror says `Unknown error N`."""
+        glibc's own, read when the compiler runs on a glibc system (os.strerror calls glibc's strerror there); for
+        a Windows target built on Windows they are the Microsoft C runtime's for the same errors (D-190); anywhere
+        else the table is empty and strerror says `Unknown error N`."""
         g = self.module.globals.get("refined.c.errors")
         if g is not None:
             return g
-        messages = _glibc_messages()
+        messages = _host_messages(self.os)
         entries = []
         for number, text in enumerate(messages):
             if text is None:
@@ -1029,10 +1153,20 @@ class Backend:
         if arch == "aarch64":
             system = "linux"  # D-170: Windows on ARM keeps the same registers as AAPCS64, so one routine serves both
         text = _CONTEXT_ROUTINES.get((arch, system, found[0]))
-        if (arch, system) == ("x86_64", "windows") and not _host_assembles_x86():
-            # D-170: LLVM assembles a routine with the target's assembler, which a host of another architecture may
-            # not have (llvmlite on ARM64 has only its own); such an object traps there instead
-            text = None
+        if (arch, system) == ("x86_64", "windows") and \
+                (self.options.get("triple") or self.options.get("runtime_object") or not _host_assembles_x86()):
+            # D-192: in an object (and wherever this machine's LLVM has no x86 assembler: llvmlite on ARM64 registers
+            # only its own, D-170) the routine is its machine code, bytes no assembler reads; the JIT on an x86_64
+            # host, whose bytes would land in memory that does not execute, keeps the instructions
+            fn.__class__ = _MachineCodeFunction
+            fn.code = ir.GlobalVariable(self.module, ir.ArrayType(I8, len(_X86_64_WINDOWS_CODE[found[0]])),
+                                        name=f"{fn.name}.code")
+            fn.code.initializer = ir.Constant(fn.code.value_type, bytearray(_X86_64_WINDOWS_CODE[found[0]]))
+            fn.code.global_constant = True
+            fn.code.linkage = "private"
+            fn.code.section = ".text$refined"
+            fn.code.align = 16
+            return True
         b = ir.IRBuilder(fn.append_basic_block("entry"))
         fn.attributes.add("noinline")
         if text is None:
@@ -2576,6 +2710,13 @@ class OpGen:
                 self.unsupported(line, "`machine.threadEntry` in a program with no operation exported to C as "
                                        "refined_c_thread_main")
             mod, op = self.be.abi["refined_c_thread_main"]
+            return b.bitcast(self.be.function_for(mod, op, None, 0), PTR), None, None
+        if name == "testThreadEntry":
+            # D-191: a runtime test's own thread body, which threads.h's tests hand thrd_create
+            if "refined_c_test_thread" not in self.be.abi:
+                self.unsupported(line, "`machine.testThreadEntry` in a program with no operation exported to C as "
+                                       "refined_c_test_thread")
+            mod, op = self.be.abi["refined_c_test_thread"]
             return b.bitcast(self.be.function_for(mod, op, None, 0), PTR), None, None
         if name == "taskEntry":
             # D-131: only the runtime has it, and only for the operation a task's fiber starts in

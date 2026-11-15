@@ -38,6 +38,8 @@ import nettour  # noqa: E402
 import httptour  # noqa: E402
 import ctour  # noqa: E402
 import loadtour  # noqa: E402
+import threadtour  # noqa: E402
+import jumptour  # noqa: E402
 
 RUNTIME = os.path.join(caselib.ROOT, "semanticscript", "runtime")
 EXAMPLES = os.path.join(caselib.ROOT, "docs", "refined-examples")
@@ -304,6 +306,52 @@ def test_c_library_matches_glibc(tmp_path):
         assert (jit.returncode, jit.stdout, jit.stderr) == (ran.returncode, ran.stdout, ran.stderr)
 
 
+windows_only = pytest.mark.skipif(not WINDOWS, reason="what it proves is Windows's (D-191, D-192); Linux's threads "
+                                  "and jumps are tests/test_cprograms.py's")
+
+
+@windows_only
+def test_thread_waits_block_and_time_out(tmp_path):
+    """18 C interoperability (D-191): threads.h's mutexes and condition variables in an executable, through `ffi`: a
+    plain mutex taken and refused to a second take, mtx_timedlock and cnd_timedwait giving thrd_timedout only once
+    their deadline, a second ahead, has passed (the clock read after says so), the mutex held again after the wait,
+    signals with no waiter, and a recursive mutex taken twice. They block in kernel32's SRW locks and condition
+    variables, so the executable still imports KERNEL32.dll alone among C-free DLLs."""
+    project = str(tmp_path / "threadtour")
+    threadtour.write_project(project)
+    caselib.approve(project)
+    exe = os.path.join(project, "program.exe")
+    built = _build(project, exe)
+    assert built.returncode == 0, built.stdout + built.stderr
+    assert_no_libc(exe)
+    ran = _exe(exe, project)
+    assert (ran.returncode, ran.stderr) == (0, ""), ran.stdout + ran.stderr
+    assert ran.stdout.splitlines() == threadtour.EXPECTED
+    with open(exe, "rb") as fh:
+        image = fh.read()
+    for name in (b"AcquireSRWLockExclusive", b"SleepConditionVariableSRW", b"WakeAllConditionVariable"):
+        assert name in image, name
+    assert b"WaitOnAddress" not in image
+
+
+@windows_only
+def test_setjmp_returns_twice_in_an_executable(tmp_path):
+    """18 C interoperability (D-163, D-170, D-192): the C library's setjmp and longjmp in an executable, through
+    `ffi`: setjmp gives 0, longjmp(7) brings it back with 7, longjmp(0) with 1, the program's count of returns kept in
+    memory across them. On Windows x86_64 the routines are machine code the compiler writes as bytes, so this holds in
+    an executable built on an ARM64 machine (whose LLVM has no x86 assembler) as on an x86_64 one."""
+    project = str(tmp_path / "jumptour")
+    jumptour.write_project(project)
+    caselib.approve(project)
+    exe = os.path.join(project, "program.exe")
+    built = _build(project, exe)
+    assert built.returncode == 0, built.stdout + built.stderr
+    assert_no_libc(exe)
+    ran = _exe(exe, project)
+    assert (ran.returncode, ran.stderr) == (0, ""), ran.stdout + ran.stderr
+    assert ran.stdout.splitlines() == jumptour.EXPECTED
+
+
 def test_c_library_table_names_glibc_functions():
     """D-153: the runtime's C library is the `abi library` operations of its `clibrary` module, each under its C
     name, and nothing else: ctype.h, string.h, stdlib.h, math.h's basics, a little of stdio.h, and the few names
@@ -341,7 +389,7 @@ C_LIBRARY = {
     "__errno_location", "__stack_chk_fail", "__cxa_finalize", "__cxa_atexit",
     "fabs", "floor", "ceil", "trunc", "round", "fmod", "sqrt", "copysign",
     "puts", "putchar", "fputs", "fputc", "putc", "fwrite", "fflush",
-    # D-160: the rest of stdio.h, and strerror (its messages a known gap: `Unknown error N` for every number)
+    # D-160: the rest of stdio.h, and strerror (its messages glibc's or, built on Windows, ucrt's: D-172, D-190)
     "strerror", "fopen", "freopen", "fclose", "fread", "fgetc", "getc", "getchar", "fgets", "ungetc", "fseek", "ftell",
     "fgetpos", "fsetpos", "rewind", "feof", "ferror", "clearerr", "setvbuf", "setbuf", "remove", "rename", "tmpfile",
     "tmpnam", "perror", "printf", "fprintf", "sprintf", "snprintf", "vprintf", "vfprintf", "vsprintf", "vsnprintf",
@@ -796,9 +844,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 146 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 147 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "146 of 146 tests passed" in tested.stdout
+    assert "147 of 147 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

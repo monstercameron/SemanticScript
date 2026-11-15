@@ -4820,8 +4820,9 @@ op wideScanStringListC23 "vswscanf: read a wide string by a wide format, from a 
 ## ---------------------------------------------------------------- the streams' lock (D-166)
 ##
 ## Once a C program starts a thread, the stream operations below hold one lock for every stream: a futex word at
-## machine.state 28976 (0 free, 1 held, 2 held with waiters), its holder's thread id at 28984 and how many times it
-## holds it at 28992, so an operation that calls another under the lock takes it again.
+## machine.state 28976 (0 free, 1 held, 2 held with waiters) on Linux, an SRW lock there on Windows (D-191), its
+## holder's thread id at 28984 and how many times it holds it at 28992, so an operation that calls another under the
+## lock takes it again.
 
 op lockStreams "Take the streams' lock when threads were started; its holder takes it again"
   effect use machine.memory
@@ -4843,6 +4844,12 @@ op lockStreams "Take the streams' lock when threads were started; its holder tak
   machine.storeInt64(depthCell, depth + 1)
   return
 :acquire
+  onLinux = system.posix()
+  if onLinux linux windows
+:windows
+  system.acquireSRWLockExclusive(word)
+  goto held
+:linux
   first = machine.compareExchange32(word, 0, 1)
   when first == 0 held contended
 :contended loop=while max=forever
@@ -4876,37 +4883,26 @@ op lockerId "The running thread's id: gettid on Linux, GetCurrentThreadId on Win
   calc wideId = convert.int32ToInt64(windowsId)
   return wideId
 
-op waitOn "Wait on the lock's word: a futex wait while it holds 2 on Linux, a millisecond's sleep on Windows"
+op waitOn "Wait on the lock's word while it holds 2: a futex wait (Linux; Windows holds an SRW lock there instead, D-191)"
   input word machine.Address copied
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.posix()
-  if onLinux linux windows
-:linux
   nowhere = machine.zero()
   system.futex(word, 128, 2, nowhere, nowhere, 0)
   return
-:windows
-  system.sleep(1)
-  return
 
-op wakeOn "Wake a waiter on the lock's word: a futex wake on Linux; on Windows the waiter looks again on its own"
+op wakeOn "Wake a waiter on the lock's word: a futex wake (Linux)"
   input word machine.Address copied
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.posix()
-  if onLinux linux done
-:linux
   nowhere = machine.zero()
   system.futex(word, 129, 1, nowhere, nowhere, 0)
-  return
-:done
   return
 
 op unlockStreams "Give the streams' lock back when its holder's count comes to 0, waking a waiter"
@@ -4929,6 +4925,12 @@ op unlockStreams "Give the streams' lock back when its holder's count comes to 0
 :free
   machine.storeInt64(depthCell, 0)
   machine.storeInt64(holderCell, 0)
+  onLinux = system.posix()
+  if onLinux linux windows
+:windows
+  system.releaseSRWLockExclusive(word)
+  return
+:linux
   previous = machine.compareExchange32(word, 1, 0)
   when previous == 1 done wake
 :wake

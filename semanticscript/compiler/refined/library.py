@@ -294,6 +294,9 @@ def _machine() -> dict:
         "startThread": Sig((_at("stackTop"), _at("block"), _at("tidAt"), _at("record")), "Int64", effects=_MEM),
         # D-168: the address of the runtime's `refined_c_thread_main`, where a Windows thread starts (CreateThread)
         "threadEntry": Sig((), _A, effects=_MEM),
+        # D-191: the address of `refined_c_test_thread`, `int function(argument)`, an operation a runtime test exports
+        # to C, so threads.h's own tests can start threads that run SemanticScript (only a test module has one)
+        "testThreadEntry": Sig((), _A, effects=_MEM),
         "loadLongDouble": Sig((_at("address"),), "machine.LongDouble", effects=_MEM),
         "storeLongDouble": Sig((_at("address"), P("value", "machine.LongDouble", "copied")), effects=_MEM),
         # arithmetic, each one rounding: x87's instructions on x86_64 Linux, libgcc's soft float (__addtf3, ...) on
@@ -433,6 +436,15 @@ SYSTEM_CALLS.update({
     "tlsAlloc": _sys("TlsAlloc", (), "Int32"),
     "tlsGetValue": _sys("TlsGetValue", ("index:Int32",), "A"),
     "tlsSetValue": _sys("TlsSetValue", ("index:Int32", "value:A"), "Int32"),
+    # D-191: blocking waits for threads.h on Windows: slim reader/writer locks and condition variables, kernel32's
+    "initializeSRWLock": _sys("InitializeSRWLock", ("lock:A",)),
+    "acquireSRWLockExclusive": _sys("AcquireSRWLockExclusive", ("lock:A",)),
+    "releaseSRWLockExclusive": _sys("ReleaseSRWLockExclusive", ("lock:A",)),
+    "initializeConditionVariable": _sys("InitializeConditionVariable", ("condition:A",)),
+    "sleepConditionVariableSRW": _sys("SleepConditionVariableSRW", ("condition:A", "lock:A", "milliseconds:Int32",
+                                                                    "flags:Int32"), "Int32"),
+    "wakeConditionVariable": _sys("WakeConditionVariable", ("condition:A",)),
+    "wakeAllConditionVariable": _sys("WakeAllConditionVariable", ("condition:A",)),
     "convertThreadToFiber": _sys("ConvertThreadToFiber", ("parameter:A",), "A"),
     "createFiberEx": _sys("CreateFiberEx", ("commitBytes:Int64", "reserveBytes:Int64", "flags:Int32", "start:A",
                                             "parameter:A"), "A"),

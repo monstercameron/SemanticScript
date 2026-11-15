@@ -2886,6 +2886,65 @@ with glibc. Decided by delegation:
   AArch64); errno is EDOM or ERANGE as glibc sets them (not for a subnormal result). The cost is size and time: each
   call takes a 17.6 KB workspace.
 
+- **D-190** strerror on Windows says what the Windows C runtime says. D-172's table is filled from glibc only on a
+  glibc machine, so every executable built on Windows said `Unknown error N` for every number. Built on Windows for
+  Windows, the compiler now fills it from Python's os.strerror, which is the Microsoft C runtime's (ucrt's) strerror
+  there, so a Windows program gets its platform's C library's messages. The runtime's numbers are glibc's (D-171) and
+  ucrt numbers some errors differently, so each number is matched by its symbolic name (`GLIBC_ERRNO_NAMES` in
+  codegen.py, 1 to 133): ENOENT 2 is ucrt's 2, EDEADLK 35 is ucrt's 36, ECONNREFUSED 111 is ucrt's 107. Python's
+  errno module gives ucrt's numbers for most names but Winsock's WSAE numbers for the socket ones (errno.ECONNREFUSED
+  is 10061 there, and ucrt's strerror of it is "Unknown error"), so the 24 names ucrt's errno.h numbers from 100 to
+  138 are taken from that header (`_UCRT_SOCKET_ERRNOS`). 0 is ucrt's "No error". A number whose name ucrt does not
+  have (ENOTBLK, the STREAMS and keyring errors, EHWPOISON), and 41 and 58, which glibc leaves unnamed, stay `Unknown
+  error N`: ucrt's own text for them would be a bare "Unknown error". The messages are ucrt's words and case ("Not
+  enough space", "connection refused"), not glibc's. tests/cstdio.py expects the compiler's table on Windows and
+  checks 13 numbers against messages written out (`UCRT_SAMPLES`); a Linux target built on Windows keeps the empty
+  table.
+
+- **D-191** threads.h on Windows waits in the system instead of sleeping a millisecond and looking again (D-168). A
+  mutex (glibc's 40 bytes, opaque to C) is an SRW lock at 0 that guards it, its owner at 8, its count at 16, its kind
+  at 24, its state at 28 (0 free, 1 held, 2 held with waiters), and a condition variable at 32: a take sleeps on that
+  condition variable under the guard while the mutex is held (SleepConditionVariableSRW), and a give marks it free and
+  wakes one waiter when the state says one waits. The guard is held only for those few instructions, so every kind
+  (plain, recursive, timed) has the same shape and mtx_timedlock works on any, sleeping for the milliseconds left
+  before its TIME_UTC deadline (rounded up, read from GetSystemTimeAsFileTime) and giving thrd_timedout once it has
+  passed; a waiter that gives up leaves the state at 2, so no other waiter's wake is lost. A condition variable
+  (glibc's 48 bytes) is a Windows condition variable at 0: cnd_wait, under the mutex's guard, marks the mutex free
+  (waking one of its waiters), sleeps on the condition variable, which lets the guard go only once it is asleep, so a
+  signal sent by a thread that took the mutex afterwards is never missed, and takes the mutex again; cnd_signal and
+  cnd_broadcast are WakeConditionVariable and WakeAllConditionVariable. A recursive mutex waited on is given back whole
+  and its count restored. call_once's flag is glibc's 4-byte int, too small for a lock, so every flag shares one SRW
+  lock and one condition variable in machine.state (28512 and 28520): the first caller marks the flag running and
+  calls the function without the lock, later callers sleep until it is done. The streams' lock (D-166) is an SRW lock
+  at its machine.state word, its holder and count as before. The heap's lock is Linux's only: on Windows the heap is
+  HeapAlloc's, which Windows locks itself. thrd_join already waited on the thread's handle. New kernel32 rows:
+  InitializeSRWLock, AcquireSRWLockExclusive, ReleaseSRWLockExclusive, InitializeConditionVariable,
+  SleepConditionVariableSRW, WakeConditionVariable, WakeAllConditionVariable (no event or WaitOnAddress is needed, so
+  executables import KERNEL32.dll alone among the C-free DLLs, D-144). For the runtime's own tests the compiler gains
+  `machine.testThreadEntry`, the address of a test's operation exported as `refined_c_test_thread`, so cthreads'
+  contentionTest starts threads that run SemanticScript under `refined test`: four threads add 2,000 each to a counter
+  under a plain, a recursive, and a timed mutex, a read and its write a yield apart, and the counter is 8,000 each
+  time; a condition variable hands a flag over and an answer back; a timed lock and a timed wait time out once their
+  deadline has passed; four threads' call_once calls rand once; four threads flush every stream 500 times.
+  tests/threadtour.py proves the executable's (x86_64) build of them through `ffi`, which cannot start a thread of
+  its own: mtx_timedlock and cnd_timedwait give thrd_timedout only once a deadline a second ahead has passed.
+
+- **D-192** setjmp's and longjmp's Windows x64 routines (D-170) are written as their machine code, so an x86_64
+  executable built on an ARM64 machine has them: LLVM assembles inline assembly with the target's own assembler,
+  llvmlite on ARM64 registers none for x86 (not even for `.byte` directives, which the same parser reads), and the
+  routine trapped there. Each is now a constant array of its bytes (`_X86_64_WINDOWS_CODE` in codegen.py, one
+  instruction a line with its assembly beside it, the bytes GNU as gives for D-170's text) in the section
+  `.text$refined`, which the linker merges into .text, and the operation's function is an internal alias of that
+  array (`_MachineCodeFunction`), so the C library's table and any caller reach it by its own name. Same entry
+  semantics: setjmp keeps rbx, rbp, r12 to r15, rdi, rsi, xmm6 to xmm15, the caller's stack pointer, and the return
+  address in glibc's jmp_buf layout of D-170 and gives 0; longjmp restores them and returns from that setjmp again
+  with its value, 1 for 0. Every object built for x86_64 Windows uses the bytes, on any machine (an executable, the
+  runtime object stage0 links), so CI's x86_64 runner builds what this machine builds; only the JIT on an x86_64 host
+  keeps the inline assembly, since its bytes would be data in memory that does not execute. tests/jumptour.py builds
+  an executable that calls setjmp and longjmp through `ffi` and keeps its count in memory: setjmp gives 0, then 7
+  from longjmp(7), then 1 from longjmp(0). No other x86 assembly reaches a Windows executable: the system call
+  instruction, the thread pointer (`%fs`), and the start, stack, thread, and signal routines are Linux's.
+
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3783,6 +3842,9 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-186 | The runtime in SemanticScript, the whole C library: time.h with the runtime's own reading of TZ, TZif files, and the Windows zone (by delegation) |
 | 2026-11-15 | D-187 | The runtime in SemanticScript, the whole C library: complex.h with Annex G's special values, through the complex ABI (by delegation) |
 | 2026-11-15 | D-188 | The runtime in SemanticScript, the whole C library: math.h's transcendental long double functions and fmal in 320-bit arithmetic, one code for x87, binary128, and double (by delegation) |
+| 2026-11-15 | D-190 | The runtime in SemanticScript, the whole C library: strerror built on Windows gives ucrt's message for each error, matched by its symbolic name (by delegation) |
+| 2026-11-15 | D-191 | The runtime in SemanticScript, the whole C library: threads.h on Windows blocks in kernel32's SRW locks and condition variables; `machine.testThreadEntry` for the runtime's thread tests (by delegation) |
+| 2026-11-15 | D-192 | The runtime in SemanticScript, the whole C library: setjmp's and longjmp's Windows x64 routines written as machine code, so x86_64 executables built on ARM64 have them (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

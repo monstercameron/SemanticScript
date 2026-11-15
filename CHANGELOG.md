@@ -123,6 +123,12 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   families (printf's and scanf's engines in a wide mode), and wcsftime (D-176).
 - The C locale's multibyte conversions are ASCII only, as glibc's are (D-177). C23 scanf reads `nan(chars)`; unlocks
   release with a compare-exchange; nexttoward across formats; libgcc_s in the AArch64 JIT (D-178).
+- strerror in executables built on Windows gives the Microsoft C runtime's message for each error, matched by its
+  symbolic name, instead of `Unknown error N` for every number (D-190).
+- threads.h on Windows waits in the system: mutexes, condition variables, call_once, and the streams' lock are built
+  on kernel32's SRW locks and condition variables instead of sleeping a millisecond and looking again (D-191).
+- setjmp and longjmp work in x86_64 Windows executables built on an ARM64 machine: their routines are written as
+  machine code rather than assembly LLVM there cannot assemble (D-192).
 
 ### The runtime in SemanticScript: `ffi` everywhere
 
