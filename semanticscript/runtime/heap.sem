@@ -2855,6 +2855,7 @@ unlockHeap label done loopKind none
 unlockHeap label done within none
 unlockHeap let int321 Int32 1 immutable
 unlockHeap let int320 Int32 0 immutable
+unlockHeap let int322 Int32 2 immutable
 unlockHeap let n129 Int64 129 immutable
 unlockHeap let one Int64 1 immutable
 unlockHeap let zero Int64 0 immutable
@@ -2864,7 +2865,7 @@ unlockHeap at release do readWord
 unlockHeap at release do readPrevious
 unlockHeap at release do findCheck11
 unlockHeap at release branch if check1 goto done else goto wake
-unlockHeap at wake do doStoreInt32
+unlockHeap at wake do readUnusedCompareExchange32
 unlockHeap at wake do readNowhere
 unlockHeap at wake do readUnusedFutex
 unlockHeap at wake return ok none
@@ -2917,17 +2918,18 @@ findCheck11 borrows none
 findCheck11 catch none
 findCheck11 suppresses none
 
-doStoreInt32 is call
-doStoreInt32 in unlockHeap
-doStoreInt32 invokes machine.storeInt32
-doStoreInt32 argument address machine.Address word copy
-doStoreInt32 argument value Int32 int320 copy
-doStoreInt32 result none
-doStoreInt32 ownedBy none
-doStoreInt32 cleanedBy none
-doStoreInt32 borrows none
-doStoreInt32 catch none
-doStoreInt32 suppresses none
+readUnusedCompareExchange32 is call
+readUnusedCompareExchange32 in unlockHeap
+readUnusedCompareExchange32 invokes machine.compareExchange32
+readUnusedCompareExchange32 argument address machine.Address word copy
+readUnusedCompareExchange32 argument expected Int32 int322 copy
+readUnusedCompareExchange32 argument desired Int32 int320 copy
+readUnusedCompareExchange32 result unusedCompareExchange32 Int32
+readUnusedCompareExchange32 ownedBy none
+readUnusedCompareExchange32 cleanedBy none
+readUnusedCompareExchange32 borrows none
+readUnusedCompareExchange32 catch none
+readUnusedCompareExchange32 suppresses none
 
 readNowhere is call
 readNowhere in unlockHeap

@@ -510,7 +510,7 @@ op unlockHeap "Give the heap's lock back, waking a waiter"
   previous = machine.compareExchange32(word, 1, 0)
   when previous == 1 done wake
 :wake
-  machine.storeInt32(word, 0)
+  machine.compareExchange32(word, 2, 0)
   nowhere = machine.zero()
   system.futex(word, 129, 1, nowhere, nowhere, 0)
   return

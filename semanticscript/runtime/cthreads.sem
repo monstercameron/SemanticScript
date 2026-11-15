@@ -3415,6 +3415,7 @@ unlockMutex let one Int64 1 immutable
 unlockMutex let zero Int64 0 immutable
 unlockMutex let int321 Int32 1 immutable
 unlockMutex let int320 Int32 0 immutable
+unlockMutex let int322 Int32 2 immutable
 unlockMutex at begin do findOwnerAt1
 unlockMutex at begin do findCountAt1
 unlockMutex at begin do readCount
@@ -3428,7 +3429,7 @@ unlockMutex at free do doStoreInt643
 unlockMutex at free do readPrevious
 unlockMutex at free do findCheck21
 unlockMutex at free branch if check2 goto done else goto contended
-unlockMutex at contended do doStoreInt32
+unlockMutex at contended do readUnusedExchange32
 unlockMutex at contended do doFutexWake
 unlockMutex at contended return ok success
 unlockMutex at done return ok success
@@ -3553,17 +3554,18 @@ findCheck21 borrows none
 findCheck21 catch none
 findCheck21 suppresses none
 
-doStoreInt32 is call
-doStoreInt32 in unlockMutex
-doStoreInt32 invokes machine.storeInt32
-doStoreInt32 argument address machine.Address mutex copy
-doStoreInt32 argument value Int32 int320 copy
-doStoreInt32 result none
-doStoreInt32 ownedBy none
-doStoreInt32 cleanedBy none
-doStoreInt32 borrows none
-doStoreInt32 catch none
-doStoreInt32 suppresses none
+readUnusedExchange32 is call
+readUnusedExchange32 in unlockMutex
+readUnusedExchange32 invokes exchange32
+readUnusedExchange32 argument cell machine.Address mutex copy
+readUnusedExchange32 argument expected Int32 int322 copy
+readUnusedExchange32 argument desired Int32 int320 copy
+readUnusedExchange32 result unusedExchange32 Int32
+readUnusedExchange32 ownedBy none
+readUnusedExchange32 cleanedBy none
+readUnusedExchange32 borrows none
+readUnusedExchange32 catch none
+readUnusedExchange32 suppresses none
 
 doFutexWake is call
 doFutexWake in unlockMutex
@@ -4302,7 +4304,7 @@ callOnce at begin do findCheck11
 callOnce at begin branch if check1 goto call else goto wait
 callOnce at call do readNowhere
 callOnce at call do doCallWithAddress
-callOnce at call do doStoreInt32
+callOnce at call do readUnusedExchange32
 callOnce at call do doFutexWake
 callOnce at call return ok none
 callOnce at wait do readState
@@ -4360,17 +4362,18 @@ doCallWithAddress borrows none
 doCallWithAddress catch none
 doCallWithAddress suppresses none
 
-doStoreInt32 is call
-doStoreInt32 in callOnce
-doStoreInt32 invokes machine.storeInt32
-doStoreInt32 argument address machine.Address flag copy
-doStoreInt32 argument value Int32 int322 copy
-doStoreInt32 result none
-doStoreInt32 ownedBy none
-doStoreInt32 cleanedBy none
-doStoreInt32 borrows none
-doStoreInt32 catch none
-doStoreInt32 suppresses none
+readUnusedExchange32 is call
+readUnusedExchange32 in callOnce
+readUnusedExchange32 invokes exchange32
+readUnusedExchange32 argument cell machine.Address flag copy
+readUnusedExchange32 argument expected Int32 int321 copy
+readUnusedExchange32 argument desired Int32 int322 copy
+readUnusedExchange32 result unusedExchange32 Int32
+readUnusedExchange32 ownedBy none
+readUnusedExchange32 cleanedBy none
+readUnusedExchange32 borrows none
+readUnusedExchange32 catch none
+readUnusedExchange32 suppresses none
 
 doFutexWake is call
 doFutexWake in callOnce
@@ -4386,8 +4389,10 @@ doFutexWake suppresses none
 
 readState is call
 readState in callOnce
-readState invokes machine.loadInt32
-readState argument address machine.Address flag copy
+readState invokes exchange32
+readState argument cell machine.Address flag copy
+readState argument expected Int32 int322 copy
+readState argument desired Int32 int322 copy
 readState result state Int32
 readState ownedBy none
 readState cleanedBy none

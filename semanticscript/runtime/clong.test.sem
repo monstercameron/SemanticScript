@@ -379,6 +379,7 @@ exactTest let real0000000000000000 Float64 0.0 immutable
 exactTest let real3ff0000000000000 Float64 1.0 immutable
 exactTest let uInt644607182418800017409 UInt64 4607182418800017409 immutable
 exactTest let real3fefffffe0000000 Float64 0.9999999403953552 immutable
+exactTest let real3ff0000020000000 Float64 1.0000001192092896 immutable
 exactTest let realbff0000000000000 Float64 -1.0 immutable
 exactTest let int325 Int32 5 immutable
 exactTest let realbfd8000000000000 Float64 -0.375 immutable
@@ -480,6 +481,12 @@ exactTest at begin do readNextSingle
 exactTest at begin do doAssertTrueStep6
 exactTest at begin do doAssertTrueStep7
 exactTest at begin do doAssertTrue5
+exactTest at begin do nextSingleUpStep1
+exactTest at begin do nextSingleUpStep2
+exactTest at begin do readNextSingleUp
+exactTest at begin do doAssertTrueStep8
+exactTest at begin do doAssertTrueStep9
+exactTest at begin do doAssertTrue6
 exactTest at begin do readNan
 exactTest at begin do doExpectLongStep31
 exactTest at begin do doExpectLongStep32
@@ -490,8 +497,8 @@ exactTest at begin do doExpectLongStep35
 exactTest at begin do doExpectLong20
 exactTest at begin do logarithmStep1
 exactTest at begin do readLogarithm
-exactTest at begin do doAssertTrueStep8
-exactTest at begin do doAssertTrue6
+exactTest at begin do doAssertTrueStep10
+exactTest at begin do doAssertTrue7
 exactTest at begin do readRoundTrip
 exactTest at begin do readSource
 exactTest at begin do doStoreLongDoubleStep1
@@ -501,8 +508,8 @@ exactTest at begin do doSettle
 exactTest at begin do readCopy
 exactTest at begin do doPack
 exactTest at begin do readOrder
-exactTest at begin do doAssertTrueStep9
-exactTest at begin do doAssertTrue7
+exactTest at begin do doAssertTrueStep11
+exactTest at begin do doAssertTrue8
 exactTest at begin return ok none
 
 readMode is call
@@ -1616,6 +1623,74 @@ doAssertTrue5 borrows none
 doAssertTrue5 catch none
 doAssertTrue5 suppresses none
 
+nextSingleUpStep1 is call
+nextSingleUpStep1 in exactTest
+nextSingleUpStep1 invokes convert.float64ToFloat32
+nextSingleUpStep1 argument value Float64 real3ff0000000000000 copy
+nextSingleUpStep1 result nextSingleUpPart1 Float32
+nextSingleUpStep1 ownedBy none
+nextSingleUpStep1 cleanedBy none
+nextSingleUpStep1 borrows none
+nextSingleUpStep1 catch none
+nextSingleUpStep1 suppresses none
+
+nextSingleUpStep2 is call
+nextSingleUpStep2 in exactTest
+nextSingleUpStep2 invokes longOf
+nextSingleUpStep2 argument value Float64 real4000000000000000 copy
+nextSingleUpStep2 result nextSingleUpPart2 machine.LongDouble
+nextSingleUpStep2 ownedBy none
+nextSingleUpStep2 cleanedBy none
+nextSingleUpStep2 borrows none
+nextSingleUpStep2 catch none
+nextSingleUpStep2 suppresses none
+
+readNextSingleUp is call
+readNextSingleUp in exactTest
+readNextSingleUp invokes nextTowardFloat
+readNextSingleUp argument value Float32 nextSingleUpPart1 copy
+readNextSingleUp argument toward machine.LongDouble nextSingleUpPart2 copy
+readNextSingleUp result nextSingleUp Float32
+readNextSingleUp ownedBy none
+readNextSingleUp cleanedBy none
+readNextSingleUp borrows none
+readNextSingleUp catch none
+readNextSingleUp suppresses none
+
+doAssertTrueStep8 is call
+doAssertTrueStep8 in exactTest
+doAssertTrueStep8 invokes convert.float32ToFloat64
+doAssertTrueStep8 argument value Float32 nextSingleUp copy
+doAssertTrueStep8 result doAssertTruePart8 Float64
+doAssertTrueStep8 ownedBy none
+doAssertTrueStep8 cleanedBy none
+doAssertTrueStep8 borrows none
+doAssertTrueStep8 catch none
+doAssertTrueStep8 suppresses none
+
+doAssertTrueStep9 is call
+doAssertTrueStep9 in exactTest
+doAssertTrueStep9 invokes compare.equalFloat64
+doAssertTrueStep9 argument left Float64 doAssertTruePart8 copy
+doAssertTrueStep9 argument right Float64 real3ff0000020000000 copy
+doAssertTrueStep9 result doAssertTruePart9 Bool
+doAssertTrueStep9 ownedBy none
+doAssertTrueStep9 cleanedBy none
+doAssertTrueStep9 borrows none
+doAssertTrueStep9 catch none
+doAssertTrueStep9 suppresses none
+
+doAssertTrue6 is call
+doAssertTrue6 in exactTest
+doAssertTrue6 invokes test.assertTrue
+doAssertTrue6 argument value Bool doAssertTruePart9 copy
+doAssertTrue6 result none
+doAssertTrue6 ownedBy none
+doAssertTrue6 cleanedBy none
+doAssertTrue6 borrows none
+doAssertTrue6 catch none
+doAssertTrue6 suppresses none
+
 readNan is call
 readNan in exactTest
 readNan invokes notANumberLong
@@ -1730,28 +1805,28 @@ readLogarithm borrows none
 readLogarithm catch none
 readLogarithm suppresses none
 
-doAssertTrueStep8 is call
-doAssertTrueStep8 in exactTest
-doAssertTrueStep8 invokes compare.equalInt32
-doAssertTrueStep8 argument left Int32 logarithm copy
-doAssertTrueStep8 argument right Int32 int325 copy
-doAssertTrueStep8 result doAssertTruePart8 Bool
-doAssertTrueStep8 ownedBy none
-doAssertTrueStep8 cleanedBy none
-doAssertTrueStep8 borrows none
-doAssertTrueStep8 catch none
-doAssertTrueStep8 suppresses none
+doAssertTrueStep10 is call
+doAssertTrueStep10 in exactTest
+doAssertTrueStep10 invokes compare.equalInt32
+doAssertTrueStep10 argument left Int32 logarithm copy
+doAssertTrueStep10 argument right Int32 int325 copy
+doAssertTrueStep10 result doAssertTruePart10 Bool
+doAssertTrueStep10 ownedBy none
+doAssertTrueStep10 cleanedBy none
+doAssertTrueStep10 borrows none
+doAssertTrueStep10 catch none
+doAssertTrueStep10 suppresses none
 
-doAssertTrue6 is call
-doAssertTrue6 in exactTest
-doAssertTrue6 invokes test.assertTrue
-doAssertTrue6 argument value Bool doAssertTruePart8 copy
-doAssertTrue6 result none
-doAssertTrue6 ownedBy none
-doAssertTrue6 cleanedBy none
-doAssertTrue6 borrows none
-doAssertTrue6 catch none
-doAssertTrue6 suppresses none
+doAssertTrue7 is call
+doAssertTrue7 in exactTest
+doAssertTrue7 invokes test.assertTrue
+doAssertTrue7 argument value Bool doAssertTruePart10 copy
+doAssertTrue7 result none
+doAssertTrue7 ownedBy none
+doAssertTrue7 cleanedBy none
+doAssertTrue7 borrows none
+doAssertTrue7 catch none
+doAssertTrue7 suppresses none
 
 readRoundTrip is call
 readRoundTrip in exactTest
@@ -1858,28 +1933,28 @@ readOrder borrows none
 readOrder catch none
 readOrder suppresses none
 
-doAssertTrueStep9 is call
-doAssertTrueStep9 in exactTest
-doAssertTrueStep9 invokes compare.equalInt32
-doAssertTrueStep9 argument left Int32 order copy
-doAssertTrueStep9 argument right Int32 int320 copy
-doAssertTrueStep9 result doAssertTruePart9 Bool
-doAssertTrueStep9 ownedBy none
-doAssertTrueStep9 cleanedBy none
-doAssertTrueStep9 borrows none
-doAssertTrueStep9 catch none
-doAssertTrueStep9 suppresses none
+doAssertTrueStep11 is call
+doAssertTrueStep11 in exactTest
+doAssertTrueStep11 invokes compare.equalInt32
+doAssertTrueStep11 argument left Int32 order copy
+doAssertTrueStep11 argument right Int32 int320 copy
+doAssertTrueStep11 result doAssertTruePart11 Bool
+doAssertTrueStep11 ownedBy none
+doAssertTrueStep11 cleanedBy none
+doAssertTrueStep11 borrows none
+doAssertTrueStep11 catch none
+doAssertTrueStep11 suppresses none
 
-doAssertTrue7 is call
-doAssertTrue7 in exactTest
-doAssertTrue7 invokes test.assertTrue
-doAssertTrue7 argument value Bool doAssertTruePart9 copy
-doAssertTrue7 result none
-doAssertTrue7 ownedBy none
-doAssertTrue7 cleanedBy none
-doAssertTrue7 borrows none
-doAssertTrue7 catch none
-doAssertTrue7 suppresses none
+doAssertTrue8 is call
+doAssertTrue8 in exactTest
+doAssertTrue8 invokes test.assertTrue
+doAssertTrue8 argument value Bool doAssertTruePart11 copy
+doAssertTrue8 result none
+doAssertTrue8 ownedBy none
+doAssertTrue8 cleanedBy none
+doAssertTrue8 borrows none
+doAssertTrue8 catch none
+doAssertTrue8 suppresses none
 
 partsTest is test
 partsTest purpose "Parts by layout: the double layout's powers, parts and significand words read back, low bits and lengths of 128-bit significands, 3 settled and packed as a float and read back"

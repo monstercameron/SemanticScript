@@ -29,6 +29,8 @@ constant billion "The base of the decimal limbs: 10^9" UInt64 1000000000
 
 constant flagMinus "The `-` flag" Int64 1
 
+constant illegalSequence "EILSEQ: a character the C locale cannot convert" Int32 84
+
 constant flagPlus "The `+` flag" Int64 2
 
 constant flagSpace "The ` ` flag" Int64 4
@@ -2123,8 +2125,13 @@ op formatAllAs "printf's engine, for bytes or (wide mode) for wprintf: in wide m
   lengthCell = machine.offset(spec, 40)
   length = machine.loadInt64(lengthCell)
   written = countWritten(builder, wideMode)
-  convertOne(builder, conversion, flags, width, precision, length, valueAt, written, format, start, place, wideMode)
-  goto eachByte
+  converted = convertOne(builder, conversion, flags, width, precision, length, valueAt, written, format, start, place, wideMode)
+  if converted eachByte unconverted
+:unconverted
+  heap.give(values)
+  heap.give(spec)
+  clibrary.setErrno(illegalSequence)
+  return failed
 :truncated
   heap.give(values)
   heap.give(spec)
@@ -2141,7 +2148,7 @@ op formatAllAs "printf's engine, for bytes or (wide mode) for wprintf: in wide m
 :done
   return total
 
-op convertOne "Write one conversion of an argument (its 16 bytes at an address) into a builder; `written` is how many bytes came before it, which %n stores; a conversion glibc does not know is written as it stands in the format, from its `%`"
+op convertOne "Write one conversion of an argument (its 16 bytes at an address) into a builder; `written` is how many bytes came before it, which %n stores; a conversion glibc does not know is written as it stands in the format, from its `%`; false when a character has no conversion in the C locale (D-177)"
   input builder machine.Address copied
   input conversion Int64 copied
   input flags Int64 copied
@@ -2154,35 +2161,37 @@ op convertOne "Write one conversion of an argument (its 16 bytes at an address) 
   input start Int64 copied
   input end Int64 copied
   input wideMode Bool copied
+  output Bool
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
   let nilWord String "(nil)"
+  let converted Bool true
 :begin
   if wideMode wideCheck notWideMode
 :wideCheck
   when conversion == 99 && length != 3 unitByte wideStringCheck
 :unitByte
   formatUnits(builder, flags, width, 1, valueAt, 1)
-  return
+  return converted
 :wideStringCheck
   when conversion == 115 && length != 3 unitBytes wideCharacterCheck
 :unitBytes
   calc byteText = machine.fromInt64(machine.loadInt64(valueAt))
-  formatUnitString(builder, flags, width, precision, byteText, 1)
-  return
+  bytesWritten = formatUnitString(builder, flags, width, precision, byteText, 1)
+  return bytesWritten
 :wideCharacterCheck
   when conversion == 99 || conversion == 67 unitWide wideTextCheck
 :unitWide
   formatUnits(builder, flags, width, 1, valueAt, 4)
-  return
+  return converted
 :wideTextCheck
   when conversion == 115 || conversion == 83 unitWideText notWideMode
 :unitWideText
   calc unitText = machine.fromInt64(machine.loadInt64(valueAt))
-  formatUnitString(builder, flags, width, precision, unitText, 4)
-  return
+  unitsWritten = formatUnitString(builder, flags, width, precision, unitText, 4)
+  return unitsWritten
 :notWideMode
   word = machine.loadInt64(valueAt)
   when conversion == 100 || conversion == 105 signedInteger notSigned
@@ -2191,13 +2200,13 @@ op convertOne "Write one conversion of an argument (its 16 bytes at an address) 
   calc negative = signedValue < 0
   calc magnitude = magnitudeOf(signedValue)
   formatInteger(builder, flags, width, precision, conversion, negative, magnitude, true)
-  return
+  return converted
 :notSigned
   when conversion == 117 || conversion == 111 || conversion == 120 || conversion == 88 unsignedInteger notUnsigned
 :unsignedInteger
   calc unsignedValue = unsignedWord(word, length)
   formatInteger(builder, flags, width, precision, conversion, false, unsignedValue, false)
-  return
+  return converted
 :notUnsigned
   when conversion == 112 pointer notPointer
 :pointer
@@ -2206,60 +2215,60 @@ op convertOne "Write one conversion of an argument (its 16 bytes at an address) 
   nilText = machine.addressOfString(nilWord)
   nowhere = machine.zero()
   emitPadded(builder, flags, width, 0, nowhere, 0, nilText, 5, false)
-  return
+  return converted
 :realPointer
   calc pointerValue = convert.int64BitsToUInt64(word)
   formatInteger(builder, flags, width, precision, conversion, false, pointerValue, false)
-  return
+  return converted
 :notPointer
   when conversion == 99 && length != 3 character notCharacter
 :character
   formatChar(builder, flags, width, word)
-  return
+  return converted
 :notCharacter
   when conversion == 115 && length != 3 stringConversion notString
 :stringConversion
   calc text = machine.fromInt64(word)
   formatString(builder, flags, width, precision, text)
-  return
+  return converted
 :notString
   when conversion == 110 countConversion notCount
 :countConversion
   storeCount(word, length, written)
-  return
+  return converted
 :notCount
   isReal = isRealConversion(conversion)
   if isReal realConversion notReal
 :realConversion
   formatRealArgument(builder, flags, width, precision, conversion, length, valueAt)
-  return
+  return converted
 :notReal
   when conversion == 109 errorConversion notErrorConversion
 :errorConversion
   errorAt = clibrary.errorMessage()
   formatString(builder, flags, width, precision, errorAt)
-  return
+  return converted
 :notErrorConversion
   when conversion == 99 || conversion == 67 wideCharacter notWideCharacter
 :wideCharacter
-  formatWideChar(builder, flags, width, word)
-  return
+  characterWritten = formatWideChar(builder, flags, width, word)
+  return characterWritten
 :notWideCharacter
   when conversion == 115 || conversion == 83 wideString unknown
 :wideString
   calc wideText = machine.fromInt64(word)
-  formatWideString(builder, flags, width, precision, wideText)
-  return
+  stringWritten = formatWideString(builder, flags, width, precision, wideText)
+  return stringWritten
 :unknown
   when conversion == 37 percent notPercent
 :percent
   wide.builderAddByte(builder, 37)
-  return
+  return converted
 :notPercent
   calc percentAt = format + start - 1
   calc unknownBytes = end - start + 1
   wide.builderAdd(builder, percentAt, unknownBytes)
-  return
+  return converted
 
 op signedWord "An argument word as the signed integer its length gives: hh a signed char, h a short, none an int, the rest 64 bits"
   input word Int64 copied
@@ -2457,36 +2466,42 @@ op formatRealArgument "Write a floating conversion of an argument: a double, or 
   formatReal(builder, flags, width, precision, conversion, quadNegative, kind, mantissa, lowBits, power, 112)
   return
 
-op formatWideChar "Write %lc: a wide character as the C locale's one byte (ASCII), padded; a character outside ASCII writes nothing (glibc fails the call with EILSEQ)"
+op formatWideChar "Write %lc: a wide character as the C locale's one byte (ASCII), padded; false for a character outside ASCII, which fails the call with EILSEQ as glibc's does"
   input builder machine.Address copied
   input flags Int64 copied
   input width Int64 copied
   input value Int64 copied
+  output Bool
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
+  let converted Bool true
+  let refused Bool false
 :begin
   calc code = value & 4294967295
   when code < 128 ascii other
 :ascii
   formatChar(builder, flags, width, code)
-  return
+  return converted
 :other
-  return
+  return refused
 
-op formatWideString "Write %ls: a wide string's characters as the C locale's bytes, at most `precision` of them, padded"
+op formatWideString "Write %ls: a wide string's characters as the C locale's bytes, at most `precision` of them, padded; false for a character outside ASCII among them, which fails the call with EILSEQ"
   input builder machine.Address copied
   input flags Int64 copied
   input width Int64 copied
   input precision Int64 copied
   input text machine.Address copied
+  output Bool
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
   let at Int64 0 mut
   let nullWord String "(null)"
+  let converted Bool true
+  let refused Bool false
 :begin
   narrow = wide.builderNew()
   nowhere = machine.zero()
@@ -2496,7 +2511,7 @@ op formatWideString "Write %ls: a wide string's characters as the C locale's byt
   nullAt = machine.addressOfString(nullWord)
   formatString(builder, flags, width, precision, nullAt)
   heap.give(narrow)
-  return
+  return converted
 :eachUnit loop=while max=forever
   calc unitAt = text + at * 4
   unit = machine.loadInt32(unitAt)
@@ -2504,6 +2519,12 @@ op formatWideString "Write %ls: a wide string's characters as the C locale's byt
 :limit in=eachUnit
   when precision >= 0 && at >= precision emit add
 :add in=eachUnit
+  when convert.int32ToInt64(unit) > 127 || unit < 0 unconvertible addByte
+:unconvertible
+  heap.give(wide.builderText(narrow))
+  heap.give(narrow)
+  return refused
+:addByte in=eachUnit
   calc low = convert.int64ToByte(convert.int32ToInt64(unit) & 255)
   wide.builderAddByte(narrow, low)
   calc at := at + 1
@@ -2514,7 +2535,7 @@ op formatWideString "Write %ls: a wide string's characters as the C locale's byt
   emitPadded(builder, flags, width, 0, nowhere, 0, narrowText, narrowBytes, false)
   heap.give(narrowText)
   heap.give(narrow)
-  return
+  return converted
 
 ## ---------------------------------------------------------------- wide mode (D-176)
 ##
@@ -2624,19 +2645,22 @@ op formatUnits "Write wide characters (bytes of 1 or wchar_t of 4 at an address)
 :done
   return
 
-op formatUnitString "Write %s or %ls in wide mode: a string of bytes (1) or wchar_t (4), at most `precision` characters of it, `(null)` for the address 0 (nothing when the precision is below 6), padded with spaces"
+op formatUnitString "Write %s or %ls in wide mode: a string of bytes (1) or wchar_t (4), at most `precision` characters of it, `(null)` for the address 0 (nothing when the precision is below 6), padded with spaces; false for a byte past 127 among the bytes, which the C locale cannot convert (EILSEQ for the call)"
   input builder machine.Address copied
   input flags Int64 copied
   input width Int64 copied
   input precision Int64 copied
   input text machine.Address copied
   input unitBytes Int64 copied
+  output Bool
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
   let count Int64 0 mut
   let nullText String "(null)"
+  let converted Bool true
+  let refused Bool false
 :begin
   nowhere = machine.zero()
   calc isNull = text == nowhere
@@ -2646,10 +2670,10 @@ op formatUnitString "Write %s or %ls in wide mode: a string of bytes (1) or wcha
 :showNull
   nullAt = machine.addressOfString(nullText)
   formatUnits(builder, flags, width, 6, nullAt, 1)
-  return
+  return converted
 :showNothing
   formatUnits(builder, flags, width, 0, text, 1)
-  return
+  return converted
 :eachUnit loop=while max=forever
   when precision >= 0 && count >= precision measured readUnit
 :readUnit in=eachUnit
@@ -2657,16 +2681,20 @@ op formatUnitString "Write %s or %ls in wide mode: a string of bytes (1) or wcha
   when unitBytes == 1 byteUnit wideUnit
 :byteUnit in=eachUnit
   calc byteCode = convert.byteToInt64(machine.loadByte(unitAt))
-  when byteCode == 0 measured countIt
+  when byteCode == 0 measured asciiCheck
+:asciiCheck in=eachUnit
+  when byteCode > 127 unconvertible countIt
 :wideUnit in=eachUnit
   calc wideCode = convert.int32ToInt64(machine.loadInt32(unitAt))
   when wideCode == 0 measured countIt
 :countIt in=eachUnit
   calc count := count + 1
   goto eachUnit
+:unconvertible
+  return refused
 :measured
   formatUnits(builder, flags, width, count, text, unitBytes)
-  return
+  return converted
 
 ## ---------------------------------------------------------------- strtold (D-174)
 ##

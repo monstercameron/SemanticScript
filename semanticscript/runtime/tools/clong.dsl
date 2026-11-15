@@ -1421,7 +1421,7 @@ op compareParts "How two finite or infinite parts compare by value: -1, 0, or 1 
 :giveSame
   return same
 
-op compareMagnitude "How two parts' magnitudes compare: -1, 0, or 1 (an infinity above every finite value, zero below)"
+op compareMagnitude "How two parts' magnitudes compare: -1, 0, or 1 (an infinity above every finite value, zero below); the parts are left as they are (copies are normalized), so parts of a narrower layout keep their own form"
   input left machine.Address copied
   input right machine.Address copied
   output Int64
@@ -1443,8 +1443,33 @@ op compareMagnitude "How two parts' magnitudes compare: -1, 0, or 1 (an infinity
 :sameRank
   when leftKind != 1 giveSame finite
 :finite
-  normalize(left)
-  normalize(right)
+  leftCopy = partsNew()
+  machine.copy(leftCopy, left, 48)
+  rightCopy = partsNew()
+  machine.copy(rightCopy, right, 48)
+  normalize(leftCopy)
+  normalize(rightCopy)
+  order = compareNormalized(leftCopy, rightCopy)
+  heap.give(rightCopy)
+  heap.give(leftCopy)
+  return order
+:giveLess
+  return less
+:giveMore
+  return more
+:giveSame
+  return same
+
+op compareNormalized "How two finite nonzero parts normalized to the same precision compare by magnitude: -1, 0, or 1"
+  input left machine.Address copied
+  input right machine.Address copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  let less Int64 -1
+  let same Int64 0
+  let more Int64 1
+:begin
   leftPower = getPart(left, 16)
   rightPower = getPart(right, 16)
   when leftPower < rightPower giveLess notLower
@@ -2241,6 +2266,8 @@ test exactTest "The exact long double functions on this system's format: signs, 
   test.assertTrue(convert.float64BitsToUInt64(nextDouble) == 4607182418800017409)
   nextSingle = nextTowardFloat(convert.float64ToFloat32(1.0), longOf(0.0))
   test.assertTrue(convert.float32ToFloat64(nextSingle) == 0x1.fffffep-1)
+  nextSingleUp = nextTowardFloat(convert.float64ToFloat32(1.0), longOf(2.0))
+  test.assertTrue(convert.float32ToFloat64(nextSingleUp) == 0x1.000002p0)
   nan = notANumberLong(exponentCell)
   expectLong(largerLong(nan, longOf(-1.0)), -1.0)
   expectLong(smallerLong(longOf(2.0), longOf(-1.0)), -1.0)

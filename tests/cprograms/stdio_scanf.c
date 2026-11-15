@@ -16,6 +16,13 @@ int main(void) {
     char word[32] = {0}, set[32] = {0}, chars[8] = {0};
     void *p = 0;
 
+    /* glibc's headers send scanf to __isoc23_sscanf for C23 (a newer compiler's default) and to __isoc99_sscanf
+       otherwise; the two differ, among other things, on the (chars) after nan below */
+#if (defined __GLIBC_USE_C23_STRTOL && __GLIBC_USE_C23_STRTOL) || (defined __GLIBC_USE_C2X_STRTOL && __GLIBC_USE_C2X_STRTOL)
+    puts("scanf: __isoc23_");
+#else
+    puts("scanf: __isoc99_");
+#endif
     printf("%d\n", sscanf("  42 -0x1F 017 99", "%d %i %i %u", &a, &b, &n, &u));
     printf("%d %d %d %u\n", a, b, n, u);
     printf("%d\n", sscanf("123456789012 -5 70000 300", "%ld %lld %hd %hhd", &l, &ll, &h, &hh));

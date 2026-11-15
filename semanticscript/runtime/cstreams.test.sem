@@ -1823,7 +1823,7 @@ doCopy catch none
 doCopy suppresses none
 
 wideStreamTest is test
-wideStreamTest purpose "A stream made wide keeps its orientation and refuses fputs; fputwc, fwprintf's engine, fgetwc, fgetws, and ungetwc read and write the C locale's bytes; a character past 255 fails with EILSEQ; swprintf keeps every character and refuses what does not fit; swscanf and wscanf's engine read by wide formats"
+wideStreamTest purpose "A stream made wide keeps its orientation and refuses fputs; fputwc, fwprintf's engine, fgetwc, fgetws, and ungetwc read and write the C locale's bytes; a character past 127 fails with EILSEQ; swprintf keeps every character and refuses what does not fit; swscanf and wscanf's engine read by wide formats"
 wideStreamTest verifies orient keepsFirst
 wideStreamTest verifies wideWriteFormatted writesWideBytes
 wideStreamTest verifies wideStoreFormatted storesWide

@@ -8,7 +8,9 @@ every platform and never depend on which C runtime the process loaded.
 from __future__ import annotations
 
 import ctypes
+import ctypes.util
 import os
+import platform
 import sys
 import threading
 from dataclasses import dataclass, field
@@ -355,6 +357,17 @@ def _init() -> None:
         for symbol, _sig in SYSTEM_CALLS.values():
             dll = getattr(ctypes.windll, SYSTEM_DLLS.get(symbol, "kernel32"))
             llvm.add_symbol(symbol, ctypes.cast(getattr(dll, symbol), ctypes.c_void_p).value)
+    elif sys.platform.startswith("linux") and platform.machine().lower() in ("aarch64", "arm64"):
+        # D-174: long double is binary128 there, whose arithmetic LLVM lowers to libgcc's soft float (__addtf3,
+        # __lttf2, __extenddftf2, ...); an executable links libgcc, and the JIT process finds them in libgcc_s
+        for name in (ctypes.util.find_library("gcc_s"), "libgcc_s.so.1"):
+            if not name:
+                continue
+            try:
+                llvm.load_library_permanently(name)
+                break
+            except RuntimeError:
+                continue
     _INITIALIZED = True
 
 

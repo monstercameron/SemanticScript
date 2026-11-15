@@ -2507,10 +2507,11 @@ op matchWord "Gather the bytes of a word (in lower case) as they come in any cas
   machine.storeInt64(pending, value)
   return matched
 
-op collectReal "Gather the text of a floating number into a buffer, at most `width` bytes: a sign, then inf or infinity, nan (glibc's scanf reads no (chars) after it), or a hexadecimal or decimal number with its point and exponent; gives how many bytes, or -1 when what came cannot be a number"
+op collectReal "Gather the text of a floating number into a buffer, at most `width` bytes: a sign, then inf or infinity, nan (with the `(chars)` strtod takes after it only for the __isoc23_ forms, as glibc's C23 scanf reads and its C99 one does not: D-178), or a hexadecimal or decimal number with its point and exponent; gives how many bytes, or -1 when what came cannot be a number"
   input scanner machine.Address copied
   input width Int64 copied
   input buffer machine.Address copied
+  input c23 Bool copied
   output Int64
   effect use machine.memory
   effect use system.calls
@@ -2555,7 +2556,29 @@ op collectReal "Gather the text of a floating number into a buffer, at most `wid
   when nanMatched == 3 nanDone wordFailed
 :nanDone
   calc digits := 1
-  goto wordDone
+  if c23 nanTag wordDone
+:nanTag
+  calc value := machine.loadInt64(pending)
+  when value == 40 && count < width openTag finish
+:openTag
+  storeValue(buffer, count, value)
+  calc count := count + 1
+  calc value := scanGet(scanner)
+  goto tagChars
+:tagChars loop=while max=forever
+  when count < width && isTagValue(value) tagChar closeCheck
+:tagChar in=tagChars
+  storeValue(buffer, count, value)
+  calc count := count + 1
+  calc value := scanGet(scanner)
+  goto tagChars
+:closeCheck
+  when value == 41 && count < width closeTag finish
+:closeTag
+  storeValue(buffer, count, value)
+  calc count := count + 1
+  calc value := scanGet(scanner)
+  goto finish
 :wordDone
   calc value := machine.loadInt64(pending)
   goto finish
@@ -2631,6 +2654,14 @@ op collectReal "Gather the text of a floating number into a buffer, at most `wid
   return count
 :refuse
   return failure
+
+op isTagValue "Whether a value read is a letter, a digit, or `_`: what a NaN's (chars) hold"
+  input value Int64 copied
+  output Bool
+:begin
+  calc lower = value | 32
+  calc member = (value >= 48 && value <= 57) || (lower >= 97 && lower <= 122) || value == 95
+  return member
 
 op scanSet "Read a %[ scanset that starts at a position of a format (after the `[`) into a table of 256 bytes, 1 for each byte it takes (`^` first takes the others; `]` first is a member; `a-z` is a range); gives the position after its `]`"
   input format machine.Address copied
@@ -3046,7 +3077,7 @@ op scanAll "scanf's engine (glibc's __isoc99 forms): match a format against a st
   isReal = realConversion(conversion)
   if isReal real whole
 :real in=eachDirective
-  realBytes = collectReal(scanner, limit, buffer)
+  realBytes = collectReal(scanner, limit, buffer, c23)
   when realBytes < 0 finish realStore
 :realStore in=eachDirective
   nowhereEnd = machine.zero()
@@ -3704,13 +3735,13 @@ op printListBoundedChecked "__vsnprintf_chk: vsnprintf, failing when its bound p
 
 ## ---------------------------------------------------------------- wide streams (D-176)
 ##
-## A wide stream reads and writes the C locale's bytes, one for each wide character from 0 to 255 (as glibc 2.35 and
-## later have it); writing a wide character past 255 fails with EILSEQ and sets the stream's error, what came before
-## it written. A stream becomes wide through these functions and then refuses printf, fputs, and the other byte
+## A wide stream reads and writes the C locale's bytes, which are ASCII as glibc has them (D-177): one byte for each
+## wide character from 0 to 127; writing a wide character past 127 fails with EILSEQ and sets the stream's error, what
+## came before it written, and reading a byte past 127 gives WEOF with EILSEQ and the stream's error. A stream becomes wide through these functions and then refuses printf, fputs, and the other byte
 ## functions that check (orientation above). The wide printf family runs cformat's engine in wide mode over the wide
 ## format made bytes (cformat.addUnit), so %lc and %ls keep every character for swprintf; the wide scanf family runs
-## scanf's engine over the wide format's bytes up to its first character past 255, which no input of the C locale's
-## bytes could match, and swscanf reads its wide text's characters up to its first past 255.
+## scanf's engine over the wide format's bytes up to its first character past 127, which no input of the C locale's
+## bytes could match, and swscanf reads its wide text's characters up to its first past 127.
 
 constant illegalSequence "EILSEQ: a wide character with no byte in the C locale" Int32 84
 
@@ -3729,7 +3760,7 @@ op wideOrientation "fwide: give a stream wide (mode above 0) or byte (below 0) o
   calc result = clibrary.lowInt32(orientation)
   return result
 
-op widePut "fputwc: write a wide character to a stream as its byte: the character, or WEOF for a byte stream, a character past 255 (EILSEQ, the error set), or a failed write"
+op widePut "fputwc: write a wide character to a stream as its byte: the character, or WEOF for a byte stream, a character past 127 (EILSEQ, the error set), or a failed write"
   input stream machine.Address copied
   input value Int32 copied
   output Int32
@@ -3744,7 +3775,7 @@ op widePut "fputwc: write a wide character to a stream as its byte: the characte
   when orientation != 1 refuse oriented
 :oriented
   calc code = convert.int32ToInt64(value) & 4294967295
-  when code > 255 noByte write
+  when code > 127 noByte write
 :noByte
   clibrary.setErrno(illegalSequence)
   addFlag(stream, failed)
@@ -3798,7 +3829,7 @@ op widePutStandard "putwchar: fputwc to stdout"
   result = widePut(out, value)
   return result
 
-op widePutText "fputws: write a wide string to a stream as its bytes: 1, or WEOF (-1) for a byte stream, a character past 255 (EILSEQ, the error set, the characters before it written), or a failed write"
+op widePutText "fputws: write a wide string to a stream as its bytes: 1, or WEOF (-1) for a byte stream, a character past 127 (EILSEQ, the error set, the characters before it written), or a failed write"
   input text machine.Address copied
   input stream machine.Address copied
   output Int32
@@ -3817,7 +3848,7 @@ op widePutText "fputws: write a wide string to a stream as its bytes: 1, or WEOF
 :measure loop=while max=forever
   calc unitAt = text + count * 4
   calc code = convert.int32ToInt64(machine.loadInt32(unitAt)) & 4294967295
-  when code == 0 || code > 255 measured copyCheck
+  when code == 0 || code > 127 measured copyCheck
 :copyCheck in=measure
   calc count := count + 1
   goto measure
@@ -3863,17 +3894,24 @@ op narrowUnits "Copy a count of wide characters (each below 256) as bytes"
 :done
   return
 
-op wideGet "fgetwc: read a wide character from a stream (its byte), or WEOF at the end or on an error"
+op wideGet "fgetwc: read a wide character from a stream (its byte), or WEOF at the end, on an error, or for a byte past 127 (EILSEQ, the error set)"
   input stream machine.Address copied
   output Int32
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
+  let endOfFile Int32 -1
 :begin
   ensureStandard()
   orient(stream, 1)
   value = getByte(stream)
+  when value > 127 noCharacter giveIt
+:noCharacter
+  clibrary.setErrno(illegalSequence)
+  addFlag(stream, failed)
+  return endOfFile
+:giveIt
   calc result = clibrary.lowInt32(value)
   return result
 
@@ -3934,7 +3972,13 @@ op wideGetLine "fgetws: read a line (its line feed kept) of at most n-1 wide cha
   when count >= most finish read
 :read in=eachUnit
   value = getByte(stream)
-  when value < 0 ended store
+  when value < 0 ended asciiCheck
+:asciiCheck in=eachUnit
+  when value > 127 noCharacter store
+:noCharacter
+  clibrary.setErrno(illegalSequence)
+  addFlag(stream, failed)
+  goto ended
 :store in=eachUnit
   calc at = buffer + count * 4
   machine.storeInt32(at, clibrary.lowInt32(value))
@@ -3971,7 +4015,7 @@ op wideGetLineChecked "__fgetws_chk: fgetws, failing as __chk_fail does when the
   result = wideGetLine(buffer, limit, stream)
   return result
 
-op wideUnget "ungetwc: push a wide character back onto a stream as its byte: the character, or WEOF for WEOF, a character past 255, or no room"
+op wideUnget "ungetwc: push a wide character back onto a stream as its byte: the character, or WEOF for WEOF, a character past 127, or no room"
   input value Int32 copied
   input stream machine.Address copied
   output Int32
@@ -3985,7 +4029,7 @@ op wideUnget "ungetwc: push a wide character back onto a stream as its byte: the
   ensureStandard()
   orient(stream, 1)
   calc code = convert.int32ToInt64(value) & 4294967295
-  when code > 255 refuse push
+  when code > 127 refuse push
 :push
   pushed = ungetByte(stream, code)
   when pushed < 0 refuse pushedBack
@@ -4063,7 +4107,7 @@ op unitStep "How many bytes a wide mode text's character at a position takes: 7 
 :giveSingle
   return single
 
-op wideWriteFormatted "Format a wide format into a stream as wfprintf: the wide characters written as an int, or -1 for a byte stream, a format error, a character past 255 (EILSEQ, the error set, what came before written), or a failed write"
+op wideWriteFormatted "Format a wide format into a stream as wfprintf: the wide characters written as an int, or -1 for a byte stream, a format error, a character past 127 (EILSEQ, the error set, what came before written), or a failed write"
   invariant writesWideBytes "Writes the C locale's byte of each wide character and counts characters"
   input stream machine.Address copied
   input format machine.Address copied
@@ -4097,7 +4141,7 @@ op wideWriteFormatted "Format a wide format into a stream as wfprintf: the wide 
   when at >= length write convertUnit
 :convertUnit in=eachUnit
   code = unitCodeAt(text, at)
-  when code > 255 noByte keep
+  when code > 127 noByte keep
 :noByte in=eachUnit
   calc refused := true
   goto write
@@ -4404,7 +4448,7 @@ op widePrintIntoListChecked "__vswprintf_chk: vswprintf, failing as __chk_fail d
 
 ## ---------------------------------------------------------------- wscanf
 
-op wideScanBytes "A wide text's characters as bytes up to its end or its first character past 255, in a new block ending with 0"
+op wideScanBytes "A wide text's characters as bytes up to its end or its first character past 127, in a new block ending with 0"
   input text machine.Address copied
   output machine.Address
   effect use machine.memory
@@ -4417,7 +4461,7 @@ op wideScanBytes "A wide text's characters as bytes up to its end or its first c
 :measure loop=while max=forever
   calc unitAt = text + count * 4
   calc code = convert.int32ToInt64(machine.loadInt32(unitAt)) & 4294967295
-  when code == 0 || code > 255 measured countIt
+  when code == 0 || code > 127 measured countIt
 :countIt in=measure
   calc count := count + 1
   goto measure
@@ -4888,7 +4932,7 @@ op unlockStreams "Give the streams' lock back when its holder's count comes to 0
   previous = machine.compareExchange32(word, 1, 0)
   when previous == 1 done wake
 :wake
-  machine.storeInt32(word, 0)
+  machine.compareExchange32(word, 2, 0)
   wakeOn(word)
   return
 :done
@@ -5255,7 +5299,7 @@ op narrowOf "A text as a C string in a new block"
   machine.copy(block, textAt, bytes)
   return block
 
-test wideStreamTest "A stream made wide keeps its orientation and refuses fputs; fputwc, fwprintf's engine, fgetwc, fgetws, and ungetwc read and write the C locale's bytes; a character past 255 fails with EILSEQ; swprintf keeps every character and refuses what does not fit; swscanf and wscanf's engine read by wide formats"
+test wideStreamTest "A stream made wide keeps its orientation and refuses fputs; fputwc, fwprintf's engine, fgetwc, fgetws, and ungetwc read and write the C locale's bytes; a character past 127 fails with EILSEQ; swprintf keeps every character and refuses what does not fit; swscanf and wscanf's engine read by wide formats"
   verifies orient keepsFirst
   verifies wideWriteFormatted writesWideBytes
   verifies wideStoreFormatted storesWide

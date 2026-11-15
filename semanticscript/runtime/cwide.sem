@@ -31,8 +31,9 @@ systemCalls grants use system.calls none
 # Every function here is an `abi library "<name>"` operation (D-153, D-155): the C calling convention under its C name.
 # In the C locale glibc classifies and changes case for ASCII only, so codes outside 0 to 127 are in no class and
 # keep their case. A wide character is 32 bits (wchar_t is int on Linux; on Windows it is kept 32 bits too). The
-# C locale's multibyte encoding maps the bytes 0 to 255 one to one with the wide characters 0 to 255 (glibc 2.35 and
-# later); a wide character above 255 has no byte, so converting it gives EILSEQ. MB_CUR_MAX is 1.
+# C locale's multibyte encoding is ASCII, as glibc's is (D-177): the bytes 0 to 127 are the wide characters 0 to
+# 127, a byte from 128 to 255 is an invalid sequence and a wide character past 127 has no byte (EILSEQ either way;
+# btowc and wctob give WEOF and EOF). MB_CUR_MAX is 1.
 # machine.state bytes 26624 to 26879 belong to this module: the tests' scratch text (which the library never reads).
 wideSize is constant
 wideSize purpose "sizeof(wchar_t): 4 bytes"
@@ -8750,7 +8751,7 @@ nulCheck catch none
 nulCheck suppresses none
 
 decodeLead is operation
-decodeLead purpose "The first byte of a multibyte text as its value 0 to 255, 0 for a null pointer, or -2 when n is 0 (incomplete)"
+decodeLead purpose "The first byte of a multibyte text as its value 0 to 127, 0 for a null pointer, -2 when n is 0 (incomplete), or -1 with EILSEQ for a byte past 127 (not ASCII, so no character of the C locale)"
 decodeLead invariant none
 decodeLead typeParameter none
 decodeLead input text machine.Address copied
@@ -8773,10 +8774,16 @@ decodeLead label incompleteCase loopKind none
 decodeLead label incompleteCase within none
 decodeLead label readIt loopKind none
 decodeLead label readIt within none
+decodeLead label giveValue loopKind none
+decodeLead label giveValue within none
+decodeLead label invalid loopKind none
+decodeLead label invalid within none
 decodeLead let incomplete Int64 -2 immutable
 decodeLead let zeroValue Int64 0 immutable
+decodeLead let invalidSequence Int64 -1 immutable
 decodeLead let lit98 Int64 0 immutable
 decodeLead let lit99 Int64 0 immutable
+decodeLead let lit99b Int64 128 immutable
 decodeLead at begin do nowhere
 decodeLead at begin do nullCheck
 decodeLead at begin branch if absent goto nothing else goto sized
@@ -8785,7 +8792,11 @@ decodeLead at sized do emptyCheck
 decodeLead at sized branch if empty goto incompleteCase else goto readIt
 decodeLead at incompleteCase return ok incomplete
 decodeLead at readIt do readValue
-decodeLead at readIt return ok value
+decodeLead at readIt do asciiCheck
+decodeLead at readIt branch if ascii goto giveValue else goto invalid
+decodeLead at giveValue return ok value
+decodeLead at invalid do setErrnoIt
+decodeLead at invalid return ok invalidSequence
 
 nowhere is call
 nowhere in decodeLead
@@ -8833,6 +8844,29 @@ readValue cleanedBy none
 readValue borrows none
 readValue catch none
 readValue suppresses none
+
+asciiCheck is call
+asciiCheck in decodeLead
+asciiCheck invokes compare.lessThanInt64
+asciiCheck argument left Int64 value copy
+asciiCheck argument right Int64 lit99b copy
+asciiCheck result ascii Bool
+asciiCheck ownedBy none
+asciiCheck cleanedBy none
+asciiCheck borrows none
+asciiCheck catch none
+asciiCheck suppresses none
+
+setErrnoIt is call
+setErrnoIt in decodeLead
+setErrnoIt invokes clibrary.setErrno
+setErrnoIt argument value Int32 eilseqError copy
+setErrnoIt result none
+setErrnoIt ownedBy none
+setErrnoIt cleanedBy none
+setErrnoIt borrows none
+setErrnoIt catch none
+setErrnoIt suppresses none
 
 mbrlen is operation
 mbrlen purpose "mbrlen: mbrtowc without the wide character"
@@ -9239,7 +9273,7 @@ result catch none
 result suppresses none
 
 encodeOne is operation
-encodeOne purpose "Store a wide value as one byte at s (unless s is 0): 1 for a value 0 to 255, else EILSEQ and -1"
+encodeOne purpose "Store a wide value as one byte at s (unless s is 0): 1 for a value 0 to 127, else EILSEQ and -1"
 encodeOne invariant none
 encodeOne typeParameter none
 encodeOne input text machine.Address copied
@@ -9267,7 +9301,7 @@ encodeOne label invalid within none
 encodeOne let minus Int64 -1 immutable
 encodeOne let one Int64 1 immutable
 encodeOne let lit106 Int64 0 immutable
-encodeOne let lit107 Int64 255 immutable
+encodeOne let lit107 Int64 127 immutable
 encodeOne let lit108 Int64 0 immutable
 encodeOne at begin do lowCheck
 encodeOne at begin branch if negative goto invalid else goto highCheck
@@ -9355,7 +9389,7 @@ setErrnoIt suppresses none
 
 wcrtomb is operation
 wcrtomb purpose "wcrtomb: the byte of a wide character written at s, 1 (a null s is wcrtomb of 0 into a scratch buffer: 1 whatever the character), or -1 with EILSEQ"
-wcrtomb invariant writesOneByte "\"Writes a wide character of 0 to 255 as a byte, and gives -1 with EILSEQ above 255\""
+wcrtomb invariant writesOneByte "\"Writes a wide character of 0 to 127 as a byte, and gives -1 with EILSEQ above 127\""
 wcrtomb typeParameter none
 wcrtomb input text machine.Address copied
 wcrtomb input wide Int32 copied
@@ -9559,7 +9593,7 @@ mbsinit let one Int32 1 immutable
 mbsinit at begin return ok one
 
 btowc is operation
-btowc purpose "btowc: the wint_t of a byte (0 to 255), or WEOF (-1) for EOF and any other int"
+btowc purpose "btowc: the wint_t of an ASCII byte (0 to 127), or WEOF (-1) for EOF, a byte past 127, and any other int"
 btowc invariant none
 btowc typeParameter none
 btowc input code Int32 copied
@@ -9580,7 +9614,7 @@ btowc label weof loopKind none
 btowc label weof within none
 btowc let eof Int32 -1 immutable
 btowc let lit110 Int32 0 immutable
-btowc let lit111 Int32 255 immutable
+btowc let lit111 Int32 127 immutable
 btowc at begin do rangeCheck
 btowc at begin branch if inside goto keep else goto weof
 btowc at keep return ok code
@@ -9600,7 +9634,7 @@ rangeCheck catch none
 rangeCheck suppresses none
 
 wctob is operation
-wctob purpose "wctob: the byte of a wint_t of 0 to 255, or EOF (-1) for WEOF and any other wint_t"
+wctob purpose "wctob: the byte of a wint_t of 0 to 127, or EOF (-1) for WEOF and any other wint_t"
 wctob invariant none
 wctob typeParameter none
 wctob input code Int32 copied
@@ -9621,7 +9655,7 @@ wctob label weof loopKind none
 wctob label weof within none
 wctob let eof Int32 -1 immutable
 wctob let lit112 Int32 0 immutable
-wctob let lit113 Int32 255 immutable
+wctob let lit113 Int32 127 immutable
 wctob at begin do rangeCheck
 wctob at begin branch if inside goto keep else goto weof
 wctob at keep return ok code
@@ -9724,7 +9758,7 @@ boundIt suppresses none
 
 wcstombs is operation
 wcstombs purpose "wcstombs: the bytes of a wide text (up to n, the 0 written when there is room), or -1 with EILSEQ"
-wcstombs invariant convertsToBytes "\"Converts wide characters to bytes up to the count, and gives -1 with EILSEQ above 255\""
+wcstombs invariant convertsToBytes "\"Converts wide characters to bytes up to the count, and gives -1 with EILSEQ above 127\""
 wcstombs typeParameter none
 wcstombs input text machine.Address copied
 wcstombs input wide machine.Address copied
@@ -9805,7 +9839,7 @@ boundIt catch none
 boundIt suppresses none
 
 bytesToWide is operation
-bytesToWide purpose "Convert up to a limit of bytes to wide characters at dst (0: count only), the 0 written when there is room; the source cell gets where it stopped (0 at the NUL), if it is not 0; gives the count"
+bytesToWide purpose "Convert up to a limit of bytes to wide characters at dst (0: count only), the 0 written when there is room; the source cell gets where it stopped (0 at the NUL), if it is not 0; gives the count, or -1 with EILSEQ at a byte past 127 (the source cell then at that byte)"
 bytesToWide invariant none
 bytesToWide typeParameter none
 bytesToWide input wide machine.Address copied
@@ -9827,23 +9861,35 @@ bytesToWide label eachByte within none
 bytesToWide label eachByte maxIterations forever
 bytesToWide label readByte loopKind none
 bytesToWide label readByte within eachByte
+bytesToWide label asciiByte loopKind none
+bytesToWide label asciiByte within eachByte
 bytesToWide label storeChar loopKind none
 bytesToWide label storeChar within eachByte
 bytesToWide label nulEnd loopKind none
 bytesToWide label nulEnd within none
 bytesToWide label ended loopKind none
 bytesToWide label ended within none
+bytesToWide label invalid loopKind none
+bytesToWide label invalid within none
+bytesToWide label remember loopKind none
+bytesToWide label remember within none
+bytesToWide label refused loopKind none
+bytesToWide label refused within none
 bytesToWide let at Int64 0 mutable
+bytesToWide let minus Int64 -1 immutable
 bytesToWide let yes Bool true immutable
 bytesToWide let no Bool false immutable
 bytesToWide let lit114 Int64 0 immutable
+bytesToWide let lit114b Int64 128 immutable
 bytesToWide let lit115 Int64 1 immutable
 bytesToWide at begin goto eachByte
 bytesToWide at eachByte do limitCheck
 bytesToWide at eachByte branch if atLimit goto ended else goto readByte
 bytesToWide at readByte do valueIt
 bytesToWide at readByte do nulCheck
-bytesToWide at readByte branch if nul goto nulEnd else goto storeChar
+bytesToWide at readByte branch if nul goto nulEnd else goto asciiByte
+bytesToWide at asciiByte do asciiCheck
+bytesToWide at asciiByte branch if ascii goto storeChar else goto invalid
 bytesToWide at storeChar do narrowIt
 bytesToWide at storeChar do storeIt
 bytesToWide at storeChar do stepIt
@@ -9853,6 +9899,14 @@ bytesToWide at nulEnd do finishNul
 bytesToWide at nulEnd return ok at
 bytesToWide at ended do finishEnd
 bytesToWide at ended return ok at
+bytesToWide at invalid do setErrnoIt
+bytesToWide at invalid do nowhereCell
+bytesToWide at invalid do noCell
+bytesToWide at invalid branch if noSrc goto refused else goto remember
+bytesToWide at remember do stopPlace
+bytesToWide at remember do storeStop
+bytesToWide at remember return ok minus
+bytesToWide at refused return ok minus
 
 limitCheck is call
 limitCheck in bytesToWide
@@ -9889,6 +9943,18 @@ nulCheck cleanedBy none
 nulCheck borrows none
 nulCheck catch none
 nulCheck suppresses none
+
+asciiCheck is call
+asciiCheck in bytesToWide
+asciiCheck invokes compare.lessThanInt64
+asciiCheck argument left Int64 value copy
+asciiCheck argument right Int64 lit114b copy
+asciiCheck result ascii Bool
+asciiCheck ownedBy none
+asciiCheck cleanedBy none
+asciiCheck borrows none
+asciiCheck catch none
+asciiCheck suppresses none
 
 narrowIt is call
 narrowIt in bytesToWide
@@ -9955,6 +10021,64 @@ finishEnd cleanedBy none
 finishEnd borrows none
 finishEnd catch none
 finishEnd suppresses none
+
+setErrnoIt is call
+setErrnoIt in bytesToWide
+setErrnoIt invokes clibrary.setErrno
+setErrnoIt argument value Int32 eilseqError copy
+setErrnoIt result none
+setErrnoIt ownedBy none
+setErrnoIt cleanedBy none
+setErrnoIt borrows none
+setErrnoIt catch none
+setErrnoIt suppresses none
+
+nowhereCell is call
+nowhereCell in bytesToWide
+nowhereCell invokes machine.zero
+nowhereCell argument none
+nowhereCell result anywhereCell machine.Address
+nowhereCell ownedBy none
+nowhereCell cleanedBy none
+nowhereCell borrows none
+nowhereCell catch none
+nowhereCell suppresses none
+
+noCell is call
+noCell in bytesToWide
+noCell invokes machine.equal
+noCell argument left machine.Address srcCell copy
+noCell argument right machine.Address anywhereCell copy
+noCell result noSrc Bool
+noCell ownedBy none
+noCell cleanedBy none
+noCell borrows none
+noCell catch none
+noCell suppresses none
+
+stopPlace is call
+stopPlace in bytesToWide
+stopPlace invokes machine.offset
+stopPlace argument address machine.Address text copy
+stopPlace argument bytes Int64 at copy
+stopPlace result stopAt machine.Address
+stopPlace ownedBy none
+stopPlace cleanedBy none
+stopPlace borrows none
+stopPlace catch none
+stopPlace suppresses none
+
+storeStop is call
+storeStop in bytesToWide
+storeStop invokes machine.storeAddress
+storeStop argument address machine.Address srcCell copy
+storeStop argument value machine.Address stopAt copy
+storeStop result none
+storeStop ownedBy none
+storeStop cleanedBy none
+storeStop borrows none
+storeStop catch none
+storeStop suppresses none
 
 finishTransfer is operation
 finishTransfer purpose "After a byte to wide conversion: the 0 wide character when the text ended (if there is room), and the source cell's place (0 at the end, else the place reached)"
@@ -10133,7 +10257,7 @@ wideToBytes let yes Bool true immutable
 wideToBytes let no Bool false immutable
 wideToBytes let lit117 Int32 0 immutable
 wideToBytes let lit118 Int32 0 immutable
-wideToBytes let lit119 Int32 255 immutable
+wideToBytes let lit119 Int32 127 immutable
 wideToBytes let lit120 Int64 1 immutable
 wideToBytes at begin goto eachUnit
 wideToBytes at eachUnit do limitCheck
@@ -10564,7 +10688,7 @@ boundIt catch none
 boundIt suppresses none
 
 wcsrtombs is operation
-wcsrtombs purpose "wcsrtombs: convert the wide characters at *src to bytes at dst (up to len, a 0 when the text ends), updating *src; with dst 0, count them; -1 with EILSEQ for a wide character above 255"
+wcsrtombs purpose "wcsrtombs: convert the wide characters at *src to bytes at dst (up to len, a 0 when the text ends), updating *src; with dst 0, count them; -1 with EILSEQ for a wide character above 127"
 wcsrtombs invariant none
 wcsrtombs typeParameter none
 wcsrtombs input text machine.Address copied
@@ -10850,7 +10974,7 @@ lengthIt catch none
 lengthIt suppresses none
 
 c16rtomb is operation
-c16rtomb purpose "c16rtomb: the byte of a char16_t (its low 16 bits) written at s, 1, or -1 with EILSEQ above 255"
+c16rtomb purpose "c16rtomb: the byte of a char16_t (its low 16 bits) written at s, 1, or -1 with EILSEQ above 127"
 c16rtomb invariant none
 c16rtomb typeParameter none
 c16rtomb input text machine.Address copied
@@ -10909,7 +11033,7 @@ encodeIt catch none
 encodeIt suppresses none
 
 c32rtomb is operation
-c32rtomb purpose "c32rtomb: the byte of a char32_t written at s, 1, or -1 with EILSEQ above 255"
+c32rtomb purpose "c32rtomb: the byte of a char32_t written at s, 1, or -1 with EILSEQ above 127"
 c32rtomb invariant none
 c32rtomb typeParameter none
 c32rtomb input text machine.Address copied

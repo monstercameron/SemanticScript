@@ -562,7 +562,7 @@ op unlockMutex "mtx_unlock: give a mutex back (a recursive one when its count co
   previous = exchange32(mutex, 1, 0)
   when previous == 1 done contended
 :contended
-  machine.storeInt32(mutex, 0)
+  exchange32(mutex, 2, 0)
   futexWake(mutex, 1)
   return success
 :done
@@ -721,11 +721,11 @@ op callOnce "call_once: call a function the first time a flag is passed, the oth
 :call
   nowhere = machine.zero()
   machine.callWithAddress(function, nowhere)
-  machine.storeInt32(flag, 2)
+  exchange32(flag, 1, 2)
   futexWake(flag, 2147483647)
   return
 :wait loop=while max=forever
-  state = machine.loadInt32(flag)
+  state = exchange32(flag, 2, 2)
   when state == 2 done sleep
 :sleep in=wait
   futexWait(flag, 1)

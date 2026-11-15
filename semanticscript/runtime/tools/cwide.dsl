@@ -10,8 +10,9 @@ capability systemCalls "Authority to take memory from the heap and to read the t
 ## Every function here is an `abi library "<name>"` operation (D-153, D-155): the C calling convention under its C name.
 ## In the C locale glibc classifies and changes case for ASCII only, so codes outside 0 to 127 are in no class and
 ## keep their case. A wide character is 32 bits (wchar_t is int on Linux; on Windows it is kept 32 bits too). The
-## C locale's multibyte encoding maps the bytes 0 to 255 one to one with the wide characters 0 to 255 (glibc 2.35 and
-## later); a wide character above 255 has no byte, so converting it gives EILSEQ. MB_CUR_MAX is 1.
+## C locale's multibyte encoding is ASCII, as glibc's is (D-177): the bytes 0 to 127 are the wide characters 0 to
+## 127, a byte from 128 to 255 is an invalid sequence and a wide character past 127 has no byte (EILSEQ either way;
+## btowc and wctob give WEOF and EOF). MB_CUR_MAX is 1.
 ## machine.state bytes 26624 to 26879 belong to this module: the tests' scratch text (which the library never reads).
 
 constant wideSize "sizeof(wchar_t): 4 bytes" Int64 4
@@ -1867,7 +1868,7 @@ op lengthOfLead "How many wide characters a decoded byte (0 for NUL, which is 0 
 :counted
   return one
 
-op decodeLead "The first byte of a multibyte text as its value 0 to 255, 0 for a null pointer, or -2 when n is 0 (incomplete)"
+op decodeLead "The first byte of a multibyte text as its value 0 to 127, 0 for a null pointer, -2 when n is 0 (incomplete), or -1 with EILSEQ for a byte past 127 (not ASCII, so no character of the C locale)"
   input text machine.Address copied
   input bytes Int64 copied
   output Int64
@@ -1875,6 +1876,7 @@ op decodeLead "The first byte of a multibyte text as its value 0 to 255, 0 for a
   uses memoryAccess
   let incomplete Int64 -2
   let zeroValue Int64 0
+  let invalidSequence Int64 -1
 :begin
   nowhere: anywhere = machine.zero()
   nullCheck: absent = machine.equal(text, anywhere)
@@ -1888,7 +1890,13 @@ op decodeLead "The first byte of a multibyte text as its value 0 to 255, 0 for a
   return incomplete
 :readIt
   readValue: value = byteValueAt(text, lit99=0)
+  asciiCheck: ascii = compare.lessThanInt64(value, lit99b=128)
+  if ascii giveValue invalid
+:giveValue
   return value
+:invalid
+  setErrnoIt: clibrary.setErrno(eilseqError)
+  return invalidSequence
 
 op mbrlen "mbrlen: mbrtowc without the wide character"
   input text machine.Address copied
@@ -1985,7 +1993,7 @@ op mbtowc "mbtowc: mblen, also giving the wchar_t of the character at pwc unless
 :failed
   return failure
 
-op encodeOne "Store a wide value as one byte at s (unless s is 0): 1 for a value 0 to 255, else EILSEQ and -1"
+op encodeOne "Store a wide value as one byte at s (unless s is 0): 1 for a value 0 to 127, else EILSEQ and -1"
   input text machine.Address copied
   input value Int64 copied
   output Int64
@@ -1997,7 +2005,7 @@ op encodeOne "Store a wide value as one byte at s (unless s is 0): 1 for a value
   lowCheck: negative = compare.lessThanInt64(value, lit106=0)
   if negative invalid highCheck
 :highCheck
-  highValue: tooBig = compare.greaterThanInt64(value, lit107=255)
+  highValue: tooBig = compare.greaterThanInt64(value, lit107=127)
   if tooBig invalid write
 :write
   nowhere: anywhere = machine.zero()
@@ -2013,7 +2021,7 @@ op encodeOne "Store a wide value as one byte at s (unless s is 0): 1 for a value
   return minus
 
 op wcrtomb "wcrtomb: the byte of a wide character written at s, 1 (a null s is wcrtomb of 0 into a scratch buffer: 1 whatever the character), or -1 with EILSEQ"
-  invariant writesOneByte "Writes a wide character of 0 to 255 as a byte, and gives -1 with EILSEQ above 255"
+  invariant writesOneByte "Writes a wide character of 0 to 127 as a byte, and gives -1 with EILSEQ above 127"
   input text machine.Address copied
   input wide Int32 copied
   input state machine.Address copied
@@ -2067,26 +2075,26 @@ op mbsinit "mbsinit: 1, since the C locale's encoding has no shift state"
 :begin
   return one
 
-op btowc "btowc: the wint_t of a byte (0 to 255), or WEOF (-1) for EOF and any other int"
+op btowc "btowc: the wint_t of an ASCII byte (0 to 127), or WEOF (-1) for EOF, a byte past 127, and any other int"
   input code Int32 copied
   output Int32
   abi library "btowc"
   let eof Int32 -1
 :begin
-  rangeCheck: inside = betweenCodes(code, lit110=0, lit111=255)
+  rangeCheck: inside = betweenCodes(code, lit110=0, lit111=127)
   if inside keep weof
 :keep
   return code
 :weof
   return eof
 
-op wctob "wctob: the byte of a wint_t of 0 to 255, or EOF (-1) for WEOF and any other wint_t"
+op wctob "wctob: the byte of a wint_t of 0 to 127, or EOF (-1) for WEOF and any other wint_t"
   input code Int32 copied
   output Int32
   abi library "wctob"
   let eof Int32 -1
 :begin
-  rangeCheck: inside = betweenCodes(code, lit112=0, lit113=255)
+  rangeCheck: inside = betweenCodes(code, lit112=0, lit113=127)
   if inside keep weof
 :keep
   return code
@@ -2114,7 +2122,7 @@ op mbstowcs "mbstowcs: the wide characters of a multibyte text (up to n, the 0 w
   return limitedCount
 
 op wcstombs "wcstombs: the bytes of a wide text (up to n, the 0 written when there is room), or -1 with EILSEQ"
-  invariant convertsToBytes "Converts wide characters to bytes up to the count, and gives -1 with EILSEQ above 255"
+  invariant convertsToBytes "Converts wide characters to bytes up to the count, and gives -1 with EILSEQ above 127"
   input text machine.Address copied
   input wide machine.Address copied
   input most Int64 copied
@@ -2133,7 +2141,7 @@ op wcstombs "wcstombs: the bytes of a wide text (up to n, the 0 written when the
   boundIt: limitedCount = wideToBytes(text, wide, most, anywhere)
   return limitedCount
 
-op bytesToWide "Convert up to a limit of bytes to wide characters at dst (0: count only), the 0 written when there is room; the source cell gets where it stopped (0 at the NUL), if it is not 0; gives the count"
+op bytesToWide "Convert up to a limit of bytes to wide characters at dst (0: count only), the 0 written when there is room; the source cell gets where it stopped (0 at the NUL), if it is not 0; gives the count, or -1 with EILSEQ at a byte past 127 (the source cell then at that byte)"
   input wide machine.Address copied
   input text machine.Address copied
   input limit Int64 copied
@@ -2142,6 +2150,7 @@ op bytesToWide "Convert up to a limit of bytes to wide characters at dst (0: cou
   effect use machine.memory
   uses memoryAccess
   let at Int64 0 mut
+  let minus Int64 -1
   let yes Bool true
   let no Bool false
 :begin
@@ -2152,7 +2161,10 @@ op bytesToWide "Convert up to a limit of bytes to wide characters at dst (0: cou
 :readByte in=eachByte
   valueIt: value = byteValueAt(text, at)
   nulCheck: nul = compare.equalInt64(value, lit114=0)
-  if nul nulEnd storeChar
+  if nul nulEnd asciiByte
+:asciiByte in=eachByte
+  asciiCheck: ascii = compare.lessThanInt64(value, lit114b=128)
+  if ascii storeChar invalid
 :storeChar in=eachByte
   narrowIt: wideValue = convert.int64ToInt32(value)
   storeIt: putUnitIf(wide, at, wideValue)
@@ -2165,6 +2177,17 @@ op bytesToWide "Convert up to a limit of bytes to wide characters at dst (0: cou
 :ended
   finishEnd: finishTransfer(wide, srcCell, text, at, no)
   return at
+:invalid
+  setErrnoIt: clibrary.setErrno(eilseqError)
+  nowhereCell: anywhereCell = machine.zero()
+  noCell: noSrc = machine.equal(srcCell, anywhereCell)
+  if noSrc refused remember
+:remember
+  stopPlace: stopAt = machine.offset(text, at)
+  storeStop: machine.storeAddress(srcCell, stopAt)
+  return minus
+:refused
+  return minus
 
 op finishTransfer "After a byte to wide conversion: the 0 wide character when the text ended (if there is room), and the source cell's place (0 at the end, else the place reached)"
   input wide machine.Address copied
@@ -2220,7 +2243,7 @@ op wideToBytes "Convert up to a limit of wide characters to bytes at dst (0: cou
   nulCheck: nul = compare.equalInt32(value, lit117=0)
   if nul nulEnd rangeCheck
 :rangeCheck in=eachUnit
-  rangeNow: ok = betweenCodes(value, lit118=0, lit119=255)
+  rangeNow: ok = betweenCodes(value, lit118=0, lit119=127)
   if ok storeChar invalid
 :storeChar in=eachUnit
   narrowIt: byteValue = convert.int32ToInt64(value)
@@ -2299,7 +2322,7 @@ op mbsrtowcs "mbsrtowcs: convert the bytes at *src to wide characters at dst (up
   boundIt: limitedCount = bytesToWide(wide, srcAt, most, srcCell)
   return limitedCount
 
-op wcsrtombs "wcsrtombs: convert the wide characters at *src to bytes at dst (up to len, a 0 when the text ends), updating *src; with dst 0, count them; -1 with EILSEQ for a wide character above 255"
+op wcsrtombs "wcsrtombs: convert the wide characters at *src to bytes at dst (up to len, a 0 when the text ends), updating *src; with dst 0, count them; -1 with EILSEQ for a wide character above 127"
   input text machine.Address copied
   input srcCell machine.Address copied
   input most Int64 copied
@@ -2364,7 +2387,7 @@ op mbrtoc32 "mbrtoc32: the char32_t of one multibyte character (its byte value),
 :waiting
   return value
 
-op c16rtomb "c16rtomb: the byte of a char16_t (its low 16 bits) written at s, 1, or -1 with EILSEQ above 255"
+op c16rtomb "c16rtomb: the byte of a char16_t (its low 16 bits) written at s, 1, or -1 with EILSEQ above 127"
   input text machine.Address copied
   input char16 Int32 copied
   input state machine.Address copied
@@ -2378,7 +2401,7 @@ op c16rtomb "c16rtomb: the byte of a char16_t (its low 16 bits) written at s, 1,
   encodeIt: result = encodeOne(text, low)
   return result
 
-op c32rtomb "c32rtomb: the byte of a char32_t written at s, 1, or -1 with EILSEQ above 255"
+op c32rtomb "c32rtomb: the byte of a char32_t written at s, 1, or -1 with EILSEQ above 127"
   input text machine.Address copied
   input char32 Int32 copied
   input state machine.Address copied
@@ -3275,7 +3298,7 @@ test realTest "wcstod reads decimal, hexadecimal, infinity, and NaN text as strt
   test.assertTrue(floatTiny)
   return
 
-test multibyteTest "The C locale's multibyte functions map one byte to one wide character and back, report -2 for no input and EILSEQ past 255, and have no state"
+test multibyteTest "The C locale's multibyte functions map one byte to one wide character and back, report -2 for no input and EILSEQ past 127 either way, and have no state"
   verifies mbrtowc readsOneByte
   verifies wcrtomb writesOneByte
   effect use machine.memory
@@ -3313,10 +3336,11 @@ test multibyteTest "The C locale's multibyte functions map one byte to one wide 
   test.assertEqualInt64(1, gotNoCell)
   highText = textOf("")
   putByteAt(highText, 0, 233)
+  clibrary.setErrno(0)
   gotHigh = mbrtowc(cell, highText, 1, state)
-  test.assertEqualInt64(1, gotHigh)
-  gotHighWide = machine.loadInt32(cell)
-  test.assertTrue(gotHighWide == 233)
+  test.assertEqualInt64(-1, gotHigh)
+  highErrno = currentErrno()
+  test.assertTrue(highErrno == 84)
   buffer = textOf("")
   made = wcrtomb(buffer, 66, state)
   test.assertEqualInt64(1, made)
@@ -3330,9 +3354,9 @@ test multibyteTest "The C locale's multibyte functions map one byte to one wide 
   madeNull = wcrtomb(nowhere, 8364, state)
   test.assertEqualInt64(1, madeNull)
   madeHigh = wcrtomb(buffer, 233, state)
-  test.assertEqualInt64(1, madeHigh)
-  madeHighByte = byteValueAt(buffer, 0)
-  test.assertEqualInt64(233, madeHighByte)
+  test.assertEqualInt64(-1, madeHigh)
+  madeAscii = wcrtomb(buffer, 127, state)
+  test.assertEqualInt64(1, madeAscii)
   lengthOne = mblen(letter, 1)
   test.assertTrue(lengthOne == 1)
   part56 = textOf("")
@@ -3361,7 +3385,7 @@ test multibyteTest "The C locale's multibyte functions map one byte to one wide 
   wideOfBig = btowc(300)
   test.assertTrue(wideOfBig == -1)
   wideOfHigh = btowc(233)
-  test.assertTrue(wideOfHigh == 233)
+  test.assertTrue(wideOfHigh == -1)
   byteOfWide = wctob(65)
   test.assertTrue(byteOfWide == 65)
   byteOfEof = wctob(-1)
@@ -3369,10 +3393,10 @@ test multibyteTest "The C locale's multibyte functions map one byte to one wide 
   byteOfBig = wctob(300)
   test.assertTrue(byteOfBig == -1)
   byteOfHigh = wctob(233)
-  test.assertTrue(byteOfHigh == 233)
+  test.assertTrue(byteOfHigh == -1)
   return
 
-test stringConversionTest "mbstowcs, wcstombs, mbsrtowcs, and wcsrtombs convert whole strings and as many as fit, count with no target, and stop at a wide character above 255; uchar.h's functions give the same as wchar.h's"
+test stringConversionTest "mbstowcs, wcstombs, mbsrtowcs, and wcsrtombs convert whole strings and as many as fit, count with no target, and stop at a wide character above 127; uchar.h's functions give the same as wchar.h's"
   verifies mbstowcs convertsToWide
   verifies wcstombs convertsToBytes
   effect use machine.memory

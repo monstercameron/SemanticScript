@@ -121,6 +121,8 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   the C ABI passes structs, through `abi library` and `ffi` (D-175).
 - Wide stdio: streams' orientation as glibc keeps it, wide character input and output, the wprintf and wscanf
   families (printf's and scanf's engines in a wide mode), and wcsftime (D-176).
+- The C locale's multibyte conversions are ASCII only, as glibc's are (D-177). C23 scanf reads `nan(chars)`; unlocks
+  release with a compare-exchange; nexttoward across formats; libgcc_s in the AArch64 JIT (D-178).
 
 ### The runtime in SemanticScript: `ffi` everywhere
 

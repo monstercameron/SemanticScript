@@ -9104,7 +9104,7 @@ doAssertTrue16 catch none
 doAssertTrue16 suppresses none
 
 multibyteTest is test
-multibyteTest purpose "The C locale's multibyte functions map one byte to one wide character and back, report -2 for no input and EILSEQ past 255, and have no state"
+multibyteTest purpose "The C locale's multibyte functions map one byte to one wide character and back, report -2 for no input and EILSEQ past 127 either way, and have no state"
 multibyteTest verifies mbrtowc readsOneByte
 multibyteTest verifies wcrtomb writesOneByte
 multibyteTest typeParameter none
@@ -9132,13 +9132,14 @@ multibyteTest let int3265 Int32 65 immutable
 multibyteTest let text3 String "" immutable
 multibyteTest let text4 String "" immutable
 multibyteTest let n233 Int64 233 immutable
-multibyteTest let int32233 Int32 233 immutable
+multibyteTest let minus1 Int64 -1 immutable
+multibyteTest let int3284 Int32 84 immutable
 multibyteTest let text5 String "" immutable
 multibyteTest let int3266 Int32 66 immutable
 multibyteTest let n66 Int64 66 immutable
 multibyteTest let int328364 Int32 8364 immutable
-multibyteTest let minus1 Int64 -1 immutable
-multibyteTest let int3284 Int32 84 immutable
+multibyteTest let int32233 Int32 233 immutable
+multibyteTest let int32127 Int32 127 immutable
 multibyteTest let int321 Int32 1 immutable
 multibyteTest let text6 String "" immutable
 multibyteTest let int32Minus1 Int32 -1 immutable
@@ -9178,9 +9179,10 @@ multibyteTest at begin do readGotNoCell
 multibyteTest at begin do doAssertEqualInt647
 multibyteTest at begin do readHighText
 multibyteTest at begin do doPutByteAt
+multibyteTest at begin do doSetErrno
 multibyteTest at begin do readGotHigh
 multibyteTest at begin do doAssertEqualInt648
-multibyteTest at begin do readGotHighWide
+multibyteTest at begin do readHighErrno
 multibyteTest at begin do doAssertTrueStep5
 multibyteTest at begin do doAssertTrue5
 multibyteTest at begin do readBuffer
@@ -9188,7 +9190,7 @@ multibyteTest at begin do readMade
 multibyteTest at begin do doAssertEqualInt649
 multibyteTest at begin do readMadeByte
 multibyteTest at begin do doAssertEqualInt6410
-multibyteTest at begin do doSetErrno
+multibyteTest at begin do doSetErrno2
 multibyteTest at begin do readRefused
 multibyteTest at begin do doAssertEqualInt6411
 multibyteTest at begin do readRefusedErrno
@@ -9198,7 +9200,7 @@ multibyteTest at begin do readMadeNull
 multibyteTest at begin do doAssertEqualInt6412
 multibyteTest at begin do readMadeHigh
 multibyteTest at begin do doAssertEqualInt6413
-multibyteTest at begin do readMadeHighByte
+multibyteTest at begin do readMadeAscii
 multibyteTest at begin do doAssertEqualInt6414
 multibyteTest at begin do readLengthOne
 multibyteTest at begin do doAssertTrueStep7
@@ -9662,6 +9664,17 @@ doPutByteAt borrows none
 doPutByteAt catch none
 doPutByteAt suppresses none
 
+doSetErrno is call
+doSetErrno in multibyteTest
+doSetErrno invokes clibrary.setErrno
+doSetErrno argument value Int32 int320 copy
+doSetErrno result none
+doSetErrno ownedBy none
+doSetErrno cleanedBy none
+doSetErrno borrows none
+doSetErrno catch none
+doSetErrno suppresses none
+
 readGotHigh is call
 readGotHigh in multibyteTest
 readGotHigh invokes mbrtowc
@@ -9679,7 +9692,7 @@ readGotHigh suppresses none
 doAssertEqualInt648 is call
 doAssertEqualInt648 in multibyteTest
 doAssertEqualInt648 invokes test.assertEqualInt64
-doAssertEqualInt648 argument expected Int64 one copy
+doAssertEqualInt648 argument expected Int64 minus1 copy
 doAssertEqualInt648 argument actual Int64 gotHigh copy
 doAssertEqualInt648 result none
 doAssertEqualInt648 ownedBy none
@@ -9688,22 +9701,22 @@ doAssertEqualInt648 borrows none
 doAssertEqualInt648 catch none
 doAssertEqualInt648 suppresses none
 
-readGotHighWide is call
-readGotHighWide in multibyteTest
-readGotHighWide invokes machine.loadInt32
-readGotHighWide argument address machine.Address cell copy
-readGotHighWide result gotHighWide Int32
-readGotHighWide ownedBy none
-readGotHighWide cleanedBy none
-readGotHighWide borrows none
-readGotHighWide catch none
-readGotHighWide suppresses none
+readHighErrno is call
+readHighErrno in multibyteTest
+readHighErrno invokes currentErrno
+readHighErrno argument none
+readHighErrno result highErrno Int32
+readHighErrno ownedBy none
+readHighErrno cleanedBy none
+readHighErrno borrows none
+readHighErrno catch none
+readHighErrno suppresses none
 
 doAssertTrueStep5 is call
 doAssertTrueStep5 in multibyteTest
 doAssertTrueStep5 invokes compare.equalInt32
-doAssertTrueStep5 argument left Int32 gotHighWide copy
-doAssertTrueStep5 argument right Int32 int32233 copy
+doAssertTrueStep5 argument left Int32 highErrno copy
+doAssertTrueStep5 argument right Int32 int3284 copy
 doAssertTrueStep5 result doAssertTruePart5 Bool
 doAssertTrueStep5 ownedBy none
 doAssertTrueStep5 cleanedBy none
@@ -9782,16 +9795,16 @@ doAssertEqualInt6410 borrows none
 doAssertEqualInt6410 catch none
 doAssertEqualInt6410 suppresses none
 
-doSetErrno is call
-doSetErrno in multibyteTest
-doSetErrno invokes clibrary.setErrno
-doSetErrno argument value Int32 int320 copy
-doSetErrno result none
-doSetErrno ownedBy none
-doSetErrno cleanedBy none
-doSetErrno borrows none
-doSetErrno catch none
-doSetErrno suppresses none
+doSetErrno2 is call
+doSetErrno2 in multibyteTest
+doSetErrno2 invokes clibrary.setErrno
+doSetErrno2 argument value Int32 int320 copy
+doSetErrno2 result none
+doSetErrno2 ownedBy none
+doSetErrno2 cleanedBy none
+doSetErrno2 borrows none
+doSetErrno2 catch none
+doSetErrno2 suppresses none
 
 readRefused is call
 readRefused in multibyteTest
@@ -9893,7 +9906,7 @@ readMadeHigh suppresses none
 doAssertEqualInt6413 is call
 doAssertEqualInt6413 in multibyteTest
 doAssertEqualInt6413 invokes test.assertEqualInt64
-doAssertEqualInt6413 argument expected Int64 one copy
+doAssertEqualInt6413 argument expected Int64 minus1 copy
 doAssertEqualInt6413 argument actual Int64 madeHigh copy
 doAssertEqualInt6413 result none
 doAssertEqualInt6413 ownedBy none
@@ -9902,23 +9915,24 @@ doAssertEqualInt6413 borrows none
 doAssertEqualInt6413 catch none
 doAssertEqualInt6413 suppresses none
 
-readMadeHighByte is call
-readMadeHighByte in multibyteTest
-readMadeHighByte invokes byteValueAt
-readMadeHighByte argument base machine.Address buffer copy
-readMadeHighByte argument index Int64 zero copy
-readMadeHighByte result madeHighByte Int64
-readMadeHighByte ownedBy none
-readMadeHighByte cleanedBy none
-readMadeHighByte borrows none
-readMadeHighByte catch none
-readMadeHighByte suppresses none
+readMadeAscii is call
+readMadeAscii in multibyteTest
+readMadeAscii invokes wcrtomb
+readMadeAscii argument text machine.Address buffer copy
+readMadeAscii argument wide Int32 int32127 copy
+readMadeAscii argument state machine.Address state copy
+readMadeAscii result madeAscii Int64
+readMadeAscii ownedBy none
+readMadeAscii cleanedBy none
+readMadeAscii borrows none
+readMadeAscii catch none
+readMadeAscii suppresses none
 
 doAssertEqualInt6414 is call
 doAssertEqualInt6414 in multibyteTest
 doAssertEqualInt6414 invokes test.assertEqualInt64
-doAssertEqualInt6414 argument expected Int64 n233 copy
-doAssertEqualInt6414 argument actual Int64 madeHighByte copy
+doAssertEqualInt6414 argument expected Int64 one copy
+doAssertEqualInt6414 argument actual Int64 madeAscii copy
 doAssertEqualInt6414 result none
 doAssertEqualInt6414 ownedBy none
 doAssertEqualInt6414 cleanedBy none
@@ -10405,7 +10419,7 @@ doAssertTrueStep20 is call
 doAssertTrueStep20 in multibyteTest
 doAssertTrueStep20 invokes compare.equalInt32
 doAssertTrueStep20 argument left Int32 wideOfHigh copy
-doAssertTrueStep20 argument right Int32 int32233 copy
+doAssertTrueStep20 argument right Int32 int32Minus1 copy
 doAssertTrueStep20 result doAssertTruePart20 Bool
 doAssertTrueStep20 ownedBy none
 doAssertTrueStep20 cleanedBy none
@@ -10541,7 +10555,7 @@ doAssertTrueStep24 is call
 doAssertTrueStep24 in multibyteTest
 doAssertTrueStep24 invokes compare.equalInt32
 doAssertTrueStep24 argument left Int32 byteOfHigh copy
-doAssertTrueStep24 argument right Int32 int32233 copy
+doAssertTrueStep24 argument right Int32 int32Minus1 copy
 doAssertTrueStep24 result doAssertTruePart24 Bool
 doAssertTrueStep24 ownedBy none
 doAssertTrueStep24 cleanedBy none
@@ -10561,7 +10575,7 @@ doAssertTrue24 catch none
 doAssertTrue24 suppresses none
 
 stringConversionTest is test
-stringConversionTest purpose "mbstowcs, wcstombs, mbsrtowcs, and wcsrtombs convert whole strings and as many as fit, count with no target, and stop at a wide character above 255; uchar.h's functions give the same as wchar.h's"
+stringConversionTest purpose "mbstowcs, wcstombs, mbsrtowcs, and wcsrtombs convert whole strings and as many as fit, count with no target, and stop at a wide character above 127; uchar.h's functions give the same as wchar.h's"
 stringConversionTest verifies mbstowcs convertsToWide
 stringConversionTest verifies wcstombs convertsToBytes
 stringConversionTest typeParameter none

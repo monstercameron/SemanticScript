@@ -10072,7 +10072,7 @@ findFlipped1 catch none
 findFlipped1 suppresses none
 
 compareMagnitude is operation
-compareMagnitude purpose "How two parts' magnitudes compare: -1, 0, or 1 (an infinity above every finite value, zero below)"
+compareMagnitude purpose "How two parts' magnitudes compare: -1, 0, or 1 (an infinity above every finite value, zero below); the parts are left as they are (copies are normalized), so parts of a narrower layout keep their own form"
 compareMagnitude invariant none
 compareMagnitude typeParameter none
 compareMagnitude input left machine.Address copied
@@ -10095,16 +10095,6 @@ compareMagnitude label sameRank loopKind none
 compareMagnitude label sameRank within none
 compareMagnitude label finite loopKind none
 compareMagnitude label finite within none
-compareMagnitude label notLower loopKind none
-compareMagnitude label notLower within none
-compareMagnitude label words loopKind none
-compareMagnitude label words within none
-compareMagnitude label notHighLess loopKind none
-compareMagnitude label notHighLess within none
-compareMagnitude label lows loopKind none
-compareMagnitude label lows within none
-compareMagnitude label notLowLess loopKind none
-compareMagnitude label notLowLess within none
 compareMagnitude label giveLess loopKind none
 compareMagnitude label giveLess within none
 compareMagnitude label giveMore loopKind none
@@ -10116,7 +10106,7 @@ compareMagnitude let same Int64 0 immutable
 compareMagnitude let more Int64 1 immutable
 compareMagnitude let eight Int64 8 immutable
 compareMagnitude let one Int64 1 immutable
-compareMagnitude let sixteen Int64 16 immutable
+compareMagnitude let n48 Int64 48 immutable
 compareMagnitude at begin do readLeftKind
 compareMagnitude at begin do readRightKind
 compareMagnitude at begin do findLeftRank1
@@ -10127,26 +10117,16 @@ compareMagnitude at notLess do findCheck21
 compareMagnitude at notLess branch if check2 goto giveMore else goto sameRank
 compareMagnitude at sameRank do findCheck31
 compareMagnitude at sameRank branch if check3 goto giveSame else goto finite
+compareMagnitude at finite do readLeftCopy
+compareMagnitude at finite do doCopy
+compareMagnitude at finite do readRightCopy
+compareMagnitude at finite do doCopy2
 compareMagnitude at finite do doNormalize
 compareMagnitude at finite do doNormalize2
-compareMagnitude at finite do readLeftPower
-compareMagnitude at finite do readRightPower
-compareMagnitude at finite do findCheck41
-compareMagnitude at finite branch if check4 goto giveLess else goto notLower
-compareMagnitude at notLower do findCheck51
-compareMagnitude at notLower branch if check5 goto giveMore else goto words
-compareMagnitude at words do readLeftHigh
-compareMagnitude at words do readRightHigh
-compareMagnitude at words do findCheck61
-compareMagnitude at words branch if check6 goto giveLess else goto notHighLess
-compareMagnitude at notHighLess do findCheck71
-compareMagnitude at notHighLess branch if check7 goto giveMore else goto lows
-compareMagnitude at lows do readLeftLow
-compareMagnitude at lows do readRightLow
-compareMagnitude at lows do findCheck81
-compareMagnitude at lows branch if check8 goto giveLess else goto notLowLess
-compareMagnitude at notLowLess do findCheck91
-compareMagnitude at notLowLess branch if check9 goto giveMore else goto giveSame
+compareMagnitude at finite do readOrder
+compareMagnitude at finite do doGive
+compareMagnitude at finite do doGive2
+compareMagnitude at finite return ok order
 compareMagnitude at giveLess return ok less
 compareMagnitude at giveMore return ok more
 compareMagnitude at giveSame return ok same
@@ -10233,10 +10213,58 @@ findCheck31 borrows none
 findCheck31 catch none
 findCheck31 suppresses none
 
+readLeftCopy is call
+readLeftCopy in compareMagnitude
+readLeftCopy invokes partsNew
+readLeftCopy argument none
+readLeftCopy result leftCopy machine.Address
+readLeftCopy ownedBy none
+readLeftCopy cleanedBy none
+readLeftCopy borrows none
+readLeftCopy catch none
+readLeftCopy suppresses none
+
+doCopy is call
+doCopy in compareMagnitude
+doCopy invokes machine.copy
+doCopy argument target machine.Address leftCopy copy
+doCopy argument source machine.Address left copy
+doCopy argument bytes Int64 n48 copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+readRightCopy is call
+readRightCopy in compareMagnitude
+readRightCopy invokes partsNew
+readRightCopy argument none
+readRightCopy result rightCopy machine.Address
+readRightCopy ownedBy none
+readRightCopy cleanedBy none
+readRightCopy borrows none
+readRightCopy catch none
+readRightCopy suppresses none
+
+doCopy2 is call
+doCopy2 in compareMagnitude
+doCopy2 invokes machine.copy
+doCopy2 argument target machine.Address rightCopy copy
+doCopy2 argument source machine.Address right copy
+doCopy2 argument bytes Int64 n48 copy
+doCopy2 result none
+doCopy2 ownedBy none
+doCopy2 cleanedBy none
+doCopy2 borrows none
+doCopy2 catch none
+doCopy2 suppresses none
+
 doNormalize is call
 doNormalize in compareMagnitude
 doNormalize invokes normalize
-doNormalize argument parts machine.Address left copy
+doNormalize argument parts machine.Address leftCopy copy
 doNormalize result none
 doNormalize ownedBy none
 doNormalize cleanedBy none
@@ -10247,7 +10275,7 @@ doNormalize suppresses none
 doNormalize2 is call
 doNormalize2 in compareMagnitude
 doNormalize2 invokes normalize
-doNormalize2 argument parts machine.Address right copy
+doNormalize2 argument parts machine.Address rightCopy copy
 doNormalize2 result none
 doNormalize2 ownedBy none
 doNormalize2 cleanedBy none
@@ -10255,8 +10283,100 @@ doNormalize2 borrows none
 doNormalize2 catch none
 doNormalize2 suppresses none
 
+readOrder is call
+readOrder in compareMagnitude
+readOrder invokes compareNormalized
+readOrder argument left machine.Address leftCopy copy
+readOrder argument right machine.Address rightCopy copy
+readOrder result order Int64
+readOrder ownedBy none
+readOrder cleanedBy none
+readOrder borrows none
+readOrder catch none
+readOrder suppresses none
+
+doGive is call
+doGive in compareMagnitude
+doGive invokes heap.give
+doGive argument block machine.Address rightCopy copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in compareMagnitude
+doGive2 invokes heap.give
+doGive2 argument block machine.Address leftCopy copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+compareNormalized is operation
+compareNormalized purpose "How two finite nonzero parts normalized to the same precision compare by magnitude: -1, 0, or 1"
+compareNormalized invariant none
+compareNormalized typeParameter none
+compareNormalized input left machine.Address copied
+compareNormalized input right machine.Address copied
+compareNormalized output Int64
+compareNormalized outputOwnedBy none
+compareNormalized raises none
+compareNormalized effect use machine.memory
+compareNormalized uses memoryAccess
+compareNormalized memoryHeap false
+compareNormalized async false
+compareNormalized maxRecursion none
+compareNormalized label begin loopKind none
+compareNormalized label begin within none
+compareNormalized label notLower loopKind none
+compareNormalized label notLower within none
+compareNormalized label words loopKind none
+compareNormalized label words within none
+compareNormalized label notHighLess loopKind none
+compareNormalized label notHighLess within none
+compareNormalized label lows loopKind none
+compareNormalized label lows within none
+compareNormalized label notLowLess loopKind none
+compareNormalized label notLowLess within none
+compareNormalized label giveLess loopKind none
+compareNormalized label giveLess within none
+compareNormalized label giveMore loopKind none
+compareNormalized label giveMore within none
+compareNormalized label giveSame loopKind none
+compareNormalized label giveSame within none
+compareNormalized let less Int64 -1 immutable
+compareNormalized let same Int64 0 immutable
+compareNormalized let more Int64 1 immutable
+compareNormalized let sixteen Int64 16 immutable
+compareNormalized at begin do readLeftPower
+compareNormalized at begin do readRightPower
+compareNormalized at begin do findCheck11
+compareNormalized at begin branch if check1 goto giveLess else goto notLower
+compareNormalized at notLower do findCheck21
+compareNormalized at notLower branch if check2 goto giveMore else goto words
+compareNormalized at words do readLeftHigh
+compareNormalized at words do readRightHigh
+compareNormalized at words do findCheck31
+compareNormalized at words branch if check3 goto giveLess else goto notHighLess
+compareNormalized at notHighLess do findCheck41
+compareNormalized at notHighLess branch if check4 goto giveMore else goto lows
+compareNormalized at lows do readLeftLow
+compareNormalized at lows do readRightLow
+compareNormalized at lows do findCheck51
+compareNormalized at lows branch if check5 goto giveLess else goto notLowLess
+compareNormalized at notLowLess do findCheck61
+compareNormalized at notLowLess branch if check6 goto giveMore else goto giveSame
+compareNormalized at giveLess return ok less
+compareNormalized at giveMore return ok more
+compareNormalized at giveSame return ok same
+
 readLeftPower is call
-readLeftPower in compareMagnitude
+readLeftPower in compareNormalized
 readLeftPower invokes getPart
 readLeftPower argument parts machine.Address left copy
 readLeftPower argument offset Int64 sixteen copy
@@ -10268,7 +10388,7 @@ readLeftPower catch none
 readLeftPower suppresses none
 
 readRightPower is call
-readRightPower in compareMagnitude
+readRightPower in compareNormalized
 readRightPower invokes getPart
 readRightPower argument parts machine.Address right copy
 readRightPower argument offset Int64 sixteen copy
@@ -10279,32 +10399,32 @@ readRightPower borrows none
 readRightPower catch none
 readRightPower suppresses none
 
-findCheck41 is call
-findCheck41 in compareMagnitude
-findCheck41 invokes compare.lessThanInt64
-findCheck41 argument left Int64 leftPower copy
-findCheck41 argument right Int64 rightPower copy
-findCheck41 result check4 Bool
-findCheck41 ownedBy none
-findCheck41 cleanedBy none
-findCheck41 borrows none
-findCheck41 catch none
-findCheck41 suppresses none
+findCheck11 is call
+findCheck11 in compareNormalized
+findCheck11 invokes compare.lessThanInt64
+findCheck11 argument left Int64 leftPower copy
+findCheck11 argument right Int64 rightPower copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
 
-findCheck51 is call
-findCheck51 in compareMagnitude
-findCheck51 invokes compare.greaterThanInt64
-findCheck51 argument left Int64 leftPower copy
-findCheck51 argument right Int64 rightPower copy
-findCheck51 result check5 Bool
-findCheck51 ownedBy none
-findCheck51 cleanedBy none
-findCheck51 borrows none
-findCheck51 catch none
-findCheck51 suppresses none
+findCheck21 is call
+findCheck21 in compareNormalized
+findCheck21 invokes compare.greaterThanInt64
+findCheck21 argument left Int64 leftPower copy
+findCheck21 argument right Int64 rightPower copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
 
 readLeftHigh is call
-readLeftHigh in compareMagnitude
+readLeftHigh in compareNormalized
 readLeftHigh invokes highOf
 readLeftHigh argument parts machine.Address left copy
 readLeftHigh result leftHigh UInt64
@@ -10315,7 +10435,7 @@ readLeftHigh catch none
 readLeftHigh suppresses none
 
 readRightHigh is call
-readRightHigh in compareMagnitude
+readRightHigh in compareNormalized
 readRightHigh invokes highOf
 readRightHigh argument parts machine.Address right copy
 readRightHigh result rightHigh UInt64
@@ -10325,32 +10445,32 @@ readRightHigh borrows none
 readRightHigh catch none
 readRightHigh suppresses none
 
-findCheck61 is call
-findCheck61 in compareMagnitude
-findCheck61 invokes compare.lessThanUInt64
-findCheck61 argument left UInt64 leftHigh copy
-findCheck61 argument right UInt64 rightHigh copy
-findCheck61 result check6 Bool
-findCheck61 ownedBy none
-findCheck61 cleanedBy none
-findCheck61 borrows none
-findCheck61 catch none
-findCheck61 suppresses none
+findCheck31 is call
+findCheck31 in compareNormalized
+findCheck31 invokes compare.lessThanUInt64
+findCheck31 argument left UInt64 leftHigh copy
+findCheck31 argument right UInt64 rightHigh copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
 
-findCheck71 is call
-findCheck71 in compareMagnitude
-findCheck71 invokes compare.greaterThanUInt64
-findCheck71 argument left UInt64 leftHigh copy
-findCheck71 argument right UInt64 rightHigh copy
-findCheck71 result check7 Bool
-findCheck71 ownedBy none
-findCheck71 cleanedBy none
-findCheck71 borrows none
-findCheck71 catch none
-findCheck71 suppresses none
+findCheck41 is call
+findCheck41 in compareNormalized
+findCheck41 invokes compare.greaterThanUInt64
+findCheck41 argument left UInt64 leftHigh copy
+findCheck41 argument right UInt64 rightHigh copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
 
 readLeftLow is call
-readLeftLow in compareMagnitude
+readLeftLow in compareNormalized
 readLeftLow invokes lowOf
 readLeftLow argument parts machine.Address left copy
 readLeftLow result leftLow UInt64
@@ -10361,7 +10481,7 @@ readLeftLow catch none
 readLeftLow suppresses none
 
 readRightLow is call
-readRightLow in compareMagnitude
+readRightLow in compareNormalized
 readRightLow invokes lowOf
 readRightLow argument parts machine.Address right copy
 readRightLow result rightLow UInt64
@@ -10371,29 +10491,29 @@ readRightLow borrows none
 readRightLow catch none
 readRightLow suppresses none
 
-findCheck81 is call
-findCheck81 in compareMagnitude
-findCheck81 invokes compare.lessThanUInt64
-findCheck81 argument left UInt64 leftLow copy
-findCheck81 argument right UInt64 rightLow copy
-findCheck81 result check8 Bool
-findCheck81 ownedBy none
-findCheck81 cleanedBy none
-findCheck81 borrows none
-findCheck81 catch none
-findCheck81 suppresses none
+findCheck51 is call
+findCheck51 in compareNormalized
+findCheck51 invokes compare.lessThanUInt64
+findCheck51 argument left UInt64 leftLow copy
+findCheck51 argument right UInt64 rightLow copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
 
-findCheck91 is call
-findCheck91 in compareMagnitude
-findCheck91 invokes compare.greaterThanUInt64
-findCheck91 argument left UInt64 leftLow copy
-findCheck91 argument right UInt64 rightLow copy
-findCheck91 result check9 Bool
-findCheck91 ownedBy none
-findCheck91 cleanedBy none
-findCheck91 borrows none
-findCheck91 catch none
-findCheck91 suppresses none
+findCheck61 is call
+findCheck61 in compareNormalized
+findCheck61 invokes compare.greaterThanUInt64
+findCheck61 argument left UInt64 leftLow copy
+findCheck61 argument right UInt64 rightLow copy
+findCheck61 result check6 Bool
+findCheck61 ownedBy none
+findCheck61 cleanedBy none
+findCheck61 borrows none
+findCheck61 catch none
+findCheck61 suppresses none
 
 rankOf is operation
 rankOf purpose "The order of a kind of value by magnitude: zero 0, finite 1, infinite 2 (NaN, never compared, 3)"

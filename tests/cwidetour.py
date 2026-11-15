@@ -9,10 +9,10 @@ What a function wrote into memory is checked with memcmp against the bytes the P
 1 when they are equal; so are errno (read through `__errno_location`) and the end pointers the number parsers and the
 restartable converters store (the model's expected address is stored in memory a byte at a time, by the program, and
 compared). The classifiers print whether the answer is nonzero, not the class bit (glibc's isw functions give some
-nonzero int); wctype and wctrans print whether the handle is nonzero. Where glibc's C locale could go either way
-(bytes 0x80 to 0xFF under mbrtowc, wcrtomb, btowc, and wctob) the tour has a section of its own and expects what the
-runtime does (the byte as the wide character of the same value, and back), so a difference shows up on Linux, where
-the comparison with glibc decides.
+nonzero int); wctype and wctrans print whether the handle is nonzero. glibc's C locale converts ASCII only (D-177):
+the bytes 0x80 to 0xFF are invalid sequences under mbrtowc and its kin, a wide character past 127 has no byte under
+wcrtomb and its kin (EILSEQ either way), and btowc and wctob give WEOF and EOF for them; the section "high bytes"
+checks exactly that.
 """
 from __future__ import annotations
 
@@ -459,7 +459,7 @@ def build() -> Tour:
         t.bind(name, "i>i")
         t.emit(f"run{name}: everyRaw({name}Fn)")
         for c in range(-1, 301):
-            t.out.append(str(c if 0 <= c <= 255 else -1))
+            t.out.append(str(c if 0 <= c <= 127 else -1))
     strings(t)
     numbers(t)
     multibyte(t)
@@ -702,7 +702,7 @@ def multibyte(t: Tour) -> None:
         d = t.buf(8)
         t.put_byte(d, 33)
         t.errno_clear()
-        ok = 0 <= wide <= 255
+        ok = 0 <= wide <= 127
         var, kind = t.call("wcrtomb", "pip>p", [P(d), wide, P(state)])
         t.errno_check(0 if ok else 84)
         t.show(var, kind, "number")
@@ -731,7 +731,7 @@ def multibyte(t: Tour) -> None:
     for wide in (65, 0, 66, 256, 8364):
         d = t.buf(8)
         t.put_byte(d, 33)
-        ok = 0 <= wide <= 255
+        ok = 0 <= wide <= 127
         t.run("wctomb", "pi>i", [P(d), wide], "number", 1 if ok else -1)
         if ok:
             t.mem[d] = wide
@@ -759,7 +759,7 @@ def multibyte(t: Tour) -> None:
         for i in range(12):
             t.put_byte(d + i, 120)
         t.errno_clear()
-        bad = next((i for i, u in enumerate(units) if u > 255), None)
+        bad = next((i for i, u in enumerate(units) if u > 127), None)
         if bad is not None and bad < n:
             expected, errno = -1, 84
         else:
@@ -854,7 +854,7 @@ def multibyte(t: Tour) -> None:
             d = t.buf(8)
             t.put_byte(d, 33)
             t.errno_clear()
-            ok = 0 <= wide <= 255
+            ok = 0 <= wide <= 127
             var, kind = t.call(name, "pip>p", [P(d), wide, P(state)])
             t.errno_check(0 if ok else 84)
             t.show(var, kind, "number")
@@ -867,17 +867,19 @@ def multibyte(t: Tour) -> None:
         s = t.bstr([byte])
         w = t.buf(4)
         t.put_unit(w, 0, 7)
-        t.run("mbrlen", "ppp>p", [P(s), 1, NUL], "number", 1)
-        t.run("mbrtowc", "pppp>p", [P(w), P(s), 1, NUL], "number", 1)
-        t.set_unit(w, 0, byte)
+        t.run("mbrlen", "ppp>p", [P(s), 1, NUL], "number", -1)
+        t.errno_clear()
+        var, kind = t.call("mbrtowc", "pppp>p", [P(w), P(s), 1, NUL])
+        t.errno_check(84)
+        t.show(var, kind, "number")
+        t.out.append("-1")
         t.check_region(w, 4)
         d = t.buf(8)
         t.errno_clear()
         var, kind = t.call("wcrtomb", "pip>p", [P(d), byte, NUL])
-        t.errno_check(0)
+        t.errno_check(84)
         t.show(var, kind, "number")
-        t.out.append("1")
-        t.mem[d] = byte
+        t.out.append("-1")
         t.check_region(d, 4)
 
 
