@@ -33,6 +33,8 @@ import floattable  # noqa: E402
 import hosttour  # noqa: E402
 import jsoncases  # noqa: E402
 import jsontour  # noqa: E402
+import interrupttour  # noqa: E402
+import nettour  # noqa: E402
 
 RUNTIME = os.path.join(caselib.ROOT, "semanticscript", "runtime")
 EXAMPLES = os.path.join(caselib.ROOT, "docs", "refined-examples")
@@ -191,10 +193,10 @@ def test_linked_without_libc_matches_the_jit(name, tmp_path):
         assert "\n  in " in ran.stderr
 
 
-# What the runtime in SemanticScript does not implement (D-137): sockets (Winsock is not kernel32), HTTP requests,
-# JSON, random numbers, and interrupts stay under `refined run`; each of these programs needs one of them.
-REFUSED = {"12-io/network-connect": "net", "19-stdlib/signal": "signal"}
-if not WINDOWS:  # D-140: a foreign library needs the C library's dynamic loader
+# What an executable cannot have (D-140, D-145): on Linux a foreign library, which needs the C library and its
+# dynamic loader. Everything else the library has, the runtime in SemanticScript has.
+REFUSED = {}
+if not WINDOWS:
     REFUSED["18-interop/foreign"] = "ffi"
 
 
@@ -236,23 +238,81 @@ def test_suite_programs_link_or_are_refused(tmp_path):
     # stage 1 linked 42 of the 76, stage 2 49; stages 3 and 4 every program but the five REFUSED names
     refused = {o.split(":", 1)[1] for o in outcomes if o.startswith("refused:")}
     assert refused == set(REFUSED) & {c.name for c in cases}, refused
-    # 74 on Windows; 73 on Linux, where `18-interop/foreign` is refused too (ffi needs the dynamic loader, D-140)
-    assert outcomes.count("linked") == len(cases) - len(refused) >= (74 if WINDOWS else 73), outcomes.count("linked")
+    # all 76 on Windows; 75 on Linux, where `18-interop/foreign` is refused (ffi needs the C library, D-145)
+    assert outcomes.count("linked") == len(cases) - len(refused) >= (76 if WINDOWS else 75), outcomes.count("linked")
 
 
 @needs_windows_cc
 def test_program_needing_more_runtime_is_refused(tmp_path):
-    """18 Static linking: a program that needs a host target the runtime in SemanticScript does not provide (here
-    JSON, D-137) is refused before linking, naming the targets; `--runtime semanticscript`, still accepted (D-141),
-    changes nothing."""
-    project = caselib.materialize(CASES["19-stdlib/signal"], str(tmp_path / "signal"))
+    """18 Static linking (D-130, D-145): a program that calls a host target the runtime in SemanticScript does not
+    have is refused before linking, naming it; on Linux a foreign library is refused with the platform's limit
+    stated (ffi needs the C library), and `--runtime semanticscript`, still accepted (D-141), changes nothing."""
+    from refined.native import executable
+    exe = str(tmp_path / "program.exe")
+    ok, message = executable('@key = constant [14 x i8] c"nosuch.target|"\n', "probe.main", exe)
+    assert not ok and "R901" in message and "`nosuch.target`" in message and "does not provide yet" in message
+    assert not os.path.exists(exe)
+    if WINDOWS:
+        return
+    project = caselib.materialize(CASES["18-interop/foreign"], str(tmp_path / "foreign"))
     exe = os.path.join(project, "program.exe")
     built = _build(project, exe)
-    assert built.returncode != 0 and "R901" in built.stdout and "`signal.interrupted`" in built.stdout, built.stdout
-    assert "does not provide yet" in built.stdout and not os.path.exists(exe)
+    assert built.returncode != 0 and "R901" in built.stdout and "cannot have (D-145)" in built.stdout, built.stdout
+    assert "glibc" in built.stdout and not os.path.exists(exe)
     compatible = caselib.refined("build", project, "--kind", "executable", "--runtime", "semanticscript", "--output",
                                  exe)
     assert compatible.returncode != 0 and compatible.stdout == built.stdout, compatible.stdout
+
+
+@needs_windows_cc
+def test_net_targets_match_the_jit(tmp_path):
+    """12 Network I/O, 12 Socket operations, 13 Network capability enforcement (D-148, D-149): a program that
+    listens on loopback, connects to itself and accepts, sends bytes both ways, reads until a deadline and to the end
+    of a stream, accepts until a deadline, listens on a port in use, connects by name (`localhost`), to a port with
+    nothing listening, to a port that is not a number, and to a name that does not exist, prints exactly what
+    `refined run` prints; the executable imports WS2_32.dll on Windows and nothing on Linux."""
+    project = str(tmp_path / "nettour")
+    nettour.write_project(project)
+    caselib.approve(project)
+    ran, jit = _same_as_jit(project)
+    assert ran == jit
+    lines = ran[1].splitlines()
+    assert ran[0] == 0 and lines[:6] == ["listening", "ping", "pong ", "from the server", "timedOut", "closed"], lines
+    assert "connected" in lines and "refused" in lines and "22" in lines
+    if WINDOWS:
+        assert "WS2_32.dll" in imported_dlls(os.path.join(project, "program.exe"))
+
+
+@needs_windows_cc
+def test_executable_sees_an_interrupt(tmp_path):
+    """16 Signal handling (D-147): the first interrupt reaches an executable that waits for one, which says so and
+    ends cleanly, as under `refined run`: SIGINT on Linux; on Windows CTRL+C, sent to a console of the test's own
+    (tests/ctrlc.py) to the executable and to `refined run`, which must agree."""
+    import json
+    import time
+    project = str(tmp_path / "interrupts")
+    interrupttour.write_project(project)
+    exe = os.path.join(project, "program.exe")
+    built = _build(project, exe)
+    assert built.returncode == 0, built.stdout
+    assert_no_libc(exe)
+    if not WINDOWS:
+        import signal
+        proc = subprocess.Popen([exe], stdout=subprocess.PIPE, text=True)
+        assert proc.stdout.readline().strip() == "ready"
+        time.sleep(0.5)
+        proc.send_signal(signal.SIGINT)
+        out, _ = proc.communicate(timeout=30)
+        assert (proc.returncode, out.strip()) == (0, "interrupted")
+        return
+    results = []
+    for command in ([exe], [sys.executable, caselib.COMPILER, "run", project, "--no-cache"]):
+        where = str(tmp_path / f"result{len(results)}.json")
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "ctrlc.py"), where,
+                        *command], creationflags=subprocess.CREATE_NEW_CONSOLE, timeout=180)
+        with open(where, encoding="utf-8") as fh:
+            results.append(json.load(fh))
+    assert results[0] == results[1] == {"code": 0, "stdout": "ready\ninterrupted\n", "stderr": ""}, results
 
 
 # ---------------------------------------------------------------- floating-point text and the host library (stage 2)
@@ -493,7 +553,7 @@ def test_runtime_host_targets_cover_the_library():
     ours = runtime_host_targets()
     assert ours <= set(host.HANDLERS), ours - set(host.HANDLERS)
     missing = {name.split(".")[0] for name in set(host.HANDLERS) - ours}
-    assert missing == {"net", "signal"}, missing
+    assert missing == set(), missing
     linux = runtime_host_targets("x86_64-unknown-linux-gnu")
     assert ours - linux == {"ffi.open", "ffi.close", "ffi.Function.bind"}, ours - linux
     with open(os.path.join(RUNTIME, "host.sem"), encoding="utf-8") as fh:
@@ -520,7 +580,7 @@ def test_runtime_project_checks_and_passes_its_tests():
         pytest.skip("the runtime's system targets are Windows functions and x86_64 Linux system calls")
     tested = caselib.refined("test", RUNTIME)
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "64 of 64 tests passed" in tested.stdout
+    assert "66 of 66 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

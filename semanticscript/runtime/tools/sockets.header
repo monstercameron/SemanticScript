@@ -1,0 +1,4 @@
+# TCP over IPv4 for a standalone executable: the net targets through Winsock (Windows) and socket system calls
+# (Linux), with a resolver of names for Linux, as `refined run` connects, listens, reads, and writes.
+#
+# This module is generated from tools/sockets.dsl by tools/build.py.

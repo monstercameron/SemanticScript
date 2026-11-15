@@ -1,0 +1,2 @@
+# Tests of the `interrupts` module; generated from tools/interrupts.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.

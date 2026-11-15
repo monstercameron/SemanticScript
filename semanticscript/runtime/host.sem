@@ -35,6 +35,8 @@ host imports hashes
 host imports generators
 host imports requests
 host imports documents
+host imports interrupts
+host imports sockets
 host exports hostCall
 host exports utf8InvalidAt
 
@@ -233,6 +235,15 @@ hostTargets row jsonSetValue 93
 hostTargets row jsonAppendInt64 94
 hostTargets row jsonAppendText 95
 hostTargets row jsonStringify 96
+hostTargets row signalInterrupted 97
+hostTargets row signalWaitForInterrupt 98
+hostTargets row netListen 99
+hostTargets row netCloseListener 100
+hostTargets row netAccept 101
+hostTargets row netConnect 102
+hostTargets row netRead 103
+hostTargets row netWrite 104
+hostTargets row netClose 105
 hostTargets cell bufferAppendByte name "buffer.appendByte"
 hostTargets cell bufferAppendByte scoped -1
 hostTargets cell bufferAppendInt64 name "buffer.appendInt64"
@@ -425,6 +436,24 @@ hostTargets cell jsonAppendText name "json.appendText"
 hostTargets cell jsonAppendText scoped -1
 hostTargets cell jsonStringify name "json.stringify"
 hostTargets cell jsonStringify scoped -1
+hostTargets cell signalInterrupted name "signal.interrupted"
+hostTargets cell signalInterrupted scoped -1
+hostTargets cell signalWaitForInterrupt name "signal.waitForInterrupt"
+hostTargets cell signalWaitForInterrupt scoped -1
+hostTargets cell netListen name "net.listen"
+hostTargets cell netListen scoped 0
+hostTargets cell netCloseListener name "net.closeListener"
+hostTargets cell netCloseListener scoped -1
+hostTargets cell netAccept name "net.accept"
+hostTargets cell netAccept scoped -1
+hostTargets cell netConnect name "net.connect"
+hostTargets cell netConnect scoped 0
+hostTargets cell netRead name "net.read"
+hostTargets cell netRead scoped -1
+hostTargets cell netWrite name "net.write"
+hostTargets cell netWrite scoped -1
+hostTargets cell netClose name "net.close"
+hostTargets cell netClose scoped -1
 
 endProcess is operation
 endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
@@ -10476,7 +10505,7 @@ runRest catch none
 runRest suppresses none
 
 dispatchRest is operation
-dispatchRest purpose "Run a host target of the modules that came last by its number (73 on): random (73 to 75), http (76 to 79), json (80 to 96); 0, or an error's variant number with its payload stored"
+dispatchRest purpose "Run a host target of the modules that came last by its number (73 on): random (73 to 75), http (76 to 79), json (80 to 96), signal (97 and 98), net (99 to 105); 0, or an error's variant number with its payload stored"
 dispatchRest invariant none
 dispatchRest typeParameter none
 dispatchRest input number Int64 copied
@@ -10506,6 +10535,14 @@ dispatchRest label jsonCheck loopKind none
 dispatchRest label jsonCheck within none
 dispatchRest label runJson loopKind none
 dispatchRest label runJson within none
+dispatchRest label signalCheck loopKind none
+dispatchRest label signalCheck within none
+dispatchRest label runSignal loopKind none
+dispatchRest label runSignal within none
+dispatchRest label netCheck loopKind none
+dispatchRest label netCheck within none
+dispatchRest label runNet loopKind none
+dispatchRest label runNet within none
 dispatchRest label unknown loopKind none
 dispatchRest label unknown within none
 dispatchRest let ok Int32 0 immutable
@@ -10513,6 +10550,8 @@ dispatchRest let n75 Int64 75 immutable
 dispatchRest let n72 Int64 72 immutable
 dispatchRest let n79 Int64 79 immutable
 dispatchRest let n96 Int64 96 immutable
+dispatchRest let n98 Int64 98 immutable
+dispatchRest let n105 Int64 105 immutable
 dispatchRest let unknownText String "a host call named a target this runtime does not number" immutable
 dispatchRest at begin do randomCheck
 dispatchRest at begin branch if isRandom goto runRandom else goto httpCheck
@@ -10525,10 +10564,20 @@ dispatchRest at runHttp do httpPlace
 dispatchRest at runHttp do httpIt
 dispatchRest at runHttp return ok httpStatus
 dispatchRest at jsonCheck do checkJson
-dispatchRest at jsonCheck branch if isJson goto runJson else goto unknown
+dispatchRest at jsonCheck branch if isJson goto runJson else goto signalCheck
 dispatchRest at runJson do jsonPlace
 dispatchRest at runJson do jsonIt
 dispatchRest at runJson return ok jsonStatus
+dispatchRest at signalCheck do checkSignal
+dispatchRest at signalCheck branch if isSignal goto runSignal else goto netCheck
+dispatchRest at runSignal do signalPlace
+dispatchRest at runSignal do signalIt
+dispatchRest at runSignal return ok signalStatus
+dispatchRest at netCheck do checkNet
+dispatchRest at netCheck branch if isNet goto runNet else goto unknown
+dispatchRest at runNet do netPlace
+dispatchRest at runNet do netIt
+dispatchRest at runNet return ok netStatus
 dispatchRest at unknown do failUnknown
 dispatchRest at unknown return ok ok
 
@@ -10649,6 +10698,84 @@ jsonIt borrows none
 jsonIt catch none
 jsonIt suppresses none
 
+checkSignal is call
+checkSignal in dispatchRest
+checkSignal invokes compare.lessOrEqualInt64
+checkSignal argument left Int64 number copy
+checkSignal argument right Int64 n98 copy
+checkSignal result isSignal Bool
+checkSignal ownedBy none
+checkSignal cleanedBy none
+checkSignal borrows none
+checkSignal catch none
+checkSignal suppresses none
+
+signalPlace is call
+signalPlace in dispatchRest
+signalPlace invokes math.subtractInt64
+signalPlace argument left Int64 number copy
+signalPlace argument right Int64 n96 copy
+signalPlace result signalWhich Int64
+signalPlace ownedBy none
+signalPlace cleanedBy none
+signalPlace borrows none
+signalPlace catch none
+signalPlace suppresses none
+
+signalIt is call
+signalIt in dispatchRest
+signalIt invokes interrupts.signalCall
+signalIt argument which Int64 signalWhich copy
+signalIt argument shape machine.Address shape copy
+signalIt argument args machine.Address args copy
+signalIt argument results machine.Address results copy
+signalIt argument payload machine.Address payload copy
+signalIt result signalStatus Int32
+signalIt ownedBy none
+signalIt cleanedBy none
+signalIt borrows none
+signalIt catch none
+signalIt suppresses none
+
+checkNet is call
+checkNet in dispatchRest
+checkNet invokes compare.lessOrEqualInt64
+checkNet argument left Int64 number copy
+checkNet argument right Int64 n105 copy
+checkNet result isNet Bool
+checkNet ownedBy none
+checkNet cleanedBy none
+checkNet borrows none
+checkNet catch none
+checkNet suppresses none
+
+netPlace is call
+netPlace in dispatchRest
+netPlace invokes math.subtractInt64
+netPlace argument left Int64 number copy
+netPlace argument right Int64 n98 copy
+netPlace result netWhich Int64
+netPlace ownedBy none
+netPlace cleanedBy none
+netPlace borrows none
+netPlace catch none
+netPlace suppresses none
+
+netIt is call
+netIt in dispatchRest
+netIt invokes sockets.netCall
+netIt argument which Int64 netWhich copy
+netIt argument shape machine.Address shape copy
+netIt argument args machine.Address args copy
+netIt argument results machine.Address results copy
+netIt argument payload machine.Address payload copy
+netIt result netStatus Int32
+netIt ownedBy none
+netIt cleanedBy none
+netIt borrows none
+netIt catch none
+netIt suppresses none
+
 failUnknown is call
 failUnknown in dispatchRest
 failUnknown invokes failText
@@ -10686,6 +10813,10 @@ hostCall label readRowDone loopKind none
 hostCall label readRowDone within none
 hostCall label checkScope loopKind none
 hostCall label checkScope within none
+hostCall label checkNumber loopKind none
+hostCall label checkNumber within none
+hostCall label checkText loopKind none
+hostCall label checkText within none
 hostCall label run loopKind none
 hostCall label run within none
 hostCall let zero Int64 0 immutable
@@ -10703,12 +10834,20 @@ hostCall at readRowDone branch if isScoped goto checkScope else goto run
 hostCall at checkScope do readName
 hostCall at checkScope do readParams
 hostCall at checkScope do lastOf
-hostCall at checkScope do readValue
-hostCall at checkScope do readValueBytes
 hostCall at checkScope do readScopes
 hostCall at checkScope do readScopesBytes
-hostCall at checkScope do checkIt
-hostCall at checkScope goto run
+hostCall at checkScope do slotsOf
+hostCall at checkScope do numberCheck
+hostCall at checkScope branch if isNumber goto checkNumber else goto checkText
+hostCall at checkNumber do readScopedNumber
+hostCall at checkNumber do findDigits
+hostCall at checkNumber do writeDigits
+hostCall at checkNumber do checkNumberIt
+hostCall at checkNumber goto run
+hostCall at checkText do readValue
+hostCall at checkText do readValueBytes
+hostCall at checkText do checkIt
+hostCall at checkText goto run
 hostCall at run do runIt
 hostCall at run return ok status
 
@@ -10817,32 +10956,6 @@ lastOf borrows none
 lastOf catch none
 lastOf suppresses none
 
-readValue is call
-readValue in hostCall
-readValue invokes files.textAt
-readValue argument shape machine.Address shape copy
-readValue argument args machine.Address args copy
-readValue argument parameter Int64 scoped copy
-readValue result value machine.Address
-readValue ownedBy none
-readValue cleanedBy none
-readValue borrows none
-readValue catch none
-readValue suppresses none
-
-readValueBytes is call
-readValueBytes in hostCall
-readValueBytes invokes files.textBytes
-readValueBytes argument shape machine.Address shape copy
-readValueBytes argument args machine.Address args copy
-readValueBytes argument parameter Int64 scoped copy
-readValueBytes result valueBytes Int64
-readValueBytes ownedBy none
-readValueBytes cleanedBy none
-readValueBytes borrows none
-readValueBytes catch none
-readValueBytes suppresses none
-
 readScopes is call
 readScopes in hostCall
 readScopes invokes files.textAt
@@ -10868,6 +10981,107 @@ readScopesBytes cleanedBy none
 readScopesBytes borrows none
 readScopesBytes catch none
 readScopesBytes suppresses none
+
+slotsOf is call
+slotsOf in hostCall
+slotsOf invokes slots.countOf
+slotsOf argument shape machine.Address shape copy
+slotsOf argument parameter Int64 scoped copy
+slotsOf result scopedSlots Int64
+slotsOf ownedBy none
+slotsOf cleanedBy none
+slotsOf borrows none
+slotsOf catch none
+slotsOf suppresses none
+
+numberCheck is call
+numberCheck in hostCall
+numberCheck invokes compare.equalInt64
+numberCheck argument left Int64 scopedSlots copy
+numberCheck argument right Int64 one copy
+numberCheck result isNumber Bool
+numberCheck ownedBy none
+numberCheck cleanedBy none
+numberCheck borrows none
+numberCheck catch none
+numberCheck suppresses none
+
+readScopedNumber is call
+readScopedNumber in hostCall
+readScopedNumber invokes slots.argOf
+readScopedNumber argument shape machine.Address shape copy
+readScopedNumber argument args machine.Address args copy
+readScopedNumber argument parameter Int64 scoped copy
+readScopedNumber result numberValue Int64
+readScopedNumber ownedBy none
+readScopedNumber cleanedBy none
+readScopedNumber borrows none
+readScopedNumber catch none
+readScopedNumber suppresses none
+
+findDigits is call
+findDigits in hostCall
+findDigits invokes stateAt
+findDigits argument offset Int64 digitsAt copy
+findDigits result digits machine.Address
+findDigits ownedBy none
+findDigits cleanedBy none
+findDigits borrows none
+findDigits catch none
+findDigits suppresses none
+
+writeDigits is call
+writeDigits in hostCall
+writeDigits invokes numbers.formatDecimal
+writeDigits argument value Int64 numberValue copy
+writeDigits argument target machine.Address digits copy
+writeDigits result digitCount Int64
+writeDigits ownedBy none
+writeDigits cleanedBy none
+writeDigits borrows none
+writeDigits catch none
+writeDigits suppresses none
+
+checkNumberIt is call
+checkNumberIt in hostCall
+checkNumberIt invokes files.checkScope
+checkNumberIt argument target String name lend
+checkNumberIt argument value machine.Address digits copy
+checkNumberIt argument valueBytes Int64 digitCount copy
+checkNumberIt argument scopes machine.Address scopes copy
+checkNumberIt argument scopesBytes Int64 scopesBytes copy
+checkNumberIt result none
+checkNumberIt ownedBy none
+checkNumberIt cleanedBy none
+checkNumberIt borrows none
+checkNumberIt catch none
+checkNumberIt suppresses none
+
+readValue is call
+readValue in hostCall
+readValue invokes files.textAt
+readValue argument shape machine.Address shape copy
+readValue argument args machine.Address args copy
+readValue argument parameter Int64 scoped copy
+readValue result value machine.Address
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+readValueBytes is call
+readValueBytes in hostCall
+readValueBytes invokes files.textBytes
+readValueBytes argument shape machine.Address shape copy
+readValueBytes argument args machine.Address args copy
+readValueBytes argument parameter Int64 scoped copy
+readValueBytes result valueBytes Int64
+readValueBytes ownedBy none
+readValueBytes cleanedBy none
+readValueBytes borrows none
+readValueBytes catch none
+readValueBytes suppresses none
 
 checkIt is call
 checkIt in hostCall

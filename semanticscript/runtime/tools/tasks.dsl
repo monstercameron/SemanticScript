@@ -1,6 +1,6 @@
 module tasks "Tasks on fibers, task groups, cancellation, waits and deadlocks, deadlines and clocks, and channels"
   path tasks
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test kernel numbers frames heap handles regions slots
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel numbers frames heap handles regions slots
   exports now wait cancelled notify deadlineNever deadlineAfter sleepFor clockNow clockMonotonic channelNew channelSend channelReceive channelClose
 
 capability memoryAccess "Authority to keep the tasks, groups, and channels in memory and switch the call stack between tasks" use machine.memory none
@@ -51,6 +51,8 @@ constant countAt "Where the number of tasks listed is kept, in machine.state" In
 constant digitsAt "Where a number's digits are put together, in machine.state" Int64 512
 
 constant waitHandlesAt "Where the handles a sleep waits on are put, in machine.state" Int64 49152
+
+constant interruptEventAt "Where the interrupts module keeps the Windows event an interrupt sets, in machine.state (D-147)" Int64 1232
 
 constant mostHandles "How many handles one sleep waits on at most" Int64 64
 
@@ -565,6 +567,27 @@ op switchTo "Run another task: keep the running one's state, put the other's bac
 :done
   return
 
+op pollEntry "Fill a pollfd for what a task waits on, its descriptor plus one: for reading (POLLIN), or for writing (POLLOUT) when 2^32 is added too"
+  input entry machine.Address copied
+  input plusOne Int64 copied
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  lowOf: low = bits.andInt64(plusOne, lowWord=4294967295)
+  descriptorOf: fd = math.subtractInt64(low, one=1)
+  narrowFd: fd32 = convert.int64ToInt32(fd)
+  storeFd: machine.storeInt32(entry, fd32)
+  findEvents: eventsAt = machine.offset(entry, four=4)
+  highOf: high = bits.shiftRightInt64(plusOne, thirtyTwo=32)
+  writeCheck: writing = compare.notEqualInt64(high, zero=0)
+  if writing forWriting forReading
+:forWriting
+  storeOut: machine.storeInt32(eventsAt, pollOut=4)
+  return
+:forReading
+  storeIn: machine.storeInt32(eventsAt, pollIn=1)
+  return
+
 op canGoOn "Whether a task can run: ready, or waiting while something changed, its deadline passed, it was cancelled in a cancellable wait, or its handle is signalled"
   input task machine.Address copied
   input at Int64 copied
@@ -608,12 +631,8 @@ op canGoOn "Whether a task can run: ready, or waiting while something changed, i
   if onLinux pollLinux pollWindows
 :pollLinux
   handleValue: plusOne = machine.toInt64(handle)
-  descriptorOf: fd = math.subtractInt64(plusOne, one=1)
-  narrowFd: fd32 = convert.int64ToInt32(fd)
   findPoll: pollAt = kernel.stateAt(fileTimeAt)
-  storeFd: machine.storeInt32(pollAt, fd32)
-  findEvents: eventsAt = machine.offset(pollAt, four=4)
-  storeEvents: machine.storeInt32(eventsAt, pollIn=1)
+  fillPoll: pollEntry(pollAt, plusOne)
   pollIt: ready = system.poll(pollAt, onePoll=1, zero=0)
   pollReadyCheck: isPollReady = compare.greaterThanInt64(ready, zero)
   if isPollReady can cannot
@@ -905,7 +924,24 @@ op idle "Sleep until the nearest deadline of a waiting task or a handle one wait
   noDeadlineCheck: noDeadline = compare.equalInt64(earliest, never)
   noHandlesCheck: noHandles = compare.equalInt64(handles, zero)
   stuckCheck: stuck = logic.and(noDeadline, noHandles)
-  if stuck locked timing
+  if stuck locked interruptCheck
+:interruptCheck
+  osInterrupt: onLinuxInterrupt = system.linux()
+  if onLinuxInterrupt timing readInterrupt
+:readInterrupt
+  findInterrupt: interruptSlot = kernel.stateAt(interruptEventAt)
+  readEvent: interruptEvent = machine.loadInt64(interruptSlot)
+  eventCheck: hasEvent = compare.notEqualInt64(interruptEvent, zero)
+  roomForEvent: eventRoom = compare.lessThanInt64(handles, mostHandles)
+  addCheck: addEvent = logic.and(hasEvent, eventRoom)
+  if addEvent addInterrupt timing
+:addInterrupt
+  eventOffset: eventPlace = math.multiplyInt64(handles, eight)
+  findEventSlot: eventSlot = machine.offset(handleList, eventPlace)
+  storeEvent: machine.storeInt64(eventSlot, interruptEvent)
+  moreEvents: withEvent = math.addInt64(handles, one)
+  set handles withEvent
+  goto timing
 :locked
   trapIt: deadlock(me)
   return
@@ -943,11 +979,7 @@ op idle "Sleep until the nearest deadline of a waiting task or a handle one wait
   entryOffset: entryAt = math.multiplyInt64(at, eight)
   findEntry: entry = machine.offset(handleList, entryAt)
   readPlusOne: plusOne = machine.loadInt64(entry)
-  descriptorOf: fd = math.subtractInt64(plusOne, one)
-  narrowFd: fd32 = convert.int64ToInt32(fd)
-  storeFd: machine.storeInt32(entry, fd32)
-  findEvents: eventsAt = machine.offset(entry, four=4)
-  storeEvents: machine.storeInt32(eventsAt, pollIn=1)
+  fillEntry: pollEntry(entry, plusOne)
   nextHandle: afterHandle = math.addInt64(at, one)
   set at afterHandle
   goto eachHandle
@@ -961,7 +993,8 @@ op idle "Sleep until the nearest deadline of a waiting task or a handle one wait
   return
 :windowsWait
   narrowTimeout: milliseconds = convert.int64ToInt32(timeout)
-  if noHandles justSleep waitTimed
+  noneNowCheck: noHandlesNow = compare.equalInt64(handles, zero)
+  if noHandlesNow justSleep waitTimed
 :justSleep
   pause: system.sleep(milliseconds)
   return

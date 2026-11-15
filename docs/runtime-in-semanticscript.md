@@ -294,8 +294,8 @@ behaves, and the Linux system layer gains AArch64.
 | `generators` | `random`: CPython's Mersenne Twister for seeded generators, the system's secure source (BCryptGenRandom, getrandom) for `int64Between` (D-146) | Done |
 | `requests` | `http`: requests read and responses written as host.py does (D-152) | Done |
 | `values`, `documents` | `json`: shared, counted values; CPython's scanner (errors and positions) and encoder (D-151) | Done |
-| `interrupts` | `signal`: SetConsoleCtrlHandler, rt_sigaction for SIGINT (D-147) | |
-| `sockets` | `net`: IPv4 TCP through Winsock and socket system calls, a resolver for Linux (D-148, D-149) | |
+| `interrupts` | `signal`: SetConsoleCtrlHandler, rt_sigaction for SIGINT (D-147) | Done |
+| `sockets` | `net`: IPv4 TCP through Winsock and socket system calls, a resolver for Linux (D-148, D-149) | Done |
 | AArch64 Linux | `svc #0`, the generic system call numbers (D-150) | |
 
 ### What "no C library" means (D-144)

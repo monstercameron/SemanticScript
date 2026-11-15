@@ -1406,7 +1406,19 @@ op checkScope "host._check_scope: a scoped argument must fall inside a scope of 
   if already testLine listLine
 :testLine in=eachLine
   filesCheck: isFiles = compare.equalInt64(resource, three=3)
-  if isFiles testPath exactCheck
+  if isFiles testPath tcpCheck
+:tcpCheck in=eachLine
+  checkTcp: isTcp = compare.equalInt64(resource, one=1)
+  if isTcp testPort outboundCheck
+:testPort in=eachLine
+  portIt: portAllowed = portWithin(value, valueBytes, line, lineBytes)
+  if portAllowed allow listLine
+:outboundCheck in=eachLine
+  checkOutbound: isOutbound = compare.equalInt64(resource, two=2)
+  if isOutbound testAddress exactCheck
+:testAddress in=eachLine
+  addressIt: addressAllowed = addressWithin(value, valueBytes, line, lineBytes)
+  if addressAllowed allow listLine
 :testPath in=eachLine
   withinCheck: within = pathWithin(value, valueBytes, line, lineBytes)
   if within allow listLine
@@ -1470,6 +1482,84 @@ op checkScope "host._check_scope: a scoped argument must fall inside a scope of 
   writeReport: status = frames.report(messageText, messageBytes)
   exit: endProcess(trapCode=70)
   return
+
+op portWithin "Whether a port's decimal text is a `net.tcp` scope's port, as host.py compares them: the scope's text after its last colon (all of it when it has none)"
+  input value machine.Address copied
+  input valueBytes Int64 copied
+  input scope machine.Address copied
+  input scopeBytes Int64 copied
+  output Bool
+  effect use machine.memory
+  uses memoryAccess
+  let at Int64 0 mut
+  let start Int64 0 mut
+  let colon Byte 58
+:begin
+  set at scopeBytes
+  goto eachByte
+:eachByte loop=while max=scopeBytes
+  startCheck: atStart = compare.lessOrEqualInt64(at, zero=0)
+  if atStart compare readByte
+:readByte in=eachByte
+  lastOf: last = math.subtractInt64(at, one=1)
+  readIt: byte = byteAt(scope, last)
+  colonCheck: isColon = compare.equalByte(byte, colon)
+  if isColon found back
+:back in=eachByte
+  set at last
+  goto eachByte
+:found
+  set start at
+  goto compare
+:compare
+  findPort: port = machine.offset(scope, start)
+  portLength: portBytes = math.subtractInt64(scopeBytes, start)
+  sameIt: same = memory.bytesEqual(value, valueBytes, port, portBytes)
+  sameCheck: equal = compare.notEqualInt32(same, zero32=0)
+  return equal
+
+op addressWithin "Whether an address falls inside a `net.outbound` scope, as semantics.address_within decides: the same text, or the scope's text then a colon or slash (or the scope ends with one)"
+  input value machine.Address copied
+  input valueBytes Int64 copied
+  input scope machine.Address copied
+  input scopeBytes Int64 copied
+  output Bool
+  effect use machine.memory
+  uses memoryAccess
+  let yes Bool true
+  let no Bool false
+  let colon Byte 58
+  let slash Byte 47
+:begin
+  shortCheck: short = compare.lessThanInt64(valueBytes, scopeBytes)
+  if short refuse prefix
+:prefix
+  sameIt: same = memory.bytesEqual(value, scopeBytes, scope, scopeBytes)
+  sameCheck: starts = compare.notEqualInt32(same, zero32=0)
+  if starts lengthCheck refuse
+:lengthCheck
+  equalCheck: equal = compare.equalInt64(valueBytes, scopeBytes)
+  if equal allow scopeEnd
+:scopeEnd
+  emptyCheck: emptyScope = compare.equalInt64(scopeBytes, zero=0)
+  if emptyScope nextByte lastByte
+:lastByte
+  lastOf: last = math.subtractInt64(scopeBytes, one=1)
+  readLast: ending = byteAt(scope, last)
+  colonCheck: endsColon = compare.equalByte(ending, colon)
+  slashCheck: endsSlash = compare.equalByte(ending, slash)
+  endCheck: endsOpen = logic.or(endsColon, endsSlash)
+  if endsOpen allow nextByte
+:nextByte
+  readNext: following = byteAt(value, scopeBytes)
+  nextColon: isColon = compare.equalByte(following, colon)
+  nextSlash: isSlash = compare.equalByte(following, slash)
+  nextCheck: separated = logic.or(isColon, isSlash)
+  if separated allow refuse
+:allow
+  return yes
+:refuse
+  return no
 
 op addString "Add a text to a builder"
   input builder machine.Address copied

@@ -13,6 +13,7 @@ tasks imports standard.string
 tasks imports standard.math
 tasks imports standard.compare
 tasks imports standard.convert
+tasks imports standard.bits
 tasks imports standard.logic
 tasks imports standard.test
 tasks imports kernel
@@ -118,6 +119,11 @@ waitHandlesAt is constant
 waitHandlesAt purpose "Where the handles a sleep waits on are put, in machine.state"
 waitHandlesAt type Int64
 waitHandlesAt value 49152
+
+interruptEventAt is constant
+interruptEventAt purpose "Where the interrupts module keeps the Windows event an interrupt sets, in machine.state (D-147)"
+interruptEventAt type Int64
+interruptEventAt value 1232
 
 mostHandles is constant
 mostHandles purpose "How many handles one sleep waits on at most"
@@ -2514,6 +2520,153 @@ jump borrows none
 jump catch none
 jump suppresses none
 
+pollEntry is operation
+pollEntry purpose "Fill a pollfd for what a task waits on, its descriptor plus one: for reading (POLLIN), or for writing (POLLOUT) when 2^32 is added too"
+pollEntry invariant none
+pollEntry typeParameter none
+pollEntry input entry machine.Address copied
+pollEntry input plusOne Int64 copied
+pollEntry output none
+pollEntry outputOwnedBy none
+pollEntry raises none
+pollEntry effect use machine.memory
+pollEntry uses memoryAccess
+pollEntry memoryHeap false
+pollEntry async false
+pollEntry maxRecursion none
+pollEntry label begin loopKind none
+pollEntry label begin within none
+pollEntry label forWriting loopKind none
+pollEntry label forWriting within none
+pollEntry label forReading loopKind none
+pollEntry label forReading within none
+pollEntry let lowWord Int64 4294967295 immutable
+pollEntry let one Int64 1 immutable
+pollEntry let four Int64 4 immutable
+pollEntry let thirtyTwo Int64 32 immutable
+pollEntry let zero Int64 0 immutable
+pollEntry let pollOut Int32 4 immutable
+pollEntry let pollIn Int32 1 immutable
+pollEntry at begin do lowOf
+pollEntry at begin do descriptorOf
+pollEntry at begin do narrowFd
+pollEntry at begin do storeFd
+pollEntry at begin do findEvents
+pollEntry at begin do highOf
+pollEntry at begin do writeCheck
+pollEntry at begin branch if writing goto forWriting else goto forReading
+pollEntry at forWriting do storeOut
+pollEntry at forWriting return ok none
+pollEntry at forReading do storeIn
+pollEntry at forReading return ok none
+
+lowOf is call
+lowOf in pollEntry
+lowOf invokes bits.andInt64
+lowOf argument left Int64 plusOne copy
+lowOf argument right Int64 lowWord copy
+lowOf result low Int64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+descriptorOf is call
+descriptorOf in pollEntry
+descriptorOf invokes math.subtractInt64
+descriptorOf argument left Int64 low copy
+descriptorOf argument right Int64 one copy
+descriptorOf result fd Int64
+descriptorOf ownedBy none
+descriptorOf cleanedBy none
+descriptorOf borrows none
+descriptorOf catch none
+descriptorOf suppresses none
+
+narrowFd is call
+narrowFd in pollEntry
+narrowFd invokes convert.int64ToInt32
+narrowFd argument value Int64 fd copy
+narrowFd result fd32 Int32
+narrowFd ownedBy none
+narrowFd cleanedBy none
+narrowFd borrows none
+narrowFd catch none
+narrowFd suppresses none
+
+storeFd is call
+storeFd in pollEntry
+storeFd invokes machine.storeInt32
+storeFd argument address machine.Address entry copy
+storeFd argument value Int32 fd32 copy
+storeFd result none
+storeFd ownedBy none
+storeFd cleanedBy none
+storeFd borrows none
+storeFd catch none
+storeFd suppresses none
+
+findEvents is call
+findEvents in pollEntry
+findEvents invokes machine.offset
+findEvents argument address machine.Address entry copy
+findEvents argument bytes Int64 four copy
+findEvents result eventsAt machine.Address
+findEvents ownedBy none
+findEvents cleanedBy none
+findEvents borrows none
+findEvents catch none
+findEvents suppresses none
+
+highOf is call
+highOf in pollEntry
+highOf invokes bits.shiftRightInt64
+highOf argument value Int64 plusOne copy
+highOf argument amount Int64 thirtyTwo copy
+highOf result high Int64
+highOf ownedBy none
+highOf cleanedBy none
+highOf borrows none
+highOf catch none
+highOf suppresses none
+
+writeCheck is call
+writeCheck in pollEntry
+writeCheck invokes compare.notEqualInt64
+writeCheck argument left Int64 high copy
+writeCheck argument right Int64 zero copy
+writeCheck result writing Bool
+writeCheck ownedBy none
+writeCheck cleanedBy none
+writeCheck borrows none
+writeCheck catch none
+writeCheck suppresses none
+
+storeOut is call
+storeOut in pollEntry
+storeOut invokes machine.storeInt32
+storeOut argument address machine.Address eventsAt copy
+storeOut argument value Int32 pollOut copy
+storeOut result none
+storeOut ownedBy none
+storeOut cleanedBy none
+storeOut borrows none
+storeOut catch none
+storeOut suppresses none
+
+storeIn is call
+storeIn in pollEntry
+storeIn invokes machine.storeInt32
+storeIn argument address machine.Address eventsAt copy
+storeIn argument value Int32 pollIn copy
+storeIn result none
+storeIn ownedBy none
+storeIn cleanedBy none
+storeIn borrows none
+storeIn catch none
+storeIn suppresses none
+
 canGoOn is operation
 canGoOn purpose "Whether a task can run: ready, or waiting while something changed, its deadline passed, it was cancelled in a cancellable wait, or its handle is signalled"
 canGoOn invariant none
@@ -2555,9 +2708,6 @@ canGoOn label cannot within none
 canGoOn let yes Bool true immutable
 canGoOn let no Bool false immutable
 canGoOn let zero Int64 0 immutable
-canGoOn let one Int64 1 immutable
-canGoOn let four Int64 4 immutable
-canGoOn let pollIn Int32 1 immutable
 canGoOn let onePoll Int64 1 immutable
 canGoOn let noWait Int32 0 immutable
 canGoOn at begin do readState
@@ -2585,12 +2735,8 @@ canGoOn at handleCheck branch if noHandle goto cannot else goto pollHandle
 canGoOn at pollHandle do osCheck
 canGoOn at pollHandle branch if onLinux goto pollLinux else goto pollWindows
 canGoOn at pollLinux do handleValue
-canGoOn at pollLinux do descriptorOf
-canGoOn at pollLinux do narrowFd
 canGoOn at pollLinux do findPoll
-canGoOn at pollLinux do storeFd
-canGoOn at pollLinux do findEvents
-canGoOn at pollLinux do storeEvents
+canGoOn at pollLinux do fillPoll
 canGoOn at pollLinux do pollIt
 canGoOn at pollLinux do pollReadyCheck
 canGoOn at pollLinux branch if isPollReady goto can else goto cannot
@@ -2812,29 +2958,6 @@ handleValue borrows none
 handleValue catch none
 handleValue suppresses none
 
-descriptorOf is call
-descriptorOf in canGoOn
-descriptorOf invokes math.subtractInt64
-descriptorOf argument left Int64 plusOne copy
-descriptorOf argument right Int64 one copy
-descriptorOf result fd Int64
-descriptorOf ownedBy none
-descriptorOf cleanedBy none
-descriptorOf borrows none
-descriptorOf catch none
-descriptorOf suppresses none
-
-narrowFd is call
-narrowFd in canGoOn
-narrowFd invokes convert.int64ToInt32
-narrowFd argument value Int64 fd copy
-narrowFd result fd32 Int32
-narrowFd ownedBy none
-narrowFd cleanedBy none
-narrowFd borrows none
-narrowFd catch none
-narrowFd suppresses none
-
 findPoll is call
 findPoll in canGoOn
 findPoll invokes kernel.stateAt
@@ -2846,41 +2969,17 @@ findPoll borrows none
 findPoll catch none
 findPoll suppresses none
 
-storeFd is call
-storeFd in canGoOn
-storeFd invokes machine.storeInt32
-storeFd argument address machine.Address pollAt copy
-storeFd argument value Int32 fd32 copy
-storeFd result none
-storeFd ownedBy none
-storeFd cleanedBy none
-storeFd borrows none
-storeFd catch none
-storeFd suppresses none
-
-findEvents is call
-findEvents in canGoOn
-findEvents invokes machine.offset
-findEvents argument address machine.Address pollAt copy
-findEvents argument bytes Int64 four copy
-findEvents result eventsAt machine.Address
-findEvents ownedBy none
-findEvents cleanedBy none
-findEvents borrows none
-findEvents catch none
-findEvents suppresses none
-
-storeEvents is call
-storeEvents in canGoOn
-storeEvents invokes machine.storeInt32
-storeEvents argument address machine.Address eventsAt copy
-storeEvents argument value Int32 pollIn copy
-storeEvents result none
-storeEvents ownedBy none
-storeEvents cleanedBy none
-storeEvents borrows none
-storeEvents catch none
-storeEvents suppresses none
+fillPoll is call
+fillPoll in canGoOn
+fillPoll invokes pollEntry
+fillPoll argument entry machine.Address pollAt copy
+fillPoll argument plusOne Int64 plusOne copy
+fillPoll result none
+fillPoll ownedBy none
+fillPoll cleanedBy none
+fillPoll borrows none
+fillPoll catch none
+fillPoll suppresses none
 
 pollIt is call
 pollIt in canGoOn
@@ -4077,6 +4176,12 @@ idle label moveOn loopKind none
 idle label moveOn within eachTask
 idle label decide loopKind none
 idle label decide within none
+idle label interruptCheck loopKind none
+idle label interruptCheck within none
+idle label readInterrupt loopKind none
+idle label readInterrupt within none
+idle label addInterrupt loopKind none
+idle label addInterrupt within none
 idle label locked loopKind none
 idle label locked within none
 idle label timing loopKind none
@@ -4123,8 +4228,6 @@ idle let zero Int64 0 immutable
 idle let eight Int64 8 immutable
 idle let one Int64 1 immutable
 idle let most Int64 2147483646 immutable
-idle let four Int64 4 immutable
-idle let pollIn Int32 1 immutable
 idle let minusOne Int64 -1 immutable
 idle let any Int32 0 immutable
 idle at begin do readCount
@@ -4164,7 +4267,21 @@ idle at moveOn goto eachTask
 idle at decide do noDeadlineCheck
 idle at decide do noHandlesCheck
 idle at decide do stuckCheck
-idle at decide branch if stuck goto locked else goto timing
+idle at decide branch if stuck goto locked else goto interruptCheck
+idle at interruptCheck do osInterrupt
+idle at interruptCheck branch if onLinuxInterrupt goto timing else goto readInterrupt
+idle at readInterrupt do findInterrupt
+idle at readInterrupt do readEvent
+idle at readInterrupt do eventCheck
+idle at readInterrupt do roomForEvent
+idle at readInterrupt do addCheck
+idle at readInterrupt branch if addEvent goto addInterrupt else goto timing
+idle at addInterrupt do eventOffset
+idle at addInterrupt do findEventSlot
+idle at addInterrupt do storeEvent
+idle at addInterrupt do moreEvents
+idle at addInterrupt set handles withEvent
+idle at addInterrupt goto timing
 idle at locked do trapIt
 idle at locked return ok none
 idle at timing branch if noDeadline goto foreverCheck else goto countDown
@@ -4191,11 +4308,7 @@ idle at eachHandle branch if allMade goto linuxPoll else goto makePollEntry
 idle at makePollEntry do entryOffset
 idle at makePollEntry do findEntry
 idle at makePollEntry do readPlusOne
-idle at makePollEntry do descriptorOf
-idle at makePollEntry do narrowFd
-idle at makePollEntry do storeFd
-idle at makePollEntry do findEvents
-idle at makePollEntry do storeEvents
+idle at makePollEntry do fillEntry
 idle at makePollEntry do nextHandle
 idle at makePollEntry set at afterHandle
 idle at makePollEntry goto eachHandle
@@ -4205,7 +4318,8 @@ idle at linuxForever return ok none
 idle at linuxTimed do pollTimed
 idle at linuxTimed return ok none
 idle at windowsWait do narrowTimeout
-idle at windowsWait branch if noHandles goto justSleep else goto waitTimed
+idle at windowsWait do noneNowCheck
+idle at windowsWait branch if noHandlesNow goto justSleep else goto waitTimed
 idle at justSleep do pause
 idle at justSleep return ok none
 idle at waitTimed do narrowCount
@@ -4500,6 +4614,123 @@ stuckCheck borrows none
 stuckCheck catch none
 stuckCheck suppresses none
 
+osInterrupt is call
+osInterrupt in idle
+osInterrupt invokes system.linux
+osInterrupt argument none
+osInterrupt result onLinuxInterrupt Bool
+osInterrupt ownedBy none
+osInterrupt cleanedBy none
+osInterrupt borrows none
+osInterrupt catch none
+osInterrupt suppresses none
+
+findInterrupt is call
+findInterrupt in idle
+findInterrupt invokes kernel.stateAt
+findInterrupt argument offset Int64 interruptEventAt copy
+findInterrupt result interruptSlot machine.Address
+findInterrupt ownedBy none
+findInterrupt cleanedBy none
+findInterrupt borrows none
+findInterrupt catch none
+findInterrupt suppresses none
+
+readEvent is call
+readEvent in idle
+readEvent invokes machine.loadInt64
+readEvent argument address machine.Address interruptSlot copy
+readEvent result interruptEvent Int64
+readEvent ownedBy none
+readEvent cleanedBy none
+readEvent borrows none
+readEvent catch none
+readEvent suppresses none
+
+eventCheck is call
+eventCheck in idle
+eventCheck invokes compare.notEqualInt64
+eventCheck argument left Int64 interruptEvent copy
+eventCheck argument right Int64 zero copy
+eventCheck result hasEvent Bool
+eventCheck ownedBy none
+eventCheck cleanedBy none
+eventCheck borrows none
+eventCheck catch none
+eventCheck suppresses none
+
+roomForEvent is call
+roomForEvent in idle
+roomForEvent invokes compare.lessThanInt64
+roomForEvent argument left Int64 handles copy
+roomForEvent argument right Int64 mostHandles copy
+roomForEvent result eventRoom Bool
+roomForEvent ownedBy none
+roomForEvent cleanedBy none
+roomForEvent borrows none
+roomForEvent catch none
+roomForEvent suppresses none
+
+addCheck is call
+addCheck in idle
+addCheck invokes logic.and
+addCheck argument left Bool hasEvent copy
+addCheck argument right Bool eventRoom copy
+addCheck result addEvent Bool
+addCheck ownedBy none
+addCheck cleanedBy none
+addCheck borrows none
+addCheck catch none
+addCheck suppresses none
+
+eventOffset is call
+eventOffset in idle
+eventOffset invokes math.multiplyInt64
+eventOffset argument left Int64 handles copy
+eventOffset argument right Int64 eight copy
+eventOffset result eventPlace Int64
+eventOffset ownedBy none
+eventOffset cleanedBy none
+eventOffset borrows none
+eventOffset catch none
+eventOffset suppresses none
+
+findEventSlot is call
+findEventSlot in idle
+findEventSlot invokes machine.offset
+findEventSlot argument address machine.Address handleList copy
+findEventSlot argument bytes Int64 eventPlace copy
+findEventSlot result eventSlot machine.Address
+findEventSlot ownedBy none
+findEventSlot cleanedBy none
+findEventSlot borrows none
+findEventSlot catch none
+findEventSlot suppresses none
+
+storeEvent is call
+storeEvent in idle
+storeEvent invokes machine.storeInt64
+storeEvent argument address machine.Address eventSlot copy
+storeEvent argument value Int64 interruptEvent copy
+storeEvent result none
+storeEvent ownedBy none
+storeEvent cleanedBy none
+storeEvent borrows none
+storeEvent catch none
+storeEvent suppresses none
+
+moreEvents is call
+moreEvents in idle
+moreEvents invokes math.addInt64
+moreEvents argument left Int64 handles copy
+moreEvents argument right Int64 one copy
+moreEvents result withEvent Int64
+moreEvents ownedBy none
+moreEvents cleanedBy none
+moreEvents borrows none
+moreEvents catch none
+moreEvents suppresses none
+
 trapIt is call
 trapIt in idle
 trapIt invokes deadlock
@@ -4639,64 +4870,17 @@ readPlusOne borrows none
 readPlusOne catch none
 readPlusOne suppresses none
 
-descriptorOf is call
-descriptorOf in idle
-descriptorOf invokes math.subtractInt64
-descriptorOf argument left Int64 plusOne copy
-descriptorOf argument right Int64 one copy
-descriptorOf result fd Int64
-descriptorOf ownedBy none
-descriptorOf cleanedBy none
-descriptorOf borrows none
-descriptorOf catch none
-descriptorOf suppresses none
-
-narrowFd is call
-narrowFd in idle
-narrowFd invokes convert.int64ToInt32
-narrowFd argument value Int64 fd copy
-narrowFd result fd32 Int32
-narrowFd ownedBy none
-narrowFd cleanedBy none
-narrowFd borrows none
-narrowFd catch none
-narrowFd suppresses none
-
-storeFd is call
-storeFd in idle
-storeFd invokes machine.storeInt32
-storeFd argument address machine.Address entry copy
-storeFd argument value Int32 fd32 copy
-storeFd result none
-storeFd ownedBy none
-storeFd cleanedBy none
-storeFd borrows none
-storeFd catch none
-storeFd suppresses none
-
-findEvents is call
-findEvents in idle
-findEvents invokes machine.offset
-findEvents argument address machine.Address entry copy
-findEvents argument bytes Int64 four copy
-findEvents result eventsAt machine.Address
-findEvents ownedBy none
-findEvents cleanedBy none
-findEvents borrows none
-findEvents catch none
-findEvents suppresses none
-
-storeEvents is call
-storeEvents in idle
-storeEvents invokes machine.storeInt32
-storeEvents argument address machine.Address eventsAt copy
-storeEvents argument value Int32 pollIn copy
-storeEvents result none
-storeEvents ownedBy none
-storeEvents cleanedBy none
-storeEvents borrows none
-storeEvents catch none
-storeEvents suppresses none
+fillEntry is call
+fillEntry in idle
+fillEntry invokes pollEntry
+fillEntry argument entry machine.Address entry copy
+fillEntry argument plusOne Int64 plusOne copy
+fillEntry result none
+fillEntry ownedBy none
+fillEntry cleanedBy none
+fillEntry borrows none
+fillEntry catch none
+fillEntry suppresses none
 
 nextHandle is call
 nextHandle in idle
@@ -4746,6 +4930,18 @@ narrowTimeout cleanedBy none
 narrowTimeout borrows none
 narrowTimeout catch none
 narrowTimeout suppresses none
+
+noneNowCheck is call
+noneNowCheck in idle
+noneNowCheck invokes compare.equalInt64
+noneNowCheck argument left Int64 handles copy
+noneNowCheck argument right Int64 zero copy
+noneNowCheck result noHandlesNow Bool
+noneNowCheck ownedBy none
+noneNowCheck cleanedBy none
+noneNowCheck borrows none
+noneNowCheck catch none
+noneNowCheck suppresses none
 
 pause is call
 pause in idle

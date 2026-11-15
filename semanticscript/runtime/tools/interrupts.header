@@ -1,0 +1,4 @@
+# Interrupts for a standalone executable: the signal targets, and the handler the operating system calls on
+# CTRL+C (Windows) or SIGINT (Linux), as `refined run` handles them.
+#
+# This module is generated from tools/interrupts.dsl by tools/build.py.

@@ -1,0 +1,966 @@
+# Interrupts for a standalone executable: the signal targets, and the handler the operating system calls on
+# CTRL+C (Windows) or SIGINT (Linux), as `refined run` handles them.
+#
+# This module is generated from tools/interrupts.dsl by tools/build.py.
+
+interrupts is module
+interrupts purpose "Interrupts for a standalone executable: the signal targets, and the handler the operating system calls on an interrupt"
+interrupts path interrupts
+interrupts imports standard.machine
+interrupts imports standard.system
+interrupts imports standard.math
+interrupts imports standard.compare
+interrupts imports standard.convert
+interrupts imports standard.test
+interrupts imports kernel
+interrupts imports heap
+interrupts imports slots
+interrupts imports tasks
+interrupts exports signalCall
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep whether an interrupt came in machine.state and read a call's slots"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to install the interrupt handler, wake the scheduler, and end the process on a second interrupt"
+systemCalls grants use system.calls none
+
+# D-147: as `refined run` handles SIGINT for a program that reads `signal`: the first interrupt sets a flag the
+# program reads (`signal.interrupted`) and ends a `signal.waitForInterrupt`, the second ends the process with exit
+# code 130. A program that calls a signal target installs the handler before its entry runs (native.py calls
+# `refined_signals_start` first, as the JIT installs its handler before it runs the program): on Windows a console
+# control handler (SetConsoleCtrlHandler) for CTRL_C_EVENT only, as Python maps CTRL+C alone to SIGINT, called on a
+# thread the system makes; on Linux an rt_sigaction handler for SIGINT, with SA_RESTART so reads and writes go on,
+# and SA_RESTORER, its return through the runtime's rt_sigreturn trampoline. The handler counts a change in the
+# scheduler's generation, so a task waiting for the interrupt goes on, and on Windows sets an event the scheduler's
+# sleep also waits on (an interrupt cuts a Linux sleep short by itself, as the signal ends `poll`).
+# machine.state bytes 1216 to 1247 belong to this module: 1216 whether an interrupt came, 1224 whether the handler
+# is installed, 1232 the Windows event the scheduler waits on (tasks reads it there).
+interruptedAt is constant
+interruptedAt purpose "Where whether an interrupt came is kept, in machine.state"
+interruptedAt type Int64
+interruptedAt value 1216
+
+installedAt is constant
+installedAt purpose "Where whether the handler is installed is kept, in machine.state"
+installedAt type Int64
+installedAt value 1224
+
+eventAt is constant
+eventAt purpose "Where the Windows event an interrupt sets is kept, in machine.state"
+eventAt type Int64
+eventAt value 1232
+
+generationAt is constant
+generationAt purpose "Where the scheduler's generation is kept, in machine.state (the tasks module's)"
+generationAt type Int64
+generationAt value 472
+
+timedOut is constant
+timedOut purpose "signal.SignalError.timedOut, numbered from 1"
+timedOut type Int32
+timedOut value 1
+
+cancelledError is constant
+cancelledError purpose "signal.SignalError.cancelled, numbered from 1"
+cancelledError type Int32
+cancelledError value 2
+
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do osCheck
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do widenCode
+endProcess at linuxExit do callExit
+endProcess at linuxExit return ok none
+endProcess at windowsExit do callExitProcess
+endProcess at windowsExit return ok none
+
+osCheck is call
+osCheck in endProcess
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+widenCode is call
+widenCode in endProcess
+widenCode invokes convert.int32ToInt64
+widenCode argument value Int32 code copy
+widenCode result wideCode Int64
+widenCode ownedBy none
+widenCode cleanedBy none
+widenCode borrows none
+widenCode catch none
+widenCode suppresses none
+
+callExit is call
+callExit in endProcess
+callExit invokes system.exitGroup
+callExit argument code Int64 wideCode copy
+callExit result exitResult Int64
+callExit ownedBy none
+callExit cleanedBy none
+callExit borrows none
+callExit catch none
+callExit suppresses none
+
+callExitProcess is call
+callExitProcess in endProcess
+callExitProcess invokes system.exitProcess
+callExitProcess argument code Int32 code copy
+callExitProcess result none
+callExitProcess ownedBy none
+callExitProcess cleanedBy none
+callExitProcess borrows none
+callExitProcess catch none
+callExitProcess suppresses none
+
+stateWord is operation
+stateWord purpose "A whole number of machine.state"
+stateWord invariant none
+stateWord typeParameter none
+stateWord input offset Int64 copied
+stateWord output Int64
+stateWord outputOwnedBy none
+stateWord raises none
+stateWord effect use machine.memory
+stateWord uses memoryAccess
+stateWord memoryHeap false
+stateWord async false
+stateWord maxRecursion none
+stateWord label begin loopKind none
+stateWord label begin within none
+stateWord let none
+stateWord at begin do findSlot
+stateWord at begin do readSlot
+stateWord at begin return ok value
+
+findSlot is call
+findSlot in stateWord
+findSlot invokes kernel.stateAt
+findSlot argument offset Int64 offset copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readSlot is call
+readSlot in stateWord
+readSlot invokes machine.loadInt64
+readSlot argument address machine.Address slot copy
+readSlot result value Int64
+readSlot ownedBy none
+readSlot cleanedBy none
+readSlot borrows none
+readSlot catch none
+readSlot suppresses none
+
+setStateWord is operation
+setStateWord purpose "Store a whole number in machine.state"
+setStateWord invariant none
+setStateWord typeParameter none
+setStateWord input offset Int64 copied
+setStateWord input value Int64 copied
+setStateWord output none
+setStateWord outputOwnedBy none
+setStateWord raises none
+setStateWord effect use machine.memory
+setStateWord uses memoryAccess
+setStateWord memoryHeap false
+setStateWord async false
+setStateWord maxRecursion none
+setStateWord label begin loopKind none
+setStateWord label begin within none
+setStateWord let none
+setStateWord at begin do findSlot
+setStateWord at begin do storeSlot
+setStateWord at begin return ok none
+
+findSlot is call
+findSlot in setStateWord
+findSlot invokes kernel.stateAt
+findSlot argument offset Int64 offset copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeSlot is call
+storeSlot in setStateWord
+storeSlot invokes machine.storeInt64
+storeSlot argument address machine.Address slot copy
+storeSlot argument value Int64 value copy
+storeSlot result none
+storeSlot ownedBy none
+storeSlot cleanedBy none
+storeSlot borrows none
+storeSlot catch none
+storeSlot suppresses none
+
+interruptHandler is operation
+interruptHandler purpose "What the operating system calls on an interrupt: CTRL_C_EVENT on Windows, SIGINT on Linux. The first sets the flag, counts a change for the scheduler, and on Windows sets its event; the second ends the process with exit code 130. Any other console event is left to the system: refined_interrupt_handler"
+interruptHandler invariant none
+interruptHandler typeParameter none
+interruptHandler input which Int32 copied
+interruptHandler output Int32
+interruptHandler outputOwnedBy none
+interruptHandler raises none
+interruptHandler effect use machine.memory
+interruptHandler effect use system.calls
+interruptHandler uses memoryAccess
+interruptHandler uses systemCalls
+interruptHandler memoryHeap false
+interruptHandler async false
+interruptHandler maxRecursion none
+interruptHandler abi c "refined_interrupt_handler"
+interruptHandler label begin loopKind none
+interruptHandler label begin within none
+interruptHandler label eventCheck loopKind none
+interruptHandler label eventCheck within none
+interruptHandler label leave loopKind none
+interruptHandler label leave within none
+interruptHandler label interrupt loopKind none
+interruptHandler label interrupt within none
+interruptHandler label exit loopKind none
+interruptHandler label exit within none
+interruptHandler label first loopKind none
+interruptHandler label first within none
+interruptHandler label wake loopKind none
+interruptHandler label wake within none
+interruptHandler label done loopKind none
+interruptHandler label done within none
+interruptHandler let handled Int32 1 immutable
+interruptHandler let notHandled Int32 0 immutable
+interruptHandler let zero Int64 0 immutable
+interruptHandler let interruptedCode Int32 130 immutable
+interruptHandler let one Int64 1 immutable
+interruptHandler at begin do osCheck
+interruptHandler at begin branch if onLinux goto interrupt else goto eventCheck
+interruptHandler at eventCheck do ctrlCCheck
+interruptHandler at eventCheck branch if isCtrlC goto interrupt else goto leave
+interruptHandler at leave return ok notHandled
+interruptHandler at interrupt do readFlag
+interruptHandler at interrupt do secondCheck
+interruptHandler at interrupt branch if second goto exit else goto first
+interruptHandler at exit do exitIt
+interruptHandler at exit return ok handled
+interruptHandler at first do storeFlag
+interruptHandler at first do readGeneration
+interruptHandler at first do moreGeneration
+interruptHandler at first do storeGeneration
+interruptHandler at first do wakeCheck
+interruptHandler at first branch if onWindows goto done else goto wake
+interruptHandler at wake do findEvent
+interruptHandler at wake do readEvent
+interruptHandler at wake do setIt
+interruptHandler at wake return ok handled
+interruptHandler at done return ok handled
+
+osCheck is call
+osCheck in interruptHandler
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+ctrlCCheck is call
+ctrlCCheck in interruptHandler
+ctrlCCheck invokes compare.equalInt32
+ctrlCCheck argument left Int32 which copy
+ctrlCCheck argument right Int32 notHandled copy
+ctrlCCheck result isCtrlC Bool
+ctrlCCheck ownedBy none
+ctrlCCheck cleanedBy none
+ctrlCCheck borrows none
+ctrlCCheck catch none
+ctrlCCheck suppresses none
+
+readFlag is call
+readFlag in interruptHandler
+readFlag invokes stateWord
+readFlag argument offset Int64 interruptedAt copy
+readFlag result flag Int64
+readFlag ownedBy none
+readFlag cleanedBy none
+readFlag borrows none
+readFlag catch none
+readFlag suppresses none
+
+secondCheck is call
+secondCheck in interruptHandler
+secondCheck invokes compare.notEqualInt64
+secondCheck argument left Int64 flag copy
+secondCheck argument right Int64 zero copy
+secondCheck result second Bool
+secondCheck ownedBy none
+secondCheck cleanedBy none
+secondCheck borrows none
+secondCheck catch none
+secondCheck suppresses none
+
+exitIt is call
+exitIt in interruptHandler
+exitIt invokes endProcess
+exitIt argument code Int32 interruptedCode copy
+exitIt result none
+exitIt ownedBy none
+exitIt cleanedBy none
+exitIt borrows none
+exitIt catch none
+exitIt suppresses none
+
+storeFlag is call
+storeFlag in interruptHandler
+storeFlag invokes setStateWord
+storeFlag argument offset Int64 interruptedAt copy
+storeFlag argument value Int64 one copy
+storeFlag result none
+storeFlag ownedBy none
+storeFlag cleanedBy none
+storeFlag borrows none
+storeFlag catch none
+storeFlag suppresses none
+
+readGeneration is call
+readGeneration in interruptHandler
+readGeneration invokes stateWord
+readGeneration argument offset Int64 generationAt copy
+readGeneration result generation Int64
+readGeneration ownedBy none
+readGeneration cleanedBy none
+readGeneration borrows none
+readGeneration catch none
+readGeneration suppresses none
+
+moreGeneration is call
+moreGeneration in interruptHandler
+moreGeneration invokes math.addInt64
+moreGeneration argument left Int64 generation copy
+moreGeneration argument right Int64 one copy
+moreGeneration result next Int64
+moreGeneration ownedBy none
+moreGeneration cleanedBy none
+moreGeneration borrows none
+moreGeneration catch none
+moreGeneration suppresses none
+
+storeGeneration is call
+storeGeneration in interruptHandler
+storeGeneration invokes setStateWord
+storeGeneration argument offset Int64 generationAt copy
+storeGeneration argument value Int64 next copy
+storeGeneration result none
+storeGeneration ownedBy none
+storeGeneration cleanedBy none
+storeGeneration borrows none
+storeGeneration catch none
+storeGeneration suppresses none
+
+wakeCheck is call
+wakeCheck in interruptHandler
+wakeCheck invokes system.linux
+wakeCheck argument none
+wakeCheck result onWindows Bool
+wakeCheck ownedBy none
+wakeCheck cleanedBy none
+wakeCheck borrows none
+wakeCheck catch none
+wakeCheck suppresses none
+
+findEvent is call
+findEvent in interruptHandler
+findEvent invokes kernel.stateAt
+findEvent argument offset Int64 eventAt copy
+findEvent result eventSlot machine.Address
+findEvent ownedBy none
+findEvent cleanedBy none
+findEvent borrows none
+findEvent catch none
+findEvent suppresses none
+
+readEvent is call
+readEvent in interruptHandler
+readEvent invokes machine.loadAddress
+readEvent argument address machine.Address eventSlot copy
+readEvent result event machine.Address
+readEvent ownedBy none
+readEvent cleanedBy none
+readEvent borrows none
+readEvent catch none
+readEvent suppresses none
+
+setIt is call
+setIt in interruptHandler
+setIt invokes system.setEvent
+setIt argument event machine.Address event copy
+setIt result wasSet Int32
+setIt ownedBy none
+setIt cleanedBy none
+setIt borrows none
+setIt catch none
+setIt suppresses none
+
+installInterrupts is operation
+installInterrupts purpose "Install the interrupt handler before the program's entry runs, as `refined run` installs its handler for a program that reads `signal`: SetConsoleCtrlHandler on Windows (with the event the scheduler's sleep waits on), rt_sigaction for SIGINT on Linux: refined_signals_start"
+installInterrupts invariant none
+installInterrupts typeParameter none
+installInterrupts input none
+installInterrupts output none
+installInterrupts outputOwnedBy none
+installInterrupts raises none
+installInterrupts effect use machine.memory
+installInterrupts effect use system.calls
+installInterrupts uses memoryAccess
+installInterrupts uses systemCalls
+installInterrupts memoryHeap false
+installInterrupts async false
+installInterrupts maxRecursion none
+installInterrupts abi c "refined_signals_start"
+installInterrupts label begin loopKind none
+installInterrupts label begin within none
+installInterrupts label windowsInstall loopKind none
+installInterrupts label windowsInstall within none
+installInterrupts label linuxInstall loopKind none
+installInterrupts label linuxInstall within none
+installInterrupts let sigint Int64 2 immutable
+installInterrupts let flags Int64 335544320 immutable
+installInterrupts let one Int64 1 immutable
+installInterrupts let autoReset Int32 0 immutable
+installInterrupts let noSignal Int32 0 immutable
+installInterrupts let addIt Int32 1 immutable
+installInterrupts let thirtyTwo Int64 32 immutable
+installInterrupts let eight Int64 8 immutable
+installInterrupts let sixteen Int64 16 immutable
+installInterrupts at begin do storeInstalled
+installInterrupts at begin do findHandler
+installInterrupts at begin do osCheck
+installInterrupts at begin branch if onLinux goto linuxInstall else goto windowsInstall
+installInterrupts at windowsInstall do nowhere
+installInterrupts at windowsInstall do makeEvent
+installInterrupts at windowsInstall do findEvent
+installInterrupts at windowsInstall do storeEvent
+installInterrupts at windowsInstall do addHandler
+installInterrupts at windowsInstall return ok none
+installInterrupts at linuxInstall do takeAction
+installInterrupts at linuxInstall do storeHandler
+installInterrupts at linuxInstall do findFlags
+installInterrupts at linuxInstall do storeFlags
+installInterrupts at linuxInstall do findRestorer
+installInterrupts at linuxInstall do restorerOf
+installInterrupts at linuxInstall do storeRestorer
+installInterrupts at linuxInstall do noOld
+installInterrupts at linuxInstall do installIt
+installInterrupts at linuxInstall return ok none
+
+storeInstalled is call
+storeInstalled in installInterrupts
+storeInstalled invokes setStateWord
+storeInstalled argument offset Int64 installedAt copy
+storeInstalled argument value Int64 one copy
+storeInstalled result none
+storeInstalled ownedBy none
+storeInstalled cleanedBy none
+storeInstalled borrows none
+storeInstalled catch none
+storeInstalled suppresses none
+
+findHandler is call
+findHandler in installInterrupts
+findHandler invokes machine.interruptHandler
+findHandler argument none
+findHandler result handler machine.Address
+findHandler ownedBy none
+findHandler cleanedBy none
+findHandler borrows none
+findHandler catch none
+findHandler suppresses none
+
+osCheck is call
+osCheck in installInterrupts
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+nowhere is call
+nowhere in installInterrupts
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+makeEvent is call
+makeEvent in installInterrupts
+makeEvent invokes system.createEventW
+makeEvent argument security machine.Address anywhere copy
+makeEvent argument manualReset Int32 autoReset copy
+makeEvent argument initialState Int32 noSignal copy
+makeEvent argument name machine.Address anywhere copy
+makeEvent result event machine.Address
+makeEvent ownedBy none
+makeEvent cleanedBy none
+makeEvent borrows none
+makeEvent catch none
+makeEvent suppresses none
+
+findEvent is call
+findEvent in installInterrupts
+findEvent invokes kernel.stateAt
+findEvent argument offset Int64 eventAt copy
+findEvent result eventSlot machine.Address
+findEvent ownedBy none
+findEvent cleanedBy none
+findEvent borrows none
+findEvent catch none
+findEvent suppresses none
+
+storeEvent is call
+storeEvent in installInterrupts
+storeEvent invokes machine.storeAddress
+storeEvent argument address machine.Address eventSlot copy
+storeEvent argument value machine.Address event copy
+storeEvent result none
+storeEvent ownedBy none
+storeEvent cleanedBy none
+storeEvent borrows none
+storeEvent catch none
+storeEvent suppresses none
+
+addHandler is call
+addHandler in installInterrupts
+addHandler invokes system.setConsoleCtrlHandler
+addHandler argument handler machine.Address handler copy
+addHandler argument add Int32 addIt copy
+addHandler result added Int32
+addHandler ownedBy none
+addHandler cleanedBy none
+addHandler borrows none
+addHandler catch none
+addHandler suppresses none
+
+takeAction is call
+takeAction in installInterrupts
+takeAction invokes heap.take
+takeAction argument bytes Int64 thirtyTwo copy
+takeAction result block machine.Address
+takeAction ownedBy none
+takeAction cleanedBy none
+takeAction borrows none
+takeAction catch none
+takeAction suppresses none
+
+storeHandler is call
+storeHandler in installInterrupts
+storeHandler invokes machine.storeAddress
+storeHandler argument address machine.Address block copy
+storeHandler argument value machine.Address handler copy
+storeHandler result none
+storeHandler ownedBy none
+storeHandler cleanedBy none
+storeHandler borrows none
+storeHandler catch none
+storeHandler suppresses none
+
+findFlags is call
+findFlags in installInterrupts
+findFlags invokes machine.offset
+findFlags argument address machine.Address block copy
+findFlags argument bytes Int64 eight copy
+findFlags result flagsSlot machine.Address
+findFlags ownedBy none
+findFlags cleanedBy none
+findFlags borrows none
+findFlags catch none
+findFlags suppresses none
+
+storeFlags is call
+storeFlags in installInterrupts
+storeFlags invokes machine.storeInt64
+storeFlags argument address machine.Address flagsSlot copy
+storeFlags argument value Int64 flags copy
+storeFlags result none
+storeFlags ownedBy none
+storeFlags cleanedBy none
+storeFlags borrows none
+storeFlags catch none
+storeFlags suppresses none
+
+findRestorer is call
+findRestorer in installInterrupts
+findRestorer invokes machine.offset
+findRestorer argument address machine.Address block copy
+findRestorer argument bytes Int64 sixteen copy
+findRestorer result restorerSlot machine.Address
+findRestorer ownedBy none
+findRestorer cleanedBy none
+findRestorer borrows none
+findRestorer catch none
+findRestorer suppresses none
+
+restorerOf is call
+restorerOf in installInterrupts
+restorerOf invokes machine.signalRestorer
+restorerOf argument none
+restorerOf result restorer machine.Address
+restorerOf ownedBy none
+restorerOf cleanedBy none
+restorerOf borrows none
+restorerOf catch none
+restorerOf suppresses none
+
+storeRestorer is call
+storeRestorer in installInterrupts
+storeRestorer invokes machine.storeAddress
+storeRestorer argument address machine.Address restorerSlot copy
+storeRestorer argument value machine.Address restorer copy
+storeRestorer result none
+storeRestorer ownedBy none
+storeRestorer cleanedBy none
+storeRestorer borrows none
+storeRestorer catch none
+storeRestorer suppresses none
+
+noOld is call
+noOld in installInterrupts
+noOld invokes machine.zero
+noOld argument none
+noOld result noAddress machine.Address
+noOld ownedBy none
+noOld cleanedBy none
+noOld borrows none
+noOld catch none
+noOld suppresses none
+
+installIt is call
+installIt in installInterrupts
+installIt invokes system.rtSigaction
+installIt argument signal Int64 sigint copy
+installIt argument action machine.Address block copy
+installIt argument old machine.Address noAddress copy
+installIt argument maskBytes Int64 eight copy
+installIt result installed Int64
+installIt ownedBy none
+installIt cleanedBy none
+installIt borrows none
+installIt catch none
+installIt suppresses none
+
+# ---------------------------------------------------------------- targets
+interruptedTarget is operation
+interruptedTarget purpose "signal.interrupted: whether the first interrupt has come"
+interruptedTarget invariant none
+interruptedTarget typeParameter none
+interruptedTarget input results machine.Address copied
+interruptedTarget output none
+interruptedTarget outputOwnedBy none
+interruptedTarget raises none
+interruptedTarget effect use machine.memory
+interruptedTarget uses memoryAccess
+interruptedTarget memoryHeap false
+interruptedTarget async false
+interruptedTarget maxRecursion none
+interruptedTarget label begin loopKind none
+interruptedTarget label begin within none
+interruptedTarget let none
+interruptedTarget at begin do readFlag
+interruptedTarget at begin do storeIt
+interruptedTarget at begin return ok none
+
+readFlag is call
+readFlag in interruptedTarget
+readFlag invokes stateWord
+readFlag argument offset Int64 interruptedAt copy
+readFlag result flag Int64
+readFlag ownedBy none
+readFlag cleanedBy none
+readFlag borrows none
+readFlag catch none
+readFlag suppresses none
+
+storeIt is call
+storeIt in interruptedTarget
+storeIt invokes machine.storeInt64
+storeIt argument address machine.Address results copy
+storeIt argument value Int64 flag copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+waitTarget is operation
+waitTarget purpose "signal.waitForInterrupt: wait until the first interrupt comes; timedOut at the deadline, cancelled when the task is, a wait no interrupt could end (no deadline, nothing else to wait for) a deadlock, as under `refined run`"
+waitTarget invariant none
+waitTarget typeParameter none
+waitTarget input shape machine.Address copied
+waitTarget input args machine.Address copied
+waitTarget input payload machine.Address copied
+waitTarget output Int32
+waitTarget outputOwnedBy none
+waitTarget raises none
+waitTarget effect use machine.memory
+waitTarget effect use system.calls
+waitTarget uses memoryAccess
+waitTarget uses systemCalls
+waitTarget memoryHeap false
+waitTarget async false
+waitTarget maxRecursion none
+waitTarget label begin loopKind none
+waitTarget label begin within none
+waitTarget label eachTry loopKind while
+waitTarget label eachTry within none
+waitTarget label eachTry maxIterations forever
+waitTarget label waitIt loopKind none
+waitTarget label waitIt within eachTry
+waitTarget label timedCheck loopKind none
+waitTarget label timedCheck within eachTry
+waitTarget label giveTimedOut loopKind none
+waitTarget label giveTimedOut within none
+waitTarget label giveCancelled loopKind none
+waitTarget label giveCancelled within none
+waitTarget label done loopKind none
+waitTarget label done within none
+waitTarget let ok Int32 0 immutable
+waitTarget let forever Int64 9223372036854775807 immutable
+waitTarget let zero Int64 0 immutable
+waitTarget let waitText String "a wait for an interrupt" immutable
+waitTarget let one Int64 1 immutable
+waitTarget let two Int64 2 immutable
+waitTarget at begin do readDeadline
+waitTarget at begin do nowhere
+waitTarget at begin goto eachTry
+waitTarget at eachTry do readFlag
+waitTarget at eachTry do cameCheck
+waitTarget at eachTry branch if came goto done else goto waitIt
+waitTarget at waitIt do waitOnce
+waitTarget at waitIt do cancelledCheck
+waitTarget at waitIt branch if isCancelled goto giveCancelled else goto timedCheck
+waitTarget at timedCheck do checkTimed
+waitTarget at timedCheck branch if isTimed goto giveTimedOut else goto eachTry
+waitTarget at giveTimedOut do timedStatus
+waitTarget at giveTimedOut return ok status1
+waitTarget at giveCancelled do cancelledStatus
+waitTarget at giveCancelled return ok status2
+waitTarget at done return ok ok
+
+readDeadline is call
+readDeadline in waitTarget
+readDeadline invokes slots.argOf
+readDeadline argument shape machine.Address shape copy
+readDeadline argument args machine.Address args copy
+readDeadline argument parameter Int64 zero copy
+readDeadline result deadline Int64
+readDeadline ownedBy none
+readDeadline cleanedBy none
+readDeadline borrows none
+readDeadline catch none
+readDeadline suppresses none
+
+nowhere is call
+nowhere in waitTarget
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+readFlag is call
+readFlag in waitTarget
+readFlag invokes stateWord
+readFlag argument offset Int64 interruptedAt copy
+readFlag result flag Int64
+readFlag ownedBy none
+readFlag cleanedBy none
+readFlag borrows none
+readFlag catch none
+readFlag suppresses none
+
+cameCheck is call
+cameCheck in waitTarget
+cameCheck invokes compare.notEqualInt64
+cameCheck argument left Int64 flag copy
+cameCheck argument right Int64 zero copy
+cameCheck result came Bool
+cameCheck ownedBy none
+cameCheck cleanedBy none
+cameCheck borrows none
+cameCheck catch none
+cameCheck suppresses none
+
+waitOnce is call
+waitOnce in waitTarget
+waitOnce invokes tasks.wait
+waitOnce argument what String waitText lend
+waitOnce argument deadline Int64 deadline copy
+waitOnce argument cancellable Int64 one copy
+waitOnce argument external machine.Address anywhere copy
+waitOnce result outcome Int64
+waitOnce ownedBy none
+waitOnce cleanedBy none
+waitOnce borrows none
+waitOnce catch none
+waitOnce suppresses none
+
+cancelledCheck is call
+cancelledCheck in waitTarget
+cancelledCheck invokes compare.equalInt64
+cancelledCheck argument left Int64 outcome copy
+cancelledCheck argument right Int64 two copy
+cancelledCheck result isCancelled Bool
+cancelledCheck ownedBy none
+cancelledCheck cleanedBy none
+cancelledCheck borrows none
+cancelledCheck catch none
+cancelledCheck suppresses none
+
+checkTimed is call
+checkTimed in waitTarget
+checkTimed invokes compare.equalInt64
+checkTimed argument left Int64 outcome copy
+checkTimed argument right Int64 one copy
+checkTimed result isTimed Bool
+checkTimed ownedBy none
+checkTimed cleanedBy none
+checkTimed borrows none
+checkTimed catch none
+checkTimed suppresses none
+
+timedStatus is call
+timedStatus in waitTarget
+timedStatus invokes slots.failWith
+timedStatus argument payload machine.Address payload copy
+timedStatus argument status Int32 timedOut copy
+timedStatus argument value Int64 zero copy
+timedStatus result status1 Int32
+timedStatus ownedBy none
+timedStatus cleanedBy none
+timedStatus borrows none
+timedStatus catch none
+timedStatus suppresses none
+
+cancelledStatus is call
+cancelledStatus in waitTarget
+cancelledStatus invokes slots.failWith
+cancelledStatus argument payload machine.Address payload copy
+cancelledStatus argument status Int32 cancelledError copy
+cancelledStatus argument value Int64 zero copy
+cancelledStatus result status2 Int32
+cancelledStatus ownedBy none
+cancelledStatus cleanedBy none
+cancelledStatus borrows none
+cancelledStatus catch none
+cancelledStatus suppresses none
+
+signalCall is operation
+signalCall purpose "Run a signal target by its place among them (1 interrupted, 2 waitForInterrupt): 0, or an error's variant number with its payload stored"
+signalCall invariant runsSignal "\"interrupted gives whether the first interrupt came; waitForInterrupt ends when it comes, at its deadline, or when its task is cancelled\""
+signalCall typeParameter none
+signalCall input which Int64 copied
+signalCall input shape machine.Address copied
+signalCall input args machine.Address copied
+signalCall input results machine.Address copied
+signalCall input payload machine.Address copied
+signalCall output Int32
+signalCall outputOwnedBy none
+signalCall raises none
+signalCall effect use machine.memory
+signalCall effect use system.calls
+signalCall uses memoryAccess
+signalCall uses systemCalls
+signalCall memoryHeap false
+signalCall async false
+signalCall maxRecursion none
+signalCall label begin loopKind none
+signalCall label begin within none
+signalCall label runRead loopKind none
+signalCall label runRead within none
+signalCall label runWait loopKind none
+signalCall label runWait within none
+signalCall let ok Int32 0 immutable
+signalCall let one Int64 1 immutable
+signalCall at begin do readCheck
+signalCall at begin branch if isRead goto runRead else goto runWait
+signalCall at runRead do readIt
+signalCall at runRead return ok ok
+signalCall at runWait do waitIt
+signalCall at runWait return ok status
+
+readCheck is call
+readCheck in signalCall
+readCheck invokes compare.equalInt64
+readCheck argument left Int64 which copy
+readCheck argument right Int64 one copy
+readCheck result isRead Bool
+readCheck ownedBy none
+readCheck cleanedBy none
+readCheck borrows none
+readCheck catch none
+readCheck suppresses none
+
+readIt is call
+readIt in signalCall
+readIt invokes interruptedTarget
+readIt argument results machine.Address results copy
+readIt result none
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+waitIt is call
+waitIt in signalCall
+waitIt invokes waitTarget
+waitIt argument shape machine.Address shape copy
+waitIt argument args machine.Address args copy
+waitIt argument payload machine.Address payload copy
+waitIt result status Int32
+waitIt ownedBy none
+waitIt cleanedBy none
+waitIt borrows none
+waitIt catch none
+waitIt suppresses none

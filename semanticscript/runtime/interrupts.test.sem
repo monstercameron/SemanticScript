@@ -1,0 +1,308 @@
+# Tests of the `interrupts` module; generated from tools/interrupts.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+signalTest is test
+signalTest purpose "No interrupt has come in a test, so interrupted is false and a wait with a passed deadline times out; the handler leaves every console event but CTRL+C to the system"
+signalTest verifies signalCall runsSignal
+signalTest typeParameter none
+signalTest input none
+signalTest output none
+signalTest outputOwnedBy none
+signalTest raises none
+signalTest effect use machine.memory
+signalTest effect use system.calls
+signalTest uses memoryAccess
+signalTest uses systemCalls
+signalTest memoryHeap false
+signalTest async false
+signalTest maxRecursion none
+signalTest label begin loopKind none
+signalTest label begin within none
+signalTest label breakEvent loopKind none
+signalTest label breakEvent within none
+signalTest label done loopKind none
+signalTest label done within none
+signalTest let shapeAt Int64 61440 immutable
+signalTest let argsOffset Int64 61952 immutable
+signalTest let resultsOffset Int64 62016 immutable
+signalTest let payloadOffset Int64 62080 immutable
+signalTest let forty Int64 40 immutable
+signalTest let one Int64 1 immutable
+signalTest let twoThirtyTwo Int64 232 immutable
+signalTest let zero Int64 0 immutable
+signalTest let twentyFour Int64 24 immutable
+signalTest let two Int64 2 immutable
+signalTest let ctrlBreak Int32 1 immutable
+signalTest at begin do findShape
+signalTest at begin do findArgs
+signalTest at begin do findResults
+signalTest at begin do findPayload
+signalTest at begin do findCounts
+signalTest at begin do storeCount
+signalTest at begin do findStarts
+signalTest at begin do storeStart
+signalTest at begin do findParams
+signalTest at begin do storeParams
+signalTest at begin do readIt
+signalTest at begin do readFlag
+signalTest at begin do doAssertEqualInt64
+signalTest at begin do storeDeadline
+signalTest at begin do waitIt
+signalTest at begin do widenWait
+signalTest at begin do doAssertEqualInt642
+signalTest at begin do onLinux
+signalTest at begin branch if linux goto done else goto breakEvent
+signalTest at breakEvent do leaveIt
+signalTest at breakEvent do widenLeft
+signalTest at breakEvent do doAssertEqualInt643
+signalTest at breakEvent goto done
+signalTest at done return ok none
+
+findShape is call
+findShape in signalTest
+findShape invokes kernel.stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findArgs is call
+findArgs in signalTest
+findArgs invokes kernel.stateAt
+findArgs argument offset Int64 argsOffset copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in signalTest
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in signalTest
+findPayload invokes kernel.stateAt
+findPayload argument offset Int64 payloadOffset copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+findCounts is call
+findCounts in signalTest
+findCounts invokes machine.offset
+findCounts argument address machine.Address shape copy
+findCounts argument bytes Int64 forty copy
+findCounts result counts machine.Address
+findCounts ownedBy none
+findCounts cleanedBy none
+findCounts borrows none
+findCounts catch none
+findCounts suppresses none
+
+storeCount is call
+storeCount in signalTest
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address counts copy
+storeCount argument value Int64 one copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+findStarts is call
+findStarts in signalTest
+findStarts invokes machine.offset
+findStarts argument address machine.Address shape copy
+findStarts argument bytes Int64 twoThirtyTwo copy
+findStarts result starts machine.Address
+findStarts ownedBy none
+findStarts cleanedBy none
+findStarts borrows none
+findStarts catch none
+findStarts suppresses none
+
+storeStart is call
+storeStart in signalTest
+storeStart invokes machine.storeInt64
+storeStart argument address machine.Address starts copy
+storeStart argument value Int64 zero copy
+storeStart result none
+storeStart ownedBy none
+storeStart cleanedBy none
+storeStart borrows none
+storeStart catch none
+storeStart suppresses none
+
+findParams is call
+findParams in signalTest
+findParams invokes machine.offset
+findParams argument address machine.Address shape copy
+findParams argument bytes Int64 twentyFour copy
+findParams result paramsAt machine.Address
+findParams ownedBy none
+findParams cleanedBy none
+findParams borrows none
+findParams catch none
+findParams suppresses none
+
+storeParams is call
+storeParams in signalTest
+storeParams invokes machine.storeInt64
+storeParams argument address machine.Address paramsAt copy
+storeParams argument value Int64 one copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+readIt is call
+readIt in signalTest
+readIt invokes signalCall
+readIt argument which Int64 one copy
+readIt argument shape machine.Address shape copy
+readIt argument args machine.Address args copy
+readIt argument results machine.Address results copy
+readIt argument payload machine.Address payload copy
+readIt result readStatus Int32
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+readFlag is call
+readFlag in signalTest
+readFlag invokes machine.loadInt64
+readFlag argument address machine.Address results copy
+readFlag result flag Int64
+readFlag ownedBy none
+readFlag cleanedBy none
+readFlag borrows none
+readFlag catch none
+readFlag suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in signalTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 zero copy
+doAssertEqualInt64 argument actual Int64 flag copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+storeDeadline is call
+storeDeadline in signalTest
+storeDeadline invokes machine.storeInt64
+storeDeadline argument address machine.Address args copy
+storeDeadline argument value Int64 zero copy
+storeDeadline result none
+storeDeadline ownedBy none
+storeDeadline cleanedBy none
+storeDeadline borrows none
+storeDeadline catch none
+storeDeadline suppresses none
+
+waitIt is call
+waitIt in signalTest
+waitIt invokes signalCall
+waitIt argument which Int64 two copy
+waitIt argument shape machine.Address shape copy
+waitIt argument args machine.Address args copy
+waitIt argument results machine.Address results copy
+waitIt argument payload machine.Address payload copy
+waitIt result waitStatus Int32
+waitIt ownedBy none
+waitIt cleanedBy none
+waitIt borrows none
+waitIt catch none
+waitIt suppresses none
+
+widenWait is call
+widenWait in signalTest
+widenWait invokes convert.int32ToInt64
+widenWait argument value Int32 waitStatus copy
+widenWait result waitValue Int64
+widenWait ownedBy none
+widenWait cleanedBy none
+widenWait borrows none
+widenWait catch none
+widenWait suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in signalTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 one copy
+doAssertEqualInt642 argument actual Int64 waitValue copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+onLinux is call
+onLinux in signalTest
+onLinux invokes system.linux
+onLinux argument none
+onLinux result linux Bool
+onLinux ownedBy none
+onLinux cleanedBy none
+onLinux borrows none
+onLinux catch none
+onLinux suppresses none
+
+leaveIt is call
+leaveIt in signalTest
+leaveIt invokes interruptHandler
+leaveIt argument which Int32 ctrlBreak copy
+leaveIt result left Int32
+leaveIt ownedBy none
+leaveIt cleanedBy none
+leaveIt borrows none
+leaveIt catch none
+leaveIt suppresses none
+
+widenLeft is call
+widenLeft in signalTest
+widenLeft invokes convert.int32ToInt64
+widenLeft argument value Int32 left copy
+widenLeft result leftValue Int64
+widenLeft ownedBy none
+widenLeft cleanedBy none
+widenLeft borrows none
+widenLeft catch none
+widenLeft suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in signalTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 zero copy
+doAssertEqualInt643 argument actual Int64 leftValue copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none

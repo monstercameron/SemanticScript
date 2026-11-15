@@ -1,6 +1,6 @@
 module host "The host library of a standalone executable: refined_host and its targets (byte buffers, maps, sets, string.fromBytes, log lines)"
   path host
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.list standard.test memory numbers output frames heap tables handles regions slots tasks files processes hashes generators requests documents
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.list standard.test memory numbers output frames heap tables handles regions slots tasks files processes hashes generators requests documents interrupts sockets
   exports hostCall utf8InvalidAt
 
 capability memoryAccess "Authority to read a host call's slots and keep the host's objects and call shapes in memory" use machine.memory none
@@ -148,6 +148,15 @@ table hostTargets "The host targets this runtime implements, numbered from 1" Ho
   row jsonAppendInt64 name="json.appendInt64" scoped=-1
   row jsonAppendText name="json.appendText" scoped=-1
   row jsonStringify name="json.stringify" scoped=-1
+  row signalInterrupted name="signal.interrupted" scoped=-1
+  row signalWaitForInterrupt name="signal.waitForInterrupt" scoped=-1
+  row netListen name="net.listen" scoped=0
+  row netCloseListener name="net.closeListener" scoped=-1
+  row netAccept name="net.accept" scoped=-1
+  row netConnect name="net.connect" scoped=0
+  row netRead name="net.read" scoped=-1
+  row netWrite name="net.write" scoped=-1
+  row netClose name="net.close" scoped=-1
 
 op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
   input code Int32 copied
@@ -1866,7 +1875,7 @@ op dispatchMore "Run a host target of stage 3 and 4 by its number (26 on): 0, or
   runRest: restStatus = dispatchRest(number, shape, args, results, payload)
   return restStatus
 
-op dispatchRest "Run a host target of the modules that came last by its number (73 on): random (73 to 75), http (76 to 79), json (80 to 96); 0, or an error's variant number with its payload stored"
+op dispatchRest "Run a host target of the modules that came last by its number (73 on): random (73 to 75), http (76 to 79), json (80 to 96), signal (97 and 98), net (99 to 105); 0, or an error's variant number with its payload stored"
   input number Int64 copied
   input shape machine.Address copied
   input args machine.Address copied
@@ -1894,11 +1903,25 @@ op dispatchRest "Run a host target of the modules that came last by its number (
   return httpStatus
 :jsonCheck
   checkJson: isJson = compare.lessOrEqualInt64(number, n96=96)
-  if isJson runJson unknown
+  if isJson runJson signalCheck
 :runJson
   jsonPlace: jsonWhich = math.subtractInt64(number, n79)
   jsonIt: jsonStatus = documents.jsonCall(jsonWhich, shape, args, results, payload)
   return jsonStatus
+:signalCheck
+  checkSignal: isSignal = compare.lessOrEqualInt64(number, n98=98)
+  if isSignal runSignal netCheck
+:runSignal
+  signalPlace: signalWhich = math.subtractInt64(number, n96)
+  signalIt: signalStatus = interrupts.signalCall(signalWhich, shape, args, results, payload)
+  return signalStatus
+:netCheck
+  checkNet: isNet = compare.lessOrEqualInt64(number, n105=105)
+  if isNet runNet unknown
+:runNet
+  netPlace: netWhich = math.subtractInt64(number, n98)
+  netIt: netStatus = sockets.netCall(netWhich, shape, args, results, payload)
+  return netStatus
 :unknown
   failUnknown: failText(unknownText="a host call named a target this runtime does not number")
   return ok
@@ -1928,10 +1951,20 @@ op hostCall "Run a host target for compiled code: the key's shape, then its targ
   readName: name = HostTarget.name(row)
   readParams: params = slots.shapeField(shape, twentyFour=24)
   lastOf: last = math.subtractInt64(params, one=1)
-  readValue: value = files.textAt(shape, args, scoped)
-  readValueBytes: valueBytes = files.textBytes(shape, args, scoped)
   readScopes: scopes = files.textAt(shape, args, last)
   readScopesBytes: scopesBytes = files.textBytes(shape, args, last)
+  slotsOf: scopedSlots = slots.countOf(shape, scoped)
+  numberCheck: isNumber = compare.equalInt64(scopedSlots, one)
+  if isNumber checkNumber checkText
+:checkNumber
+  readScopedNumber: numberValue = slots.argOf(shape, args, scoped)
+  findDigits: digits = stateAt(digitsAt)
+  writeDigits: digitCount = numbers.formatDecimal(numberValue, digits)
+  checkNumberIt: files.checkScope(name, digits, digitCount, scopes, scopesBytes)
+  goto run
+:checkText
+  readValue: value = files.textAt(shape, args, scoped)
+  readValueBytes: valueBytes = files.textBytes(shape, args, scoped)
   checkIt: files.checkScope(name, value, valueBytes, scopes, scopesBytes)
   goto run
 :run

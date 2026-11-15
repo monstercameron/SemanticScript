@@ -375,7 +375,7 @@ def test_standalone_executables_match_the_jit(tmp_path):
     """18 Static linking, 16 Program startup: programs link with the runtime in SemanticScript into executables that
     run with no Python and no C library and behave exactly as under `refined run` (output, errors, exit code, traps),
     with their command-line arguments and standard input. A program that calls a target the runtime does not have
-    (D-137: net, http, json, random, signal; ffi on Linux, D-140) is refused when it is built (R901), naming the
+    (ffi on Linux, D-140, D-145) is refused when it is built (R901), naming the
     targets, instead of trapping when it runs."""
     from concurrent.futures import ThreadPoolExecutor
     from refined.native import runtime_host_targets
@@ -411,7 +411,7 @@ def test_standalone_executables_match_the_jit(tmp_path):
     with ThreadPoolExecutor(6) as pool:
         outcomes = list(pool.map(one, range(len(cases))))
     linked, host_only = outcomes.count("linked"), outcomes.count("host_only")
-    assert linked >= 4 * host_only and linked >= 50 and host_only >= 1, (linked, host_only)
+    assert linked >= 4 * host_only and linked >= 50, (linked, host_only)
     assert {"fs.readAll", "process.argument", "map.Map.put", "buffer.toString"} <= runtime_host_targets()
 
 

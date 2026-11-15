@@ -7754,6 +7754,14 @@ checkScope label scopeLine loopKind none
 checkScope label scopeLine within eachLine
 checkScope label testLine loopKind none
 checkScope label testLine within eachLine
+checkScope label tcpCheck loopKind none
+checkScope label tcpCheck within eachLine
+checkScope label testPort loopKind none
+checkScope label testPort within eachLine
+checkScope label outboundCheck loopKind none
+checkScope label outboundCheck within eachLine
+checkScope label testAddress loopKind none
+checkScope label testAddress within eachLine
 checkScope label testPath loopKind none
 checkScope label testPath within eachLine
 checkScope label exactCheck loopKind none
@@ -7795,9 +7803,9 @@ checkScope let separator String ", " immutable
 checkScope let one Int64 1 immutable
 checkScope let zero Int64 0 immutable
 checkScope let three Int64 3 immutable
+checkScope let two Int64 2 immutable
 checkScope let four Int64 4 immutable
 checkScope let zero32 Int32 0 immutable
-checkScope let two Int64 2 immutable
 checkScope let openText String "`" immutable
 checkScope let givenText String "` was given `" immutable
 checkScope let whichText String "`, which no capability this operation uses allows (scopes: " immutable
@@ -7827,7 +7835,15 @@ checkScope at newResource goto nextLine
 checkScope at scopeLine do alreadyCheck
 checkScope at scopeLine branch if already goto testLine else goto listLine
 checkScope at testLine do filesCheck
-checkScope at testLine branch if isFiles goto testPath else goto exactCheck
+checkScope at testLine branch if isFiles goto testPath else goto tcpCheck
+checkScope at tcpCheck do checkTcp
+checkScope at tcpCheck branch if isTcp goto testPort else goto outboundCheck
+checkScope at testPort do portIt
+checkScope at testPort branch if portAllowed goto allow else goto listLine
+checkScope at outboundCheck do checkOutbound
+checkScope at outboundCheck branch if isOutbound goto testAddress else goto exactCheck
+checkScope at testAddress do addressIt
+checkScope at testAddress branch if addressAllowed goto allow else goto listLine
 checkScope at testPath do withinCheck
 checkScope at testPath branch if within goto allow else goto listLine
 checkScope at exactCheck do exactResource
@@ -8006,6 +8022,58 @@ filesCheck cleanedBy none
 filesCheck borrows none
 filesCheck catch none
 filesCheck suppresses none
+
+checkTcp is call
+checkTcp in checkScope
+checkTcp invokes compare.equalInt64
+checkTcp argument left Int64 resource copy
+checkTcp argument right Int64 one copy
+checkTcp result isTcp Bool
+checkTcp ownedBy none
+checkTcp cleanedBy none
+checkTcp borrows none
+checkTcp catch none
+checkTcp suppresses none
+
+portIt is call
+portIt in checkScope
+portIt invokes portWithin
+portIt argument value machine.Address value copy
+portIt argument valueBytes Int64 valueBytes copy
+portIt argument scope machine.Address line copy
+portIt argument scopeBytes Int64 lineBytes copy
+portIt result portAllowed Bool
+portIt ownedBy none
+portIt cleanedBy none
+portIt borrows none
+portIt catch none
+portIt suppresses none
+
+checkOutbound is call
+checkOutbound in checkScope
+checkOutbound invokes compare.equalInt64
+checkOutbound argument left Int64 resource copy
+checkOutbound argument right Int64 two copy
+checkOutbound result isOutbound Bool
+checkOutbound ownedBy none
+checkOutbound cleanedBy none
+checkOutbound borrows none
+checkOutbound catch none
+checkOutbound suppresses none
+
+addressIt is call
+addressIt in checkScope
+addressIt invokes addressWithin
+addressIt argument value machine.Address value copy
+addressIt argument valueBytes Int64 valueBytes copy
+addressIt argument scope machine.Address line copy
+addressIt argument scopeBytes Int64 lineBytes copy
+addressIt result addressAllowed Bool
+addressIt ownedBy none
+addressIt cleanedBy none
+addressIt borrows none
+addressIt catch none
+addressIt suppresses none
 
 withinCheck is call
 withinCheck in checkScope
@@ -8364,6 +8432,389 @@ exit cleanedBy none
 exit borrows none
 exit catch none
 exit suppresses none
+
+portWithin is operation
+portWithin purpose "Whether a port's decimal text is a `net.tcp` scope's port, as host.py compares them: the scope's text after its last colon (all of it when it has none)"
+portWithin invariant none
+portWithin typeParameter none
+portWithin input value machine.Address copied
+portWithin input valueBytes Int64 copied
+portWithin input scope machine.Address copied
+portWithin input scopeBytes Int64 copied
+portWithin output Bool
+portWithin outputOwnedBy none
+portWithin raises none
+portWithin effect use machine.memory
+portWithin uses memoryAccess
+portWithin memoryHeap false
+portWithin async false
+portWithin maxRecursion none
+portWithin label begin loopKind none
+portWithin label begin within none
+portWithin label eachByte loopKind while
+portWithin label eachByte within none
+portWithin label eachByte maxIterations scopeBytes
+portWithin label readByte loopKind none
+portWithin label readByte within eachByte
+portWithin label back loopKind none
+portWithin label back within eachByte
+portWithin label found loopKind none
+portWithin label found within none
+portWithin label compare loopKind none
+portWithin label compare within none
+portWithin let at Int64 0 mutable
+portWithin let start Int64 0 mutable
+portWithin let colon Byte 58 immutable
+portWithin let zero Int64 0 immutable
+portWithin let one Int64 1 immutable
+portWithin let zero32 Int32 0 immutable
+portWithin at begin set at scopeBytes
+portWithin at begin goto eachByte
+portWithin at eachByte do startCheck
+portWithin at eachByte branch if atStart goto compare else goto readByte
+portWithin at readByte do lastOf
+portWithin at readByte do readIt
+portWithin at readByte do colonCheck
+portWithin at readByte branch if isColon goto found else goto back
+portWithin at back set at last
+portWithin at back goto eachByte
+portWithin at found set start at
+portWithin at found goto compare
+portWithin at compare do findPort
+portWithin at compare do portLength
+portWithin at compare do sameIt
+portWithin at compare do sameCheck
+portWithin at compare return ok equal
+
+startCheck is call
+startCheck in portWithin
+startCheck invokes compare.lessOrEqualInt64
+startCheck argument left Int64 at copy
+startCheck argument right Int64 zero copy
+startCheck result atStart Bool
+startCheck ownedBy none
+startCheck cleanedBy none
+startCheck borrows none
+startCheck catch none
+startCheck suppresses none
+
+lastOf is call
+lastOf in portWithin
+lastOf invokes math.subtractInt64
+lastOf argument left Int64 at copy
+lastOf argument right Int64 one copy
+lastOf result last Int64
+lastOf ownedBy none
+lastOf cleanedBy none
+lastOf borrows none
+lastOf catch none
+lastOf suppresses none
+
+readIt is call
+readIt in portWithin
+readIt invokes byteAt
+readIt argument text machine.Address scope copy
+readIt argument position Int64 last copy
+readIt result byte Byte
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+colonCheck is call
+colonCheck in portWithin
+colonCheck invokes compare.equalByte
+colonCheck argument left Byte byte copy
+colonCheck argument right Byte colon copy
+colonCheck result isColon Bool
+colonCheck ownedBy none
+colonCheck cleanedBy none
+colonCheck borrows none
+colonCheck catch none
+colonCheck suppresses none
+
+findPort is call
+findPort in portWithin
+findPort invokes machine.offset
+findPort argument address machine.Address scope copy
+findPort argument bytes Int64 start copy
+findPort result port machine.Address
+findPort ownedBy none
+findPort cleanedBy none
+findPort borrows none
+findPort catch none
+findPort suppresses none
+
+portLength is call
+portLength in portWithin
+portLength invokes math.subtractInt64
+portLength argument left Int64 scopeBytes copy
+portLength argument right Int64 start copy
+portLength result portBytes Int64
+portLength ownedBy none
+portLength cleanedBy none
+portLength borrows none
+portLength catch none
+portLength suppresses none
+
+sameIt is call
+sameIt in portWithin
+sameIt invokes memory.bytesEqual
+sameIt argument left machine.Address value copy
+sameIt argument leftBytes Int64 valueBytes copy
+sameIt argument right machine.Address port copy
+sameIt argument rightBytes Int64 portBytes copy
+sameIt result same Int32
+sameIt ownedBy none
+sameIt cleanedBy none
+sameIt borrows none
+sameIt catch none
+sameIt suppresses none
+
+sameCheck is call
+sameCheck in portWithin
+sameCheck invokes compare.notEqualInt32
+sameCheck argument left Int32 same copy
+sameCheck argument right Int32 zero32 copy
+sameCheck result equal Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+addressWithin is operation
+addressWithin purpose "Whether an address falls inside a `net.outbound` scope, as semantics.address_within decides: the same text, or the scope's text then a colon or slash (or the scope ends with one)"
+addressWithin invariant none
+addressWithin typeParameter none
+addressWithin input value machine.Address copied
+addressWithin input valueBytes Int64 copied
+addressWithin input scope machine.Address copied
+addressWithin input scopeBytes Int64 copied
+addressWithin output Bool
+addressWithin outputOwnedBy none
+addressWithin raises none
+addressWithin effect use machine.memory
+addressWithin uses memoryAccess
+addressWithin memoryHeap false
+addressWithin async false
+addressWithin maxRecursion none
+addressWithin label begin loopKind none
+addressWithin label begin within none
+addressWithin label prefix loopKind none
+addressWithin label prefix within none
+addressWithin label lengthCheck loopKind none
+addressWithin label lengthCheck within none
+addressWithin label scopeEnd loopKind none
+addressWithin label scopeEnd within none
+addressWithin label lastByte loopKind none
+addressWithin label lastByte within none
+addressWithin label nextByte loopKind none
+addressWithin label nextByte within none
+addressWithin label allow loopKind none
+addressWithin label allow within none
+addressWithin label refuse loopKind none
+addressWithin label refuse within none
+addressWithin let yes Bool true immutable
+addressWithin let no Bool false immutable
+addressWithin let colon Byte 58 immutable
+addressWithin let slash Byte 47 immutable
+addressWithin let zero32 Int32 0 immutable
+addressWithin let zero Int64 0 immutable
+addressWithin let one Int64 1 immutable
+addressWithin at begin do shortCheck
+addressWithin at begin branch if short goto refuse else goto prefix
+addressWithin at prefix do sameIt
+addressWithin at prefix do sameCheck
+addressWithin at prefix branch if starts goto lengthCheck else goto refuse
+addressWithin at lengthCheck do equalCheck
+addressWithin at lengthCheck branch if equal goto allow else goto scopeEnd
+addressWithin at scopeEnd do emptyCheck
+addressWithin at scopeEnd branch if emptyScope goto nextByte else goto lastByte
+addressWithin at lastByte do lastOf
+addressWithin at lastByte do readLast
+addressWithin at lastByte do colonCheck
+addressWithin at lastByte do slashCheck
+addressWithin at lastByte do endCheck
+addressWithin at lastByte branch if endsOpen goto allow else goto nextByte
+addressWithin at nextByte do readNext
+addressWithin at nextByte do nextColon
+addressWithin at nextByte do nextSlash
+addressWithin at nextByte do nextCheck
+addressWithin at nextByte branch if separated goto allow else goto refuse
+addressWithin at allow return ok yes
+addressWithin at refuse return ok no
+
+shortCheck is call
+shortCheck in addressWithin
+shortCheck invokes compare.lessThanInt64
+shortCheck argument left Int64 valueBytes copy
+shortCheck argument right Int64 scopeBytes copy
+shortCheck result short Bool
+shortCheck ownedBy none
+shortCheck cleanedBy none
+shortCheck borrows none
+shortCheck catch none
+shortCheck suppresses none
+
+sameIt is call
+sameIt in addressWithin
+sameIt invokes memory.bytesEqual
+sameIt argument left machine.Address value copy
+sameIt argument leftBytes Int64 scopeBytes copy
+sameIt argument right machine.Address scope copy
+sameIt argument rightBytes Int64 scopeBytes copy
+sameIt result same Int32
+sameIt ownedBy none
+sameIt cleanedBy none
+sameIt borrows none
+sameIt catch none
+sameIt suppresses none
+
+sameCheck is call
+sameCheck in addressWithin
+sameCheck invokes compare.notEqualInt32
+sameCheck argument left Int32 same copy
+sameCheck argument right Int32 zero32 copy
+sameCheck result starts Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+equalCheck is call
+equalCheck in addressWithin
+equalCheck invokes compare.equalInt64
+equalCheck argument left Int64 valueBytes copy
+equalCheck argument right Int64 scopeBytes copy
+equalCheck result equal Bool
+equalCheck ownedBy none
+equalCheck cleanedBy none
+equalCheck borrows none
+equalCheck catch none
+equalCheck suppresses none
+
+emptyCheck is call
+emptyCheck in addressWithin
+emptyCheck invokes compare.equalInt64
+emptyCheck argument left Int64 scopeBytes copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result emptyScope Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+lastOf is call
+lastOf in addressWithin
+lastOf invokes math.subtractInt64
+lastOf argument left Int64 scopeBytes copy
+lastOf argument right Int64 one copy
+lastOf result last Int64
+lastOf ownedBy none
+lastOf cleanedBy none
+lastOf borrows none
+lastOf catch none
+lastOf suppresses none
+
+readLast is call
+readLast in addressWithin
+readLast invokes byteAt
+readLast argument text machine.Address scope copy
+readLast argument position Int64 last copy
+readLast result ending Byte
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch none
+readLast suppresses none
+
+colonCheck is call
+colonCheck in addressWithin
+colonCheck invokes compare.equalByte
+colonCheck argument left Byte ending copy
+colonCheck argument right Byte colon copy
+colonCheck result endsColon Bool
+colonCheck ownedBy none
+colonCheck cleanedBy none
+colonCheck borrows none
+colonCheck catch none
+colonCheck suppresses none
+
+slashCheck is call
+slashCheck in addressWithin
+slashCheck invokes compare.equalByte
+slashCheck argument left Byte ending copy
+slashCheck argument right Byte slash copy
+slashCheck result endsSlash Bool
+slashCheck ownedBy none
+slashCheck cleanedBy none
+slashCheck borrows none
+slashCheck catch none
+slashCheck suppresses none
+
+endCheck is call
+endCheck in addressWithin
+endCheck invokes logic.or
+endCheck argument left Bool endsColon copy
+endCheck argument right Bool endsSlash copy
+endCheck result endsOpen Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+readNext is call
+readNext in addressWithin
+readNext invokes byteAt
+readNext argument text machine.Address value copy
+readNext argument position Int64 scopeBytes copy
+readNext result following Byte
+readNext ownedBy none
+readNext cleanedBy none
+readNext borrows none
+readNext catch none
+readNext suppresses none
+
+nextColon is call
+nextColon in addressWithin
+nextColon invokes compare.equalByte
+nextColon argument left Byte following copy
+nextColon argument right Byte colon copy
+nextColon result isColon Bool
+nextColon ownedBy none
+nextColon cleanedBy none
+nextColon borrows none
+nextColon catch none
+nextColon suppresses none
+
+nextSlash is call
+nextSlash in addressWithin
+nextSlash invokes compare.equalByte
+nextSlash argument left Byte following copy
+nextSlash argument right Byte slash copy
+nextSlash result isSlash Bool
+nextSlash ownedBy none
+nextSlash cleanedBy none
+nextSlash borrows none
+nextSlash catch none
+nextSlash suppresses none
+
+nextCheck is call
+nextCheck in addressWithin
+nextCheck invokes logic.or
+nextCheck argument left Bool isColon copy
+nextCheck argument right Bool isSlash copy
+nextCheck result separated Bool
+nextCheck ownedBy none
+nextCheck cleanedBy none
+nextCheck borrows none
+nextCheck catch none
+nextCheck suppresses none
 
 addString is operation
 addString purpose "Add a text to a builder"

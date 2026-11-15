@@ -2680,6 +2680,45 @@ The five modules stage 4 left to `refined run` (D-137) moved into `semanticscrip
   significant first above that, the last shifted down) until it falls below the width, so a generator gives the
   same numbers as under `refined run` for every seed and range, the full range of Int64 included. A generator is a
   heap block of its 624 words and the next word's place, a `Generator` handle owned by its region.
+- **D-147** `signal` is the module `interrupts`, as `refined run` handles SIGINT for a program that reads `signal`:
+  the first interrupt sets the flag `signal.interrupted` reads and ends a `signal.waitForInterrupt`; the second ends
+  the process with exit code 130. The handler is installed before the program's entry runs, as the JIT installs its
+  own before it runs the program: native.py's `refined_program_main` calls the runtime's `refined_signals_start`
+  first when the program calls a signal target. The handler is an `abi c` operation, `refined_interrupt_handler`,
+  whose address `machine.interruptHandler()` gives, the second place the language hands out an operation's address
+  (after D-131's `taskEntry`) and on the same terms: fixed by name, only in the runtime. On Windows it is a console
+  control handler (`SetConsoleCtrlHandler`) for CTRL_C_EVENT only, as Python maps CTRL+C alone to SIGINT, other
+  events left to the system; it runs on a thread the system makes, so it sets the flag, counts a change in the
+  scheduler's generation, and sets an auto-reset event that the scheduler's sleep also waits on (without counting it
+  against a deadlock, so a wait for an interrupt with no deadline and nothing else to wait for is a deadlock, as
+  under `refined run`). On Linux it is an `rt_sigaction` handler for SIGINT with SA_RESTART, so reads and writes go
+  on, and SA_RESTORER, the runtime's `rt_sigreturn` trampoline of module assembly (`machine.signalRestorer()`); the
+  signal ends the scheduler's `poll` by itself. A wait honours its deadline and cancellation as other waits do.
+  `ctrlc.py` sends CTRL+C on Windows to a console of the test's own, since CTRL+C cannot be sent to one process.
+- **D-148** `net` is the module `sockets`, IPv4 TCP as host.py has it. A socket never blocks the program: it is
+  non-blocking (WSAEventSelect on Windows, SOCK_NONBLOCK on Linux), and a call that would block waits through the
+  scheduler on the socket's event (Windows) or its descriptor (Linux, as POLLIN, or POLLOUT for connect and write:
+  the descriptor plus one, with 2^32 added for POLLOUT), so other tasks run meanwhile and deadlines hold; accept and
+  read stop for a cancelled task and a passed deadline before they try, as host.py's `_until_ready` does, and connect
+  and write are not cancelled, as host.py's are not; a deadline already passed tries once without waiting, as a
+  Python timeout of 0 does. Errors are what `_net_error` makes of Python's: a timeout (ETIMEDOUT too) timedOut,
+  ECONNREFUSED refused, a reset, an abort, a broken pipe, or a shut-down socket closed, anything else failed with
+  Python's errno (the Winsock code on Windows, as winerror_to_errno leaves all but six); a port that is not a whole
+  number as int() reads text is failed 22, and `net.listen` of a port outside 0 to 65535 traps with Python's
+  OverflowError. `listen` binds the capability scope's host (127.0.0.1 when it names none) with SO_REUSEADDR on
+  Linux, as Python's socket does there, and a backlog of 128. Connections and listeners are handles with no region
+  (the caller owns them); a trap needs no release, since the system closes a process's sockets as it ends. The
+  scope check of D-38 now covers `net.tcp` (the port's decimal text against the text after the scope's last colon)
+  and `net.outbound` (address_within). Winsock's rows are named `winsock<Name>` beside Linux's system calls of the
+  same names. tests/nettour.py prints exactly what `refined run` prints.
+- **D-149** Names are resolved as Python's create_connection resolves them, IPv4 only (where getaddrinfo would also
+  give IPv6 addresses, the executable tries the IPv4 ones, which is what reaches an IPv4 listener): on Windows by
+  ws2_32's getaddrinfo with AF_INET hints; on Linux, with no C library to call, by a resolver written in the runtime:
+  a numeric address in any form glibc's inet_aton reads, else the first IPv4 line of /etc/hosts that names the host
+  in any case, else an A query over UDP to the first nameserver of /etc/resolv.conf (127.0.0.1 when it names none),
+  five seconds a try and two tries as glibc's defaults are, through the scheduler. A name that does not exist is
+  EAI_NONAME (-2), one with no address EAI_NODATA (-5), and no answer or a server's failure EAI_AGAIN (-3), the
+  errnos Python's gaierror carries; search domains and IPv6 are not used.
 - **D-151** `json` is two modules: `values`, below `handles`, which keeps JSON values as `refined run` keeps Python
   objects (an array or object is shared, so what `field` and `item` give and what `setValue` stores is the same
   value, and a change shows through every handle and container that holds it; each value is counted, and the last
@@ -3216,7 +3255,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-126 to D-130 | The runtime in SemanticScript, stage 2: host dispatch by target number, Float64 bit conversions, the process heap, floating-point text as `refined run` writes it (C runtime fixed), host objects and R901 for host targets (by delegation) |
 | 2026-11-14 | D-131 to D-137 | The runtime in SemanticScript, stages 3 and 4: `machine.taskEntry`, kernel32 rows for files, processes, time, and fibers, tasks on fibers with deadlock detection and cancellation, test callbacks, one-module executables, channels, secrets, crypto, foreign libraries (by delegation) |
 | 2026-11-14 | D-138 to D-143 | The runtime in SemanticScript, stage 5: Linux through raw system calls (`LINUX_CALLS`, `system.linux`), the runtime's own stacks and heap on Linux, `ffi` refused there, the only runtime (macOS refused), stage0's C linking the runtime object, `native_runtime.c` deleted (by delegation) |
-| 2026-11-15 | D-144 to D-146, D-151, D-152 | The runtime in SemanticScript, the rest of the library: "no C library" worded (OS interfaces ws2_32 and bcrypt allowed, never a CRT), the platform limits (ffi on Linux, macOS), `random` (CPython's Mersenne Twister, the system's secure source), `json` (CPython's scanner and encoder, shared counted values), `http` (by delegation) |
+| 2026-11-15 | D-144 to D-149, D-151, D-152 | The runtime in SemanticScript, the rest of the library: "no C library" worded (OS interfaces ws2_32 and bcrypt allowed, never a CRT), the platform limits (ffi on Linux, macOS), `random` (CPython's Mersenne Twister, the system's secure source), `signal` (console control handler, rt_sigaction), `net` (non-blocking sockets through the scheduler, a resolver for Linux), `json` (CPython's scanner and encoder, shared counted values), `http` (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |
