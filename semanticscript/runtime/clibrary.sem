@@ -474,7 +474,7 @@ storeIt catch none
 storeIt suppresses none
 
 errnoCell is operation
-errnoCell purpose "The running thread's errno (D-166): machine.state's cell for the first thread (and wherever no C program started threads), and 0x40 of its thread block for a thread threads.h started"
+errnoCell purpose "The running thread's errno (D-166): machine.state's cell for the first thread (and wherever no C program started threads; on Windows for every thread, D-168), and 0x40 of its thread block for a thread threads.h started on Linux"
 errnoCell invariant firstThreadsCell "\"The first thread's errno is machine.state's cell\""
 errnoCell typeParameter none
 errnoCell input none

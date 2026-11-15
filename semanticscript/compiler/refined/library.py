@@ -288,6 +288,8 @@ def _machine() -> dict:
         "threadPointer": Sig((), _A, effects=_MEM),
         "setThreadPointer": Sig((_at("block"),), effects=_MEM),
         "startThread": Sig((_at("stackTop"), _at("block"), _at("tidAt"), _at("record")), "Int64", effects=_MEM),
+        # D-168: the address of the runtime's `refined_c_thread_main`, where a Windows thread starts (CreateThread)
+        "threadEntry": Sig((), _A, effects=_MEM),
         # D-167: fenv.h and fma. `loadFloatControl` is the floating-point control and status (x86_64: MXCSR in the low
         # 32 bits; AArch64: FPCR | FPSR << 32), `storeFloatControl` sets them; `fusedMultiplyAdd` is a * b + c rounded
         # once (llvm.fma: one instruction, FMA3 on x86_64, which every x86_64 processor since 2015 has)
@@ -399,6 +401,15 @@ SYSTEM_CALLS.update({
                             "Int32"),
     "getDynamicTimeZoneInformation": _sys("GetDynamicTimeZoneInformation", ("information:A",), "Int32"),
     "sleep": _sys("Sleep", ("milliseconds:Int32",)),
+    # D-168: threads.h on Windows: threads, the thread-local slot a thread's block is kept in, and the running thread
+    "createThread": _sys("CreateThread", ("security:A", "stackBytes:Int64", "start:A", "parameter:A", "flags:Int32",
+                                          "threadId:A"), "A"),
+    "exitThread": _sys("ExitThread", ("code:Int32",)),
+    "switchToThread": _sys("SwitchToThread", (), "Int32"),
+    "getCurrentThreadId": _sys("GetCurrentThreadId", (), "Int32"),
+    "tlsAlloc": _sys("TlsAlloc", (), "Int32"),
+    "tlsGetValue": _sys("TlsGetValue", ("index:Int32",), "A"),
+    "tlsSetValue": _sys("TlsSetValue", ("index:Int32", "value:A"), "Int32"),
     "convertThreadToFiber": _sys("ConvertThreadToFiber", ("parameter:A",), "A"),
     "createFiberEx": _sys("CreateFiberEx", ("commitBytes:Int64", "reserveBytes:Int64", "flags:Int32", "start:A",
                                             "parameter:A"), "A"),

@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(WT, "semanticscript", "compiler"))
 
 from refined.library import LIBRARY, BUILTINS, generic_members  # noqa: E402
 from refined.fmt import format_text  # noqa: E402
+from refined.shapes import RESERVED as _RESERVED_NAMES  # noqa: E402
 
 STD = set(LIBRARY.keys())
 MODES = {"copied": "copy", "borrowed": "lend", "borrowedMutable": "lendMutable", "owned": "give"}
@@ -421,6 +422,8 @@ class OpBuilder:
 
     # ---------------------------------------------------------------- names
     def claim(self, name):
+        if name in _RESERVED_NAMES:
+            raise GenError(f"{self.name}: {name} is a reserved word and cannot name a value or a block")
         if name in self.names:
             raise GenError(f"{self.name}: name {name} used twice")
         if name in self.m.constants or name in self.m.ops or name in self.m.tables:

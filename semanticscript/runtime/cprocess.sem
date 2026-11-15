@@ -126,7 +126,7 @@ doExitProcess suppresses none
 # ---------------------------------------------------------------- setjmp.h (D-163)
 saveJump is operation
 saveJump purpose "setjmp: keep where its caller is, to come back by longjmp; 0 now (the compiler emits this operation as the routine itself)"
-saveJump invariant none
+saveJump invariant keepsPlace "\"Gives 0, and again the value longjmp passes when it comes back\""
 saveJump typeParameter none
 saveJump input buffer machine.Address copied
 saveJump output Int32
@@ -220,7 +220,7 @@ readResult suppresses none
 
 jump is operation
 jump purpose "longjmp: return from the setjmp that filled a buffer again, with a value (1 for 0)"
-jump invariant none
+jump invariant comesBack "\"Returns from the setjmp that filled the buffer again, 1 for 0\""
 jump typeParameter none
 jump input buffer machine.Address copied
 jump input value Int32 copied

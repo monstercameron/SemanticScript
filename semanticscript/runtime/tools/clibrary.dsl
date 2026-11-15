@@ -137,7 +137,7 @@ op setErrno "Set errno, the cell __errno_location gives"
   storeIt: machine.storeInt32(cell, value)
   return
 
-op errnoCell "The running thread's errno (D-166): machine.state's cell for the first thread (and wherever no C program started threads), and 0x40 of its thread block for a thread threads.h started"
+op errnoCell "The running thread's errno (D-166): machine.state's cell for the first thread (and wherever no C program started threads; on Windows for every thread, D-168), and 0x40 of its thread block for a thread threads.h started on Linux"
   invariant firstThreadsCell "The first thread's errno is machine.state's cell"
   output machine.Address
   effect use machine.memory

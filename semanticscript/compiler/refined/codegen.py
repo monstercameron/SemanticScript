@@ -240,8 +240,9 @@ _AARCH64_START = [
 ]
 # D-163: setjmp's and longjmp's routines. The buffer (glibc's __jmp_buf_tag, 200 bytes on x86_64 and 312 on AArch64,
 # opaque to the program) holds, on x86_64 Linux, rbx rbp r12 r13 r14 r15, the caller's stack pointer, and the return
-# address; on AArch64 x19 to x30, sp, and d8 to d15. On Windows the routines trap: a program reaches the C library
-# through `ffi` there, and a foreign call cannot return twice. The signal mask is neither kept nor restored (sigsetjmp's `savemask` is noted and ignored).
+# address (on Windows x64 also rdi, rsi, and xmm6 to xmm15, which its convention keeps); on AArch64, Linux and
+# Windows alike, x19 to x30, sp, and d8 to d15 (D-170). The signal mask is neither kept nor restored (sigsetjmp's
+# `savemask` is noted and ignored).
 _CONTEXT_ROUTINES = {
     ("x86_64", "linux", "save"): "\n".join([
         "movq %rbx, 0(%rdi)", "movq %rbp, 8(%rdi)", "movq %r12, 16(%rdi)", "movq %r13, 24(%rdi)",
@@ -251,6 +252,22 @@ _CONTEXT_ROUTINES = {
         "movq 0(%rdi), %rbx", "movq 8(%rdi), %rbp", "movq 16(%rdi), %r12", "movq 24(%rdi), %r13",
         "movq 32(%rdi), %r14", "movq 40(%rdi), %r15", "movq 48(%rdi), %rsp", "movl %esi, %eax", "testl %eax, %eax",
         "jnz 1f", "incl %eax", "1:", "jmpq *56(%rdi)"]),
+    ("x86_64", "windows", "save"): "\n".join([
+        "movq %rbx, 0(%rcx)", "movq %rbp, 8(%rcx)", "movq %r12, 16(%rcx)", "movq %r13, 24(%rcx)",
+        "movq %r14, 32(%rcx)", "movq %r15, 40(%rcx)", "leaq 8(%rsp), %rdx", "movq %rdx, 48(%rcx)",
+        "movq (%rsp), %rdx", "movq %rdx, 56(%rcx)", "movq %rdi, 64(%rcx)", "movq %rsi, 72(%rcx)",
+        "movdqu %xmm6, 80(%rcx)", "movdqu %xmm7, 96(%rcx)", "movdqu %xmm8, 112(%rcx)", "movdqu %xmm9, 128(%rcx)",
+        "movdqu %xmm10, 144(%rcx)", "movdqu %xmm11, 160(%rcx)", "movdqu %xmm12, 176(%rcx)",
+        "movdqu %xmm13, 192(%rcx)", "movdqu %xmm14, 208(%rcx)", "movdqu %xmm15, 224(%rcx)", "xorl %eax, %eax",
+        "retq"]),
+    ("x86_64", "windows", "resume"): "\n".join([
+        "movq 0(%rcx), %rbx", "movq 8(%rcx), %rbp", "movq 16(%rcx), %r12", "movq 24(%rcx), %r13",
+        "movq 32(%rcx), %r14", "movq 40(%rcx), %r15", "movq 64(%rcx), %rdi", "movq 72(%rcx), %rsi",
+        "movdqu 80(%rcx), %xmm6", "movdqu 96(%rcx), %xmm7", "movdqu 112(%rcx), %xmm8", "movdqu 128(%rcx), %xmm9",
+        "movdqu 144(%rcx), %xmm10", "movdqu 160(%rcx), %xmm11", "movdqu 176(%rcx), %xmm12",
+        "movdqu 192(%rcx), %xmm13", "movdqu 208(%rcx), %xmm14", "movdqu 224(%rcx), %xmm15",
+        "movq 48(%rcx), %rsp", "movl %edx, %eax", "testl %eax, %eax", "jnz 1f", "incl %eax", "1:",
+        "jmpq *56(%rcx)"]),
     ("aarch64", "linux", "save"): "\n".join([
         "stp x19, x20, [x0, #0]", "stp x21, x22, [x0, #16]", "stp x23, x24, [x0, #32]", "stp x25, x26, [x0, #48]",
         "stp x27, x28, [x0, #64]", "stp x29, x30, [x0, #80]", "mov x2, sp", "str x2, [x0, #104]",
@@ -279,6 +296,13 @@ _THREAD_START = {
                 "  svc #0", "  cbnz x0, 1f", "  ldr x0, [sp]", "  ldr x9, [sp, #8]", "  mov x29, xzr", "  mov x30, xzr",
                 "  blr x9", "  mov x0, #0", "  mov x8, #93", "  svc #0", "  brk #0", "1:", "  ret"],
 }
+def _host_assembles_x86() -> bool:
+    """Whether this machine's LLVM can assemble x86 instructions: llvmlite registers only the host's own assembler
+    parser, so an x86_64 host can and an ARM64 one cannot (D-170)."""
+    import platform as host
+    return host.machine().lower() in ("amd64", "x86_64", "x64")
+
+
 # D-147: what a Linux signal handler returns through (SA_RESTORER): the rt_sigreturn system call
 _X86_64_RESTORER = [
     ".text",
@@ -534,7 +558,16 @@ class Backend:
             raise Unsupported(info.module.file, info.entity.line, "`machine.saveContext` or `machine.resumeContext` "
                               "outside an `abi library` operation whose one call it is (D-163)")
         arch = self.module.triple.split("-")[0]
-        text = _CONTEXT_ROUTINES.get((arch, self.linux_arch() and "linux", found[0]))
+        if arch == "arm64":
+            arch = "aarch64"
+        system = "linux" if self.linux_arch() else ("windows" if self.os == "windows" else "")
+        if arch == "aarch64":
+            system = "linux"  # D-170: Windows on ARM keeps the same registers as AAPCS64, so one routine serves both
+        text = _CONTEXT_ROUTINES.get((arch, system, found[0]))
+        if (arch, system) == ("x86_64", "windows") and not _host_assembles_x86():
+            # D-170: LLVM assembles a routine with the target's assembler, which a host of another architecture may
+            # not have (llvmlite on ARM64 has only its own); such an object traps there instead
+            text = None
         b = ir.IRBuilder(fn.append_basic_block("entry"))
         fn.attributes.add("noinline")
         if text is None:
@@ -1985,6 +2018,13 @@ class OpGen:
             place = b.bitcast(area, PTR)
             b.call(start, [place])
             return place, None, None
+        if name == "threadEntry":
+            # D-168: only the runtime has it: the operation a Windows thread threads.h starts begins in
+            if "refined_c_thread_main" not in self.be.abi:
+                self.unsupported(line, "`machine.threadEntry` in a program with no operation exported to C as "
+                                       "refined_c_thread_main")
+            mod, op = self.be.abi["refined_c_thread_main"]
+            return b.bitcast(self.be.function_for(mod, op, None, 0), PTR), None, None
         if name == "taskEntry":
             # D-131: only the runtime has it, and only for the operation a task's fiber starts in
             if "refined_task_entry" not in self.be.abi:

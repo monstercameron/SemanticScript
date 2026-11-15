@@ -6,6 +6,8 @@ mutexTest purpose "A plain mutex is taken, refused to a second try, and given ba
 mutexTest verifies lockMutex excludesOthers
 mutexTest verifies keyValue keepsValues
 mutexTest verifies currentThread knowsItself
+mutexTest verifies timedLockMutex stopsAtDeadline
+mutexTest verifies timedWaitCondition waitsUntilDeadline
 mutexTest typeParameter none
 mutexTest input none
 mutexTest output none
@@ -24,6 +26,10 @@ mutexTest let n40 Int64 40 immutable
 mutexTest let int320 Int32 0 immutable
 mutexTest let int321 Int32 1 immutable
 mutexTest let eight Int64 8 immutable
+mutexTest let sixteen Int64 16 immutable
+mutexTest let one Int64 1 immutable
+mutexTest let int324 Int32 4 immutable
+mutexTest let n48 Int64 48 immutable
 mutexTest at begin do readMutex
 mutexTest at begin do readUnusedInitMutex
 mutexTest at begin do readFirst
@@ -61,6 +67,20 @@ mutexTest at begin do readCurrent
 mutexTest at begin do readSame
 mutexTest at begin do doAssertTrueStep8
 mutexTest at begin do doAssertTrue8
+mutexTest at begin do readPast
+mutexTest at begin do doStoreInt64
+mutexTest at begin do readPlain
+mutexTest at begin do readUnusedInitMutex3
+mutexTest at begin do readUnusedLockMutex2
+mutexTest at begin do readLate
+mutexTest at begin do doAssertTrueStep9
+mutexTest at begin do doAssertTrue9
+mutexTest at begin do readCondition
+mutexTest at begin do readUnusedInitCondition
+mutexTest at begin do readWaited
+mutexTest at begin do doAssertTrueStep10
+mutexTest at begin do doAssertTrue10
+mutexTest at begin do readUnusedUnlockMutex5
 mutexTest at begin return ok none
 
 readMutex is call
@@ -483,6 +503,167 @@ doAssertTrue8 borrows none
 doAssertTrue8 catch none
 doAssertTrue8 suppresses none
 
+readPast is call
+readPast in mutexTest
+readPast invokes heap.take
+readPast argument bytes Int64 sixteen copy
+readPast result past machine.Address
+readPast ownedBy none
+readPast cleanedBy none
+readPast borrows none
+readPast catch none
+readPast suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in mutexTest
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address past copy
+doStoreInt64 argument value Int64 one copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+readPlain is call
+readPlain in mutexTest
+readPlain invokes heap.take
+readPlain argument bytes Int64 n40 copy
+readPlain result plain machine.Address
+readPlain ownedBy none
+readPlain cleanedBy none
+readPlain borrows none
+readPlain catch none
+readPlain suppresses none
+
+readUnusedInitMutex3 is call
+readUnusedInitMutex3 in mutexTest
+readUnusedInitMutex3 invokes initMutex
+readUnusedInitMutex3 argument mutex machine.Address plain copy
+readUnusedInitMutex3 argument kind Int32 int320 copy
+readUnusedInitMutex3 result unusedInitMutex3 Int32
+readUnusedInitMutex3 ownedBy none
+readUnusedInitMutex3 cleanedBy none
+readUnusedInitMutex3 borrows none
+readUnusedInitMutex3 catch none
+readUnusedInitMutex3 suppresses none
+
+readUnusedLockMutex2 is call
+readUnusedLockMutex2 in mutexTest
+readUnusedLockMutex2 invokes lockMutex
+readUnusedLockMutex2 argument mutex machine.Address plain copy
+readUnusedLockMutex2 result unusedLockMutex2 Int32
+readUnusedLockMutex2 ownedBy none
+readUnusedLockMutex2 cleanedBy none
+readUnusedLockMutex2 borrows none
+readUnusedLockMutex2 catch none
+readUnusedLockMutex2 suppresses none
+
+readLate is call
+readLate in mutexTest
+readLate invokes timedLockMutex
+readLate argument mutex machine.Address plain copy
+readLate argument deadline machine.Address past copy
+readLate result late Int32
+readLate ownedBy none
+readLate cleanedBy none
+readLate borrows none
+readLate catch none
+readLate suppresses none
+
+doAssertTrueStep9 is call
+doAssertTrueStep9 in mutexTest
+doAssertTrueStep9 invokes compare.equalInt32
+doAssertTrueStep9 argument left Int32 late copy
+doAssertTrueStep9 argument right Int32 int324 copy
+doAssertTrueStep9 result doAssertTruePart9 Bool
+doAssertTrueStep9 ownedBy none
+doAssertTrueStep9 cleanedBy none
+doAssertTrueStep9 borrows none
+doAssertTrueStep9 catch none
+doAssertTrueStep9 suppresses none
+
+doAssertTrue9 is call
+doAssertTrue9 in mutexTest
+doAssertTrue9 invokes test.assertTrue
+doAssertTrue9 argument value Bool doAssertTruePart9 copy
+doAssertTrue9 result none
+doAssertTrue9 ownedBy none
+doAssertTrue9 cleanedBy none
+doAssertTrue9 borrows none
+doAssertTrue9 catch none
+doAssertTrue9 suppresses none
+
+readCondition is call
+readCondition in mutexTest
+readCondition invokes heap.take
+readCondition argument bytes Int64 n48 copy
+readCondition result condition machine.Address
+readCondition ownedBy none
+readCondition cleanedBy none
+readCondition borrows none
+readCondition catch none
+readCondition suppresses none
+
+readUnusedInitCondition is call
+readUnusedInitCondition in mutexTest
+readUnusedInitCondition invokes initCondition
+readUnusedInitCondition argument condition machine.Address condition copy
+readUnusedInitCondition result unusedInitCondition Int32
+readUnusedInitCondition ownedBy none
+readUnusedInitCondition cleanedBy none
+readUnusedInitCondition borrows none
+readUnusedInitCondition catch none
+readUnusedInitCondition suppresses none
+
+readWaited is call
+readWaited in mutexTest
+readWaited invokes timedWaitCondition
+readWaited argument condition machine.Address condition copy
+readWaited argument mutex machine.Address plain copy
+readWaited argument deadline machine.Address past copy
+readWaited result waited Int32
+readWaited ownedBy none
+readWaited cleanedBy none
+readWaited borrows none
+readWaited catch none
+readWaited suppresses none
+
+doAssertTrueStep10 is call
+doAssertTrueStep10 in mutexTest
+doAssertTrueStep10 invokes compare.equalInt32
+doAssertTrueStep10 argument left Int32 waited copy
+doAssertTrueStep10 argument right Int32 int324 copy
+doAssertTrueStep10 result doAssertTruePart10 Bool
+doAssertTrueStep10 ownedBy none
+doAssertTrueStep10 cleanedBy none
+doAssertTrueStep10 borrows none
+doAssertTrueStep10 catch none
+doAssertTrueStep10 suppresses none
+
+doAssertTrue10 is call
+doAssertTrue10 in mutexTest
+doAssertTrue10 invokes test.assertTrue
+doAssertTrue10 argument value Bool doAssertTruePart10 copy
+doAssertTrue10 result none
+doAssertTrue10 ownedBy none
+doAssertTrue10 cleanedBy none
+doAssertTrue10 borrows none
+doAssertTrue10 catch none
+doAssertTrue10 suppresses none
+
+readUnusedUnlockMutex5 is call
+readUnusedUnlockMutex5 in mutexTest
+readUnusedUnlockMutex5 invokes unlockMutex
+readUnusedUnlockMutex5 argument mutex machine.Address plain copy
+readUnusedUnlockMutex5 result unusedUnlockMutex5 Int32
+readUnusedUnlockMutex5 ownedBy none
+readUnusedUnlockMutex5 cleanedBy none
+readUnusedUnlockMutex5 borrows none
+readUnusedUnlockMutex5 catch none
+readUnusedUnlockMutex5 suppresses none
+
 floatControlTest is test
 floatControlTest purpose "The floating-point control reads back what was stored, and a fused multiply-add rounds once"
 floatControlTest verifies floatControl startsAsCreator
@@ -680,3 +861,236 @@ doAssertTrue3 cleanedBy none
 doAssertTrue3 borrows none
 doAssertTrue3 catch none
 doAssertTrue3 suppresses none
+
+threadTest is test
+threadTest purpose "On Windows a thread runs a C function (strlen) on its argument and thrd_join gives what it returned (Linux's threads are proved by tests/cprograms/threads_c11.c, since the JIT's own process is glibc's there)"
+threadTest verifies createThread startsThreads
+threadTest verifies joinThread givesResult
+threadTest typeParameter none
+threadTest input none
+threadTest output none
+threadTest outputOwnedBy none
+threadTest raises none
+threadTest effect use machine.memory
+threadTest effect use system.calls
+threadTest uses memoryAccess
+threadTest uses systemCalls
+threadTest memoryHeap false
+threadTest async false
+threadTest maxRecursion none
+threadTest label begin loopKind none
+threadTest label begin within none
+threadTest label run loopKind none
+threadTest label run within none
+threadTest label skip loopKind none
+threadTest label skip within none
+threadTest let strlenName String "strlen" immutable
+threadTest let hello String "hello" immutable
+threadTest let six Int64 6 immutable
+threadTest let eight Int64 8 immutable
+threadTest let five Int64 5 immutable
+threadTest let int320 Int32 0 immutable
+threadTest let int325 Int32 5 immutable
+threadTest at begin do readOnLinux
+threadTest at begin branch if onLinux goto skip else goto run
+threadTest at run do readNameAt
+threadTest at run do readFunction
+threadTest at run do readText
+threadTest at run do readHelloAt
+threadTest at run do doCopy
+threadTest at run do readCell
+threadTest at run do readStatus
+threadTest at run do doAssertTrueStep1
+threadTest at run do doAssertTrue
+threadTest at run do readThread
+threadTest at run do readResultCell
+threadTest at run do readUnusedJoinThread
+threadTest at run do readResult
+threadTest at run do doAssertTrueStep2
+threadTest at run do doAssertTrue2
+threadTest at run return ok none
+threadTest at skip return ok none
+
+readOnLinux is call
+readOnLinux in threadTest
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readNameAt is call
+readNameAt in threadTest
+readNameAt invokes machine.addressOfString
+readNameAt argument text String strlenName lend
+readNameAt result nameAt machine.Address
+readNameAt ownedBy none
+readNameAt cleanedBy none
+readNameAt borrows none
+readNameAt catch none
+readNameAt suppresses none
+
+readFunction is call
+readFunction in threadTest
+readFunction invokes clibrary.lookup
+readFunction argument name machine.Address nameAt copy
+readFunction argument bytes Int64 six copy
+readFunction result function machine.Address
+readFunction ownedBy none
+readFunction cleanedBy none
+readFunction borrows none
+readFunction catch none
+readFunction suppresses none
+
+readText is call
+readText in threadTest
+readText invokes heap.take
+readText argument bytes Int64 eight copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+readHelloAt is call
+readHelloAt in threadTest
+readHelloAt invokes machine.addressOfString
+readHelloAt argument text String hello lend
+readHelloAt result helloAt machine.Address
+readHelloAt ownedBy none
+readHelloAt cleanedBy none
+readHelloAt borrows none
+readHelloAt catch none
+readHelloAt suppresses none
+
+doCopy is call
+doCopy in threadTest
+doCopy invokes machine.copy
+doCopy argument target machine.Address text copy
+doCopy argument source machine.Address helloAt copy
+doCopy argument bytes Int64 five copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+readCell is call
+readCell in threadTest
+readCell invokes heap.take
+readCell argument bytes Int64 eight copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+readStatus is call
+readStatus in threadTest
+readStatus invokes createThread
+readStatus argument thread machine.Address cell copy
+readStatus argument function machine.Address function copy
+readStatus argument argument machine.Address text copy
+readStatus result status Int32
+readStatus ownedBy none
+readStatus cleanedBy none
+readStatus borrows none
+readStatus catch none
+readStatus suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in threadTest
+doAssertTrueStep1 invokes compare.equalInt32
+doAssertTrueStep1 argument left Int32 status copy
+doAssertTrueStep1 argument right Int32 int320 copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in threadTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readThread is call
+readThread in threadTest
+readThread invokes machine.loadAddress
+readThread argument address machine.Address cell copy
+readThread result thread machine.Address
+readThread ownedBy none
+readThread cleanedBy none
+readThread borrows none
+readThread catch none
+readThread suppresses none
+
+readResultCell is call
+readResultCell in threadTest
+readResultCell invokes heap.take
+readResultCell argument bytes Int64 eight copy
+readResultCell result resultCell machine.Address
+readResultCell ownedBy none
+readResultCell cleanedBy none
+readResultCell borrows none
+readResultCell catch none
+readResultCell suppresses none
+
+readUnusedJoinThread is call
+readUnusedJoinThread in threadTest
+readUnusedJoinThread invokes joinThread
+readUnusedJoinThread argument thread machine.Address thread copy
+readUnusedJoinThread argument result machine.Address resultCell copy
+readUnusedJoinThread result unusedJoinThread Int32
+readUnusedJoinThread ownedBy none
+readUnusedJoinThread cleanedBy none
+readUnusedJoinThread borrows none
+readUnusedJoinThread catch none
+readUnusedJoinThread suppresses none
+
+readResult is call
+readResult in threadTest
+readResult invokes machine.loadInt32
+readResult argument address machine.Address resultCell copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in threadTest
+doAssertTrueStep2 invokes compare.equalInt32
+doAssertTrueStep2 argument left Int32 result copy
+doAssertTrueStep2 argument right Int32 int325 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in threadTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool doAssertTruePart2 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none

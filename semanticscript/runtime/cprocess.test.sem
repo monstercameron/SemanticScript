@@ -225,3 +225,219 @@ doAssertTrue4 cleanedBy none
 doAssertTrue4 borrows none
 doAssertTrue4 catch none
 doAssertTrue4 suppresses none
+
+jumpTest is test
+jumpTest purpose "setjmp gives 0, longjmp brings it back with the value (and 1 for 0), with memory written in between kept"
+jumpTest verifies saveJump keepsPlace
+jumpTest verifies jump comesBack
+jumpTest typeParameter none
+jumpTest input none
+jumpTest output none
+jumpTest outputOwnedBy none
+jumpTest raises none
+jumpTest effect use machine.memory
+jumpTest effect use system.calls
+jumpTest uses memoryAccess
+jumpTest uses systemCalls
+jumpTest memoryHeap false
+jumpTest async false
+jumpTest maxRecursion none
+jumpTest label begin loopKind none
+jumpTest label begin within none
+jumpTest label first loopKind none
+jumpTest label first within none
+jumpTest label notFirst loopKind none
+jumpTest label notFirst within none
+jumpTest label second loopKind none
+jumpTest label second within none
+jumpTest label third loopKind none
+jumpTest label third within none
+jumpTest let n512 Int64 512 immutable
+jumpTest let eight Int64 8 immutable
+jumpTest let one Int64 1 immutable
+jumpTest let int320 Int32 0 immutable
+jumpTest let int327 Int32 7 immutable
+jumpTest let int321 Int32 1 immutable
+jumpTest let two Int64 2 immutable
+jumpTest at begin do readBuffer
+jumpTest at begin do readPasses
+jumpTest at begin do readValue
+jumpTest at begin do readCount
+jumpTest at begin do doStoreInt64Step1
+jumpTest at begin do doStoreInt64
+jumpTest at begin do findCheck11
+jumpTest at begin branch if check1 goto first else goto notFirst
+jumpTest at first do doJump
+jumpTest at first return ok none
+jumpTest at notFirst do findCheck21
+jumpTest at notFirst branch if check2 goto second else goto third
+jumpTest at second do doAssertEqualInt64
+jumpTest at second do doJump2
+jumpTest at second return ok none
+jumpTest at third do doAssertTrueStep1
+jumpTest at third do doAssertTrue
+jumpTest at third do doAssertEqualInt642
+jumpTest at third return ok none
+
+readBuffer is call
+readBuffer in jumpTest
+readBuffer invokes heap.take
+readBuffer argument bytes Int64 n512 copy
+readBuffer result buffer machine.Address
+readBuffer ownedBy none
+readBuffer cleanedBy none
+readBuffer borrows none
+readBuffer catch none
+readBuffer suppresses none
+
+readPasses is call
+readPasses in jumpTest
+readPasses invokes heap.take
+readPasses argument bytes Int64 eight copy
+readPasses result passes machine.Address
+readPasses ownedBy none
+readPasses cleanedBy none
+readPasses borrows none
+readPasses catch none
+readPasses suppresses none
+
+readValue is call
+readValue in jumpTest
+readValue invokes saveJump
+readValue argument buffer machine.Address buffer copy
+readValue result value Int32
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+readCount is call
+readCount in jumpTest
+readCount invokes machine.loadInt64
+readCount argument address machine.Address passes copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+doStoreInt64Step1 is call
+doStoreInt64Step1 in jumpTest
+doStoreInt64Step1 invokes math.addInt64
+doStoreInt64Step1 argument left Int64 count copy
+doStoreInt64Step1 argument right Int64 one copy
+doStoreInt64Step1 result doStoreInt64Part1 Int64
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in jumpTest
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address passes copy
+doStoreInt64 argument value Int64 doStoreInt64Part1 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+findCheck11 is call
+findCheck11 in jumpTest
+findCheck11 invokes compare.equalInt32
+findCheck11 argument left Int32 value copy
+findCheck11 argument right Int32 int320 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doJump is call
+doJump in jumpTest
+doJump invokes jump
+doJump argument buffer machine.Address buffer copy
+doJump argument value Int32 int327 copy
+doJump result none
+doJump ownedBy none
+doJump cleanedBy none
+doJump borrows none
+doJump catch none
+doJump suppresses none
+
+findCheck21 is call
+findCheck21 in jumpTest
+findCheck21 invokes compare.equalInt32
+findCheck21 argument left Int32 value copy
+findCheck21 argument right Int32 int327 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in jumpTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 one copy
+doAssertEqualInt64 argument actual Int64 count copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+doJump2 is call
+doJump2 in jumpTest
+doJump2 invokes jump
+doJump2 argument buffer machine.Address buffer copy
+doJump2 argument value Int32 int320 copy
+doJump2 result none
+doJump2 ownedBy none
+doJump2 cleanedBy none
+doJump2 borrows none
+doJump2 catch none
+doJump2 suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in jumpTest
+doAssertTrueStep1 invokes compare.equalInt32
+doAssertTrueStep1 argument left Int32 value copy
+doAssertTrueStep1 argument right Int32 int321 copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in jumpTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in jumpTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 two copy
+doAssertEqualInt642 argument actual Int64 count copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none

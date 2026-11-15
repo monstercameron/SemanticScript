@@ -23609,9 +23609,6 @@ lockStreams let one Int64 1 immutable
 lockStreams let int320 Int32 0 immutable
 lockStreams let int321 Int32 1 immutable
 lockStreams let int322 Int32 2 immutable
-lockStreams let n128 Int64 128 immutable
-lockStreams let two Int64 2 immutable
-lockStreams let zero Int64 0 immutable
 lockStreams at begin do readStarted
 lockStreams at begin branch if started goto take else goto done
 lockStreams at take do readWord
@@ -23631,8 +23628,7 @@ lockStreams at acquire branch if check2 goto held else goto contended
 lockStreams at contended do readPrevious
 lockStreams at contended do findCheck31
 lockStreams at contended branch if check3 goto retake else goto wait
-lockStreams at wait do readNowhere
-lockStreams at wait do readUnusedFutex
+lockStreams at wait do doWaitOn
 lockStreams at wait goto retake
 lockStreams at retake do readTaken
 lockStreams at retake do findCheck41
@@ -23688,7 +23684,7 @@ readDepthCell suppresses none
 
 readSelf is call
 readSelf in lockStreams
-readSelf invokes system.gettid
+readSelf invokes lockerId
 readSelf argument none
 readSelf result self Int64
 readSelf ownedBy none
@@ -23805,32 +23801,16 @@ findCheck31 borrows none
 findCheck31 catch none
 findCheck31 suppresses none
 
-readNowhere is call
-readNowhere in lockStreams
-readNowhere invokes machine.zero
-readNowhere argument none
-readNowhere result nowhere machine.Address
-readNowhere ownedBy none
-readNowhere cleanedBy none
-readNowhere borrows none
-readNowhere catch none
-readNowhere suppresses none
-
-readUnusedFutex is call
-readUnusedFutex in lockStreams
-readUnusedFutex invokes system.futex
-readUnusedFutex argument address machine.Address word copy
-readUnusedFutex argument operation Int64 n128 copy
-readUnusedFutex argument value Int64 two copy
-readUnusedFutex argument timeout machine.Address nowhere copy
-readUnusedFutex argument address2 machine.Address nowhere copy
-readUnusedFutex argument value3 Int64 zero copy
-readUnusedFutex result unusedFutex Int64
-readUnusedFutex ownedBy none
-readUnusedFutex cleanedBy none
-readUnusedFutex borrows none
-readUnusedFutex catch none
-readUnusedFutex suppresses none
+doWaitOn is call
+doWaitOn in lockStreams
+doWaitOn invokes waitOn
+doWaitOn argument word machine.Address word copy
+doWaitOn result none
+doWaitOn ownedBy none
+doWaitOn cleanedBy none
+doWaitOn borrows none
+doWaitOn catch none
+doWaitOn suppresses none
 
 readTaken is call
 readTaken in lockStreams
@@ -23881,6 +23861,229 @@ doStoreInt643 borrows none
 doStoreInt643 catch none
 doStoreInt643 suppresses none
 
+lockerId is operation
+lockerId purpose "The running thread's id: gettid on Linux, GetCurrentThreadId on Windows"
+lockerId invariant none
+lockerId typeParameter none
+lockerId input none
+lockerId output Int64
+lockerId outputOwnedBy none
+lockerId raises none
+lockerId effect use system.calls
+lockerId uses systemCalls
+lockerId memoryHeap false
+lockerId async false
+lockerId maxRecursion none
+lockerId label begin loopKind none
+lockerId label begin within none
+lockerId label linux loopKind none
+lockerId label linux within none
+lockerId label windows loopKind none
+lockerId label windows within none
+lockerId let none
+lockerId at begin do readOnLinux
+lockerId at begin branch if onLinux goto linux else goto windows
+lockerId at linux do readId
+lockerId at linux return ok id
+lockerId at windows do readWindowsId
+lockerId at windows do findWideId1
+lockerId at windows return ok wideId
+
+readOnLinux is call
+readOnLinux in lockerId
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readId is call
+readId in lockerId
+readId invokes system.gettid
+readId argument none
+readId result id Int64
+readId ownedBy none
+readId cleanedBy none
+readId borrows none
+readId catch none
+readId suppresses none
+
+readWindowsId is call
+readWindowsId in lockerId
+readWindowsId invokes system.getCurrentThreadId
+readWindowsId argument none
+readWindowsId result windowsId Int32
+readWindowsId ownedBy none
+readWindowsId cleanedBy none
+readWindowsId borrows none
+readWindowsId catch none
+readWindowsId suppresses none
+
+findWideId1 is call
+findWideId1 in lockerId
+findWideId1 invokes convert.int32ToInt64
+findWideId1 argument value Int32 windowsId copy
+findWideId1 result wideId Int64
+findWideId1 ownedBy none
+findWideId1 cleanedBy none
+findWideId1 borrows none
+findWideId1 catch none
+findWideId1 suppresses none
+
+waitOn is operation
+waitOn purpose "Wait on the lock's word: a futex wait while it holds 2 on Linux, a millisecond's sleep on Windows"
+waitOn invariant none
+waitOn typeParameter none
+waitOn input word machine.Address copied
+waitOn output none
+waitOn outputOwnedBy none
+waitOn raises none
+waitOn effect use machine.memory
+waitOn effect use system.calls
+waitOn uses memoryAccess
+waitOn uses systemCalls
+waitOn memoryHeap false
+waitOn async false
+waitOn maxRecursion none
+waitOn label begin loopKind none
+waitOn label begin within none
+waitOn label linux loopKind none
+waitOn label linux within none
+waitOn label windows loopKind none
+waitOn label windows within none
+waitOn let n128 Int64 128 immutable
+waitOn let two Int64 2 immutable
+waitOn let zero Int64 0 immutable
+waitOn let int321 Int32 1 immutable
+waitOn at begin do readOnLinux
+waitOn at begin branch if onLinux goto linux else goto windows
+waitOn at linux do readNowhere
+waitOn at linux do readUnusedFutex
+waitOn at linux return ok none
+waitOn at windows do doSleep
+waitOn at windows return ok none
+
+readOnLinux is call
+readOnLinux in waitOn
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readNowhere is call
+readNowhere in waitOn
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readUnusedFutex is call
+readUnusedFutex in waitOn
+readUnusedFutex invokes system.futex
+readUnusedFutex argument address machine.Address word copy
+readUnusedFutex argument operation Int64 n128 copy
+readUnusedFutex argument value Int64 two copy
+readUnusedFutex argument timeout machine.Address nowhere copy
+readUnusedFutex argument address2 machine.Address nowhere copy
+readUnusedFutex argument value3 Int64 zero copy
+readUnusedFutex result unusedFutex Int64
+readUnusedFutex ownedBy none
+readUnusedFutex cleanedBy none
+readUnusedFutex borrows none
+readUnusedFutex catch none
+readUnusedFutex suppresses none
+
+doSleep is call
+doSleep in waitOn
+doSleep invokes system.sleep
+doSleep argument milliseconds Int32 int321 copy
+doSleep result none
+doSleep ownedBy none
+doSleep cleanedBy none
+doSleep borrows none
+doSleep catch none
+doSleep suppresses none
+
+wakeOn is operation
+wakeOn purpose "Wake a waiter on the lock's word: a futex wake on Linux; on Windows the waiter looks again on its own"
+wakeOn invariant none
+wakeOn typeParameter none
+wakeOn input word machine.Address copied
+wakeOn output none
+wakeOn outputOwnedBy none
+wakeOn raises none
+wakeOn effect use machine.memory
+wakeOn effect use system.calls
+wakeOn uses memoryAccess
+wakeOn uses systemCalls
+wakeOn memoryHeap false
+wakeOn async false
+wakeOn maxRecursion none
+wakeOn label begin loopKind none
+wakeOn label begin within none
+wakeOn label linux loopKind none
+wakeOn label linux within none
+wakeOn label done loopKind none
+wakeOn label done within none
+wakeOn let n129 Int64 129 immutable
+wakeOn let one Int64 1 immutable
+wakeOn let zero Int64 0 immutable
+wakeOn at begin do readOnLinux
+wakeOn at begin branch if onLinux goto linux else goto done
+wakeOn at linux do readNowhere
+wakeOn at linux do readUnusedFutex
+wakeOn at linux return ok none
+wakeOn at done return ok none
+
+readOnLinux is call
+readOnLinux in wakeOn
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readNowhere is call
+readNowhere in wakeOn
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readUnusedFutex is call
+readUnusedFutex in wakeOn
+readUnusedFutex invokes system.futex
+readUnusedFutex argument address machine.Address word copy
+readUnusedFutex argument operation Int64 n129 copy
+readUnusedFutex argument value Int64 one copy
+readUnusedFutex argument timeout machine.Address nowhere copy
+readUnusedFutex argument address2 machine.Address nowhere copy
+readUnusedFutex argument value3 Int64 zero copy
+readUnusedFutex result unusedFutex Int64
+readUnusedFutex ownedBy none
+readUnusedFutex cleanedBy none
+readUnusedFutex borrows none
+readUnusedFutex catch none
+readUnusedFutex suppresses none
+
 unlockStreams is operation
 unlockStreams purpose "Give the streams' lock back when its holder's count comes to 0, waking a waiter"
 unlockStreams invariant none
@@ -23915,7 +24118,6 @@ unlockStreams let one Int64 1 immutable
 unlockStreams let zero Int64 0 immutable
 unlockStreams let int321 Int32 1 immutable
 unlockStreams let int320 Int32 0 immutable
-unlockStreams let n129 Int64 129 immutable
 unlockStreams at begin do readStarted
 unlockStreams at begin branch if started goto release else goto done
 unlockStreams at release do readWord
@@ -23933,8 +24135,7 @@ unlockStreams at free do readPrevious
 unlockStreams at free do findCheck21
 unlockStreams at free branch if check2 goto done else goto wake
 unlockStreams at wake do doStoreInt32
-unlockStreams at wake do readNowhere
-unlockStreams at wake do readUnusedFutex
+unlockStreams at wake do doWakeOn
 unlockStreams at wake return ok none
 unlockStreams at done return ok none
 
@@ -24090,32 +24291,16 @@ doStoreInt32 borrows none
 doStoreInt32 catch none
 doStoreInt32 suppresses none
 
-readNowhere is call
-readNowhere in unlockStreams
-readNowhere invokes machine.zero
-readNowhere argument none
-readNowhere result nowhere machine.Address
-readNowhere ownedBy none
-readNowhere cleanedBy none
-readNowhere borrows none
-readNowhere catch none
-readNowhere suppresses none
-
-readUnusedFutex is call
-readUnusedFutex in unlockStreams
-readUnusedFutex invokes system.futex
-readUnusedFutex argument address machine.Address word copy
-readUnusedFutex argument operation Int64 n129 copy
-readUnusedFutex argument value Int64 one copy
-readUnusedFutex argument timeout machine.Address nowhere copy
-readUnusedFutex argument address2 machine.Address nowhere copy
-readUnusedFutex argument value3 Int64 zero copy
-readUnusedFutex result unusedFutex Int64
-readUnusedFutex ownedBy none
-readUnusedFutex cleanedBy none
-readUnusedFutex borrows none
-readUnusedFutex catch none
-readUnusedFutex suppresses none
+doWakeOn is call
+doWakeOn in unlockStreams
+doWakeOn invokes wakeOn
+doWakeOn argument word machine.Address word copy
+doWakeOn result none
+doWakeOn ownedBy none
+doWakeOn cleanedBy none
+doWakeOn borrows none
+doWakeOn catch none
+doWakeOn suppresses none
 
 putBytes is operation
 putBytes purpose "Write bytes to a stream as its buffering says: how many were taken (all of them, or 0 when the stream cannot be written or the write fails, errno set); under the streams' lock once threads were started (D-166)"

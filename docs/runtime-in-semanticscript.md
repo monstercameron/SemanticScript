@@ -363,7 +363,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | --- | --- | --- |
 | stdio.h | FILE streams buffered as glibc's, the printf family (`cformat`: every conversion, exact digits), the scanf family and glibc's `__isoc99_` names, remove, rename, tmpfile, tmpnam, perror (D-156 to D-160) | Done |
 | stdlib.h | atexit, at_quick_exit, quick_exit, `_Exit`, exit running handlers, ldiv, lldiv, imaxdiv, system, abort through SIGABRT (D-162, D-164) | Done |
-| setjmp.h | setjmp, longjmp, and glibc's other names for them, routines the compiler emits (D-163) | Done |
+| setjmp.h | setjmp, longjmp, and glibc's other names for them, routines the compiler emits, Linux and Windows (D-163, D-170) | Done |
 | signal.h | signal, raise: rt_sigaction on Linux, a table of handlers on Windows (D-164) | Done |
 | `_FORTIFY_SOURCE` | the `__*_chk` names of stdio.h and string.h, and `__chk_fail` with glibc's message (D-165) | Done |
 | math.h | sinh, cosh, tanh, asinh, acosh, atanh, erf, erfc, tgamma, lgamma, their `f` forms, lgamma_r, lgammaf_r, within 1 ulp (D-180) | Done |
@@ -373,7 +373,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | string.h, stdlib.h | strtok, strtok_r, strsep, strcoll, strxfrm, memccpy, mempcpy, stpcpy, stpncpy, strchrnul, memrchr; strtof, rand, srand, rand_r, aligned_alloc, posix_memalign (D-183) | Done |
 | locale.h, assert.h, inttypes.h | setlocale, localeconv (the C locale); `__assert_fail`; imaxabs, strtoimax, strtoumax, wcstoimax, wcstoumax (D-183) | Done |
 | wchar.h, wctype.h, uchar.h | the wide string, number, and classification functions, and the multibyte conversions, in the C locale (D-184) | Done |
-| threads.h | thrd_*, mtx_*, cnd_*, tss_*, call_once on Linux threads and futexes; the heap and streams locked, errno per thread (D-166) | Done |
+| threads.h | thrd_*, mtx_*, cnd_*, tss_*, call_once on Linux threads and futexes and on Windows threads; deadlines honoured; the heap and streams locked, errno per thread on Linux (D-166, D-168, D-169) | Done |
 | string.h | strerror: `Unknown error N` for every number (glibc's messages are a known gap) | Gap |
 
 - **stdio** (D-159, D-160). `printf` and its kin read their arguments from the system's own `va_list` (x86_64 Linux,

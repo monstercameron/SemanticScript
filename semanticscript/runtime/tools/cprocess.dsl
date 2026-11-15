@@ -38,6 +38,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
 ## ---------------------------------------------------------------- setjmp.h (D-163)
 
 op saveJump "setjmp: keep where its caller is, to come back by longjmp; 0 now (the compiler emits this operation as the routine itself)"
+  invariant keepsPlace "Gives 0, and again the value longjmp passes when it comes back"
   input buffer machine.Address copied
   output Int32
   effect use machine.memory
@@ -69,6 +70,7 @@ op saveJumpMasked "__sigsetjmp: setjmp, the name sigsetjmp calls; the signal mas
   return result
 
 op jump "longjmp: return from the setjmp that filled a buffer again, with a value (1 for 0)"
+  invariant comesBack "Returns from the setjmp that filled the buffer again, 1 for 0"
   input buffer machine.Address copied
   input value Int32 copied
   effect use machine.memory
@@ -383,4 +385,32 @@ test signalTest "signal gives back the handler it replaced, and raise of an igno
   test.assertTrue(shell == 1)
   bad = raiseSignal(0)
   test.assertTrue(bad == -1)
+  return
+
+test jumpTest "setjmp gives 0, longjmp brings it back with the value (and 1 for 0), with memory written in between kept"
+  verifies saveJump keepsPlace
+  verifies jump comesBack
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  buffer = heap.take(512)
+  passes = heap.take(8)
+  value = saveJump(buffer)
+  count = machine.loadInt64(passes)
+  machine.storeInt64(passes, count + 1)
+  when value == 0 first notFirst
+:first
+  jump(buffer, 7)
+  return
+:notFirst
+  when value == 7 second third
+:second
+  test.assertEqualInt64(1, count)
+  jump(buffer, 0)
+  return
+:third
+  test.assertTrue(value == 1)
+  test.assertEqualInt64(2, count)
   return

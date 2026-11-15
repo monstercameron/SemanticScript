@@ -2974,8 +2974,8 @@ does in the C locale. Step one is stdio, which needs variadic functions. Decided
   `refined_c_thread_main`, which calls the function, keeps what it gives, and runs the storage destructors; the kernel
   clears and wakes the thread id when the thread ends, which thrd_join waits on with a futex before freeing the
   stack. Mutexes (plain, recursive, timed), condition variables, and call_once are futex words; thread-specific
-  storage keeps 64 keys. `mtx_timedlock` and `cnd_timedwait` do not watch their deadline (they wait as the untimed
-  forms) and thrd_detach's thread is never freed. Shared state is locked once a thread is started: the runtime's heap
+  storage keeps 64 keys. thrd_detach's thread is never freed. (D-169 gives timed waits their deadlines; D-168 gives
+  Windows real threads.) Shared state is locked once a thread is started: the runtime's heap
   (its own lock word, so malloc and every block the library takes is safe) and the streams (one recursive lock around
   writing, reading, pushing back, and flushing, so one printf's text is never split). errno is per thread: the first
   thread's stays machine.state's cell, so code that writes that cell keeps working, and a started thread's is in its
@@ -2992,6 +2992,25 @@ does in the C locale. Step one is stdio, which needs variadic functions. Decided
   not exist here; every x86_64 processor since 2015 has FMA3). They act on the running thread's own state, the JIT
   process's under `refined run`. They use LLVM's intrinsics, not inline assembly, so an x86_64 executable can still be
   built on an ARM64 machine.
+
+- **D-168** threads.h on Windows starts real threads: thrd_create calls CreateThread at `refined_c_thread_main`
+  (`machine.threadEntry`, its address), which first puts the thread's block in a thread-local slot (TlsAlloc once,
+  TlsSetValue) where thrd_current and storage find it; thrd_join waits on the thread's handle; thrd_exit is ExitThread
+  after the storage destructors; thrd_yield is SwitchToThread. Waits on Windows (a contended mutex, a condition
+  variable, the streams' lock) sleep a millisecond and look again, which a futex's caller already does after a wake
+  for nothing: WaitOnAddress is in an API-set DLL, not kernel32, and an executable imports kernel32 alone (D-144).
+  The heap is HeapAlloc's, which Windows locks itself; the streams' lock takes GetCurrentThreadId. errno stays one cell
+  for every thread on Windows, so setting it reaches no system call. New kernel32 rows: CreateThread, ExitThread,
+  SwitchToThread, GetCurrentThreadId, TlsAlloc, TlsGetValue, TlsSetValue. The runtime's DSL now refuses a reserved
+  word (`none`, `unbounded`, ...) as the name of a value or a block, which the checker would refuse later.
+- **D-169** mtx_timedlock and cnd_timedwait honour their deadline (a TIME_UTC timespec): on Linux the wait is
+  FUTEX_WAIT_BITSET with FUTEX_CLOCK_REALTIME, which takes the absolute deadline itself, and ETIMEDOUT is
+  thrd_timedout; on Windows each millisecond's wait first compares GetSystemTimeAsFileTime with the deadline.
+- **D-170** setjmp and longjmp work on Windows too. Windows on ARM keeps the same registers as AAPCS64, so the AArch64
+  routine serves both; Windows x64's routine keeps rbx, rbp, rdi, rsi, r12 to r15, xmm6 to xmm15, the stack pointer,
+  and the return address. LLVM assembles a routine with the target's own assembler, and llvmlite registers only the
+  host's, so an x86_64 object built on an ARM64 machine gets a routine that traps; on x86_64 hosts (CI's Windows
+  runner) it is the real one, and cprocess's jumpTest runs it under `refined test` (and the AArch64 one here).
 
 ## The runtime in SemanticScript, the C library and a loader (2026-11-15)
 
@@ -3597,6 +3616,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-162 to D-164 | The runtime in SemanticScript, the whole C library: exit handlers and the div family, setjmp and longjmp as routines the compiler emits, signal, raise, abort, and system (by delegation) |
 | 2026-11-15 | D-165 | The runtime in SemanticScript, the whole C library: the `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call (by delegation) |
 | 2026-11-15 | D-166 to D-167 | The runtime in SemanticScript, the whole C library: C11 threads on Linux's threads with futexes, a locked heap and locked streams, errno per thread; the floating-point control and fused multiply-add primitives (by delegation) |
+| 2026-11-15 | D-168 to D-170 | The runtime in SemanticScript, the whole C library: threads.h on Windows (CreateThread, a thread-local slot), deadlines for timed waits, setjmp and longjmp on Windows (by delegation) |
 | 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
 | 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
 | 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |

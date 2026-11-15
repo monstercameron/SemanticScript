@@ -87,6 +87,13 @@ int main(void) {
     mtx_unlock(&recursive);
     mtx_lock(&lock);
     printf("plain trylock while held %d\n", mtx_trylock(&lock) == thrd_busy);
+    struct timespec past = {1, 0};
+    mtx_t timed;
+    mtx_init(&timed, mtx_timed);
+    mtx_lock(&timed);
+    printf("timedlock past its deadline %d\n", mtx_timedlock(&timed, &past) == thrd_timedout);
+    printf("timedwait past its deadline %d\n", cnd_timedwait(&ready, &lock, &past) == thrd_timedout);
+    mtx_unlock(&timed);
     mtx_unlock(&lock);
     mtx_destroy(&lock);
     cnd_destroy(&ready);

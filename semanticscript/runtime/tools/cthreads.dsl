@@ -13,10 +13,10 @@ capability systemCalls "Authority to start threads, wait on futexes, sleep, and 
 ## block of its own (the thread pointer: on x86_64 the stack protector's canary at 0x28, copied from the first
 ## thread's, and errno at 0x40). A mutex (mtx_t, glibc's 40 bytes) is 0 its state (0 free, 1 held, 2 held with
 ## waiters), 8 its owner's thread id, 16 how many times a recursive one is held, 24 its kind; a condition variable
-## (cnd_t, 48 bytes) is 0 a sequence the waiters wait on. Thread-specific storage keeps 128 keys, each thread's values in
-## its block from 0x80. Windows has no C threads here (thrd_create gives thrd_error): a program there reaches the
-## library through `ffi`, with no C function to start; mutexes, once, and storage work in its one thread.
-## machine.state bytes 28480 to 28999 belong to this module: 28480 the first thread's record, 28488 how many keys
+## (cnd_t, 48 bytes) is 0 a sequence the waiters wait on. Thread-specific storage keeps 64 keys, each thread's values in
+## its block from 0x80. On Windows (D-168) a thread is CreateThread's, its block in a thread-local slot, and a wait
+## sleeps a millisecond and looks again.
+## machine.state bytes 28480 to 28999 and 29000 to 29007 (the thread-local slot's index plus 1) belong to this module: 28480 the first thread's record, 28488 how many keys
 ## were made, 28496 the block of each key's destructor (64 keys), 28504 the block of the first thread's values.
 constant success "thrd_success: the call did what it was asked" Int32 0
 
@@ -40,7 +40,7 @@ constant firstValuesAt "Where the block of the first thread's thread-specific va
 
 ## ---------------------------------------------------------------- futexes
 
-op futexWait "Wait while a 32-bit cell holds a value (FUTEX_WAIT, private), or until woken"
+op futexWait "Wait while a 32-bit cell holds a value, or until woken (FUTEX_WAIT, private) on Linux; on Windows a short sleep, after which the caller looks again (a futex may wake for nothing)"
   input cell machine.Address copied
   input value Int32 copied
   effect use machine.memory
@@ -48,12 +48,18 @@ op futexWait "Wait while a 32-bit cell holds a value (FUTEX_WAIT, private), or u
   uses memoryAccess
   uses systemCalls
 :begin
+  onLinux = system.linux()
+  if onLinux linux windows
+:linux
   nowhere = machine.zero()
   calc wideValue = convert.int32ToInt64(value)
   system.futex(cell, 128, wideValue, nowhere, nowhere, 0)
   return
+:windows
+  system.sleep(1)
+  return
 
-op futexWake "Wake up to a count of threads waiting on a cell (FUTEX_WAKE, private)"
+op futexWake "Wake up to a count of threads waiting on a cell (FUTEX_WAKE, private) on Linux; on Windows the waiters look again on their own"
   input cell machine.Address copied
   input count Int64 copied
   effect use machine.memory
@@ -61,8 +67,13 @@ op futexWake "Wake up to a count of threads waiting on a cell (FUTEX_WAKE, priva
   uses memoryAccess
   uses systemCalls
 :begin
+  onLinux = system.linux()
+  if onLinux linux done
+:linux
   nowhere = machine.zero()
   system.futex(cell, 129, count, nowhere, nowhere, 0)
+  return
+:done
   return
 
 op exchange32 "Compare and exchange a 32-bit cell's value (seq_cst): the value it held"
@@ -78,7 +89,7 @@ op exchange32 "Compare and exchange a 32-bit cell's value (seq_cst): the value i
 
 ## ---------------------------------------------------------------- threads
 
-op currentRecord "The running thread's record: from its thread block on Linux (the first thread's made when first asked), the first thread's elsewhere"
+op currentRecord "The running thread's record: from its thread block (D-166, D-168), the first thread's (made when first asked) for a thread with none"
   output machine.Address
   effect use machine.memory
   effect use system.calls
@@ -94,21 +105,19 @@ op currentRecord "The running thread's record: from its thread block on Linux (t
   machine.storeAddress(firstCell, made)
   goto known
 :known
-  blockCell = kernel.stateAt(2352)
-  block = machine.loadAddress(blockCell)
+  block = ownBlock()
   when block == nowhere firstThread fromBlock
 :firstThread
   firstNow = machine.loadAddress(firstCell)
   return firstNow
 :fromBlock
-  pointer = machine.threadPointer()
-  calc recordAt = pointer + 56
+  calc recordAt = block + 56
   record = machine.loadAddress(recordAt)
   when record == nowhere firstThread own
 :own
   return record
 
-op threadMain "Where a new thread starts (the compiler's routine calls it on the thread's own stack): run its function with its argument, keep what it gives, and run its thread-specific values' destructors; the routine then ends the thread"
+op threadMain "Where a new thread starts: on Windows its block goes in the thread-local slot first; then its function runs with its argument, what it gives is kept, and its thread-specific values' destructors run; on Linux the routine then ends the thread, on Windows returning ends it"
   input record machine.Address copied
   effect use machine.memory
   effect use system.calls
@@ -116,6 +125,16 @@ op threadMain "Where a new thread starts (the compiler's routine calls it on the
   uses systemCalls
   abi c "refined_c_thread_main"
 :begin
+  onLinux = system.linux()
+  if onLinux run slot
+:slot
+  slotCell = kernel.stateAt(29000)
+  index = machine.loadInt64(slotCell)
+  calc blockAt = record + 32
+  block = machine.loadAddress(blockAt)
+  system.tlsSetValue(clibrary.lowInt32(index - 1), block)
+  goto run
+:run
   calc functionAt = record + 48
   function = machine.loadAddress(functionAt)
   calc argumentAt = record + 56
@@ -126,7 +145,8 @@ op threadMain "Where a new thread starts (the compiler's routine calls it on the
   runDestructors()
   return
 
-op createThread "thrd_create: start a thread running func(arg) on a stack and thread block of its own; thrd_success with the thread stored, thrd_nomem with no memory, thrd_error where there are no C threads (Windows)"
+op createThread "thrd_create: start a thread running func(arg) with a thread block of its own: on Linux by clone on a stack of 8 MiB, on Windows by CreateThread; thrd_success with the thread stored, thrd_nomem with no memory, thrd_error when the system refuses"
+  invariant startsThreads "The function runs in a thread of its own, with its argument"
   input thread machine.Address copied
   input function machine.Address copied
   input argument machine.Address copied
@@ -138,47 +158,66 @@ op createThread "thrd_create: start a thread running func(arg) on a stack and th
   abi library "thrd_create"
   let noMemory Int32 3
 :begin
-  onLinux = system.linux()
-  if onLinux linux refuse
-:refuse
-  return error
-:linux
   heap.startThreads()
   record = heap.take(64)
-  stack = kernel.mapStack(stackBytes)
   nowhere = machine.zero()
-  when stack == nowhere noStack made
-:noStack
-  heap.give(record)
-  return noMemory
-:made
   block = heap.take(640)
   machine.storeAddress(block, block)
   calc selfAt = block + 16
   machine.storeAddress(selfAt, block)
-  firstBlockCell = kernel.stateAt(2352)
-  firstBlock = machine.loadAddress(firstBlockCell)
-  when firstBlock == nowhere noCanary canary
-:canary
-  calc fromAt = firstBlock + 40
-  calc toAt = block + 40
-  machine.copy(toAt, fromAt, 8)
-  goto fill
-:noCanary
-  goto fill
-:fill
   calc recordAt = block + 56
   machine.storeAddress(recordAt, record)
-  calc stackAt = record + 16
-  machine.storeAddress(stackAt, stack)
-  calc sizeAt = record + 24
-  machine.storeInt64(sizeAt, stackBytes)
   calc blockAt = record + 32
   machine.storeAddress(blockAt, block)
   calc functionAt = record + 48
   machine.storeAddress(functionAt, function)
   calc argumentAt = record + 56
   machine.storeAddress(argumentAt, argument)
+  onLinux = system.linux()
+  if onLinux linux windows
+:windows
+  slotCell = kernel.stateAt(29000)
+  slot = machine.loadInt64(slotCell)
+  when slot == 0 allocateSlot startWindows
+:allocateSlot
+  index = system.tlsAlloc()
+  calc stored = convert.int32ToInt64(index) + 1
+  machine.storeInt64(slotCell, stored)
+  goto startWindows
+:startWindows
+  entry = machine.threadEntry()
+  handle = system.createThread(nowhere, stackBytes, entry, record, 0, nowhere)
+  when handle == nowhere windowsFailed windowsMade
+:windowsFailed
+  heap.give(block)
+  heap.give(record)
+  return error
+:windowsMade
+  calc handleAt = record + 16
+  machine.storeAddress(handleAt, handle)
+  machine.storeAddress(thread, record)
+  return success
+:linux
+  stack = kernel.mapStack(stackBytes)
+  when stack == nowhere noStack made
+:noStack
+  heap.give(block)
+  heap.give(record)
+  return noMemory
+:made
+  firstBlockCell = kernel.stateAt(2352)
+  firstBlock = machine.loadAddress(firstBlockCell)
+  when firstBlock == nowhere fill canary
+:canary
+  calc fromAt = firstBlock + 40
+  calc toAt = block + 40
+  machine.copy(toAt, fromAt, 8)
+  goto fill
+:fill
+  calc stackAt = record + 16
+  machine.storeAddress(stackAt, stack)
+  calc sizeAt = record + 24
+  machine.storeInt64(sizeAt, stackBytes)
   calc top = stack + stackBytes
   started = machine.startThread(top, block, record, record)
   when started < 0 failed done
@@ -191,7 +230,8 @@ op createThread "thrd_create: start a thread running func(arg) on a stack and th
   machine.storeAddress(thread, record)
   return success
 
-op joinThread "thrd_join: wait for a thread to end, store what it gave, and free its stack and record"
+op joinThread "thrd_join: wait for a thread to end (its id cleared on Linux, its handle signalled on Windows), store what it gave, and free its stack, block, and record"
+  invariant givesResult "Waits for the thread and gives what its function gave"
   input thread machine.Address copied
   input result machine.Address copied
   output Int32
@@ -201,13 +241,25 @@ op joinThread "thrd_join: wait for a thread to end, store what it gave, and free
   uses systemCalls
   abi library "thrd_join"
 :begin
-  goto waiting
+  onLinux = system.linux()
+  if onLinux waiting windows
+:windows
+  calc handleAt = thread + 16
+  handle = machine.loadAddress(handleAt)
+  system.waitForSingleObject(handle, -1)
+  system.closeHandle(handle)
+  goto ended
 :waiting loop=while max=forever
   tid = machine.loadInt32(thread)
-  when tid == 0 ended wait
+  when tid == 0 linuxEnded wait
 :wait in=waiting
   futexWait(thread, tid)
   goto waiting
+:linuxEnded
+  calc stackAt = thread + 16
+  stack = machine.loadAddress(stackAt)
+  kernel.unmapMemory(stack, stackBytes)
+  goto ended
 :ended
   nowhere = machine.zero()
   when result == nowhere release store
@@ -217,16 +269,13 @@ op joinThread "thrd_join: wait for a thread to end, store what it gave, and free
   machine.storeInt32(result, value)
   goto release
 :release
-  calc stackAt = thread + 16
-  stack = machine.loadAddress(stackAt)
-  kernel.unmapMemory(stack, stackBytes)
   calc blockAt = thread + 32
   block = machine.loadAddress(blockAt)
   heap.give(block)
   heap.give(thread)
   return success
 
-op exitThread "thrd_exit: end the running thread, giving a result to thrd_join (the first thread's exit ends it alone too)"
+op exitThread "thrd_exit: run the running thread's thread-specific destructors and end it, giving a result to thrd_join"
   input result Int32 copied
   effect use machine.memory
   effect use system.calls
@@ -237,7 +286,14 @@ op exitThread "thrd_exit: end the running thread, giving a result to thrd_join (
   record = currentRecord()
   calc resultAt = record + 8
   machine.storeInt32(resultAt, result)
+  runDestructors()
+  onLinux = system.linux()
+  if onLinux linux windows
+:linux
   system.exit(0)
+  return
+:windows
+  system.exitThread(0)
   return
 
 op currentThread "thrd_current: the running thread"
@@ -279,17 +335,18 @@ op detachThread "thrd_detach: the thread's stack and record are not freed by a j
   machine.storeInt64(detachedAt, 1)
   return success
 
-op yieldThread "thrd_yield: let another thread run (sched_yield)"
+op yieldThread "thrd_yield: let another thread run (sched_yield, SwitchToThread)"
   effect use system.calls
   uses systemCalls
   abi library "thrd_yield"
 :begin
   onLinux = system.linux()
-  if onLinux linux done
+  if onLinux linux windows
 :linux
   system.schedYield()
   return
-:done
+:windows
+  system.switchToThread()
   return
 
 op sleepThread "thrd_sleep: sleep for a timespec: 0, or -1 when interrupted (the time left stored), -2 for another failure"
@@ -327,19 +384,20 @@ op sleepThread "thrd_sleep: sleep for a timespec: 0, or -1 when interrupted (the
 
 ## ---------------------------------------------------------------- mutexes
 
-op threadId "The running thread's id: gettid on Linux, 1 elsewhere"
+op threadId "The running thread's id: gettid on Linux, GetCurrentThreadId on Windows"
   output Int64
   effect use system.calls
   uses systemCalls
-  let one Int64 1
 :begin
   onLinux = system.linux()
-  if onLinux linux other
+  if onLinux linux windows
 :linux
   id = system.gettid()
   return id
-:other
-  return one
+:windows
+  windowsId = system.getCurrentThreadId()
+  calc wideId = convert.int32ToInt64(windowsId)
+  return wideId
 
 op initMutex "mtx_init: a free mutex of a kind (mtx_plain 0, mtx_recursive 1, mtx_timed 2, or recursive and timed)"
   input mutex machine.Address copied
@@ -422,7 +480,8 @@ op tryLockMutex "mtx_trylock: take a mutex if no other thread holds it: thrd_suc
   machine.storeInt64(countAt, 1)
   return success
 
-op timedLockMutex "mtx_timedlock: mtx_lock (the deadline is not watched: a timed lock waits as a plain one, D-166)"
+op timedLockMutex "mtx_timedlock: take a mutex, waiting while another thread holds it until a deadline (a timespec of TIME_UTC): thrd_success, or thrd_timedout when the deadline passes first"
+  invariant stopsAtDeadline "A mutex held elsewhere is given up on once the deadline has passed"
   input mutex machine.Address copied
   input deadline machine.Address copied
   output Int32
@@ -432,8 +491,35 @@ op timedLockMutex "mtx_timedlock: mtx_lock (the deadline is not watched: a timed
   uses systemCalls
   abi library "mtx_timedlock"
 :begin
-  result = lockMutex(mutex)
-  return result
+  self = threadId()
+  calc ownerAt = mutex + 8
+  calc countAt = mutex + 16
+  calc kindAt = mutex + 24
+  kind = machine.loadInt32(kindAt)
+  holder = machine.loadInt64(ownerAt)
+  when (kind & 1) == 1 && holder == self again take
+:again
+  count = machine.loadInt64(countAt)
+  machine.storeInt64(countAt, count + 1)
+  return success
+:take
+  first = exchange32(mutex, 0, 1)
+  when first == 0 held contended
+:contended loop=while max=forever
+  previous = exchange32(mutex, 1, 2)
+  when previous == 0 retake waitTurn
+:waitTurn in=contended
+  late = deadlineWait(mutex, 2, deadline)
+  if late giveUp retake
+:retake in=contended
+  taken = exchange32(mutex, 0, 2)
+  when taken == 0 held contended
+:giveUp
+  return timedOut
+:held
+  machine.storeInt64(ownerAt, self)
+  machine.storeInt64(countAt, 1)
+  return success
 
 op unlockMutex "mtx_unlock: give a mutex back (a recursive one when its count comes to 0), waking a waiter"
   input mutex machine.Address copied
@@ -497,7 +583,8 @@ op waitCondition "cnd_wait: give a mutex back, wait until signalled, and take it
   lockMutex(mutex)
   return success
 
-op timedWaitCondition "cnd_timedwait: cnd_wait (the deadline is not watched, D-166)"
+op timedWaitCondition "cnd_timedwait: give a mutex back, wait until signalled or a deadline (a timespec of TIME_UTC) passes, and take it again: thrd_success, or thrd_timedout"
+  invariant waitsUntilDeadline "A wait no signal ends gives thrd_timedout once the deadline has passed"
   input condition machine.Address copied
   input mutex machine.Address copied
   input deadline machine.Address copied
@@ -508,8 +595,50 @@ op timedWaitCondition "cnd_timedwait: cnd_wait (the deadline is not watched, D-1
   uses systemCalls
   abi library "cnd_timedwait"
 :begin
-  result = waitCondition(condition, mutex)
-  return result
+  sequence = machine.loadInt32(condition)
+  unlockMutex(mutex)
+  late = deadlineWait(condition, sequence, deadline)
+  lockMutex(mutex)
+  if late giveUp done
+:giveUp
+  return timedOut
+:done
+  return success
+
+op deadlineWait "Wait while a 32-bit cell holds a value, or until woken, but not past a deadline (a timespec of the real-time clock): on Linux a futex wait on the bitset with CLOCK_REALTIME, which takes the deadline itself; on Windows a millisecond's sleep when the deadline is still ahead. Whether the deadline passed"
+  input cell machine.Address copied
+  input value Int32 copied
+  input deadline machine.Address copied
+  output Bool
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  onLinux = system.linux()
+  if onLinux linux windows
+:linux
+  nowhere = machine.zero()
+  calc wideValue = convert.int32ToInt64(value)
+  result = system.futex(cell, 393, wideValue, deadline, nowhere, 4294967295)
+  calc late = result == -110
+  return late
+:windows
+  clock = heap.take(8)
+  system.getSystemTimeAsFileTime(clock)
+  ticks = machine.loadInt64(clock)
+  heap.give(clock)
+  calc now = (ticks - 116444736000000000) * 100
+  seconds = machine.loadInt64(deadline)
+  calc nanosAt = deadline + 8
+  nanos = machine.loadInt64(nanosAt)
+  calc due = seconds * 1000000000 + nanos
+  when now >= due passed sleep
+:passed
+  return true
+:sleep
+  system.sleep(1)
+  return false
 
 op signalCondition "cnd_signal: wake one waiter"
   input condition machine.Address copied
@@ -606,24 +735,49 @@ op keyBlock "A block of 64 cells kept at a place of machine.state, made zeroed t
 :done
   return block
 
-op valuesOf "Where the running thread's thread-specific values are: from 0x80 of its thread block, or in machine.state for the first thread when there are no blocks"
+op valuesOf "Where the running thread's thread-specific values are: from 0x80 of its thread block, or a block of the first thread's when it has none"
   output machine.Address
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
 :begin
-  blockCell = kernel.stateAt(2352)
-  block = machine.loadAddress(blockCell)
+  block = ownBlock()
   nowhere = machine.zero()
   when block == nowhere fromState fromBlock
 :fromState
   values = keyBlock(firstValuesAt)
   return values
 :fromBlock
-  pointer = machine.threadPointer()
-  calc blockValues = pointer + 128
+  calc blockValues = block + 128
   return blockValues
+
+op ownBlock "The running thread's block, or the address 0 when there are none: on Linux the thread pointer once a C program's first block was made, on Windows the thread-local slot"
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  nowhere = machine.zero()
+  onLinux = system.linux()
+  if onLinux linux windows
+:linux
+  blockCell = kernel.stateAt(2352)
+  first = machine.loadAddress(blockCell)
+  when first == nowhere noBlock pointer
+:pointer
+  current = machine.threadPointer()
+  return current
+:noBlock
+  return nowhere
+:windows
+  slotCell = kernel.stateAt(29000)
+  slot = machine.loadInt64(slotCell)
+  when slot == 0 noBlock read
+:read
+  windowsBlock = system.tlsGetValue(clibrary.lowInt32(slot - 1))
+  return windowsBlock
 
 op createKey "tss_create: a new key (64 at most), with the destructor a thread's value of it gets when the thread ends: thrd_success, or thrd_error when all are taken"
   input key machine.Address copied
@@ -738,6 +892,8 @@ test mutexTest "A plain mutex is taken, refused to a second try, and given back;
   verifies lockMutex excludesOthers
   verifies keyValue keepsValues
   verifies currentThread knowsItself
+  verifies timedLockMutex stopsAtDeadline
+  verifies timedWaitCondition waitsUntilDeadline
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
@@ -772,6 +928,18 @@ test mutexTest "A plain mutex is taken, refused to a second try, and given back;
   current = currentThread()
   same = sameThread(current, current)
   test.assertTrue(same == 1)
+  past = heap.take(16)
+  machine.storeInt64(past, 1)
+  plain = heap.take(40)
+  initMutex(plain, 0)
+  lockMutex(plain)
+  late = timedLockMutex(plain, past)
+  test.assertTrue(late == 4)
+  condition = heap.take(48)
+  initCondition(condition)
+  waited = timedWaitCondition(condition, plain, past)
+  test.assertTrue(waited == 4)
+  unlockMutex(plain)
   return
 
 test floatControlTest "The floating-point control reads back what was stored, and a fused multiply-add rounds once"
@@ -789,4 +957,34 @@ test floatControlTest "The floating-point control reads back what was stored, an
   calc single = convert.float64ToFloat32(0.5)
   fusedSingle = machine.fusedMultiplyAdd32(single, single, single)
   test.assertTrue(convert.float32ToFloat64(fusedSingle) == 0.75)
+  return
+
+test threadTest "On Windows a thread runs a C function (strlen) on its argument and thrd_join gives what it returned (Linux's threads are proved by tests/cprograms/threads_c11.c, since the JIT's own process is glibc's there)"
+  verifies createThread startsThreads
+  verifies joinThread givesResult
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let strlenName String "strlen"
+  let hello String "hello"
+:begin
+  onLinux = system.linux()
+  if onLinux skip run
+:run
+  nameAt = machine.addressOfString(strlenName)
+  function = clibrary.lookup(nameAt, 6)
+  text = heap.take(8)
+  helloAt = machine.addressOfString(hello)
+  machine.copy(text, helloAt, 5)
+  cell = heap.take(8)
+  status = createThread(cell, function, text)
+  test.assertTrue(status == 0)
+  thread = machine.loadAddress(cell)
+  resultCell = heap.take(8)
+  joinThread(thread, resultCell)
+  result = machine.loadInt32(resultCell)
+  test.assertTrue(result == 5)
+  return
+:skip
   return

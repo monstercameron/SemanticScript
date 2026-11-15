@@ -3669,7 +3669,7 @@ op lockStreams "Take the streams' lock when threads were started; its holder tak
   word = kernel.stateAt(28976)
   holderCell = kernel.stateAt(28984)
   depthCell = kernel.stateAt(28992)
-  self = system.gettid()
+  self = lockerId()
   holder = machine.loadInt64(holderCell)
   when holder == self again acquire
 :again
@@ -3683,8 +3683,7 @@ op lockStreams "Take the streams' lock when threads were started; its holder tak
   previous = machine.compareExchange32(word, 1, 2)
   when previous == 0 retake wait
 :wait in=contended
-  nowhere = machine.zero()
-  system.futex(word, 128, 2, nowhere, nowhere, 0)
+  waitOn(word)
   goto retake
 :retake in=contended
   taken = machine.compareExchange32(word, 0, 2)
@@ -3692,6 +3691,54 @@ op lockStreams "Take the streams' lock when threads were started; its holder tak
 :held
   machine.storeInt64(holderCell, self)
   machine.storeInt64(depthCell, 1)
+  return
+:done
+  return
+
+op lockerId "The running thread's id: gettid on Linux, GetCurrentThreadId on Windows"
+  output Int64
+  effect use system.calls
+  uses systemCalls
+:begin
+  onLinux = system.linux()
+  if onLinux linux windows
+:linux
+  id = system.gettid()
+  return id
+:windows
+  windowsId = system.getCurrentThreadId()
+  calc wideId = convert.int32ToInt64(windowsId)
+  return wideId
+
+op waitOn "Wait on the lock's word: a futex wait while it holds 2 on Linux, a millisecond's sleep on Windows"
+  input word machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  onLinux = system.linux()
+  if onLinux linux windows
+:linux
+  nowhere = machine.zero()
+  system.futex(word, 128, 2, nowhere, nowhere, 0)
+  return
+:windows
+  system.sleep(1)
+  return
+
+op wakeOn "Wake a waiter on the lock's word: a futex wake on Linux; on Windows the waiter looks again on its own"
+  input word machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  onLinux = system.linux()
+  if onLinux linux done
+:linux
+  nowhere = machine.zero()
+  system.futex(word, 129, 1, nowhere, nowhere, 0)
   return
 :done
   return
@@ -3720,8 +3767,7 @@ op unlockStreams "Give the streams' lock back when its holder's count comes to 0
   when previous == 1 done wake
 :wake
   machine.storeInt32(word, 0)
-  nowhere = machine.zero()
-  system.futex(word, 129, 1, nowhere, nowhere, 0)
+  wakeOn(word)
   return
 :done
   return
