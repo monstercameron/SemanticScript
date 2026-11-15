@@ -2272,6 +2272,11 @@ is looked up in a `catalog` table by SKU (`catalog.find`, D-111, with an
 unknown SKU handled as exit 7), the report's path and labels are module
 constants (D-103), the report read back is checked with `string.contains`
 (D-110), and its order tests share a helper in the test file (D-112).
+Later still it expands bundles through a bill of materials (a tree of
+bundles walked by a bounded recursive operation; a cycle is a handled
+error), keeps subtotals per category in a map printed in first-seen order
+(D-62), rejects a repeated SKU with a set, and does that through `markNew`,
+a generic operation instantiated at `Int64`. All of it in explicit rows.
 
 ## stage0 compiles itself (2026-11-14)
 

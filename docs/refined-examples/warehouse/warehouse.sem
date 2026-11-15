@@ -1,12 +1,22 @@
-# The warehouse example's entry module. It reads an order from a table, looks
-# each line's price up in a catalog table by its SKU, builds the priced lines
-# into a list, prices it two ways at once (two tasks borrow the same list),
-# prints both totals, writes a one-line report file, and reads the report back.
+# The warehouse example's entry module. It reads an order from a table,
+# expands each line through a bill of materials (a bundle is made of other
+# products, and of other bundles), looks each part's price up in a catalog
+# table by its SKU, builds the priced lines into a list, prices it two ways at
+# once (two tasks borrow the same list), prints both totals and a subtotal per
+# category, writes a one-line report file, and reads the report back.
 #
 # What the checker and runtime guarantee here (docs/safety-guarantees.md):
 # - `order` has 3 rows, so `fill` states `maxIterations 3`; fewer is rejected.
 # - A SKU the catalog does not list is a value the program handles
 #   (`catalog.find` raises `list.NotFound`, exit 7), not a missing price.
+# - Bundles form a tree: `components` gives each bundle its parts, and a part
+#   may be a bundle. `addOrderLine` walks it recursively (`maxRecursion 8`);
+#   a bundle nested deeper than 4, or one that contains itself, is a handled
+#   error (exit 9), never unbounded recursion.
+# - An order may name a SKU once: `markSku` (the generic `markNew` at Int64)
+#   records each SKU in a set, and a repeat is exit 8.
+# - Subtotals per category live in a map from category name to cents and are
+#   printed in the order categories first appear (D-62).
 # - Both tasks hold `lines` from `start` to `join`, so nothing may change it
 #   until both are joined, including after a `cancel`.
 # - When the list total fails, the discount task is cancelled and still joined;
@@ -30,7 +40,8 @@
 # Exit codes: 0 done, 2 a line has a negative quantity, 3 the order is empty,
 # 4 the report file could not be written or read back intact, 5 standard
 # output failed, 6 no room left in `store` for the report, 7 the order names a
-# SKU the catalog does not list.
+# SKU the catalog does not list, 8 the order names a SKU twice, 9 a bundle is
+# nested too deep or contains itself.
 
 warehouse is module
 warehouse purpose "Price an order at list price and with a bulk discount, then write and read back a report"
@@ -41,6 +52,10 @@ warehouse imports standard.string
 warehouse imports standard.time
 warehouse imports standard.arena
 warehouse imports standard.list
+warehouse imports standard.map
+warehouse imports standard.set
+warehouse imports standard.compare
+warehouse imports standard.math
 warehouse imports pricing
 warehouse exports main
 
@@ -83,6 +98,7 @@ Product purpose "One product for sale; its SKU is the catalog's key (the first f
 Product typeParameter none
 Product field sku Int64
 Product field unitCents Int64
+Product field category String
 
 catalog is table
 catalog purpose "Every product for sale and its unit price, looked up by SKU"
@@ -92,13 +108,70 @@ catalog row gadgetProduct 2
 catalog row gizmoProduct 3
 catalog row sprocketProduct 4
 catalog cell widgetProduct sku 101
+catalog cell widgetProduct category "hardware"
 catalog cell widgetProduct unitCents 250
 catalog cell gadgetProduct sku 102
+catalog cell gadgetProduct category "electronics"
 catalog cell gadgetProduct unitCents 1200
 catalog cell gizmoProduct sku 103
+catalog cell gizmoProduct category "consumables"
 catalog cell gizmoProduct unitCents 35
 catalog cell sprocketProduct sku 104
+catalog cell sprocketProduct category "hardware"
 catalog cell sprocketProduct unitCents 90
+
+Component is record
+Component purpose "One part of a bundle: which bundle, which part, and how many of it"
+Component typeParameter none
+Component field bundleSku Int64
+Component field partSku Int64
+Component field count Int64
+
+components is table
+components purpose "The bill of materials: each bundle's parts; a part may itself be a bundle"
+components rowType Component
+components row kitWidgets 1
+components row kitGadget 2
+components row starterKit 3
+components row starterGizmos 4
+components cell kitWidgets bundleSku 200
+components cell kitWidgets partSku 101
+components cell kitWidgets count 2
+components cell kitGadget bundleSku 200
+components cell kitGadget partSku 102
+components cell kitGadget count 1
+components cell starterKit bundleSku 300
+components cell starterKit partSku 200
+components cell starterKit count 1
+components cell starterGizmos bundleSku 300
+components cell starterGizmos partSku 103
+components cell starterGizmos count 5
+
+OrderError is enum
+OrderError purpose "Why one order line could not be turned into priced parts"
+OrderError typeParameter none
+OrderError variant unknownProduct Int64
+OrderError variant tooDeep Int64
+
+CategoryTotals is typeInstance
+CategoryTotals purpose "Cents at list price per category name, in the order categories first appear"
+CategoryTotals in none
+CategoryTotals instantiates map.Map String Int64
+
+SeenSkus is typeInstance
+SeenSkus purpose "The SKUs the order has named so far"
+SeenSkus in none
+SeenSkus instantiates set.Set Int64
+
+SeenItems is typeInstance
+SeenItems purpose "The items markNew has been given"
+SeenItems in markNew
+SeenItems instantiates set.Set T
+
+markSku is operationInstance
+markSku purpose "markNew for SKUs"
+markSku in none
+markSku instantiates markNew Int64
 
 order is table
 order purpose "The order to price, one row per line"
@@ -106,12 +179,15 @@ order rowType OrderLine
 order row widget 1
 order row gadget 2
 order row gizmo 3
+order row starter 4
 order cell widget sku 101
 order cell widget quantity 4
 order cell gadget sku 102
 order cell gadget quantity 2
 order cell gizmo sku 103
 order cell gizmo quantity 10
+order cell starter sku 300
+order cell starter quantity 1
 
 main is operation
 main purpose "Price the order both ways, print the totals, and write and read back a report"
@@ -135,12 +211,12 @@ main label begin loopKind none
 main label begin within none
 main label fill loopKind forEach
 main label fill within none
-main label fill maxIterations 3
+main label fill maxIterations 4
 main label fill over order
 main label addRow loopKind none
 main label addRow within fill
-main label priceRow loopKind none
-main label priceRow within fill
+main label expandRow loopKind none
+main label expandRow within fill
 main label price loopKind none
 main label price within none
 main label joinDiscount loopKind none
@@ -153,6 +229,20 @@ main label printTotals loopKind none
 main label printTotals within none
 main label printSecond loopKind none
 main label printSecond within none
+main label categories loopKind none
+main label categories within none
+main label listCategories loopKind forEach
+main label listCategories within none
+main label listCategories maxIterations categoryCount
+main label listCategories over categoryTotals
+main label printCategory loopKind none
+main label printCategory within listCategories
+main label writeCategory loopKind none
+main label writeCategory within listCategories
+main label writeCategory2 loopKind none
+main label writeCategory2 within listCategories
+main label writeCategory3 loopKind none
+main label writeCategory3 within listCategories
 main label reserve loopKind none
 main label reserve within none
 main label compose loopKind none
@@ -195,6 +285,12 @@ main label noRoom loopKind none
 main label noRoom within none
 main label unknownProduct loopKind none
 main label unknownProduct within none
+main label duplicateLine loopKind none
+main label duplicateLine within none
+main label nestedTooDeep loopKind none
+main label nestedTooDeep within none
+main label lineFailed loopKind none
+main label lineFailed within none
 main let waitMs Int64 5000 immutable
 main let readLimit Int64 256 immutable
 main let okCode ExitCode 0 immutable
@@ -204,20 +300,24 @@ main let fileCode ExitCode 4 immutable
 main let outputCode ExitCode 5 immutable
 main let noRoomCode ExitCode 6 immutable
 main let unknownCode ExitCode 7 immutable
+main let duplicateCode ExitCode 8 immutable
+main let deepCode ExitCode 9 immutable
+main let topDepth Int64 0 immutable
+main let equalsText String "=" immutable
 main let reportRoom Int64 512 immutable
 main let bothText String "the discount total failed too; the list total's failure decides the exit code" immutable
 main at begin do makeDeadline
 main at begin do makeLines
+main at begin do makeSeen
+main at begin do makeTotals
 main at begin goto fill
 main at fill branch ifNext order bind row OrderLine goto addRow else goto price
 main at addRow do readSku
-main at addRow do findProduct
-main at addRow branch ifError findProduct goto unknownProduct else goto priceRow
-main at priceRow do readUnit
-main at priceRow do readQuantity
-main at priceRow do makeItem
-main at priceRow do appendRow
-main at priceRow goto fill
+main at addRow do readQuantity
+main at addRow do checkNew
+main at addRow branch if isNew goto expandRow else goto duplicateLine
+main at expandRow do addLines
+main at expandRow branch ifError addLines goto lineFailed else goto fill
 main at price start listTask into none
 main at price start discountTask into none
 main at price join listTask
@@ -232,7 +332,18 @@ main at bothFailed branch ifError noteBoth goto listFailed else goto listFailed
 main at printTotals do printList
 main at printTotals branch ifError printList goto outputFailed else goto printSecond
 main at printSecond do printDiscount
-main at printSecond branch ifError printDiscount goto outputFailed else goto reserve
+main at printSecond branch ifError printDiscount goto outputFailed else goto categories
+main at categories do countCategories
+main at categories goto listCategories
+main at listCategories branch ifNext categoryTotals bind category String goto printCategory else goto reserve
+main at printCategory do readSubtotal
+main at printCategory branch ifError readSubtotal goto listCategories else goto writeCategory
+main at writeCategory do writeName
+main at writeCategory branch ifError writeName goto outputFailed else goto writeCategory2
+main at writeCategory2 do writeEquals
+main at writeCategory2 branch ifError writeEquals goto outputFailed else goto writeCategory3
+main at writeCategory3 do writeSubtotal
+main at writeCategory3 branch ifError writeSubtotal goto outputFailed else goto listCategories
 main at reserve do askRoom
 main at reserve branch ifError askRoom goto noRoom else goto compose
 main at compose do listDigits
@@ -292,6 +403,11 @@ main at fileFailed return ok fileCode
 main at outputFailed return ok outputCode
 main at noRoom return ok noRoomCode
 main at unknownProduct return ok unknownCode
+main at duplicateLine return ok duplicateCode
+main at nestedTooDeep return ok deepCode
+main at lineFailed match lineError OrderError
+main at lineFailed case OrderError.unknownProduct bind unknownSku Int64 goto unknownProduct
+main at lineFailed case OrderError.tooDeep bind deepSku Int64 goto nestedTooDeep
 
 store is region
 store in main
@@ -321,6 +437,28 @@ makeLines borrows none
 makeLines catch none
 makeLines suppresses none
 
+makeSeen is call
+makeSeen in main
+makeSeen invokes SeenSkus.new
+makeSeen argument region Region store lend
+makeSeen result seen SeenSkus
+makeSeen ownedBy store
+makeSeen cleanedBy none
+makeSeen borrows none
+makeSeen catch none
+makeSeen suppresses none
+
+makeTotals is call
+makeTotals in main
+makeTotals invokes CategoryTotals.new
+makeTotals argument region Region store lend
+makeTotals result categoryTotals CategoryTotals
+makeTotals ownedBy store
+makeTotals cleanedBy none
+makeTotals borrows none
+makeTotals catch none
+makeTotals suppresses none
+
 readSku is call
 readSku in main
 readSku invokes OrderLine.sku
@@ -332,27 +470,88 @@ readSku borrows none
 readSku catch none
 readSku suppresses none
 
-findProduct is call
-findProduct in main
-findProduct invokes catalog.find
-findProduct argument key Int64 sku copy
-findProduct result product Product
-findProduct ownedBy none
-findProduct cleanedBy none
-findProduct borrows none
-findProduct catch missingProduct list.NotFound
-findProduct suppresses none
+checkNew is call
+checkNew in main
+checkNew invokes markSku
+checkNew argument seen SeenSkus seen lendMutable
+checkNew argument item Int64 sku copy
+checkNew result isNew Bool
+checkNew ownedBy none
+checkNew cleanedBy none
+checkNew borrows none
+checkNew catch none
+checkNew suppresses none
 
-readUnit is call
-readUnit in main
-readUnit invokes Product.unitCents
-readUnit argument record Product product copy
-readUnit result unitCents Int64
-readUnit ownedBy none
-readUnit cleanedBy none
-readUnit borrows none
-readUnit catch none
-readUnit suppresses none
+addLines is call
+addLines in main
+addLines invokes addOrderLine
+addLines argument lines pricing.Lines lines lendMutable
+addLines argument totals CategoryTotals categoryTotals lendMutable
+addLines argument sku Int64 sku copy
+addLines argument quantity Int64 quantity copy
+addLines argument depth Int64 topDepth copy
+addLines result none
+addLines ownedBy none
+addLines cleanedBy none
+addLines borrows none
+addLines catch lineError OrderError
+addLines suppresses none
+
+countCategories is call
+countCategories in main
+countCategories invokes CategoryTotals.length
+countCategories argument map CategoryTotals categoryTotals lend
+countCategories result categoryCount Int64
+countCategories ownedBy none
+countCategories cleanedBy none
+countCategories borrows none
+countCategories catch none
+countCategories suppresses none
+
+readSubtotal is call
+readSubtotal in main
+readSubtotal invokes CategoryTotals.get
+readSubtotal argument map CategoryTotals categoryTotals lend
+readSubtotal argument key String category lend
+readSubtotal result subtotal Int64
+readSubtotal ownedBy none
+readSubtotal cleanedBy none
+readSubtotal borrows none
+readSubtotal catch noSubtotal map.KeyMissing
+readSubtotal suppresses none
+
+writeName is call
+writeName in main
+writeName invokes console.write
+writeName argument text String category lend
+writeName result none
+writeName ownedBy none
+writeName cleanedBy none
+writeName borrows none
+writeName catch writeNameError console.WriteError
+writeName suppresses none
+
+writeEquals is call
+writeEquals in main
+writeEquals invokes console.write
+writeEquals argument text String equalsText lend
+writeEquals result none
+writeEquals ownedBy none
+writeEquals cleanedBy none
+writeEquals borrows none
+writeEquals catch writeEqualsError console.WriteError
+writeEquals suppresses none
+
+writeSubtotal is call
+writeSubtotal in main
+writeSubtotal invokes console.writeIntegerLine
+writeSubtotal argument value Int64 subtotal copy
+writeSubtotal result none
+writeSubtotal ownedBy none
+writeSubtotal cleanedBy none
+writeSubtotal borrows none
+writeSubtotal catch writeSubtotalError console.WriteError
+writeSubtotal suppresses none
 
 readQuantity is call
 readQuantity in main
@@ -365,30 +564,398 @@ readQuantity borrows none
 readQuantity catch none
 readQuantity suppresses none
 
-makeItem is call
-makeItem in main
-makeItem invokes pricing.LineItem.new
-makeItem argument sku Int64 sku copy
-makeItem argument quantity Int64 quantity copy
-makeItem argument unitCents Int64 unitCents copy
-makeItem result item pricing.LineItem
-makeItem ownedBy none
-makeItem cleanedBy none
-makeItem borrows none
-makeItem catch none
-makeItem suppresses none
+# ---------------------------------------------------------------- a generic operation
 
-appendRow is call
-appendRow in main
-appendRow invokes pricing.Lines.append
-appendRow argument list pricing.Lines lines lendMutable
-appendRow argument item pricing.LineItem item copy
-appendRow result none
-appendRow ownedBy none
-appendRow cleanedBy none
-appendRow borrows none
-appendRow catch none
-appendRow suppresses none
+markNew is operation
+markNew purpose "Record an item in a set and tell whether it was new"
+markNew invariant none
+markNew typeParameter T plain
+markNew input seen SeenItems borrowedMutable
+markNew input item T copied
+markNew output Bool
+markNew outputOwnedBy none
+markNew raises none
+markNew effect none
+markNew uses none
+markNew memoryHeap false
+markNew async false
+markNew maxRecursion none
+markNew label begin loopKind none
+markNew label begin within none
+markNew label fresh loopKind none
+markNew label fresh within none
+markNew label repeated loopKind none
+markNew label repeated within none
+markNew let yes Bool true immutable
+markNew let no Bool false immutable
+markNew at begin do hasItem
+markNew at begin branch if present goto repeated else goto fresh
+markNew at fresh do addItem
+markNew at fresh return ok yes
+markNew at repeated return ok no
+
+hasItem is call
+hasItem in markNew
+hasItem invokes SeenItems.contains
+hasItem argument set SeenItems seen lend
+hasItem argument item T item copy
+hasItem result present Bool
+hasItem ownedBy none
+hasItem cleanedBy none
+hasItem borrows none
+hasItem catch none
+hasItem suppresses none
+
+addItem is call
+addItem in markNew
+addItem invokes SeenItems.add
+addItem argument set SeenItems seen lendMutable
+addItem argument item T item copy
+addItem result none
+addItem ownedBy none
+addItem cleanedBy none
+addItem borrows none
+addItem catch none
+addItem suppresses none
+
+# ---------------------------------------------------------------- the bill of materials
+
+addOrderLine is operation
+addOrderLine purpose "Expand one order line through the bill of materials and append its priced parts"
+addOrderLine invariant none
+addOrderLine typeParameter none
+addOrderLine input lines pricing.Lines borrowedMutable
+addOrderLine input totals CategoryTotals borrowedMutable
+addOrderLine input sku Int64 copied
+addOrderLine input quantity Int64 copied
+addOrderLine input depth Int64 copied
+addOrderLine output none
+addOrderLine outputOwnedBy none
+addOrderLine raises OrderError
+addOrderLine effect none
+addOrderLine uses none
+addOrderLine memoryHeap false
+addOrderLine async false
+addOrderLine maxRecursion 8
+addOrderLine label begin loopKind none
+addOrderLine label begin within none
+addOrderLine label countParts loopKind none
+addOrderLine label countParts within none
+addOrderLine label scanParts loopKind forEach
+addOrderLine label scanParts within none
+addOrderLine label scanParts maxIterations componentCount
+addOrderLine label scanParts over components
+addOrderLine label checkPart loopKind none
+addOrderLine label checkPart within scanParts
+addOrderLine label expandPart loopKind none
+addOrderLine label expandPart within scanParts
+addOrderLine label partFailed loopKind none
+addOrderLine label partFailed within none
+addOrderLine label afterParts loopKind none
+addOrderLine label afterParts within none
+addOrderLine label leaf loopKind none
+addOrderLine label leaf within none
+addOrderLine label pricedLeaf loopKind none
+addOrderLine label pricedLeaf within none
+addOrderLine label firstOfCategory loopKind none
+addOrderLine label firstOfCategory within none
+addOrderLine label addToCategory loopKind none
+addOrderLine label addToCategory within none
+addOrderLine label deepLine loopKind none
+addOrderLine label deepLine within none
+addOrderLine label unknownLine loopKind none
+addOrderLine label unknownLine within none
+addOrderLine label finished loopKind none
+addOrderLine label finished within none
+addOrderLine let maxDepth Int64 4 immutable
+addOrderLine let one Int64 1 immutable
+addOrderLine let isBundle Bool false mutable
+addOrderLine let yes Bool true immutable
+addOrderLine at begin do deeper
+addOrderLine at begin branch if tooDeepNow goto deepLine else goto countParts
+addOrderLine at countParts do countComponents
+addOrderLine at countParts goto scanParts
+addOrderLine at scanParts branch ifNext components bind component Component goto checkPart else goto afterParts
+addOrderLine at checkPart do readBundle
+addOrderLine at checkPart do sameBundle
+addOrderLine at checkPart branch if isPart goto expandPart else goto scanParts
+addOrderLine at expandPart set isBundle yes
+addOrderLine at expandPart do readPart
+addOrderLine at expandPart do readCount
+addOrderLine at expandPart do multiplyCount
+addOrderLine at expandPart do nextDepth
+addOrderLine at expandPart do expandChild
+addOrderLine at expandPart branch ifError expandChild goto partFailed else goto scanParts
+addOrderLine at partFailed return error partError
+addOrderLine at afterParts branch if isBundle goto finished else goto leaf
+addOrderLine at leaf do findLeaf
+addOrderLine at leaf branch ifError findLeaf goto unknownLine else goto pricedLeaf
+addOrderLine at pricedLeaf do readLeafUnit
+addOrderLine at pricedLeaf do readLeafCategory
+addOrderLine at pricedLeaf do makeLeafItem
+addOrderLine at pricedLeaf do appendLeafItem
+addOrderLine at pricedLeaf do multiplyGross
+addOrderLine at pricedLeaf do readCategoryTotal
+addOrderLine at pricedLeaf branch ifError readCategoryTotal goto firstOfCategory else goto addToCategory
+addOrderLine at firstOfCategory do putFirst
+addOrderLine at firstOfCategory goto finished
+addOrderLine at addToCategory do sumCategory
+addOrderLine at addToCategory do putSum
+addOrderLine at addToCategory goto finished
+addOrderLine at deepLine do makeTooDeep
+addOrderLine at deepLine return error deepError
+addOrderLine at unknownLine do makeUnknown
+addOrderLine at unknownLine return error unknownError
+addOrderLine at finished return ok none
+
+deeper is call
+deeper in addOrderLine
+deeper invokes compare.greaterThanInt64
+deeper argument left Int64 depth copy
+deeper argument right Int64 maxDepth copy
+deeper result tooDeepNow Bool
+deeper ownedBy none
+deeper cleanedBy none
+deeper borrows none
+deeper catch none
+deeper suppresses none
+
+countComponents is call
+countComponents in addOrderLine
+countComponents invokes components.length
+countComponents argument none
+countComponents result componentCount Int64
+countComponents ownedBy none
+countComponents cleanedBy none
+countComponents borrows none
+countComponents catch none
+countComponents suppresses none
+
+readBundle is call
+readBundle in addOrderLine
+readBundle invokes Component.bundleSku
+readBundle argument record Component component copy
+readBundle result bundleSku Int64
+readBundle ownedBy none
+readBundle cleanedBy none
+readBundle borrows none
+readBundle catch none
+readBundle suppresses none
+
+sameBundle is call
+sameBundle in addOrderLine
+sameBundle invokes compare.equalInt64
+sameBundle argument left Int64 bundleSku copy
+sameBundle argument right Int64 sku copy
+sameBundle result isPart Bool
+sameBundle ownedBy none
+sameBundle cleanedBy none
+sameBundle borrows none
+sameBundle catch none
+sameBundle suppresses none
+
+readPart is call
+readPart in addOrderLine
+readPart invokes Component.partSku
+readPart argument record Component component copy
+readPart result partSku Int64
+readPart ownedBy none
+readPart cleanedBy none
+readPart borrows none
+readPart catch none
+readPart suppresses none
+
+readCount is call
+readCount in addOrderLine
+readCount invokes Component.count
+readCount argument record Component component copy
+readCount result partCount Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+multiplyCount is call
+multiplyCount in addOrderLine
+multiplyCount invokes math.multiplyInt64
+multiplyCount argument left Int64 quantity copy
+multiplyCount argument right Int64 partCount copy
+multiplyCount result partQuantity Int64
+multiplyCount ownedBy none
+multiplyCount cleanedBy none
+multiplyCount borrows none
+multiplyCount catch none
+multiplyCount suppresses none
+
+nextDepth is call
+nextDepth in addOrderLine
+nextDepth invokes math.addInt64
+nextDepth argument left Int64 depth copy
+nextDepth argument right Int64 one copy
+nextDepth result childDepth Int64
+nextDepth ownedBy none
+nextDepth cleanedBy none
+nextDepth borrows none
+nextDepth catch none
+nextDepth suppresses none
+
+expandChild is call
+expandChild in addOrderLine
+expandChild invokes addOrderLine
+expandChild argument lines pricing.Lines lines lendMutable
+expandChild argument totals CategoryTotals totals lendMutable
+expandChild argument sku Int64 partSku copy
+expandChild argument quantity Int64 partQuantity copy
+expandChild argument depth Int64 childDepth copy
+expandChild result none
+expandChild ownedBy none
+expandChild cleanedBy none
+expandChild borrows none
+expandChild catch partError OrderError
+expandChild suppresses none
+
+findLeaf is call
+findLeaf in addOrderLine
+findLeaf invokes catalog.find
+findLeaf argument key Int64 sku copy
+findLeaf result product Product
+findLeaf ownedBy none
+findLeaf cleanedBy none
+findLeaf borrows none
+findLeaf catch missingProduct list.NotFound
+findLeaf suppresses none
+
+readLeafUnit is call
+readLeafUnit in addOrderLine
+readLeafUnit invokes Product.unitCents
+readLeafUnit argument record Product product lend
+readLeafUnit result unitCents Int64
+readLeafUnit ownedBy none
+readLeafUnit cleanedBy none
+readLeafUnit borrows none
+readLeafUnit catch none
+readLeafUnit suppresses none
+
+readLeafCategory is call
+readLeafCategory in addOrderLine
+readLeafCategory invokes Product.category
+readLeafCategory argument record Product product lend
+readLeafCategory result category String
+readLeafCategory ownedBy none
+readLeafCategory cleanedBy none
+readLeafCategory borrows product
+readLeafCategory catch none
+readLeafCategory suppresses none
+
+makeLeafItem is call
+makeLeafItem in addOrderLine
+makeLeafItem invokes pricing.LineItem.new
+makeLeafItem argument sku Int64 sku copy
+makeLeafItem argument quantity Int64 quantity copy
+makeLeafItem argument unitCents Int64 unitCents copy
+makeLeafItem result item pricing.LineItem
+makeLeafItem ownedBy none
+makeLeafItem cleanedBy none
+makeLeafItem borrows none
+makeLeafItem catch none
+makeLeafItem suppresses none
+
+appendLeafItem is call
+appendLeafItem in addOrderLine
+appendLeafItem invokes pricing.Lines.append
+appendLeafItem argument list pricing.Lines lines lendMutable
+appendLeafItem argument item pricing.LineItem item copy
+appendLeafItem result none
+appendLeafItem ownedBy none
+appendLeafItem cleanedBy none
+appendLeafItem borrows none
+appendLeafItem catch none
+appendLeafItem suppresses none
+
+multiplyGross is call
+multiplyGross in addOrderLine
+multiplyGross invokes math.multiplyInt64
+multiplyGross argument left Int64 quantity copy
+multiplyGross argument right Int64 unitCents copy
+multiplyGross result gross Int64
+multiplyGross ownedBy none
+multiplyGross cleanedBy none
+multiplyGross borrows none
+multiplyGross catch none
+multiplyGross suppresses none
+
+readCategoryTotal is call
+readCategoryTotal in addOrderLine
+readCategoryTotal invokes CategoryTotals.get
+readCategoryTotal argument map CategoryTotals totals lend
+readCategoryTotal argument key String category lend
+readCategoryTotal result categoryTotal Int64
+readCategoryTotal ownedBy none
+readCategoryTotal cleanedBy none
+readCategoryTotal borrows none
+readCategoryTotal catch newCategory map.KeyMissing
+readCategoryTotal suppresses none
+
+putFirst is call
+putFirst in addOrderLine
+putFirst invokes CategoryTotals.put
+putFirst argument map CategoryTotals totals lendMutable
+putFirst argument key String category lend
+putFirst argument value Int64 gross copy
+putFirst result none
+putFirst ownedBy none
+putFirst cleanedBy none
+putFirst borrows none
+putFirst catch none
+putFirst suppresses none
+
+sumCategory is call
+sumCategory in addOrderLine
+sumCategory invokes math.addInt64
+sumCategory argument left Int64 categoryTotal copy
+sumCategory argument right Int64 gross copy
+sumCategory result newCategoryTotal Int64
+sumCategory ownedBy none
+sumCategory cleanedBy none
+sumCategory borrows none
+sumCategory catch none
+sumCategory suppresses none
+
+putSum is call
+putSum in addOrderLine
+putSum invokes CategoryTotals.put
+putSum argument map CategoryTotals totals lendMutable
+putSum argument key String category lend
+putSum argument value Int64 newCategoryTotal copy
+putSum result none
+putSum ownedBy none
+putSum cleanedBy none
+putSum borrows none
+putSum catch none
+putSum suppresses none
+
+makeTooDeep is call
+makeTooDeep in addOrderLine
+makeTooDeep invokes OrderError.tooDeep
+makeTooDeep argument payload Int64 sku copy
+makeTooDeep result deepError OrderError
+makeTooDeep ownedBy none
+makeTooDeep cleanedBy none
+makeTooDeep borrows none
+makeTooDeep catch none
+makeTooDeep suppresses none
+
+makeUnknown is call
+makeUnknown in addOrderLine
+makeUnknown invokes OrderError.unknownProduct
+makeUnknown argument payload Int64 sku copy
+makeUnknown result unknownError OrderError
+makeUnknown ownedBy none
+makeUnknown cleanedBy none
+makeUnknown borrows none
+makeUnknown catch none
+makeUnknown suppresses none
 
 # Both tasks borrow `lines` from start to join; neither may change it, and main
 # may not change it while either runs.

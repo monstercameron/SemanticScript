@@ -138,13 +138,30 @@ def test_base_matches_the_example_syntax():
 def test_warehouse_example_runs_and_reports_both_failures(tmp_path):
     """The warehouse example (docs/refined-examples/warehouse), rebuilt on these guarantees: it prices the order in
     two tasks and reports; when a line is invalid both tasks fail, the second failure is reported on standard
-    error, and the first decides the exit code; a SKU the catalog does not list exits 7 (D-111)."""
+    error, and the first decides the exit code; a SKU the catalog does not list exits 7 (D-111). Bundles expand
+    through the bill of materials (the starter bundle holds a kit, which holds a widget pair and a gadget), the
+    category subtotals print in first-seen order, a repeated SKU exits 8, and a bundle that contains itself exits
+    9 instead of recursing without end."""
     example = os.path.join(caselib.ROOT, "docs", "refined-examples", "warehouse")
     good = str(tmp_path / "good")
     shutil.copytree(example, good)
     proc = caselib.refined("run", good, "--no-cache", cwd=good)
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.splitlines() == ["3750", "3375", "list=3750 discounted=3375"]
+    assert proc.stdout.splitlines() == ["5625", "5062", "hardware=1500", "electronics=3600", "consumables=525",
+                                        "list=5625 discounted=5062"]
+    for name, old, new, code in (("duplicate", "order cell gadget sku 102", "order cell gadget sku 101", 8),
+                                 ("cycle", "components cell kitWidgets partSku 101",
+                                  "components cell kitWidgets partSku 300", 9)):
+        project = str(tmp_path / name)
+        shutil.copytree(example, project)
+        path = os.path.join(project, "warehouse.sem")
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        assert text.count(old) == 1, old
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text.replace(old, new))
+        proc = caselib.refined("run", project, "--no-cache", cwd=project)
+        assert (proc.returncode, proc.stdout) == (code, ""), (name, proc.stdout, proc.stderr)
     bad = str(tmp_path / "bad")
     shutil.copytree(example, bad)
     path = os.path.join(bad, "warehouse.sem")
