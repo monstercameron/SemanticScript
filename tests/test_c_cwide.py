@@ -31,6 +31,8 @@ CWIDE = {
     "wcsspn", "wcscspn", "wcspbrk", "wcstok", "wcsdup", "wmemchr", "wmemcmp", "wmemcpy", "wmemmove", "wmemset",
     "wcstol", "wcstoll", "wcstoul", "wcstoull", "wcstod", "wcstof", "wcscoll", "wcsxfrm", "btowc", "wctob", "mbsinit",
     "mbrlen", "mbrtowc", "wcrtomb", "mbsrtowcs", "wcsrtombs",
+    # glibc 2.38 and later: the C23 binary-prefix names the headers redirect wcstol and its kin to
+    "__isoc23_wcstol", "__isoc23_wcstoll", "__isoc23_wcstoul", "__isoc23_wcstoull",
     # stdlib.h
     "mblen", "mbtowc", "wctomb", "mbstowcs", "wcstombs",
     # uchar.h

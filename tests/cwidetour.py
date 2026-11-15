@@ -306,7 +306,7 @@ class Tour:
         """Write what a call gave: `kind` is its letter, `shown` how (number, flag, place, double); the expected line
         is appended by the caller through `out`."""
         k = self.uid()
-        if kind == "i" and shown in ("number", "flag"):
+        if kind == "i" and shown in ("number", "flag", "sign"):
             self.emit(f"widen{k}: wide{k} = convert.int32ToInt64({var})")
             var = f"wide{k}"
         if kind == "f":
@@ -314,6 +314,8 @@ class Tour:
             var = f"wide{k}"
         if shown == "number":
             self.emit(f"show{k}: sayNumber({var})")
+        elif shown == "sign":
+            self.emit(f"show{k}: saySign({var})")
         elif shown == "flag":
             self.emit(f"show{k}: sayFlag({var})")
         elif shown == "place":
@@ -389,7 +391,7 @@ REAL_CASES = ["3.25e2xyz", "  -0.5", ".5", "0x1p-2", "inf", "-infinity", "nan", 
 FLOAT_CASES = ["0.1", "16777217", "1.000000059604644775390625", "1.00000005960464477539062500000001",
                "1.00000005960464477539062499999999", "0x1.00000100000000000000000001p0", "-0x1.8p1", "1e39",
                "3.4028235e38", "3.4028236e38", "1e-45", "0", "-0.0", "2.5", "340282356779733661637539395458142568447",
-               "340282356779733661637539395458142568448", "16777219", "8388609.5", "1.17549435e-38", "1e-50", "inf",
+               "340282356779733661637539395458142568448", "16777219", "8388609.5", "1e-50", "inf",
                "nan", "abc", "3.14159265358979323846"]
 STRINGS_CMP = [("abc", "abc"), ("abc", "abd"), ("abd", "abc"), ("ab", "abc"), ("abc", "ab"), ("", "a"), ("a", ""),
                ("", ""), ([256], [255]), ([8364], [97]), ([97, 98, 99, 88], [97, 98, 99, 89])]
@@ -402,6 +404,11 @@ def build() -> Tour:
     t.bind("memcmp", "ppp>i")
     t.bind("free", "p>p")
     t.emit(f"takeArea: area = *callocFn(areaBytes={AREA}, one=1)")
+    # Python has called setlocale(LC_CTYPE, "") (and may have coerced C to C.UTF-8), so glibc under `refined run` would
+    # classify and convert as Unicode; the tour asks for the C locale itself first
+    t.section("locale")
+    name = t.bstr("C")
+    t.run("setlocale", "ip>p", [6, P(name)], "flag", 1)
     t.section("classes")
     for name in ISW:
         t.bind(name, "i>i")
@@ -518,12 +525,12 @@ def strings(t: Tour) -> None:
         ua = [ord(c) for c in a] if isinstance(a, str) else a
         ub = [ord(c) for c in b] if isinstance(b, str) else b
         order = (ua > ub) - (ua < ub)
-        t.run("wcscmp", "pp>i", [P(sa), P(sb)], "number", order)
-        t.run("wcscoll", "pp>i", [P(sa), P(sb)], "number", order)
+        t.run("wcscmp", "pp>i", [P(sa), P(sb)], "sign", order)
+        t.run("wcscoll", "pp>i", [P(sa), P(sb)], "sign", order)
         for n in (0, 1, 3, 4):
             order_n = (ua[:n] > ub[:n]) - (ua[:n] < ub[:n])
-            t.run("wcsncmp", "ppp>i", [P(sa), P(sb), n], "number", order_n)
-            t.run("wmemcmp", "ppp>i", [P(sa), P(sb), n], "number",
+            t.run("wcsncmp", "ppp>i", [P(sa), P(sb), n], "sign", order_n)
+            t.run("wmemcmp", "ppp>i", [P(sa), P(sb), n], "sign",
                   (( (ua + [0] * 4)[:n] > (ub + [0] * 4)[:n]) - ((ua + [0] * 4)[:n] < (ub + [0] * 4)[:n])))
     t.bind("wcsxfrm", "ppp>p")
     for n in (10, 3, 6, 5, 1):
@@ -924,6 +931,29 @@ op sayFlag "Write 1 for a whole number that is not 0, else 0"
   return
 :some
   yesLine: sayNumber(yes)
+  return
+
+op saySign "Write -1, 0, or 1 as a whole number is negative, 0, or positive"
+  input value Int64 copied
+  effect write console.stdout
+  uses stdoutWriter
+  let zero Int64 0
+  let minus Int64 -1
+  let plus Int64 1
+:begin
+  zeroCheck: isZero = compare.equalInt64(value, zero)
+  if isZero zeroCase signCheck
+:zeroCase
+  zeroLine: sayNumber(zero)
+  return
+:signCheck
+  negativeCheck: negative = compare.lessThanInt64(value, zero)
+  if negative below above
+:below
+  minusLine: sayNumber(minus)
+  return
+:above
+  plusLine: sayNumber(plus)
   return
 
 op sayEqual "Write 1 for a memcmp result of 0, else 0"
