@@ -1,0 +1,3 @@
+# Tests of the `ctime` module; generated from tools/ctime.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process. The time zone
+# is installed from a POSIX string or a TZif image, so no test depends on the machine's own zone.

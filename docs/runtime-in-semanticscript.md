@@ -373,6 +373,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | string.h, stdlib.h | strtok, strtok_r, strsep, strcoll, strxfrm, memccpy, mempcpy, stpcpy, stpncpy, strchrnul, memrchr; strtof, rand, srand, rand_r, aligned_alloc, posix_memalign (D-183) | Done |
 | locale.h, assert.h, inttypes.h | setlocale, localeconv (the C locale); `__assert_fail`; imaxabs, strtoimax, strtoumax, wcstoimax, wcstoumax (D-183) | Done |
 | wchar.h, wctype.h, uchar.h | the wide string, number, and classification functions, and the multibyte conversions, in the C locale (D-184) | Done |
+| time.h | time, clock, difftime, timespec_get, gmtime, localtime, mktime and the `_r` forms, asctime, ctime, strftime; TZ, TZif, and the Windows zone (D-186) | Done |
 | threads.h | thrd_*, mtx_*, cnd_*, tss_*, call_once on Linux threads and futexes and on Windows threads; deadlines honoured; the heap and streams locked, errno per thread on Linux (D-166, D-168, D-169) | Done |
 | errno.h | glibc's numbers, the kernel's on Linux and a table of Windows error codes (D-171) | Done |
 | string.h | strerror: glibc's messages, read from glibc by the compiler on a glibc machine; `Unknown error N` when built elsewhere (D-172) | Done on Linux |

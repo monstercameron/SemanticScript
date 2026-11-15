@@ -1,0 +1,7 @@
+# time.h for the runtime's C library, written in SemanticScript: the clocks (time, clock,
+# timespec_get, difftime), struct tm in glibc's 56-byte layout, gmtime and localtime with the time
+# zone found as glibc's tzset finds it (TZ as a TZif file or a POSIX string, else /etc/localtime on
+# Linux and the system's zone on Windows), mktime by the search glibc runs, asctime, ctime, and
+# strftime, all as glibc behaves in the C locale.
+#
+# This module is generated from tools/ctime.dsl by tools/build.py.

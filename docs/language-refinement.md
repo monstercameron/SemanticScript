@@ -2847,7 +2847,19 @@ with glibc. Decided by delegation:
   and FPSR as two words on AArch64. rint, nearbyint, lrint, and llrint round in the current mode; rint raises inexact
   when it changes a value, nearbyint never; an out-of-range lrint or lround is LONG_MIN on x86_64 and saturates on
   AArch64, as the instructions do. fma is machine.fusedMultiplyAdd, correctly rounded. nexttoward and nexttowardf
-  are not provided: their second argument is a long double (D-186).
+  are not provided here: their second argument is a long double, which the compiler's long double support brings.
+
+- **D-186** time.h (`ctime`): time, clock (CPU time at CLOCKS_PER_SEC 1000000: CLOCK_PROCESS_CPUTIME_ID on Linux,
+  GetProcessTimes on Windows), difftime, timespec_get (TIME_UTC only), gmtime, gmtime_r, localtime, localtime_r,
+  mktime, asctime, asctime_r, ctime, ctime_r, and strftime with every C11 conversion and glibc's extensions, flags,
+  widths, and E and O modifiers. struct tm is glibc's 56 bytes, and gmtime and localtime share one static struct as
+  glibc's do. The local zone is the runtime's own reading: TZ (a TZif file under /usr/share/zoneinfo or an absolute
+  path, else a POSIX rule string with Mm.w.d, Jn, and n rules), and with TZ unset /etc/localtime on Linux and
+  GetDynamicTimeZoneInformation on Windows (its zone names abbreviated to their initials, which cannot be glibc's);
+  TZif version 1 and the 64-bit block of later versions, with the footer's rule past the last transition; UTC when
+  nothing is found. TZ is read again only when its text changes, and a zone's data is never freed, so a struct tm's
+  tm_zone stays valid. mktime searches as glibc's (gnulib's) does, tm_isdst -1 included. machine.state 25600 to
+  26623. tzset and the tzname, timezone, and daylight globals are POSIX's, not ISO C's, and are left out.
 
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
@@ -3657,6 +3669,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-183 | The runtime in SemanticScript, the whole C library: the rest of string.h and stdlib.h (strtok, strtof correctly rounded, glibc's rand), locale.h, assert.h, inttypes.h (by delegation) |
 | 2026-11-15 | D-184 | The runtime in SemanticScript, the whole C library: wchar.h, wctype.h, uchar.h, and the multibyte functions in the C locale, wchar_t 32 bits everywhere (by delegation) |
 | 2026-11-15 | D-185 | The runtime in SemanticScript, the whole C library: math.h's exact operations bit for bit, and fenv.h on the processor's own state (by delegation) |
+| 2026-11-15 | D-186 | The runtime in SemanticScript, the whole C library: time.h with the runtime's own reading of TZ, TZif files, and the Windows zone (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |
