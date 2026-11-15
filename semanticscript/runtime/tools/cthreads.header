@@ -1,0 +1,4 @@
+# threads.h for the runtime's C library, written in SemanticScript (D-166): C11 threads on Linux's own
+# threads, mutexes, condition variables, thread-specific storage, and call_once.
+#
+# This module is generated from tools/cthreads.dsl by tools/build.py.

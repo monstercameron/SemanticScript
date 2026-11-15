@@ -2929,6 +2929,33 @@ does in the C locale. Step one is stdio, which needs variadic functions. Decided
   glibc to refuse `%n` in writable memory) asks nothing more here. The wide-character ones belong with wchar.h's
   functions. tests/test_cprograms.py builds every C program at -O0 and at -O2, so the second calls these names.
 
+- **D-166** threads.h is the module `cthreads`: C11 threads on Linux's own threads. thrd_create clones a thread
+  (CLONE_VM, FS, FILES, SIGHAND, THREAD, SYSVSEM, SETTLS, PARENT_SETTID, CHILD_CLEARTID) onto an 8 MiB stack with a
+  thread block of its own (the thread pointer: it points at itself, holds the stack protector's canary at 0x28 copied
+  from the first thread's, errno at 0x40, the thread's record at 0x38, and thread-specific values from 0x80; the first
+  thread of a C program gets one too, and on AArch64 tpidr_el0 is set to it). The new thread runs
+  `refined_c_thread_main`, which calls the function, keeps what it gives, and runs the storage destructors; the kernel
+  clears and wakes the thread id when the thread ends, which thrd_join waits on with a futex before freeing the
+  stack. Mutexes (plain, recursive, timed), condition variables, and call_once are futex words; thread-specific
+  storage keeps 64 keys. `mtx_timedlock` and `cnd_timedwait` do not watch their deadline (they wait as the untimed
+  forms) and thrd_detach's thread is never freed. Shared state is locked once a thread is started: the runtime's heap
+  (its own lock word, so malloc and every block the library takes is safe) and the streams (one recursive lock around
+  writing, reading, pushing back, and flushing, so one printf's text is never split). errno is per thread: the first
+  thread's stays machine.state's cell, so code that writes that cell keeps working, and a started thread's is in its
+  block (`__errno_location` gives the running thread's). New compiler primitives, for the runtime only:
+  `machine.compareExchange32` (cmpxchg, sequentially consistent), `machine.threadPointer` and `setThreadPointer`,
+  `machine.startThread` (a few instructions of assembly for x86_64 and AArch64 Linux), and the system calls futex,
+  gettid, and sched_yield. Windows has no C threads here: a program reaches the library through `ffi` there, with no
+  C function to start, so thrd_create gives thrd_error; mutexes, once, and storage work in its one thread. (The DSL
+  now writes a decimal Float64 argument as a let of its value, as it does a hexadecimal one.)
+- **D-167** fenv.h and fma get three primitives: `machine.loadFloatControl` (MXCSR on x86_64 through
+  llvm.x86.sse.stmxcsr; FPCR | FPSR << 32 on AArch64, read with mrs), `machine.storeFloatControl` (ldmxcsr; msr), and
+  `machine.fusedMultiplyAdd` and `fusedMultiplyAdd32` (llvm.fma, one rounding: fmadd on AArch64, and on x86_64 an
+  operation that uses it is compiled with FMA3, `"target-features"="+fma"`, rather than calling a libm fma that does
+  not exist here; every x86_64 processor since 2015 has FMA3). They act on the running thread's own state, the JIT
+  process's under `refined run`. They use LLVM's intrinsics, not inline assembly, so an x86_64 executable can still be
+  built on an ARM64 machine.
+
 ## The runtime in SemanticScript, the C library and a loader (2026-11-15)
 
 `ffi` was the one module an executable on Linux refused (D-145): `ffi.open("c")` asked for glibc, which a static
@@ -3532,6 +3559,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-156 to D-161 | The runtime in SemanticScript, the whole C library, stdio: expressions in the runtime's DSL, variadic `abi library` rows and `machine.variadicStart`, x86_64 calls through references made as variadic ones, printf's engine with exact digits, FILE streams buffered as glibc's, scanf (strerror's messages a known gap), the C library as a C program's libc on Linux (`--kind clibrary`) (by delegation) |
 | 2026-11-15 | D-162 to D-164 | The runtime in SemanticScript, the whole C library: exit handlers and the div family, setjmp and longjmp as routines the compiler emits, signal, raise, abort, and system (by delegation) |
 | 2026-11-15 | D-165 | The runtime in SemanticScript, the whole C library: the `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call (by delegation) |
+| 2026-11-15 | D-166 to D-167 | The runtime in SemanticScript, the whole C library: C11 threads on Linux's threads with futexes, a locked heap and locked streams, errno per thread; the floating-point control and fused multiply-add primitives (by delegation) |
 | 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
 | 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
 | 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |

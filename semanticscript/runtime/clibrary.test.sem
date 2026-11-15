@@ -366,7 +366,7 @@ findErrno is call
 findErrno in longMatches
 findErrno invokes kernel.stateAt
 findErrno argument offset Int64 errnoAt copy
-findErrno result errnoCell machine.Address
+findErrno result errnoPlace machine.Address
 findErrno ownedBy none
 findErrno cleanedBy none
 findErrno borrows none
@@ -376,7 +376,7 @@ findErrno suppresses none
 readErrno is call
 readErrno in longMatches
 readErrno invokes machine.loadInt32
-readErrno argument address machine.Address errnoCell copy
+readErrno argument address machine.Address errnoPlace copy
 readErrno result errno Int32
 readErrno ownedBy none
 readErrno cleanedBy none
@@ -4523,6 +4523,7 @@ helpersTest verifies memoryFind findsByte
 helpersTest verifies charOf keepsLowByte
 helpersTest verifies runHandlers runsInReverse
 helpersTest verifies checkFits passesWhatFits
+helpersTest verifies errnoCell firstThreadsCell
 helpersTest verifies divideWhole dividesTowardZero
 helpersTest verifies prepare pointsAtStreams
 helpersTest verifies isSpaceByte spacesLikeC
@@ -4575,7 +4576,7 @@ helpersTest at begin do readSecond
 helpersTest at begin do doAssertTrueStep1
 helpersTest at begin do doAssertTrue
 helpersTest at begin do doSetErrno
-helpersTest at begin do readErrnoCell
+helpersTest at begin do readErrnoPlace
 helpersTest at begin do readErrno
 helpersTest at begin do doAssertTrueStep2
 helpersTest at begin do doAssertTrue2
@@ -4621,6 +4622,10 @@ helpersTest at begin do readQuickCell
 helpersTest at begin do readLeft
 helpersTest at begin do doAssertEqualInt645
 helpersTest at begin do doCheckFits
+helpersTest at begin do readSharedErrno
+helpersTest at begin do readStateErrno
+helpersTest at begin do doAssertTrueStep8
+helpersTest at begin do doAssertTrue9
 helpersTest at begin do doCheckFits2
 helpersTest at begin do readPair
 helpersTest at begin do readQuotient
@@ -4687,21 +4692,21 @@ doSetErrno borrows none
 doSetErrno catch none
 doSetErrno suppresses none
 
-readErrnoCell is call
-readErrnoCell in helpersTest
-readErrnoCell invokes kernel.stateAt
-readErrnoCell argument offset Int64 errnoAt copy
-readErrnoCell result errnoCell machine.Address
-readErrnoCell ownedBy none
-readErrnoCell cleanedBy none
-readErrnoCell borrows none
-readErrnoCell catch none
-readErrnoCell suppresses none
+readErrnoPlace is call
+readErrnoPlace in helpersTest
+readErrnoPlace invokes kernel.stateAt
+readErrnoPlace argument offset Int64 errnoAt copy
+readErrnoPlace result errnoPlace machine.Address
+readErrnoPlace ownedBy none
+readErrnoPlace cleanedBy none
+readErrnoPlace borrows none
+readErrnoPlace catch none
+readErrnoPlace suppresses none
 
 readErrno is call
 readErrno in helpersTest
 readErrno invokes machine.loadInt32
-readErrno argument address machine.Address errnoCell copy
+readErrno argument address machine.Address errnoPlace copy
 readErrno result errno Int32
 readErrno ownedBy none
 readErrno cleanedBy none
@@ -5213,6 +5218,51 @@ doCheckFits cleanedBy none
 doCheckFits borrows none
 doCheckFits catch none
 doCheckFits suppresses none
+
+readSharedErrno is call
+readSharedErrno in helpersTest
+readSharedErrno invokes errnoCell
+readSharedErrno argument none
+readSharedErrno result sharedErrno machine.Address
+readSharedErrno ownedBy none
+readSharedErrno cleanedBy none
+readSharedErrno borrows none
+readSharedErrno catch none
+readSharedErrno suppresses none
+
+readStateErrno is call
+readStateErrno in helpersTest
+readStateErrno invokes kernel.stateAt
+readStateErrno argument offset Int64 errnoAt copy
+readStateErrno result stateErrno machine.Address
+readStateErrno ownedBy none
+readStateErrno cleanedBy none
+readStateErrno borrows none
+readStateErrno catch none
+readStateErrno suppresses none
+
+doAssertTrueStep8 is call
+doAssertTrueStep8 in helpersTest
+doAssertTrueStep8 invokes machine.equal
+doAssertTrueStep8 argument left machine.Address sharedErrno copy
+doAssertTrueStep8 argument right machine.Address stateErrno copy
+doAssertTrueStep8 result doAssertTruePart8 Bool
+doAssertTrueStep8 ownedBy none
+doAssertTrueStep8 cleanedBy none
+doAssertTrueStep8 borrows none
+doAssertTrueStep8 catch none
+doAssertTrueStep8 suppresses none
+
+doAssertTrue9 is call
+doAssertTrue9 in helpersTest
+doAssertTrue9 invokes test.assertTrue
+doAssertTrue9 argument value Bool doAssertTruePart8 copy
+doAssertTrue9 result none
+doAssertTrue9 ownedBy none
+doAssertTrue9 cleanedBy none
+doAssertTrue9 borrows none
+doAssertTrue9 catch none
+doAssertTrue9 suppresses none
 
 doCheckFits2 is call
 doCheckFits2 in helpersTest

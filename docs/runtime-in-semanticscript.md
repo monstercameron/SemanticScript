@@ -369,6 +369,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | math.h | sinh, cosh, tanh, asinh, acosh, atanh, erf, erfc, tgamma, lgamma, their `f` forms, lgamma_r, lgammaf_r, within 1 ulp (D-180) | Done |
 | math.h | sin, cos, tan, asin, acos, atan, atan2 and their `f` forms, within 1 ulp for every double (D-181) | Done |
 | math.h | exp, exp2, expm1, log, log2, log10, log1p, pow, cbrt, hypot and their `f` forms, within 1 ulp (D-182) | Done |
+| threads.h | thrd_*, mtx_*, cnd_*, tss_*, call_once on Linux threads and futexes; the heap and streams locked, errno per thread (D-166) | Done |
 | string.h | strerror: `Unknown error N` for every number (glibc's messages are a known gap) | Gap |
 
 - **stdio** (D-159, D-160). `printf` and its kin read their arguments from the system's own `va_list` (x86_64 Linux,
@@ -391,5 +392,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
   setvbuf and setbuf), stdio_scanf.c (sscanf's conversions, scansets, widths, and scanf with getchar on standard
   input), process_jumps.c (setjmp and longjmp across 50 frames, signal and raise, atexit's order, ldiv and lldiv,
   system's status), fortify_checks.c (the checked functions, and an overflow glibc reports and aborts on); every
-  program is built at -O0 and at -O2, where `_FORTIFY_SOURCE` makes it call the `__*_chk` names.
+  program is built at -O0 and at -O2, where `_FORTIFY_SOURCE` makes it call the `__*_chk` names. threads_c11.c
+  runs five threads (adding under a mutex, malloc and snprintf in each, a condition variable, call_once,
+  thread-specific storage with destructors, errno per thread) and joins them.
 

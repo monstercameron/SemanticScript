@@ -262,6 +262,23 @@ _CONTEXT_ROUTINES = {
         "ldp d8, d9, [x0, #112]", "ldp d10, d11, [x0, #128]", "ldp d12, d13, [x0, #144]", "ldp d14, d15, [x0, #160]",
         "cmp w1, #0", "csinc w0, w1, wzr, ne", "br x30"]),
 }
+# D-166: a thread's start: clone (CLONE_VM, FS, FILES, SIGHAND, THREAD, SYSVSEM, SETTLS, PARENT_SETTID, and
+# CHILD_CLEARTID) onto a new stack with the record and the function on it; the new thread calls the function
+# (refined_c_thread_main, which the compiler passes) with the record and ends
+# with the exit system call (its stack and record are the joiner's to give back)
+_THREAD_START = {
+    "x86_64": [".text", ".p2align 4", ".globl refined_start_thread", ".type refined_start_thread,@function",
+               "refined_start_thread:", "  subq 6, %rdi", "  movq %rcx, (%rdi)", "  movq %r8, 8(%rdi)",
+               "  movq %rdx, %r10", "  movq %rsi, %r8", "  movq %rdi, %rsi", "  movl /usr/bin/bashx3d0f00, %edi",
+               "  movq %r10, %rdx", "  movl 6, %eax", "  syscall", "  testq %rax, %rax", "  jnz 1f",
+               "  xorl %ebp, %ebp", "  movq (%rsp), %rdi", "  movq 8(%rsp), %rax", "  andq hBc16, %rsp",
+               "  callq *%rax", "  movl 0, %eax", "  xorl %edi, %edi", "  syscall", "  ud2", "1:", "  retq"],
+    "aarch64": [".text", ".p2align 4", ".globl refined_start_thread", ".type refined_start_thread,@function",
+                "refined_start_thread:", "  sub x0, x0, #16", "  str x3, [x0]", "  str x4, [x0, #8]", "  mov x4, x2",
+                "  mov x3, x1", "  mov x1, x0", "  movz x0, #0x0f00", "  movk x0, #0x3d, lsl #16", "  mov x8, #220",
+                "  svc #0", "  cbnz x0, 1f", "  ldr x0, [sp]", "  ldr x9, [sp, #8]", "  mov x29, xzr", "  mov x30, xzr",
+                "  blr x9", "  mov x0, #0", "  mov x8, #93", "  svc #0", "  brk #0", "1:", "  ret"],
+}
 # D-147: what a Linux signal handler returns through (SA_RESTORER): the rt_sigreturn system call
 _X86_64_RESTORER = [
     ".text",
@@ -1894,6 +1911,70 @@ class OpGen:
         if name == "squareRoot":
             root = self.be.module.declare_intrinsic("llvm.sqrt", [F64])
             return b.call(root, [args["value"]]), None, None
+        if name in ("loadFloatControl", "storeFloatControl"):
+            # D-167: the floating-point control and status registers of the running thread
+            arch = self.be.module.triple.split("-")[0]
+            if arch == "x86_64":
+                cell = self.fn_alloca(I32, f"{ci.entity.name}.mxcsr")
+                if name == "loadFloatControl":
+                    save = self.be.module.globals.get("llvm.x86.sse.stmxcsr") or ir.Function(
+                        self.be.module, ir.FunctionType(ir.VoidType(), [PTR]), name="llvm.x86.sse.stmxcsr")
+                    b.call(save, [b.bitcast(cell, PTR)])
+                    return b.zext(b.load(cell), I64), None, None
+                b.store(b.trunc(args["value"], I32), cell)
+                load = self.be.module.globals.get("llvm.x86.sse.ldmxcsr") or ir.Function(
+                    self.be.module, ir.FunctionType(ir.VoidType(), [PTR]), name="llvm.x86.sse.ldmxcsr")
+                b.call(load, [b.bitcast(cell, PTR)])
+                return None, None, None
+            if arch in ("aarch64", "arm64"):
+                if name == "loadFloatControl":
+                    control = b.asm(ir.FunctionType(I64, []), "mrs $0, fpcr", "=r", [], side_effect=True)
+                    status = b.asm(ir.FunctionType(I64, []), "mrs $0, fpsr", "=r", [], side_effect=True)
+                    return b.or_(b.and_(control, I64(0xFFFFFFFF)), b.shl(b.and_(status, I64(0xFFFFFFFF)), I64(32))),                         None, None
+                value = args["value"]
+                b.asm(ir.FunctionType(ir.VoidType(), [I64]), "msr fpcr, $0", "r", [b.and_(value, I64(0xFFFFFFFF))],
+                      side_effect=True)
+                b.asm(ir.FunctionType(ir.VoidType(), [I64]), "msr fpsr, $0", "r", [b.lshr(value, I64(32))],
+                      side_effect=True)
+                return None, None, None
+            return (I64(0), None, None) if name == "loadFloatControl" else (None, None, None)
+        if name in ("fusedMultiplyAdd", "fusedMultiplyAdd32"):
+            t = F64 if name == "fusedMultiplyAdd" else F32
+            fma = self.be.module.declare_intrinsic("llvm.fma", [t], fnty=ir.FunctionType(t, [t, t, t]))
+            if self.be.module.triple.startswith("x86_64"):
+                # the operation is compiled for FMA3, so llvm.fma is one instruction rather than a call of libm's fma
+                set.add(self.fn.attributes, '"target-features"="+fma"')
+            return b.call(fma, [args["left"], args["right"], args["addend"]]), None, None
+        if name == "compareExchange32":
+            pair = b.cmpxchg(b.bitcast(args["address"], I32.as_pointer()), args["expected"], args["desired"],
+                             "seq_cst", "seq_cst")
+            return b.extract_value(pair, 0), None, None
+        if name in ("threadPointer", "setThreadPointer", "startThread"):
+            arch = self.be.linux_arch()
+            if name == "threadPointer":
+                if arch == "x86_64":
+                    return b.inttoptr(b.asm(ir.FunctionType(I64, []), "movq %fs:0, $0", "=r", [], side_effect=True),
+                                      PTR), None, None
+                if arch == "aarch64":
+                    return b.inttoptr(b.asm(ir.FunctionType(I64, []), "mrs $0, tpidr_el0", "=r", [], side_effect=True),
+                                      PTR), None, None
+                return ir.Constant(PTR, None), None, None
+            if name == "setThreadPointer":
+                if arch == "aarch64":
+                    b.asm(ir.FunctionType(ir.VoidType(), [I64]), "msr tpidr_el0, $0", "r",
+                          [b.ptrtoint(args["block"], I64)], side_effect=True)
+                return None, None, None
+            if not arch:
+                return I64(-38), None, None  # ENOSYS: no threads but Linux's here
+            self.be.module.asm_parts["thread"] = _THREAD_START[arch]
+            if "refined_c_thread_main" not in self.be.abi:
+                self.unsupported(line, "`machine.startThread` in a program with no operation exported to C as "
+                                       "refined_c_thread_main")
+            mod, op = self.be.abi["refined_c_thread_main"]
+            main = b.bitcast(self.be.function_for(mod, op, None, 0), PTR)
+            fn = self.be.module.globals.get("refined_start_thread") or ir.Function(
+                self.be.module, ir.FunctionType(I64, [PTR, PTR, PTR, PTR, PTR]), name="refined_start_thread")
+            return b.call(fn, [args["stackTop"], args["block"], args["tidAt"], args["record"], main]), None, None
         if name == "variadicStart":
             # D-157: the operation's own `va_list`, started on the arguments after its fixed ones
             if not self.fn.ftype.var_arg:

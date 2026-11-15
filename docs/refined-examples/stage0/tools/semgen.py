@@ -841,7 +841,7 @@ _ARITH = {"+": "add", "-": "subtract", "*": "multiply", "/": "divide", "%": "rem
 _BITS = {"&": "and", "|": "or", "^": "xor", "<<": "shiftLeft", ">>": "shiftRight"}
 _COMPARE = {"==": "equal", "!=": "notEqual", "<": "lessThan", "<=": "lessOrEqual", ">": "greaterThan",
             ">=": "greaterOrEqual"}
-_SIMPLE_ARG = re.compile(r'^(?:[A-Za-z_][A-Za-z0-9_.]*|-?[0-9]+|-?[0-9]+\.[0-9]+|"(?:[^"\\]|\\.)*"|'
+_SIMPLE_ARG = re.compile(r'^(?:[A-Za-z_][A-Za-z0-9_.]*|-?[0-9]+|"(?:[^"\\]|\\.)*"|'
                          r'[a-z][A-Za-z0-9]*=(?:-?[0-9]+|-?[0-9]+\.[0-9]+|"(?:[^"\\]|\\.)*"|true|false))$')
 _NAMED_LITERAL = re.compile(r'^[a-z][A-Za-z0-9]*=(?!=)')
 _NUMERIC = ("Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "Byte", "Float32", "Float64")

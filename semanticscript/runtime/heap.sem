@@ -23,6 +23,8 @@ heap exports resize
 heap exports give
 heap exports joinMessage
 heap exports numbersMessage
+heap exports startThreads
+heap exports threaded
 
 memoryAccess is capability
 memoryAccess purpose "Authority to keep the process heap's handle in machine.state and to put a trap's message together"
@@ -382,7 +384,9 @@ take at useBytes set size bytes
 take at useBytes goto allocate
 take at allocate do osCheck
 take at allocate branch if onLinux goto linuxTake else goto windowsTake
+take at linuxTake do doLockHeap
 take at linuxTake do takeLinuxBlock
+take at linuxTake do doUnlockHeap
 take at linuxTake return ok linuxBlock
 take at windowsTake do findHeap
 take at windowsTake do takeBlock
@@ -416,6 +420,17 @@ osCheck borrows none
 osCheck catch none
 osCheck suppresses none
 
+doLockHeap is call
+doLockHeap in take
+doLockHeap invokes lockHeap
+doLockHeap argument none
+doLockHeap result none
+doLockHeap ownedBy none
+doLockHeap cleanedBy none
+doLockHeap borrows none
+doLockHeap catch none
+doLockHeap suppresses none
+
 takeLinuxBlock is call
 takeLinuxBlock in take
 takeLinuxBlock invokes takeLinux
@@ -426,6 +441,17 @@ takeLinuxBlock cleanedBy none
 takeLinuxBlock borrows none
 takeLinuxBlock catch none
 takeLinuxBlock suppresses none
+
+doUnlockHeap is call
+doUnlockHeap in take
+doUnlockHeap invokes unlockHeap
+doUnlockHeap argument none
+doUnlockHeap result none
+doUnlockHeap ownedBy none
+doUnlockHeap cleanedBy none
+doUnlockHeap borrows none
+doUnlockHeap catch none
+doUnlockHeap suppresses none
 
 findHeap is call
 findHeap in take
@@ -533,7 +559,9 @@ resize at useBytes set size bytes
 resize at useBytes goto reallocate
 resize at reallocate do osCheck
 resize at reallocate branch if onLinux goto linuxResize else goto windowsResize
+resize at linuxResize do doLockHeap
 resize at linuxResize do resizeLinuxBlock
+resize at linuxResize do doUnlockHeap
 resize at linuxResize return ok linuxBlock
 resize at windowsResize do findHeap
 resize at windowsResize do growBlock
@@ -600,6 +628,17 @@ osCheck borrows none
 osCheck catch none
 osCheck suppresses none
 
+doLockHeap is call
+doLockHeap in resize
+doLockHeap invokes lockHeap
+doLockHeap argument none
+doLockHeap result none
+doLockHeap ownedBy none
+doLockHeap cleanedBy none
+doLockHeap borrows none
+doLockHeap catch none
+doLockHeap suppresses none
+
 resizeLinuxBlock is call
 resizeLinuxBlock in resize
 resizeLinuxBlock invokes resizeLinux
@@ -611,6 +650,17 @@ resizeLinuxBlock cleanedBy none
 resizeLinuxBlock borrows none
 resizeLinuxBlock catch none
 resizeLinuxBlock suppresses none
+
+doUnlockHeap is call
+doUnlockHeap in resize
+doUnlockHeap invokes unlockHeap
+doUnlockHeap argument none
+doUnlockHeap result none
+doUnlockHeap ownedBy none
+doUnlockHeap cleanedBy none
+doUnlockHeap borrows none
+doUnlockHeap catch none
+doUnlockHeap suppresses none
 
 findHeap is call
 findHeap in resize
@@ -691,7 +741,9 @@ give at begin do emptyCheck
 give at begin branch if empty goto done else goto free
 give at free do osCheck
 give at free branch if onLinux goto linuxGive else goto windowsGive
+give at linuxGive do doLockHeap
 give at linuxGive do giveLinuxBlock
+give at linuxGive do doUnlockHeap
 give at linuxGive goto done
 give at windowsGive do findHeap
 give at windowsGive do freeBlock
@@ -732,6 +784,17 @@ osCheck borrows none
 osCheck catch none
 osCheck suppresses none
 
+doLockHeap is call
+doLockHeap in give
+doLockHeap invokes lockHeap
+doLockHeap argument none
+doLockHeap result none
+doLockHeap ownedBy none
+doLockHeap cleanedBy none
+doLockHeap borrows none
+doLockHeap catch none
+doLockHeap suppresses none
+
 giveLinuxBlock is call
 giveLinuxBlock in give
 giveLinuxBlock invokes giveLinux
@@ -742,6 +805,17 @@ giveLinuxBlock cleanedBy none
 giveLinuxBlock borrows none
 giveLinuxBlock catch none
 giveLinuxBlock suppresses none
+
+doUnlockHeap is call
+doUnlockHeap in give
+doUnlockHeap invokes unlockHeap
+doUnlockHeap argument none
+doUnlockHeap result none
+doUnlockHeap ownedBy none
+doUnlockHeap cleanedBy none
+doUnlockHeap borrows none
+doUnlockHeap catch none
+doUnlockHeap suppresses none
 
 findHeap is call
 findHeap in give
@@ -2462,3 +2536,422 @@ storeLength cleanedBy none
 storeLength borrows none
 storeLength catch none
 storeLength suppresses none
+
+# ---------------------------------------------------------------- threads (D-166)
+#
+# The runtime's heap on Linux is one free list for the whole process; once a C program starts a thread
+# (threads.h's thrd_create), every take, give, and resize holds a lock: a futex word at machine.state byte 28960
+# (0 free, 1 held, 2 held with waiters), switched on by byte 28968.
+spinBound is constant
+spinBound purpose "The bound of the loop that waits for the heap's lock"
+spinBound type Int64
+spinBound value 9223372036854775807
+
+lockAt is constant
+lockAt purpose "Where the heap's lock word is, in machine.state"
+lockAt type Int64
+lockAt value 28960
+
+threadedAt is constant
+threadedAt purpose "Where whether threads were started is kept, in machine.state"
+threadedAt type Int64
+threadedAt value 28968
+
+startThreads is operation
+startThreads purpose "Note that the process has more than one thread, so the heap locks from now on"
+startThreads invariant locksFromNow "\"After it, the heap takes and gives blocks under its lock\""
+startThreads typeParameter none
+startThreads input none
+startThreads output none
+startThreads outputOwnedBy none
+startThreads raises none
+startThreads effect use machine.memory
+startThreads uses memoryAccess
+startThreads memoryHeap false
+startThreads async false
+startThreads maxRecursion none
+startThreads label begin loopKind none
+startThreads label begin within none
+startThreads let one Int64 1 immutable
+startThreads at begin do readFlag
+startThreads at begin do doStoreInt64
+startThreads at begin return ok none
+
+readFlag is call
+readFlag in startThreads
+readFlag invokes kernel.stateAt
+readFlag argument offset Int64 threadedAt copy
+readFlag result flag machine.Address
+readFlag ownedBy none
+readFlag cleanedBy none
+readFlag borrows none
+readFlag catch none
+readFlag suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in startThreads
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address flag copy
+doStoreInt64 argument value Int64 one copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+threaded is operation
+threaded purpose "Whether the process has more than one thread (threads.h started one)"
+threaded invariant saysThreaded "\"Gives whether startThreads was called\""
+threaded typeParameter none
+threaded input none
+threaded output Bool
+threaded outputOwnedBy none
+threaded raises none
+threaded effect use machine.memory
+threaded uses memoryAccess
+threaded memoryHeap false
+threaded async false
+threaded maxRecursion none
+threaded label begin loopKind none
+threaded label begin within none
+threaded let zero Int64 0 immutable
+threaded at begin do readFlag
+threaded at begin do readValue
+threaded at begin do findStarted1
+threaded at begin return ok started
+
+readFlag is call
+readFlag in threaded
+readFlag invokes kernel.stateAt
+readFlag argument offset Int64 threadedAt copy
+readFlag result flag machine.Address
+readFlag ownedBy none
+readFlag cleanedBy none
+readFlag borrows none
+readFlag catch none
+readFlag suppresses none
+
+readValue is call
+readValue in threaded
+readValue invokes machine.loadInt64
+readValue argument address machine.Address flag copy
+readValue result value Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+findStarted1 is call
+findStarted1 in threaded
+findStarted1 invokes compare.notEqualInt64
+findStarted1 argument left Int64 value copy
+findStarted1 argument right Int64 zero copy
+findStarted1 result started Bool
+findStarted1 ownedBy none
+findStarted1 cleanedBy none
+findStarted1 borrows none
+findStarted1 catch none
+findStarted1 suppresses none
+
+lockHeap is operation
+lockHeap purpose "Take the heap's lock, when threads were started (waiting on the futex while another thread holds it)"
+lockHeap invariant none
+lockHeap typeParameter none
+lockHeap input none
+lockHeap output none
+lockHeap outputOwnedBy none
+lockHeap raises none
+lockHeap effect use machine.memory
+lockHeap effect use system.calls
+lockHeap uses memoryAccess
+lockHeap uses systemCalls
+lockHeap memoryHeap false
+lockHeap async false
+lockHeap maxRecursion none
+lockHeap label begin loopKind none
+lockHeap label begin within none
+lockHeap label acquire loopKind none
+lockHeap label acquire within none
+lockHeap label contended loopKind while
+lockHeap label contended within none
+lockHeap label contended maxIterations spinBound
+lockHeap label wait loopKind none
+lockHeap label wait within contended
+lockHeap label retake loopKind none
+lockHeap label retake within contended
+lockHeap label done loopKind none
+lockHeap label done within none
+lockHeap let int320 Int32 0 immutable
+lockHeap let int321 Int32 1 immutable
+lockHeap let int322 Int32 2 immutable
+lockHeap let n128 Int64 128 immutable
+lockHeap let two Int64 2 immutable
+lockHeap let zero Int64 0 immutable
+lockHeap at begin do readStarted
+lockHeap at begin branch if started goto acquire else goto done
+lockHeap at acquire do readWord
+lockHeap at acquire do readFirst
+lockHeap at acquire do findCheck11
+lockHeap at acquire branch if check1 goto done else goto contended
+lockHeap at contended do readPrevious
+lockHeap at contended do findCheck21
+lockHeap at contended branch if check2 goto retake else goto wait
+lockHeap at wait do readNowhere
+lockHeap at wait do readUnusedFutex
+lockHeap at wait goto retake
+lockHeap at retake do readTaken
+lockHeap at retake do findCheck31
+lockHeap at retake branch if check3 goto done else goto contended
+lockHeap at done return ok none
+
+readStarted is call
+readStarted in lockHeap
+readStarted invokes threaded
+readStarted argument none
+readStarted result started Bool
+readStarted ownedBy none
+readStarted cleanedBy none
+readStarted borrows none
+readStarted catch none
+readStarted suppresses none
+
+readWord is call
+readWord in lockHeap
+readWord invokes kernel.stateAt
+readWord argument offset Int64 lockAt copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+readFirst is call
+readFirst in lockHeap
+readFirst invokes machine.compareExchange32
+readFirst argument address machine.Address word copy
+readFirst argument expected Int32 int320 copy
+readFirst argument desired Int32 int321 copy
+readFirst result first Int32
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+findCheck11 is call
+findCheck11 in lockHeap
+findCheck11 invokes compare.equalInt32
+findCheck11 argument left Int32 first copy
+findCheck11 argument right Int32 int320 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readPrevious is call
+readPrevious in lockHeap
+readPrevious invokes machine.compareExchange32
+readPrevious argument address machine.Address word copy
+readPrevious argument expected Int32 int321 copy
+readPrevious argument desired Int32 int322 copy
+readPrevious result previous Int32
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+findCheck21 is call
+findCheck21 in lockHeap
+findCheck21 invokes compare.equalInt32
+findCheck21 argument left Int32 previous copy
+findCheck21 argument right Int32 int320 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+readNowhere is call
+readNowhere in lockHeap
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readUnusedFutex is call
+readUnusedFutex in lockHeap
+readUnusedFutex invokes system.futex
+readUnusedFutex argument address machine.Address word copy
+readUnusedFutex argument operation Int64 n128 copy
+readUnusedFutex argument value Int64 two copy
+readUnusedFutex argument timeout machine.Address nowhere copy
+readUnusedFutex argument address2 machine.Address nowhere copy
+readUnusedFutex argument value3 Int64 zero copy
+readUnusedFutex result unusedFutex Int64
+readUnusedFutex ownedBy none
+readUnusedFutex cleanedBy none
+readUnusedFutex borrows none
+readUnusedFutex catch none
+readUnusedFutex suppresses none
+
+readTaken is call
+readTaken in lockHeap
+readTaken invokes machine.compareExchange32
+readTaken argument address machine.Address word copy
+readTaken argument expected Int32 int320 copy
+readTaken argument desired Int32 int322 copy
+readTaken result taken Int32
+readTaken ownedBy none
+readTaken cleanedBy none
+readTaken borrows none
+readTaken catch none
+readTaken suppresses none
+
+findCheck31 is call
+findCheck31 in lockHeap
+findCheck31 invokes compare.equalInt32
+findCheck31 argument left Int32 taken copy
+findCheck31 argument right Int32 int320 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+unlockHeap is operation
+unlockHeap purpose "Give the heap's lock back, waking a waiter"
+unlockHeap invariant none
+unlockHeap typeParameter none
+unlockHeap input none
+unlockHeap output none
+unlockHeap outputOwnedBy none
+unlockHeap raises none
+unlockHeap effect use machine.memory
+unlockHeap effect use system.calls
+unlockHeap uses memoryAccess
+unlockHeap uses systemCalls
+unlockHeap memoryHeap false
+unlockHeap async false
+unlockHeap maxRecursion none
+unlockHeap label begin loopKind none
+unlockHeap label begin within none
+unlockHeap label release loopKind none
+unlockHeap label release within none
+unlockHeap label wake loopKind none
+unlockHeap label wake within none
+unlockHeap label done loopKind none
+unlockHeap label done within none
+unlockHeap let int321 Int32 1 immutable
+unlockHeap let int320 Int32 0 immutable
+unlockHeap let n129 Int64 129 immutable
+unlockHeap let one Int64 1 immutable
+unlockHeap let zero Int64 0 immutable
+unlockHeap at begin do readStarted
+unlockHeap at begin branch if started goto release else goto done
+unlockHeap at release do readWord
+unlockHeap at release do readPrevious
+unlockHeap at release do findCheck11
+unlockHeap at release branch if check1 goto done else goto wake
+unlockHeap at wake do doStoreInt32
+unlockHeap at wake do readNowhere
+unlockHeap at wake do readUnusedFutex
+unlockHeap at wake return ok none
+unlockHeap at done return ok none
+
+readStarted is call
+readStarted in unlockHeap
+readStarted invokes threaded
+readStarted argument none
+readStarted result started Bool
+readStarted ownedBy none
+readStarted cleanedBy none
+readStarted borrows none
+readStarted catch none
+readStarted suppresses none
+
+readWord is call
+readWord in unlockHeap
+readWord invokes kernel.stateAt
+readWord argument offset Int64 lockAt copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+readPrevious is call
+readPrevious in unlockHeap
+readPrevious invokes machine.compareExchange32
+readPrevious argument address machine.Address word copy
+readPrevious argument expected Int32 int321 copy
+readPrevious argument desired Int32 int320 copy
+readPrevious result previous Int32
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+findCheck11 is call
+findCheck11 in unlockHeap
+findCheck11 invokes compare.equalInt32
+findCheck11 argument left Int32 previous copy
+findCheck11 argument right Int32 int321 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in unlockHeap
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address word copy
+doStoreInt32 argument value Int32 int320 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+readNowhere is call
+readNowhere in unlockHeap
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readUnusedFutex is call
+readUnusedFutex in unlockHeap
+readUnusedFutex invokes system.futex
+readUnusedFutex argument address machine.Address word copy
+readUnusedFutex argument operation Int64 n129 copy
+readUnusedFutex argument value Int64 one copy
+readUnusedFutex argument timeout machine.Address nowhere copy
+readUnusedFutex argument address2 machine.Address nowhere copy
+readUnusedFutex argument value3 Int64 zero copy
+readUnusedFutex result unusedFutex Int64
+readUnusedFutex ownedBy none
+readUnusedFutex cleanedBy none
+readUnusedFutex borrows none
+readUnusedFutex catch none
+readUnusedFutex suppresses none

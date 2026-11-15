@@ -6,6 +6,8 @@ takeTest purpose "A block from the heap is zeroed, can be written, grows with it
 takeTest verifies take takesZeroed
 takeTest verifies resize keepsBytes
 takeTest verifies give givesBack
+takeTest verifies startThreads locksFromNow
+takeTest verifies threaded saysThreaded
 takeTest typeParameter none
 takeTest input none
 takeTest output none
@@ -27,6 +29,12 @@ takeTest let answer Int64 42 immutable
 takeTest let fourThousand Int64 4096 immutable
 takeTest let farOffset Int64 4088 immutable
 takeTest let eight Int64 8 immutable
+takeTest at begin do readBefore
+takeTest at begin do doAssertTrueStep1
+takeTest at begin do doAssertTrue
+takeTest at begin do doStartThreads
+takeTest at begin do readAfter
+takeTest at begin do doAssertTrue2
 takeTest at begin do takeBlock
 takeTest at begin do findLast
 takeTest at begin do readLast
@@ -47,6 +55,72 @@ takeTest at begin do giveGrown
 takeTest at begin do giveFresh
 takeTest at begin do giveNothing
 takeTest at begin return ok none
+
+readBefore is call
+readBefore in takeTest
+readBefore invokes threaded
+readBefore argument none
+readBefore result before Bool
+readBefore ownedBy none
+readBefore cleanedBy none
+readBefore borrows none
+readBefore catch none
+readBefore suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in takeTest
+doAssertTrueStep1 invokes logic.not
+doAssertTrueStep1 argument value Bool before copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in takeTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+doStartThreads is call
+doStartThreads in takeTest
+doStartThreads invokes startThreads
+doStartThreads argument none
+doStartThreads result none
+doStartThreads ownedBy none
+doStartThreads cleanedBy none
+doStartThreads borrows none
+doStartThreads catch none
+doStartThreads suppresses none
+
+readAfter is call
+readAfter in takeTest
+readAfter invokes threaded
+readAfter argument none
+readAfter result after Bool
+readAfter ownedBy none
+readAfter cleanedBy none
+readAfter borrows none
+readAfter catch none
+readAfter suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in takeTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool after copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
 
 takeBlock is call
 takeBlock in takeTest

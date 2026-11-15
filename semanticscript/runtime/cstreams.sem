@@ -2607,65 +2607,65 @@ doAddFlag3 borrows none
 doAddFlag3 catch none
 doAddFlag3 suppresses none
 
-flushPending is operation
-flushPending purpose "Write the bytes waiting in a stream's buffer: 0, or -1 when the write fails (the error flag set)"
-flushPending invariant none
-flushPending typeParameter none
-flushPending input stream machine.Address copied
-flushPending output Int32
-flushPending outputOwnedBy none
-flushPending raises none
-flushPending effect use machine.memory
-flushPending effect use system.calls
-flushPending uses memoryAccess
-flushPending uses systemCalls
-flushPending memoryHeap false
-flushPending async false
-flushPending maxRecursion none
-flushPending label begin loopKind none
-flushPending label begin within none
-flushPending label nothingWaiting loopKind none
-flushPending label nothingWaiting within none
-flushPending label write loopKind none
-flushPending label write within none
-flushPending label toEnd loopKind none
-flushPending label toEnd within none
-flushPending label writeIt loopKind none
-flushPending label writeIt within none
-flushPending label written loopKind none
-flushPending label written within none
-flushPending label writeFailed loopKind none
-flushPending label writeFailed within none
-flushPending let fine Int32 0 immutable
-flushPending let failure Int32 -1 immutable
-flushPending let n48 Int64 48 immutable
-flushPending let zero Int64 0 immutable
-flushPending let eight Int64 8 immutable
-flushPending let two Int64 2 immutable
-flushPending let sixteen Int64 16 immutable
-flushPending at begin do readPending
-flushPending at begin do findCheck11
-flushPending at begin branch if check1 goto write else goto nothingWaiting
-flushPending at nothingWaiting return ok fine
-flushPending at write do doSetField
-flushPending at write do readAppendMode
-flushPending at write do readOnLinux
-flushPending at write do seekFirstStep1
-flushPending at write do findSeekFirst1
-flushPending at write do readHandle
-flushPending at write branch if seekFirst goto toEnd else goto writeIt
-flushPending at toEnd do readUnusedSeekHandle
-flushPending at toEnd goto writeIt
-flushPending at writeIt do readBufferValue
-flushPending at writeIt do readBuffer
-flushPending at writeIt do readWrote
-flushPending at writeIt branch if wrote goto written else goto writeFailed
-flushPending at written return ok fine
-flushPending at writeFailed do doAddFlag
-flushPending at writeFailed return ok failure
+flushPendingHeld is operation
+flushPendingHeld purpose "Write the bytes waiting in a stream's buffer: 0, or -1 when the write fails (the error flag set)"
+flushPendingHeld invariant none
+flushPendingHeld typeParameter none
+flushPendingHeld input stream machine.Address copied
+flushPendingHeld output Int32
+flushPendingHeld outputOwnedBy none
+flushPendingHeld raises none
+flushPendingHeld effect use machine.memory
+flushPendingHeld effect use system.calls
+flushPendingHeld uses memoryAccess
+flushPendingHeld uses systemCalls
+flushPendingHeld memoryHeap false
+flushPendingHeld async false
+flushPendingHeld maxRecursion none
+flushPendingHeld label begin loopKind none
+flushPendingHeld label begin within none
+flushPendingHeld label nothingWaiting loopKind none
+flushPendingHeld label nothingWaiting within none
+flushPendingHeld label write loopKind none
+flushPendingHeld label write within none
+flushPendingHeld label toEnd loopKind none
+flushPendingHeld label toEnd within none
+flushPendingHeld label writeIt loopKind none
+flushPendingHeld label writeIt within none
+flushPendingHeld label written loopKind none
+flushPendingHeld label written within none
+flushPendingHeld label writeFailed loopKind none
+flushPendingHeld label writeFailed within none
+flushPendingHeld let fine Int32 0 immutable
+flushPendingHeld let failure Int32 -1 immutable
+flushPendingHeld let n48 Int64 48 immutable
+flushPendingHeld let zero Int64 0 immutable
+flushPendingHeld let eight Int64 8 immutable
+flushPendingHeld let two Int64 2 immutable
+flushPendingHeld let sixteen Int64 16 immutable
+flushPendingHeld at begin do readPending
+flushPendingHeld at begin do findCheck11
+flushPendingHeld at begin branch if check1 goto write else goto nothingWaiting
+flushPendingHeld at nothingWaiting return ok fine
+flushPendingHeld at write do doSetField
+flushPendingHeld at write do readAppendMode
+flushPendingHeld at write do readOnLinux
+flushPendingHeld at write do seekFirstStep1
+flushPendingHeld at write do findSeekFirst1
+flushPendingHeld at write do readHandle
+flushPendingHeld at write branch if seekFirst goto toEnd else goto writeIt
+flushPendingHeld at toEnd do readUnusedSeekHandle
+flushPendingHeld at toEnd goto writeIt
+flushPendingHeld at writeIt do readBufferValue
+flushPendingHeld at writeIt do readBuffer
+flushPendingHeld at writeIt do readWrote
+flushPendingHeld at writeIt branch if wrote goto written else goto writeFailed
+flushPendingHeld at written return ok fine
+flushPendingHeld at writeFailed do doAddFlag
+flushPendingHeld at writeFailed return ok failure
 
 readPending is call
-readPending in flushPending
+readPending in flushPendingHeld
 readPending invokes field
 readPending argument stream machine.Address stream copy
 readPending argument offset Int64 n48 copy
@@ -2677,7 +2677,7 @@ readPending catch none
 readPending suppresses none
 
 findCheck11 is call
-findCheck11 in flushPending
+findCheck11 in flushPendingHeld
 findCheck11 invokes compare.greaterThanInt64
 findCheck11 argument left Int64 pending copy
 findCheck11 argument right Int64 zero copy
@@ -2689,7 +2689,7 @@ findCheck11 catch none
 findCheck11 suppresses none
 
 doSetField is call
-doSetField in flushPending
+doSetField in flushPendingHeld
 doSetField invokes setField
 doSetField argument stream machine.Address stream copy
 doSetField argument offset Int64 n48 copy
@@ -2702,7 +2702,7 @@ doSetField catch none
 doSetField suppresses none
 
 readAppendMode is call
-readAppendMode in flushPending
+readAppendMode in flushPendingHeld
 readAppendMode invokes hasFlag
 readAppendMode argument stream machine.Address stream copy
 readAppendMode argument flag Int64 appending copy
@@ -2714,7 +2714,7 @@ readAppendMode catch none
 readAppendMode suppresses none
 
 readOnLinux is call
-readOnLinux in flushPending
+readOnLinux in flushPendingHeld
 readOnLinux invokes system.linux
 readOnLinux argument none
 readOnLinux result onLinux Bool
@@ -2725,7 +2725,7 @@ readOnLinux catch none
 readOnLinux suppresses none
 
 seekFirstStep1 is call
-seekFirstStep1 in flushPending
+seekFirstStep1 in flushPendingHeld
 seekFirstStep1 invokes logic.not
 seekFirstStep1 argument value Bool onLinux copy
 seekFirstStep1 result seekFirstPart1 Bool
@@ -2736,7 +2736,7 @@ seekFirstStep1 catch none
 seekFirstStep1 suppresses none
 
 findSeekFirst1 is call
-findSeekFirst1 in flushPending
+findSeekFirst1 in flushPendingHeld
 findSeekFirst1 invokes logic.and
 findSeekFirst1 argument left Bool appendMode copy
 findSeekFirst1 argument right Bool seekFirstPart1 copy
@@ -2748,7 +2748,7 @@ findSeekFirst1 catch none
 findSeekFirst1 suppresses none
 
 readHandle is call
-readHandle in flushPending
+readHandle in flushPendingHeld
 readHandle invokes field
 readHandle argument stream machine.Address stream copy
 readHandle argument offset Int64 eight copy
@@ -2760,7 +2760,7 @@ readHandle catch none
 readHandle suppresses none
 
 readUnusedSeekHandle is call
-readUnusedSeekHandle in flushPending
+readUnusedSeekHandle in flushPendingHeld
 readUnusedSeekHandle invokes seekHandle
 readUnusedSeekHandle argument handle Int64 handle copy
 readUnusedSeekHandle argument offset Int64 zero copy
@@ -2773,7 +2773,7 @@ readUnusedSeekHandle catch none
 readUnusedSeekHandle suppresses none
 
 readBufferValue is call
-readBufferValue in flushPending
+readBufferValue in flushPendingHeld
 readBufferValue invokes field
 readBufferValue argument stream machine.Address stream copy
 readBufferValue argument offset Int64 sixteen copy
@@ -2785,7 +2785,7 @@ readBufferValue catch none
 readBufferValue suppresses none
 
 readBuffer is call
-readBuffer in flushPending
+readBuffer in flushPendingHeld
 readBuffer invokes machine.fromInt64
 readBuffer argument value Int64 bufferValue copy
 readBuffer result buffer machine.Address
@@ -2796,7 +2796,7 @@ readBuffer catch none
 readBuffer suppresses none
 
 readWrote is call
-readWrote in flushPending
+readWrote in flushPendingHeld
 readWrote invokes rawWrite
 readWrote argument handle Int64 handle copy
 readWrote argument data machine.Address buffer copy
@@ -2809,7 +2809,7 @@ readWrote catch none
 readWrote suppresses none
 
 doAddFlag is call
-doAddFlag in flushPending
+doAddFlag in flushPendingHeld
 doAddFlag invokes addFlag
 doAddFlag argument stream machine.Address stream copy
 doAddFlag argument flag Int64 failed copy
@@ -3051,125 +3051,125 @@ readUnusedSeekHandle borrows none
 readUnusedSeekHandle catch none
 readUnusedSeekHandle suppresses none
 
-putBytes is operation
-putBytes purpose "Write bytes to a stream as its buffering says: how many were taken (all of them, or 0 when the stream cannot be written or the write fails, errno set)"
-putBytes invariant none
-putBytes typeParameter none
-putBytes input stream machine.Address copied
-putBytes input data machine.Address copied
-putBytes input bytes Int64 copied
-putBytes output Int64
-putBytes outputOwnedBy none
-putBytes raises none
-putBytes effect use machine.memory
-putBytes effect use system.calls
-putBytes uses memoryAccess
-putBytes uses systemCalls
-putBytes memoryHeap false
-putBytes async false
-putBytes maxRecursion none
-putBytes label begin loopKind none
-putBytes label begin within none
-putBytes label refuse loopKind none
-putBytes label refuse within none
-putBytes label prepare loopKind none
-putBytes label prepare within none
-putBytes label dropRead loopKind none
-putBytes label dropRead within none
-putBytes label decide loopKind none
-putBytes label decide within none
-putBytes label writeDirect loopKind none
-putBytes label writeDirect within none
-putBytes label directFailed loopKind none
-putBytes label directFailed within none
-putBytes label copyLoop loopKind while
-putBytes label copyLoop within none
-putBytes label copyLoop maxIterations forever
-putBytes label copyChunk loopKind none
-putBytes label copyChunk within copyLoop
-putBytes label flushFull loopKind none
-putBytes label flushFull within copyLoop
-putBytes label copyIn loopKind none
-putBytes label copyIn within copyLoop
-putBytes label chunkFailed loopKind none
-putBytes label chunkFailed within none
-putBytes label lineCheck loopKind none
-putBytes label lineCheck within none
-putBytes label findLine loopKind none
-putBytes label findLine within none
-putBytes label flushLine loopKind none
-putBytes label flushLine within none
-putBytes label allTaken loopKind none
-putBytes label allTaken within none
-putBytes let done Int64 0 mutable
-putBytes let nothing Int64 0 immutable
-putBytes let n40 Int64 40 immutable
-putBytes let n56 Int64 56 immutable
-putBytes let zero Int64 0 immutable
-putBytes let eight Int64 8 immutable
-putBytes let n24 Int64 24 immutable
-putBytes let n48 Int64 48 immutable
-putBytes let int320 Int32 0 immutable
-putBytes let sixteen Int64 16 immutable
-putBytes let int3210 Int32 10 immutable
-putBytes at begin do readCanWrite
-putBytes at begin branch if canWrite goto prepare else goto refuse
-putBytes at refuse do doAddFlag
-putBytes at refuse do doSetErrno
-putBytes at refuse return ok nothing
-putBytes at prepare do readEnding
-putBytes at prepare do readPushed
-putBytes at prepare do check1Step1
-putBytes at prepare do check1Step2
-putBytes at prepare do findCheck11
-putBytes at prepare branch if check1 goto dropRead else goto decide
-putBytes at dropRead do doDropReadAhead
-putBytes at dropRead goto decide
-putBytes at decide do doDecideBuffer
-putBytes at decide do readDirect
-putBytes at decide branch if direct goto writeDirect else goto copyLoop
-putBytes at writeDirect do readHandle
-putBytes at writeDirect do readWrote
-putBytes at writeDirect branch if wrote goto allTaken else goto directFailed
-putBytes at directFailed do doAddFlag2
-putBytes at directFailed return ok nothing
-putBytes at copyLoop do findCheck21
-putBytes at copyLoop branch if check2 goto lineCheck else goto copyChunk
-putBytes at copyChunk do readSize
-putBytes at copyChunk do readPending
-putBytes at copyChunk do findRoom1
-putBytes at copyChunk do findCheck31
-putBytes at copyChunk branch if check3 goto flushFull else goto copyIn
-putBytes at flushFull do readFlushed
-putBytes at flushFull do findCheck41
-putBytes at flushFull branch if check4 goto copyLoop else goto chunkFailed
-putBytes at copyIn do chunkStep1
-putBytes at copyIn do findChunk1
-putBytes at copyIn do readBufferValue
-putBytes at copyIn do targetStep1
-putBytes at copyIn do findTarget1
-putBytes at copyIn do findSource1
-putBytes at copyIn do doCopy
-putBytes at copyIn do doSetFieldStep1
-putBytes at copyIn do doSetField
-putBytes at copyIn do findDoneNext11
-putBytes at copyIn set done doneNext1
-putBytes at copyIn goto copyLoop
-putBytes at chunkFailed return ok nothing
-putBytes at lineCheck do readIsLine
-putBytes at lineCheck branch if isLine goto findLine else goto allTaken
-putBytes at findLine do readNowhere
-putBytes at findLine do readFound
-putBytes at findLine do hasLineStep1
-putBytes at findLine do findHasLine1
-putBytes at findLine branch if hasLine goto flushLine else goto allTaken
-putBytes at flushLine do readLineFlushed
-putBytes at flushLine do findCheck51
-putBytes at flushLine branch if check5 goto allTaken else goto chunkFailed
-putBytes at allTaken return ok bytes
+putBytesHeld is operation
+putBytesHeld purpose "Write bytes to a stream as its buffering says: how many were taken (all of them, or 0 when the stream cannot be written or the write fails, errno set)"
+putBytesHeld invariant none
+putBytesHeld typeParameter none
+putBytesHeld input stream machine.Address copied
+putBytesHeld input data machine.Address copied
+putBytesHeld input bytes Int64 copied
+putBytesHeld output Int64
+putBytesHeld outputOwnedBy none
+putBytesHeld raises none
+putBytesHeld effect use machine.memory
+putBytesHeld effect use system.calls
+putBytesHeld uses memoryAccess
+putBytesHeld uses systemCalls
+putBytesHeld memoryHeap false
+putBytesHeld async false
+putBytesHeld maxRecursion none
+putBytesHeld label begin loopKind none
+putBytesHeld label begin within none
+putBytesHeld label refuse loopKind none
+putBytesHeld label refuse within none
+putBytesHeld label prepare loopKind none
+putBytesHeld label prepare within none
+putBytesHeld label dropRead loopKind none
+putBytesHeld label dropRead within none
+putBytesHeld label decide loopKind none
+putBytesHeld label decide within none
+putBytesHeld label writeDirect loopKind none
+putBytesHeld label writeDirect within none
+putBytesHeld label directFailed loopKind none
+putBytesHeld label directFailed within none
+putBytesHeld label copyLoop loopKind while
+putBytesHeld label copyLoop within none
+putBytesHeld label copyLoop maxIterations forever
+putBytesHeld label copyChunk loopKind none
+putBytesHeld label copyChunk within copyLoop
+putBytesHeld label flushFull loopKind none
+putBytesHeld label flushFull within copyLoop
+putBytesHeld label copyIn loopKind none
+putBytesHeld label copyIn within copyLoop
+putBytesHeld label chunkFailed loopKind none
+putBytesHeld label chunkFailed within none
+putBytesHeld label lineCheck loopKind none
+putBytesHeld label lineCheck within none
+putBytesHeld label findLine loopKind none
+putBytesHeld label findLine within none
+putBytesHeld label flushLine loopKind none
+putBytesHeld label flushLine within none
+putBytesHeld label allTaken loopKind none
+putBytesHeld label allTaken within none
+putBytesHeld let done Int64 0 mutable
+putBytesHeld let nothing Int64 0 immutable
+putBytesHeld let n40 Int64 40 immutable
+putBytesHeld let n56 Int64 56 immutable
+putBytesHeld let zero Int64 0 immutable
+putBytesHeld let eight Int64 8 immutable
+putBytesHeld let n24 Int64 24 immutable
+putBytesHeld let n48 Int64 48 immutable
+putBytesHeld let int320 Int32 0 immutable
+putBytesHeld let sixteen Int64 16 immutable
+putBytesHeld let int3210 Int32 10 immutable
+putBytesHeld at begin do readCanWrite
+putBytesHeld at begin branch if canWrite goto prepare else goto refuse
+putBytesHeld at refuse do doAddFlag
+putBytesHeld at refuse do doSetErrno
+putBytesHeld at refuse return ok nothing
+putBytesHeld at prepare do readEnding
+putBytesHeld at prepare do readPushed
+putBytesHeld at prepare do check1Step1
+putBytesHeld at prepare do check1Step2
+putBytesHeld at prepare do findCheck11
+putBytesHeld at prepare branch if check1 goto dropRead else goto decide
+putBytesHeld at dropRead do doDropReadAhead
+putBytesHeld at dropRead goto decide
+putBytesHeld at decide do doDecideBuffer
+putBytesHeld at decide do readDirect
+putBytesHeld at decide branch if direct goto writeDirect else goto copyLoop
+putBytesHeld at writeDirect do readHandle
+putBytesHeld at writeDirect do readWrote
+putBytesHeld at writeDirect branch if wrote goto allTaken else goto directFailed
+putBytesHeld at directFailed do doAddFlag2
+putBytesHeld at directFailed return ok nothing
+putBytesHeld at copyLoop do findCheck21
+putBytesHeld at copyLoop branch if check2 goto lineCheck else goto copyChunk
+putBytesHeld at copyChunk do readSize
+putBytesHeld at copyChunk do readPending
+putBytesHeld at copyChunk do findRoom1
+putBytesHeld at copyChunk do findCheck31
+putBytesHeld at copyChunk branch if check3 goto flushFull else goto copyIn
+putBytesHeld at flushFull do readFlushed
+putBytesHeld at flushFull do findCheck41
+putBytesHeld at flushFull branch if check4 goto copyLoop else goto chunkFailed
+putBytesHeld at copyIn do chunkStep1
+putBytesHeld at copyIn do findChunk1
+putBytesHeld at copyIn do readBufferValue
+putBytesHeld at copyIn do targetStep1
+putBytesHeld at copyIn do findTarget1
+putBytesHeld at copyIn do findSource1
+putBytesHeld at copyIn do doCopy
+putBytesHeld at copyIn do doSetFieldStep1
+putBytesHeld at copyIn do doSetField
+putBytesHeld at copyIn do findDoneNext11
+putBytesHeld at copyIn set done doneNext1
+putBytesHeld at copyIn goto copyLoop
+putBytesHeld at chunkFailed return ok nothing
+putBytesHeld at lineCheck do readIsLine
+putBytesHeld at lineCheck branch if isLine goto findLine else goto allTaken
+putBytesHeld at findLine do readNowhere
+putBytesHeld at findLine do readFound
+putBytesHeld at findLine do hasLineStep1
+putBytesHeld at findLine do findHasLine1
+putBytesHeld at findLine branch if hasLine goto flushLine else goto allTaken
+putBytesHeld at flushLine do readLineFlushed
+putBytesHeld at flushLine do findCheck51
+putBytesHeld at flushLine branch if check5 goto allTaken else goto chunkFailed
+putBytesHeld at allTaken return ok bytes
 
 readCanWrite is call
-readCanWrite in putBytes
+readCanWrite in putBytesHeld
 readCanWrite invokes hasFlag
 readCanWrite argument stream machine.Address stream copy
 readCanWrite argument flag Int64 writable copy
@@ -3181,7 +3181,7 @@ readCanWrite catch none
 readCanWrite suppresses none
 
 doAddFlag is call
-doAddFlag in putBytes
+doAddFlag in putBytesHeld
 doAddFlag invokes addFlag
 doAddFlag argument stream machine.Address stream copy
 doAddFlag argument flag Int64 failed copy
@@ -3193,7 +3193,7 @@ doAddFlag catch none
 doAddFlag suppresses none
 
 doSetErrno is call
-doSetErrno in putBytes
+doSetErrno in putBytesHeld
 doSetErrno invokes clibrary.setErrno
 doSetErrno argument value Int32 badFile copy
 doSetErrno result none
@@ -3204,7 +3204,7 @@ doSetErrno catch none
 doSetErrno suppresses none
 
 readEnding is call
-readEnding in putBytes
+readEnding in putBytesHeld
 readEnding invokes field
 readEnding argument stream machine.Address stream copy
 readEnding argument offset Int64 n40 copy
@@ -3216,7 +3216,7 @@ readEnding catch none
 readEnding suppresses none
 
 readPushed is call
-readPushed in putBytes
+readPushed in putBytesHeld
 readPushed invokes field
 readPushed argument stream machine.Address stream copy
 readPushed argument offset Int64 n56 copy
@@ -3228,7 +3228,7 @@ readPushed catch none
 readPushed suppresses none
 
 check1Step1 is call
-check1Step1 in putBytes
+check1Step1 in putBytesHeld
 check1Step1 invokes compare.greaterThanInt64
 check1Step1 argument left Int64 ending copy
 check1Step1 argument right Int64 zero copy
@@ -3240,7 +3240,7 @@ check1Step1 catch none
 check1Step1 suppresses none
 
 check1Step2 is call
-check1Step2 in putBytes
+check1Step2 in putBytesHeld
 check1Step2 invokes compare.greaterThanInt64
 check1Step2 argument left Int64 pushed copy
 check1Step2 argument right Int64 zero copy
@@ -3252,7 +3252,7 @@ check1Step2 catch none
 check1Step2 suppresses none
 
 findCheck11 is call
-findCheck11 in putBytes
+findCheck11 in putBytesHeld
 findCheck11 invokes logic.or
 findCheck11 argument left Bool check1Part1 copy
 findCheck11 argument right Bool check1Part2 copy
@@ -3264,7 +3264,7 @@ findCheck11 catch none
 findCheck11 suppresses none
 
 doDropReadAhead is call
-doDropReadAhead in putBytes
+doDropReadAhead in putBytesHeld
 doDropReadAhead invokes dropReadAhead
 doDropReadAhead argument stream machine.Address stream copy
 doDropReadAhead result none
@@ -3275,7 +3275,7 @@ doDropReadAhead catch none
 doDropReadAhead suppresses none
 
 doDecideBuffer is call
-doDecideBuffer in putBytes
+doDecideBuffer in putBytesHeld
 doDecideBuffer invokes decideBuffer
 doDecideBuffer argument stream machine.Address stream copy
 doDecideBuffer result none
@@ -3286,7 +3286,7 @@ doDecideBuffer catch none
 doDecideBuffer suppresses none
 
 readDirect is call
-readDirect in putBytes
+readDirect in putBytesHeld
 readDirect invokes hasFlag
 readDirect argument stream machine.Address stream copy
 readDirect argument flag Int64 unbuffered copy
@@ -3298,7 +3298,7 @@ readDirect catch none
 readDirect suppresses none
 
 readHandle is call
-readHandle in putBytes
+readHandle in putBytesHeld
 readHandle invokes field
 readHandle argument stream machine.Address stream copy
 readHandle argument offset Int64 eight copy
@@ -3310,7 +3310,7 @@ readHandle catch none
 readHandle suppresses none
 
 readWrote is call
-readWrote in putBytes
+readWrote in putBytesHeld
 readWrote invokes rawWrite
 readWrote argument handle Int64 handle copy
 readWrote argument data machine.Address data copy
@@ -3323,7 +3323,7 @@ readWrote catch none
 readWrote suppresses none
 
 doAddFlag2 is call
-doAddFlag2 in putBytes
+doAddFlag2 in putBytesHeld
 doAddFlag2 invokes addFlag
 doAddFlag2 argument stream machine.Address stream copy
 doAddFlag2 argument flag Int64 failed copy
@@ -3335,7 +3335,7 @@ doAddFlag2 catch none
 doAddFlag2 suppresses none
 
 findCheck21 is call
-findCheck21 in putBytes
+findCheck21 in putBytesHeld
 findCheck21 invokes compare.greaterOrEqualInt64
 findCheck21 argument left Int64 done copy
 findCheck21 argument right Int64 bytes copy
@@ -3347,7 +3347,7 @@ findCheck21 catch none
 findCheck21 suppresses none
 
 readSize is call
-readSize in putBytes
+readSize in putBytesHeld
 readSize invokes field
 readSize argument stream machine.Address stream copy
 readSize argument offset Int64 n24 copy
@@ -3359,7 +3359,7 @@ readSize catch none
 readSize suppresses none
 
 readPending is call
-readPending in putBytes
+readPending in putBytesHeld
 readPending invokes field
 readPending argument stream machine.Address stream copy
 readPending argument offset Int64 n48 copy
@@ -3371,7 +3371,7 @@ readPending catch none
 readPending suppresses none
 
 findRoom1 is call
-findRoom1 in putBytes
+findRoom1 in putBytesHeld
 findRoom1 invokes math.subtractInt64
 findRoom1 argument left Int64 size copy
 findRoom1 argument right Int64 pending copy
@@ -3383,7 +3383,7 @@ findRoom1 catch none
 findRoom1 suppresses none
 
 findCheck31 is call
-findCheck31 in putBytes
+findCheck31 in putBytesHeld
 findCheck31 invokes compare.equalInt64
 findCheck31 argument left Int64 room copy
 findCheck31 argument right Int64 zero copy
@@ -3395,7 +3395,7 @@ findCheck31 catch none
 findCheck31 suppresses none
 
 readFlushed is call
-readFlushed in putBytes
+readFlushed in putBytesHeld
 readFlushed invokes flushPending
 readFlushed argument stream machine.Address stream copy
 readFlushed result flushed Int32
@@ -3406,7 +3406,7 @@ readFlushed catch none
 readFlushed suppresses none
 
 findCheck41 is call
-findCheck41 in putBytes
+findCheck41 in putBytesHeld
 findCheck41 invokes compare.equalInt32
 findCheck41 argument left Int32 flushed copy
 findCheck41 argument right Int32 int320 copy
@@ -3418,7 +3418,7 @@ findCheck41 catch none
 findCheck41 suppresses none
 
 chunkStep1 is call
-chunkStep1 in putBytes
+chunkStep1 in putBytesHeld
 chunkStep1 invokes math.subtractInt64
 chunkStep1 argument left Int64 bytes copy
 chunkStep1 argument right Int64 done copy
@@ -3430,7 +3430,7 @@ chunkStep1 catch none
 chunkStep1 suppresses none
 
 findChunk1 is call
-findChunk1 in putBytes
+findChunk1 in putBytesHeld
 findChunk1 invokes lowest
 findChunk1 argument left Int64 room copy
 findChunk1 argument right Int64 chunkPart1 copy
@@ -3442,7 +3442,7 @@ findChunk1 catch none
 findChunk1 suppresses none
 
 readBufferValue is call
-readBufferValue in putBytes
+readBufferValue in putBytesHeld
 readBufferValue invokes field
 readBufferValue argument stream machine.Address stream copy
 readBufferValue argument offset Int64 sixteen copy
@@ -3454,7 +3454,7 @@ readBufferValue catch none
 readBufferValue suppresses none
 
 targetStep1 is call
-targetStep1 in putBytes
+targetStep1 in putBytesHeld
 targetStep1 invokes machine.fromInt64
 targetStep1 argument value Int64 bufferValue copy
 targetStep1 result targetPart1 machine.Address
@@ -3465,7 +3465,7 @@ targetStep1 catch none
 targetStep1 suppresses none
 
 findTarget1 is call
-findTarget1 in putBytes
+findTarget1 in putBytesHeld
 findTarget1 invokes machine.offset
 findTarget1 argument address machine.Address targetPart1 copy
 findTarget1 argument bytes Int64 pending copy
@@ -3477,7 +3477,7 @@ findTarget1 catch none
 findTarget1 suppresses none
 
 findSource1 is call
-findSource1 in putBytes
+findSource1 in putBytesHeld
 findSource1 invokes machine.offset
 findSource1 argument address machine.Address data copy
 findSource1 argument bytes Int64 done copy
@@ -3489,7 +3489,7 @@ findSource1 catch none
 findSource1 suppresses none
 
 doCopy is call
-doCopy in putBytes
+doCopy in putBytesHeld
 doCopy invokes machine.copy
 doCopy argument target machine.Address target copy
 doCopy argument source machine.Address source copy
@@ -3502,7 +3502,7 @@ doCopy catch none
 doCopy suppresses none
 
 doSetFieldStep1 is call
-doSetFieldStep1 in putBytes
+doSetFieldStep1 in putBytesHeld
 doSetFieldStep1 invokes math.addInt64
 doSetFieldStep1 argument left Int64 pending copy
 doSetFieldStep1 argument right Int64 chunk copy
@@ -3514,7 +3514,7 @@ doSetFieldStep1 catch none
 doSetFieldStep1 suppresses none
 
 doSetField is call
-doSetField in putBytes
+doSetField in putBytesHeld
 doSetField invokes setField
 doSetField argument stream machine.Address stream copy
 doSetField argument offset Int64 n48 copy
@@ -3527,7 +3527,7 @@ doSetField catch none
 doSetField suppresses none
 
 findDoneNext11 is call
-findDoneNext11 in putBytes
+findDoneNext11 in putBytesHeld
 findDoneNext11 invokes math.addInt64
 findDoneNext11 argument left Int64 done copy
 findDoneNext11 argument right Int64 chunk copy
@@ -3539,7 +3539,7 @@ findDoneNext11 catch none
 findDoneNext11 suppresses none
 
 readIsLine is call
-readIsLine in putBytes
+readIsLine in putBytesHeld
 readIsLine invokes hasFlag
 readIsLine argument stream machine.Address stream copy
 readIsLine argument flag Int64 lineBuffered copy
@@ -3551,7 +3551,7 @@ readIsLine catch none
 readIsLine suppresses none
 
 readNowhere is call
-readNowhere in putBytes
+readNowhere in putBytesHeld
 readNowhere invokes machine.zero
 readNowhere argument none
 readNowhere result nowhere machine.Address
@@ -3562,7 +3562,7 @@ readNowhere catch none
 readNowhere suppresses none
 
 readFound is call
-readFound in putBytes
+readFound in putBytesHeld
 readFound invokes clibrary.memoryFind
 readFound argument text machine.Address data copy
 readFound argument value Int32 int3210 copy
@@ -3575,7 +3575,7 @@ readFound catch none
 readFound suppresses none
 
 hasLineStep1 is call
-hasLineStep1 in putBytes
+hasLineStep1 in putBytesHeld
 hasLineStep1 invokes machine.equal
 hasLineStep1 argument left machine.Address found copy
 hasLineStep1 argument right machine.Address nowhere copy
@@ -3587,7 +3587,7 @@ hasLineStep1 catch none
 hasLineStep1 suppresses none
 
 findHasLine1 is call
-findHasLine1 in putBytes
+findHasLine1 in putBytesHeld
 findHasLine1 invokes logic.not
 findHasLine1 argument value Bool hasLinePart1 copy
 findHasLine1 result hasLine Bool
@@ -3598,7 +3598,7 @@ findHasLine1 catch none
 findHasLine1 suppresses none
 
 readLineFlushed is call
-readLineFlushed in putBytes
+readLineFlushed in putBytesHeld
 readLineFlushed invokes flushPending
 readLineFlushed argument stream machine.Address stream copy
 readLineFlushed result lineFlushed Int32
@@ -3609,7 +3609,7 @@ readLineFlushed catch none
 readLineFlushed suppresses none
 
 findCheck51 is call
-findCheck51 in putBytes
+findCheck51 in putBytesHeld
 findCheck51 invokes compare.equalInt32
 findCheck51 argument left Int32 lineFlushed copy
 findCheck51 argument right Int32 int320 copy
@@ -3994,91 +3994,91 @@ doAddFlag3 borrows none
 doAddFlag3 catch none
 doAddFlag3 suppresses none
 
-getByte is operation
-getByte purpose "Read one byte from a stream as an unsigned char, or -1 (EOF) at the end or on an error; what ungetc pushed back comes first, and the end of file stays once reached"
-getByte invariant none
-getByte typeParameter none
-getByte input stream machine.Address copied
-getByte output Int64
-getByte outputOwnedBy none
-getByte raises none
-getByte effect use machine.memory
-getByte effect use system.calls
-getByte uses memoryAccess
-getByte uses systemCalls
-getByte memoryHeap false
-getByte async false
-getByte maxRecursion none
-getByte label begin loopKind none
-getByte label begin within none
-getByte label popBack loopKind none
-getByte label popBack within none
-getByte label buffered loopKind none
-getByte label buffered within none
-getByte label empty loopKind none
-getByte label empty within none
-getByte label refuse loopKind none
-getByte label refuse within none
-getByte label endCheck loopKind none
-getByte label endCheck within none
-getByte label fill loopKind none
-getByte label fill within none
-getByte label takeFresh loopKind none
-getByte label takeFresh within none
-getByte label take loopKind none
-getByte label take within none
-getByte label giveEnd loopKind none
-getByte label giveEnd within none
-getByte let endOfFile Int64 -1 immutable
-getByte let n56 Int64 56 immutable
-getByte let zero Int64 0 immutable
-getByte let one Int64 1 immutable
-getByte let sixtyFour Int64 64 immutable
-getByte let thirtyTwo Int64 32 immutable
-getByte let n40 Int64 40 immutable
-getByte let sixteen Int64 16 immutable
-getByte at begin do readPushed
-getByte at begin do findCheck11
-getByte at begin branch if check1 goto popBack else goto buffered
-getByte at popBack do findLast1
-getByte at popBack do doSetField
-getByte at popBack do backAtStep1
-getByte at popBack do findBackAt1
-getByte at popBack do readBack
-getByte at popBack do findBackValue1
-getByte at popBack return ok backValue
-getByte at buffered do readPosition
-getByte at buffered do readEnding
-getByte at buffered do findCheck21
-getByte at buffered branch if check2 goto take else goto empty
-getByte at empty do readCanRead
-getByte at empty branch if canRead goto endCheck else goto refuse
-getByte at refuse do doAddFlag
-getByte at refuse do doSetErrno
-getByte at refuse return ok endOfFile
-getByte at endCheck do readEnded
-getByte at endCheck branch if ended goto giveEnd else goto fill
-getByte at fill do readCount
-getByte at fill do findCheck31
-getByte at fill branch if check3 goto takeFresh else goto giveEnd
-getByte at takeFresh do readFreshValue
-getByte at takeFresh do readFreshAt
-getByte at takeFresh do readFresh
-getByte at takeFresh do doSetField2
-getByte at takeFresh do findFreshByte1
-getByte at takeFresh return ok freshByte
-getByte at take do readBufferValue
-getByte at take do atStep1
-getByte at take do findAt1
-getByte at take do readValue
-getByte at take do doSetFieldStep1
-getByte at take do doSetField3
-getByte at take do findValueByte1
-getByte at take return ok valueByte
-getByte at giveEnd return ok endOfFile
+getByteHeld is operation
+getByteHeld purpose "Read one byte from a stream as an unsigned char, or -1 (EOF) at the end or on an error; what ungetc pushed back comes first, and the end of file stays once reached"
+getByteHeld invariant none
+getByteHeld typeParameter none
+getByteHeld input stream machine.Address copied
+getByteHeld output Int64
+getByteHeld outputOwnedBy none
+getByteHeld raises none
+getByteHeld effect use machine.memory
+getByteHeld effect use system.calls
+getByteHeld uses memoryAccess
+getByteHeld uses systemCalls
+getByteHeld memoryHeap false
+getByteHeld async false
+getByteHeld maxRecursion none
+getByteHeld label begin loopKind none
+getByteHeld label begin within none
+getByteHeld label popBack loopKind none
+getByteHeld label popBack within none
+getByteHeld label buffered loopKind none
+getByteHeld label buffered within none
+getByteHeld label empty loopKind none
+getByteHeld label empty within none
+getByteHeld label refuse loopKind none
+getByteHeld label refuse within none
+getByteHeld label endCheck loopKind none
+getByteHeld label endCheck within none
+getByteHeld label fill loopKind none
+getByteHeld label fill within none
+getByteHeld label takeFresh loopKind none
+getByteHeld label takeFresh within none
+getByteHeld label take loopKind none
+getByteHeld label take within none
+getByteHeld label giveEnd loopKind none
+getByteHeld label giveEnd within none
+getByteHeld let endOfFile Int64 -1 immutable
+getByteHeld let n56 Int64 56 immutable
+getByteHeld let zero Int64 0 immutable
+getByteHeld let one Int64 1 immutable
+getByteHeld let sixtyFour Int64 64 immutable
+getByteHeld let thirtyTwo Int64 32 immutable
+getByteHeld let n40 Int64 40 immutable
+getByteHeld let sixteen Int64 16 immutable
+getByteHeld at begin do readPushed
+getByteHeld at begin do findCheck11
+getByteHeld at begin branch if check1 goto popBack else goto buffered
+getByteHeld at popBack do findLast1
+getByteHeld at popBack do doSetField
+getByteHeld at popBack do backAtStep1
+getByteHeld at popBack do findBackAt1
+getByteHeld at popBack do readBack
+getByteHeld at popBack do findBackValue1
+getByteHeld at popBack return ok backValue
+getByteHeld at buffered do readPosition
+getByteHeld at buffered do readEnding
+getByteHeld at buffered do findCheck21
+getByteHeld at buffered branch if check2 goto take else goto empty
+getByteHeld at empty do readCanRead
+getByteHeld at empty branch if canRead goto endCheck else goto refuse
+getByteHeld at refuse do doAddFlag
+getByteHeld at refuse do doSetErrno
+getByteHeld at refuse return ok endOfFile
+getByteHeld at endCheck do readEnded
+getByteHeld at endCheck branch if ended goto giveEnd else goto fill
+getByteHeld at fill do readCount
+getByteHeld at fill do findCheck31
+getByteHeld at fill branch if check3 goto takeFresh else goto giveEnd
+getByteHeld at takeFresh do readFreshValue
+getByteHeld at takeFresh do readFreshAt
+getByteHeld at takeFresh do readFresh
+getByteHeld at takeFresh do doSetField2
+getByteHeld at takeFresh do findFreshByte1
+getByteHeld at takeFresh return ok freshByte
+getByteHeld at take do readBufferValue
+getByteHeld at take do atStep1
+getByteHeld at take do findAt1
+getByteHeld at take do readValue
+getByteHeld at take do doSetFieldStep1
+getByteHeld at take do doSetField3
+getByteHeld at take do findValueByte1
+getByteHeld at take return ok valueByte
+getByteHeld at giveEnd return ok endOfFile
 
 readPushed is call
-readPushed in getByte
+readPushed in getByteHeld
 readPushed invokes field
 readPushed argument stream machine.Address stream copy
 readPushed argument offset Int64 n56 copy
@@ -4090,7 +4090,7 @@ readPushed catch none
 readPushed suppresses none
 
 findCheck11 is call
-findCheck11 in getByte
+findCheck11 in getByteHeld
 findCheck11 invokes compare.greaterThanInt64
 findCheck11 argument left Int64 pushed copy
 findCheck11 argument right Int64 zero copy
@@ -4102,7 +4102,7 @@ findCheck11 catch none
 findCheck11 suppresses none
 
 findLast1 is call
-findLast1 in getByte
+findLast1 in getByteHeld
 findLast1 invokes math.subtractInt64
 findLast1 argument left Int64 pushed copy
 findLast1 argument right Int64 one copy
@@ -4114,7 +4114,7 @@ findLast1 catch none
 findLast1 suppresses none
 
 doSetField is call
-doSetField in getByte
+doSetField in getByteHeld
 doSetField invokes setField
 doSetField argument stream machine.Address stream copy
 doSetField argument offset Int64 n56 copy
@@ -4127,7 +4127,7 @@ doSetField catch none
 doSetField suppresses none
 
 backAtStep1 is call
-backAtStep1 in getByte
+backAtStep1 in getByteHeld
 backAtStep1 invokes machine.offset
 backAtStep1 argument address machine.Address stream copy
 backAtStep1 argument bytes Int64 sixtyFour copy
@@ -4139,7 +4139,7 @@ backAtStep1 catch none
 backAtStep1 suppresses none
 
 findBackAt1 is call
-findBackAt1 in getByte
+findBackAt1 in getByteHeld
 findBackAt1 invokes machine.offset
 findBackAt1 argument address machine.Address backAtPart1 copy
 findBackAt1 argument bytes Int64 last copy
@@ -4151,7 +4151,7 @@ findBackAt1 catch none
 findBackAt1 suppresses none
 
 readBack is call
-readBack in getByte
+readBack in getByteHeld
 readBack invokes machine.loadByte
 readBack argument address machine.Address backAt copy
 readBack result back Byte
@@ -4162,7 +4162,7 @@ readBack catch none
 readBack suppresses none
 
 findBackValue1 is call
-findBackValue1 in getByte
+findBackValue1 in getByteHeld
 findBackValue1 invokes convert.byteToInt64
 findBackValue1 argument value Byte back copy
 findBackValue1 result backValue Int64
@@ -4173,7 +4173,7 @@ findBackValue1 catch none
 findBackValue1 suppresses none
 
 readPosition is call
-readPosition in getByte
+readPosition in getByteHeld
 readPosition invokes field
 readPosition argument stream machine.Address stream copy
 readPosition argument offset Int64 thirtyTwo copy
@@ -4185,7 +4185,7 @@ readPosition catch none
 readPosition suppresses none
 
 readEnding is call
-readEnding in getByte
+readEnding in getByteHeld
 readEnding invokes field
 readEnding argument stream machine.Address stream copy
 readEnding argument offset Int64 n40 copy
@@ -4197,7 +4197,7 @@ readEnding catch none
 readEnding suppresses none
 
 findCheck21 is call
-findCheck21 in getByte
+findCheck21 in getByteHeld
 findCheck21 invokes compare.lessThanInt64
 findCheck21 argument left Int64 position copy
 findCheck21 argument right Int64 ending copy
@@ -4209,7 +4209,7 @@ findCheck21 catch none
 findCheck21 suppresses none
 
 readCanRead is call
-readCanRead in getByte
+readCanRead in getByteHeld
 readCanRead invokes hasFlag
 readCanRead argument stream machine.Address stream copy
 readCanRead argument flag Int64 readable copy
@@ -4221,7 +4221,7 @@ readCanRead catch none
 readCanRead suppresses none
 
 doAddFlag is call
-doAddFlag in getByte
+doAddFlag in getByteHeld
 doAddFlag invokes addFlag
 doAddFlag argument stream machine.Address stream copy
 doAddFlag argument flag Int64 failed copy
@@ -4233,7 +4233,7 @@ doAddFlag catch none
 doAddFlag suppresses none
 
 doSetErrno is call
-doSetErrno in getByte
+doSetErrno in getByteHeld
 doSetErrno invokes clibrary.setErrno
 doSetErrno argument value Int32 badFile copy
 doSetErrno result none
@@ -4244,7 +4244,7 @@ doSetErrno catch none
 doSetErrno suppresses none
 
 readEnded is call
-readEnded in getByte
+readEnded in getByteHeld
 readEnded invokes hasFlag
 readEnded argument stream machine.Address stream copy
 readEnded argument flag Int64 atEnd copy
@@ -4256,7 +4256,7 @@ readEnded catch none
 readEnded suppresses none
 
 readCount is call
-readCount in getByte
+readCount in getByteHeld
 readCount invokes fillBuffer
 readCount argument stream machine.Address stream copy
 readCount result count Int64
@@ -4267,7 +4267,7 @@ readCount catch none
 readCount suppresses none
 
 findCheck31 is call
-findCheck31 in getByte
+findCheck31 in getByteHeld
 findCheck31 invokes compare.greaterThanInt64
 findCheck31 argument left Int64 count copy
 findCheck31 argument right Int64 zero copy
@@ -4279,7 +4279,7 @@ findCheck31 catch none
 findCheck31 suppresses none
 
 readFreshValue is call
-readFreshValue in getByte
+readFreshValue in getByteHeld
 readFreshValue invokes field
 readFreshValue argument stream machine.Address stream copy
 readFreshValue argument offset Int64 sixteen copy
@@ -4291,7 +4291,7 @@ readFreshValue catch none
 readFreshValue suppresses none
 
 readFreshAt is call
-readFreshAt in getByte
+readFreshAt in getByteHeld
 readFreshAt invokes machine.fromInt64
 readFreshAt argument value Int64 freshValue copy
 readFreshAt result freshAt machine.Address
@@ -4302,7 +4302,7 @@ readFreshAt catch none
 readFreshAt suppresses none
 
 readFresh is call
-readFresh in getByte
+readFresh in getByteHeld
 readFresh invokes machine.loadByte
 readFresh argument address machine.Address freshAt copy
 readFresh result fresh Byte
@@ -4313,7 +4313,7 @@ readFresh catch none
 readFresh suppresses none
 
 doSetField2 is call
-doSetField2 in getByte
+doSetField2 in getByteHeld
 doSetField2 invokes setField
 doSetField2 argument stream machine.Address stream copy
 doSetField2 argument offset Int64 thirtyTwo copy
@@ -4326,7 +4326,7 @@ doSetField2 catch none
 doSetField2 suppresses none
 
 findFreshByte1 is call
-findFreshByte1 in getByte
+findFreshByte1 in getByteHeld
 findFreshByte1 invokes convert.byteToInt64
 findFreshByte1 argument value Byte fresh copy
 findFreshByte1 result freshByte Int64
@@ -4337,7 +4337,7 @@ findFreshByte1 catch none
 findFreshByte1 suppresses none
 
 readBufferValue is call
-readBufferValue in getByte
+readBufferValue in getByteHeld
 readBufferValue invokes field
 readBufferValue argument stream machine.Address stream copy
 readBufferValue argument offset Int64 sixteen copy
@@ -4349,7 +4349,7 @@ readBufferValue catch none
 readBufferValue suppresses none
 
 atStep1 is call
-atStep1 in getByte
+atStep1 in getByteHeld
 atStep1 invokes machine.fromInt64
 atStep1 argument value Int64 bufferValue copy
 atStep1 result atPart1 machine.Address
@@ -4360,7 +4360,7 @@ atStep1 catch none
 atStep1 suppresses none
 
 findAt1 is call
-findAt1 in getByte
+findAt1 in getByteHeld
 findAt1 invokes machine.offset
 findAt1 argument address machine.Address atPart1 copy
 findAt1 argument bytes Int64 position copy
@@ -4372,7 +4372,7 @@ findAt1 catch none
 findAt1 suppresses none
 
 readValue is call
-readValue in getByte
+readValue in getByteHeld
 readValue invokes machine.loadByte
 readValue argument address machine.Address at copy
 readValue result value Byte
@@ -4383,7 +4383,7 @@ readValue catch none
 readValue suppresses none
 
 doSetFieldStep1 is call
-doSetFieldStep1 in getByte
+doSetFieldStep1 in getByteHeld
 doSetFieldStep1 invokes math.addInt64
 doSetFieldStep1 argument left Int64 position copy
 doSetFieldStep1 argument right Int64 one copy
@@ -4395,7 +4395,7 @@ doSetFieldStep1 catch none
 doSetFieldStep1 suppresses none
 
 doSetField3 is call
-doSetField3 in getByte
+doSetField3 in getByteHeld
 doSetField3 invokes setField
 doSetField3 argument stream machine.Address stream copy
 doSetField3 argument offset Int64 thirtyTwo copy
@@ -4408,7 +4408,7 @@ doSetField3 catch none
 doSetField3 suppresses none
 
 findValueByte1 is call
-findValueByte1 in getByte
+findValueByte1 in getByteHeld
 findValueByte1 invokes convert.byteToInt64
 findValueByte1 argument value Byte value copy
 findValueByte1 result valueByte Int64
@@ -4418,53 +4418,53 @@ findValueByte1 borrows none
 findValueByte1 catch none
 findValueByte1 suppresses none
 
-ungetByte is operation
-ungetByte purpose "ungetc: push a byte back onto a stream (8 at most), clearing its end of file; gives the byte, or EOF for EOF or when there is no room"
-ungetByte invariant none
-ungetByte typeParameter none
-ungetByte input stream machine.Address copied
-ungetByte input value Int64 copied
-ungetByte output Int64
-ungetByte outputOwnedBy none
-ungetByte raises none
-ungetByte effect use machine.memory
-ungetByte uses memoryAccess
-ungetByte memoryHeap false
-ungetByte async false
-ungetByte maxRecursion none
-ungetByte label begin loopKind none
-ungetByte label begin within none
-ungetByte label room loopKind none
-ungetByte label room within none
-ungetByte label push loopKind none
-ungetByte label push within none
-ungetByte label refuse loopKind none
-ungetByte label refuse within none
-ungetByte let endOfFile Int64 -1 immutable
-ungetByte let minus1 Int64 -1 immutable
-ungetByte let n56 Int64 56 immutable
-ungetByte let eight Int64 8 immutable
-ungetByte let n255 Int64 255 immutable
-ungetByte let sixtyFour Int64 64 immutable
-ungetByte let one Int64 1 immutable
-ungetByte at begin do findCheck11
-ungetByte at begin branch if check1 goto refuse else goto room
-ungetByte at room do readPushed
-ungetByte at room do findCheck21
-ungetByte at room branch if check2 goto refuse else goto push
-ungetByte at push do findLow1
-ungetByte at push do backAtStep1
-ungetByte at push do findBackAt1
-ungetByte at push do doStoreByteStep1
-ungetByte at push do doStoreByte
-ungetByte at push do doSetFieldStep1
-ungetByte at push do doSetField
-ungetByte at push do doDropFlag
-ungetByte at push return ok low
-ungetByte at refuse return ok endOfFile
+ungetByteHeld is operation
+ungetByteHeld purpose "ungetc: push a byte back onto a stream (8 at most), clearing its end of file; gives the byte, or EOF for EOF or when there is no room"
+ungetByteHeld invariant none
+ungetByteHeld typeParameter none
+ungetByteHeld input stream machine.Address copied
+ungetByteHeld input value Int64 copied
+ungetByteHeld output Int64
+ungetByteHeld outputOwnedBy none
+ungetByteHeld raises none
+ungetByteHeld effect use machine.memory
+ungetByteHeld uses memoryAccess
+ungetByteHeld memoryHeap false
+ungetByteHeld async false
+ungetByteHeld maxRecursion none
+ungetByteHeld label begin loopKind none
+ungetByteHeld label begin within none
+ungetByteHeld label room loopKind none
+ungetByteHeld label room within none
+ungetByteHeld label push loopKind none
+ungetByteHeld label push within none
+ungetByteHeld label refuse loopKind none
+ungetByteHeld label refuse within none
+ungetByteHeld let endOfFile Int64 -1 immutable
+ungetByteHeld let minus1 Int64 -1 immutable
+ungetByteHeld let n56 Int64 56 immutable
+ungetByteHeld let eight Int64 8 immutable
+ungetByteHeld let n255 Int64 255 immutable
+ungetByteHeld let sixtyFour Int64 64 immutable
+ungetByteHeld let one Int64 1 immutable
+ungetByteHeld at begin do findCheck11
+ungetByteHeld at begin branch if check1 goto refuse else goto room
+ungetByteHeld at room do readPushed
+ungetByteHeld at room do findCheck21
+ungetByteHeld at room branch if check2 goto refuse else goto push
+ungetByteHeld at push do findLow1
+ungetByteHeld at push do backAtStep1
+ungetByteHeld at push do findBackAt1
+ungetByteHeld at push do doStoreByteStep1
+ungetByteHeld at push do doStoreByte
+ungetByteHeld at push do doSetFieldStep1
+ungetByteHeld at push do doSetField
+ungetByteHeld at push do doDropFlag
+ungetByteHeld at push return ok low
+ungetByteHeld at refuse return ok endOfFile
 
 findCheck11 is call
-findCheck11 in ungetByte
+findCheck11 in ungetByteHeld
 findCheck11 invokes compare.equalInt64
 findCheck11 argument left Int64 value copy
 findCheck11 argument right Int64 minus1 copy
@@ -4476,7 +4476,7 @@ findCheck11 catch none
 findCheck11 suppresses none
 
 readPushed is call
-readPushed in ungetByte
+readPushed in ungetByteHeld
 readPushed invokes field
 readPushed argument stream machine.Address stream copy
 readPushed argument offset Int64 n56 copy
@@ -4488,7 +4488,7 @@ readPushed catch none
 readPushed suppresses none
 
 findCheck21 is call
-findCheck21 in ungetByte
+findCheck21 in ungetByteHeld
 findCheck21 invokes compare.greaterOrEqualInt64
 findCheck21 argument left Int64 pushed copy
 findCheck21 argument right Int64 eight copy
@@ -4500,7 +4500,7 @@ findCheck21 catch none
 findCheck21 suppresses none
 
 findLow1 is call
-findLow1 in ungetByte
+findLow1 in ungetByteHeld
 findLow1 invokes bits.andInt64
 findLow1 argument left Int64 value copy
 findLow1 argument right Int64 n255 copy
@@ -4512,7 +4512,7 @@ findLow1 catch none
 findLow1 suppresses none
 
 backAtStep1 is call
-backAtStep1 in ungetByte
+backAtStep1 in ungetByteHeld
 backAtStep1 invokes machine.offset
 backAtStep1 argument address machine.Address stream copy
 backAtStep1 argument bytes Int64 sixtyFour copy
@@ -4524,7 +4524,7 @@ backAtStep1 catch none
 backAtStep1 suppresses none
 
 findBackAt1 is call
-findBackAt1 in ungetByte
+findBackAt1 in ungetByteHeld
 findBackAt1 invokes machine.offset
 findBackAt1 argument address machine.Address backAtPart1 copy
 findBackAt1 argument bytes Int64 pushed copy
@@ -4536,7 +4536,7 @@ findBackAt1 catch none
 findBackAt1 suppresses none
 
 doStoreByteStep1 is call
-doStoreByteStep1 in ungetByte
+doStoreByteStep1 in ungetByteHeld
 doStoreByteStep1 invokes convert.int64ToByte
 doStoreByteStep1 argument value Int64 low copy
 doStoreByteStep1 result doStoreBytePart1 Byte
@@ -4547,7 +4547,7 @@ doStoreByteStep1 catch none
 doStoreByteStep1 suppresses none
 
 doStoreByte is call
-doStoreByte in ungetByte
+doStoreByte in ungetByteHeld
 doStoreByte invokes machine.storeByte
 doStoreByte argument address machine.Address backAt copy
 doStoreByte argument value Byte doStoreBytePart1 copy
@@ -4559,7 +4559,7 @@ doStoreByte catch none
 doStoreByte suppresses none
 
 doSetFieldStep1 is call
-doSetFieldStep1 in ungetByte
+doSetFieldStep1 in ungetByteHeld
 doSetFieldStep1 invokes math.addInt64
 doSetFieldStep1 argument left Int64 pushed copy
 doSetFieldStep1 argument right Int64 one copy
@@ -4571,7 +4571,7 @@ doSetFieldStep1 catch none
 doSetFieldStep1 suppresses none
 
 doSetField is call
-doSetField in ungetByte
+doSetField in ungetByteHeld
 doSetField invokes setField
 doSetField argument stream machine.Address stream copy
 doSetField argument offset Int64 n56 copy
@@ -4584,7 +4584,7 @@ doSetField catch none
 doSetField suppresses none
 
 doDropFlag is call
-doDropFlag in ungetByte
+doDropFlag in ungetByteHeld
 doDropFlag invokes dropFlag
 doDropFlag argument stream machine.Address stream copy
 doDropFlag argument flag Int64 atEnd copy
@@ -4595,64 +4595,64 @@ doDropFlag borrows none
 doDropFlag catch none
 doDropFlag suppresses none
 
-flushAll is operation
-flushAll purpose "fflush(NULL): write what every stream holds, the standard ones and those fopen opened; 0, or -1 when a write failed"
-flushAll invariant flushesEvery "\"Every stream's waiting bytes are written\""
-flushAll typeParameter none
-flushAll input none
-flushAll output Int32
-flushAll outputOwnedBy none
-flushAll raises none
-flushAll effect use machine.memory
-flushAll effect use system.calls
-flushAll uses memoryAccess
-flushAll uses systemCalls
-flushAll memoryHeap false
-flushAll async false
-flushAll maxRecursion none
-flushAll label begin loopKind none
-flushAll label begin within none
-flushAll label standard loopKind none
-flushAll label standard within none
-flushAll label eachStream loopKind while
-flushAll label eachStream within none
-flushAll label eachStream maxIterations forever
-flushAll label flushOne loopKind none
-flushAll label flushOne within eachStream
-flushAll label done loopKind none
-flushAll label done within none
-flushAll let status Int32 0 mutable
-flushAll let current machine.Address unset mutable
-flushAll let zero Int64 0 immutable
-flushAll let n80 Int64 80 immutable
-flushAll at begin do readReadyCell
-flushAll at begin do readReady
-flushAll at begin do findCheck11
-flushAll at begin branch if check1 goto done else goto standard
-flushAll at standard do readOut
-flushAll at standard do readOutStatus
-flushAll at standard do readErrorStream
-flushAll at standard do readErrorStatus
-flushAll at standard do findStatusNext11
-flushAll at standard set status statusNext1
-flushAll at standard do readListCell
-flushAll at standard do findCurrentNext11
-flushAll at standard set current currentNext1
-flushAll at standard goto eachStream
-flushAll at eachStream do readNowhere
-flushAll at eachStream do findCheck21
-flushAll at eachStream branch if check2 goto done else goto flushOne
-flushAll at flushOne do readOneStatus
-flushAll at flushOne do findStatusNext21
-flushAll at flushOne set status statusNext2
-flushAll at flushOne do readNextValue
-flushAll at flushOne do findCurrentNext21
-flushAll at flushOne set current currentNext2
-flushAll at flushOne goto eachStream
-flushAll at done return ok status
+flushAllHeld is operation
+flushAllHeld purpose "fflush(NULL): write what every stream holds, the standard ones and those fopen opened; 0, or -1 when a write failed"
+flushAllHeld invariant none
+flushAllHeld typeParameter none
+flushAllHeld input none
+flushAllHeld output Int32
+flushAllHeld outputOwnedBy none
+flushAllHeld raises none
+flushAllHeld effect use machine.memory
+flushAllHeld effect use system.calls
+flushAllHeld uses memoryAccess
+flushAllHeld uses systemCalls
+flushAllHeld memoryHeap false
+flushAllHeld async false
+flushAllHeld maxRecursion none
+flushAllHeld label begin loopKind none
+flushAllHeld label begin within none
+flushAllHeld label standard loopKind none
+flushAllHeld label standard within none
+flushAllHeld label eachStream loopKind while
+flushAllHeld label eachStream within none
+flushAllHeld label eachStream maxIterations forever
+flushAllHeld label flushOne loopKind none
+flushAllHeld label flushOne within eachStream
+flushAllHeld label done loopKind none
+flushAllHeld label done within none
+flushAllHeld let status Int32 0 mutable
+flushAllHeld let current machine.Address unset mutable
+flushAllHeld let zero Int64 0 immutable
+flushAllHeld let n80 Int64 80 immutable
+flushAllHeld at begin do readReadyCell
+flushAllHeld at begin do readReady
+flushAllHeld at begin do findCheck11
+flushAllHeld at begin branch if check1 goto done else goto standard
+flushAllHeld at standard do readOut
+flushAllHeld at standard do readOutStatus
+flushAllHeld at standard do readErrorStream
+flushAllHeld at standard do readErrorStatus
+flushAllHeld at standard do findStatusNext11
+flushAllHeld at standard set status statusNext1
+flushAllHeld at standard do readListCell
+flushAllHeld at standard do findCurrentNext11
+flushAllHeld at standard set current currentNext1
+flushAllHeld at standard goto eachStream
+flushAllHeld at eachStream do readNowhere
+flushAllHeld at eachStream do findCheck21
+flushAllHeld at eachStream branch if check2 goto done else goto flushOne
+flushAllHeld at flushOne do readOneStatus
+flushAllHeld at flushOne do findStatusNext21
+flushAllHeld at flushOne set status statusNext2
+flushAllHeld at flushOne do readNextValue
+flushAllHeld at flushOne do findCurrentNext21
+flushAllHeld at flushOne set current currentNext2
+flushAllHeld at flushOne goto eachStream
+flushAllHeld at done return ok status
 
 readReadyCell is call
-readReadyCell in flushAll
+readReadyCell in flushAllHeld
 readReadyCell invokes kernel.stateAt
 readReadyCell argument offset Int64 readyAt copy
 readReadyCell result readyCell machine.Address
@@ -4663,7 +4663,7 @@ readReadyCell catch none
 readReadyCell suppresses none
 
 readReady is call
-readReady in flushAll
+readReady in flushAllHeld
 readReady invokes machine.loadInt64
 readReady argument address machine.Address readyCell copy
 readReady result ready Int64
@@ -4674,7 +4674,7 @@ readReady catch none
 readReady suppresses none
 
 findCheck11 is call
-findCheck11 in flushAll
+findCheck11 in flushAllHeld
 findCheck11 invokes compare.equalInt64
 findCheck11 argument left Int64 ready copy
 findCheck11 argument right Int64 zero copy
@@ -4686,7 +4686,7 @@ findCheck11 catch none
 findCheck11 suppresses none
 
 readOut is call
-readOut in flushAll
+readOut in flushAllHeld
 readOut invokes kernel.stateAt
 readOut argument offset Int64 stdoutFileAt copy
 readOut result out machine.Address
@@ -4697,7 +4697,7 @@ readOut catch none
 readOut suppresses none
 
 readOutStatus is call
-readOutStatus in flushAll
+readOutStatus in flushAllHeld
 readOutStatus invokes flushPending
 readOutStatus argument stream machine.Address out copy
 readOutStatus result outStatus Int32
@@ -4708,7 +4708,7 @@ readOutStatus catch none
 readOutStatus suppresses none
 
 readErrorStream is call
-readErrorStream in flushAll
+readErrorStream in flushAllHeld
 readErrorStream invokes kernel.stateAt
 readErrorStream argument offset Int64 stderrFileAt copy
 readErrorStream result errorStream machine.Address
@@ -4719,7 +4719,7 @@ readErrorStream catch none
 readErrorStream suppresses none
 
 readErrorStatus is call
-readErrorStatus in flushAll
+readErrorStatus in flushAllHeld
 readErrorStatus invokes flushPending
 readErrorStatus argument stream machine.Address errorStream copy
 readErrorStatus result errorStatus Int32
@@ -4730,7 +4730,7 @@ readErrorStatus catch none
 readErrorStatus suppresses none
 
 findStatusNext11 is call
-findStatusNext11 in flushAll
+findStatusNext11 in flushAllHeld
 findStatusNext11 invokes bits.orInt32
 findStatusNext11 argument left Int32 outStatus copy
 findStatusNext11 argument right Int32 errorStatus copy
@@ -4742,7 +4742,7 @@ findStatusNext11 catch none
 findStatusNext11 suppresses none
 
 readListCell is call
-readListCell in flushAll
+readListCell in flushAllHeld
 readListCell invokes kernel.stateAt
 readListCell argument offset Int64 listAt copy
 readListCell result listCell machine.Address
@@ -4753,7 +4753,7 @@ readListCell catch none
 readListCell suppresses none
 
 findCurrentNext11 is call
-findCurrentNext11 in flushAll
+findCurrentNext11 in flushAllHeld
 findCurrentNext11 invokes machine.loadAddress
 findCurrentNext11 argument address machine.Address listCell copy
 findCurrentNext11 result currentNext1 machine.Address
@@ -4764,7 +4764,7 @@ findCurrentNext11 catch none
 findCurrentNext11 suppresses none
 
 readNowhere is call
-readNowhere in flushAll
+readNowhere in flushAllHeld
 readNowhere invokes machine.zero
 readNowhere argument none
 readNowhere result nowhere machine.Address
@@ -4775,7 +4775,7 @@ readNowhere catch none
 readNowhere suppresses none
 
 findCheck21 is call
-findCheck21 in flushAll
+findCheck21 in flushAllHeld
 findCheck21 invokes machine.equal
 findCheck21 argument left machine.Address current copy
 findCheck21 argument right machine.Address nowhere copy
@@ -4787,7 +4787,7 @@ findCheck21 catch none
 findCheck21 suppresses none
 
 readOneStatus is call
-readOneStatus in flushAll
+readOneStatus in flushAllHeld
 readOneStatus invokes flushPending
 readOneStatus argument stream machine.Address current copy
 readOneStatus result oneStatus Int32
@@ -4798,7 +4798,7 @@ readOneStatus catch none
 readOneStatus suppresses none
 
 findStatusNext21 is call
-findStatusNext21 in flushAll
+findStatusNext21 in flushAllHeld
 findStatusNext21 invokes bits.orInt32
 findStatusNext21 argument left Int32 status copy
 findStatusNext21 argument right Int32 oneStatus copy
@@ -4810,7 +4810,7 @@ findStatusNext21 catch none
 findStatusNext21 suppresses none
 
 readNextValue is call
-readNextValue in flushAll
+readNextValue in flushAllHeld
 readNextValue invokes field
 readNextValue argument stream machine.Address current copy
 readNextValue argument offset Int64 n80 copy
@@ -4822,7 +4822,7 @@ readNextValue catch none
 readNextValue suppresses none
 
 findCurrentNext21 is call
-findCurrentNext21 in flushAll
+findCurrentNext21 in flushAllHeld
 findCurrentNext21 invokes machine.fromInt64
 findCurrentNext21 argument value Int64 nextValue copy
 findCurrentNext21 result currentNext2 machine.Address
@@ -13770,7 +13770,9 @@ scanUnget output none
 scanUnget outputOwnedBy none
 scanUnget raises none
 scanUnget effect use machine.memory
+scanUnget effect use system.calls
 scanUnget uses memoryAccess
+scanUnget uses systemCalls
 scanUnget memoryHeap false
 scanUnget async false
 scanUnget maxRecursion none
@@ -23560,3 +23562,843 @@ doReleaseList cleanedBy none
 doReleaseList borrows none
 doReleaseList catch none
 doReleaseList suppresses none
+
+# ---------------------------------------------------------------- the streams' lock (D-166)
+#
+# Once a C program starts a thread, the stream operations below hold one lock for every stream: a futex word at
+# machine.state 28976 (0 free, 1 held, 2 held with waiters), its holder's thread id at 28984 and how many times it
+# holds it at 28992, so an operation that calls another under the lock takes it again.
+lockStreams is operation
+lockStreams purpose "Take the streams' lock when threads were started; its holder takes it again"
+lockStreams invariant none
+lockStreams typeParameter none
+lockStreams input none
+lockStreams output none
+lockStreams outputOwnedBy none
+lockStreams raises none
+lockStreams effect use machine.memory
+lockStreams effect use system.calls
+lockStreams uses memoryAccess
+lockStreams uses systemCalls
+lockStreams memoryHeap false
+lockStreams async false
+lockStreams maxRecursion none
+lockStreams label begin loopKind none
+lockStreams label begin within none
+lockStreams label take loopKind none
+lockStreams label take within none
+lockStreams label again loopKind none
+lockStreams label again within none
+lockStreams label acquire loopKind none
+lockStreams label acquire within none
+lockStreams label contended loopKind while
+lockStreams label contended within none
+lockStreams label contended maxIterations forever
+lockStreams label wait loopKind none
+lockStreams label wait within contended
+lockStreams label retake loopKind none
+lockStreams label retake within contended
+lockStreams label held loopKind none
+lockStreams label held within none
+lockStreams label done loopKind none
+lockStreams label done within none
+lockStreams let n28976 Int64 28976 immutable
+lockStreams let n28984 Int64 28984 immutable
+lockStreams let n28992 Int64 28992 immutable
+lockStreams let one Int64 1 immutable
+lockStreams let int320 Int32 0 immutable
+lockStreams let int321 Int32 1 immutable
+lockStreams let int322 Int32 2 immutable
+lockStreams let n128 Int64 128 immutable
+lockStreams let two Int64 2 immutable
+lockStreams let zero Int64 0 immutable
+lockStreams at begin do readStarted
+lockStreams at begin branch if started goto take else goto done
+lockStreams at take do readWord
+lockStreams at take do readHolderCell
+lockStreams at take do readDepthCell
+lockStreams at take do readSelf
+lockStreams at take do readHolder
+lockStreams at take do findCheck11
+lockStreams at take branch if check1 goto again else goto acquire
+lockStreams at again do readDepth
+lockStreams at again do doStoreInt64Step1
+lockStreams at again do doStoreInt64
+lockStreams at again return ok none
+lockStreams at acquire do readFirst
+lockStreams at acquire do findCheck21
+lockStreams at acquire branch if check2 goto held else goto contended
+lockStreams at contended do readPrevious
+lockStreams at contended do findCheck31
+lockStreams at contended branch if check3 goto retake else goto wait
+lockStreams at wait do readNowhere
+lockStreams at wait do readUnusedFutex
+lockStreams at wait goto retake
+lockStreams at retake do readTaken
+lockStreams at retake do findCheck41
+lockStreams at retake branch if check4 goto held else goto contended
+lockStreams at held do doStoreInt642
+lockStreams at held do doStoreInt643
+lockStreams at held return ok none
+lockStreams at done return ok none
+
+readStarted is call
+readStarted in lockStreams
+readStarted invokes heap.threaded
+readStarted argument none
+readStarted result started Bool
+readStarted ownedBy none
+readStarted cleanedBy none
+readStarted borrows none
+readStarted catch none
+readStarted suppresses none
+
+readWord is call
+readWord in lockStreams
+readWord invokes kernel.stateAt
+readWord argument offset Int64 n28976 copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+readHolderCell is call
+readHolderCell in lockStreams
+readHolderCell invokes kernel.stateAt
+readHolderCell argument offset Int64 n28984 copy
+readHolderCell result holderCell machine.Address
+readHolderCell ownedBy none
+readHolderCell cleanedBy none
+readHolderCell borrows none
+readHolderCell catch none
+readHolderCell suppresses none
+
+readDepthCell is call
+readDepthCell in lockStreams
+readDepthCell invokes kernel.stateAt
+readDepthCell argument offset Int64 n28992 copy
+readDepthCell result depthCell machine.Address
+readDepthCell ownedBy none
+readDepthCell cleanedBy none
+readDepthCell borrows none
+readDepthCell catch none
+readDepthCell suppresses none
+
+readSelf is call
+readSelf in lockStreams
+readSelf invokes system.gettid
+readSelf argument none
+readSelf result self Int64
+readSelf ownedBy none
+readSelf cleanedBy none
+readSelf borrows none
+readSelf catch none
+readSelf suppresses none
+
+readHolder is call
+readHolder in lockStreams
+readHolder invokes machine.loadInt64
+readHolder argument address machine.Address holderCell copy
+readHolder result holder Int64
+readHolder ownedBy none
+readHolder cleanedBy none
+readHolder borrows none
+readHolder catch none
+readHolder suppresses none
+
+findCheck11 is call
+findCheck11 in lockStreams
+findCheck11 invokes compare.equalInt64
+findCheck11 argument left Int64 holder copy
+findCheck11 argument right Int64 self copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readDepth is call
+readDepth in lockStreams
+readDepth invokes machine.loadInt64
+readDepth argument address machine.Address depthCell copy
+readDepth result depth Int64
+readDepth ownedBy none
+readDepth cleanedBy none
+readDepth borrows none
+readDepth catch none
+readDepth suppresses none
+
+doStoreInt64Step1 is call
+doStoreInt64Step1 in lockStreams
+doStoreInt64Step1 invokes math.addInt64
+doStoreInt64Step1 argument left Int64 depth copy
+doStoreInt64Step1 argument right Int64 one copy
+doStoreInt64Step1 result doStoreInt64Part1 Int64
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in lockStreams
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address depthCell copy
+doStoreInt64 argument value Int64 doStoreInt64Part1 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+readFirst is call
+readFirst in lockStreams
+readFirst invokes machine.compareExchange32
+readFirst argument address machine.Address word copy
+readFirst argument expected Int32 int320 copy
+readFirst argument desired Int32 int321 copy
+readFirst result first Int32
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+findCheck21 is call
+findCheck21 in lockStreams
+findCheck21 invokes compare.equalInt32
+findCheck21 argument left Int32 first copy
+findCheck21 argument right Int32 int320 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+readPrevious is call
+readPrevious in lockStreams
+readPrevious invokes machine.compareExchange32
+readPrevious argument address machine.Address word copy
+readPrevious argument expected Int32 int321 copy
+readPrevious argument desired Int32 int322 copy
+readPrevious result previous Int32
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+findCheck31 is call
+findCheck31 in lockStreams
+findCheck31 invokes compare.equalInt32
+findCheck31 argument left Int32 previous copy
+findCheck31 argument right Int32 int320 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+readNowhere is call
+readNowhere in lockStreams
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readUnusedFutex is call
+readUnusedFutex in lockStreams
+readUnusedFutex invokes system.futex
+readUnusedFutex argument address machine.Address word copy
+readUnusedFutex argument operation Int64 n128 copy
+readUnusedFutex argument value Int64 two copy
+readUnusedFutex argument timeout machine.Address nowhere copy
+readUnusedFutex argument address2 machine.Address nowhere copy
+readUnusedFutex argument value3 Int64 zero copy
+readUnusedFutex result unusedFutex Int64
+readUnusedFutex ownedBy none
+readUnusedFutex cleanedBy none
+readUnusedFutex borrows none
+readUnusedFutex catch none
+readUnusedFutex suppresses none
+
+readTaken is call
+readTaken in lockStreams
+readTaken invokes machine.compareExchange32
+readTaken argument address machine.Address word copy
+readTaken argument expected Int32 int320 copy
+readTaken argument desired Int32 int322 copy
+readTaken result taken Int32
+readTaken ownedBy none
+readTaken cleanedBy none
+readTaken borrows none
+readTaken catch none
+readTaken suppresses none
+
+findCheck41 is call
+findCheck41 in lockStreams
+findCheck41 invokes compare.equalInt32
+findCheck41 argument left Int32 taken copy
+findCheck41 argument right Int32 int320 copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in lockStreams
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address holderCell copy
+doStoreInt642 argument value Int64 self copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+doStoreInt643 is call
+doStoreInt643 in lockStreams
+doStoreInt643 invokes machine.storeInt64
+doStoreInt643 argument address machine.Address depthCell copy
+doStoreInt643 argument value Int64 one copy
+doStoreInt643 result none
+doStoreInt643 ownedBy none
+doStoreInt643 cleanedBy none
+doStoreInt643 borrows none
+doStoreInt643 catch none
+doStoreInt643 suppresses none
+
+unlockStreams is operation
+unlockStreams purpose "Give the streams' lock back when its holder's count comes to 0, waking a waiter"
+unlockStreams invariant none
+unlockStreams typeParameter none
+unlockStreams input none
+unlockStreams output none
+unlockStreams outputOwnedBy none
+unlockStreams raises none
+unlockStreams effect use machine.memory
+unlockStreams effect use system.calls
+unlockStreams uses memoryAccess
+unlockStreams uses systemCalls
+unlockStreams memoryHeap false
+unlockStreams async false
+unlockStreams maxRecursion none
+unlockStreams label begin loopKind none
+unlockStreams label begin within none
+unlockStreams label release loopKind none
+unlockStreams label release within none
+unlockStreams label down loopKind none
+unlockStreams label down within none
+unlockStreams label free loopKind none
+unlockStreams label free within none
+unlockStreams label wake loopKind none
+unlockStreams label wake within none
+unlockStreams label done loopKind none
+unlockStreams label done within none
+unlockStreams let n28976 Int64 28976 immutable
+unlockStreams let n28984 Int64 28984 immutable
+unlockStreams let n28992 Int64 28992 immutable
+unlockStreams let one Int64 1 immutable
+unlockStreams let zero Int64 0 immutable
+unlockStreams let int321 Int32 1 immutable
+unlockStreams let int320 Int32 0 immutable
+unlockStreams let n129 Int64 129 immutable
+unlockStreams at begin do readStarted
+unlockStreams at begin branch if started goto release else goto done
+unlockStreams at release do readWord
+unlockStreams at release do readHolderCell
+unlockStreams at release do readDepthCell
+unlockStreams at release do readDepth
+unlockStreams at release do findCheck11
+unlockStreams at release branch if check1 goto down else goto free
+unlockStreams at down do doStoreInt64Step1
+unlockStreams at down do doStoreInt64
+unlockStreams at down return ok none
+unlockStreams at free do doStoreInt642
+unlockStreams at free do doStoreInt643
+unlockStreams at free do readPrevious
+unlockStreams at free do findCheck21
+unlockStreams at free branch if check2 goto done else goto wake
+unlockStreams at wake do doStoreInt32
+unlockStreams at wake do readNowhere
+unlockStreams at wake do readUnusedFutex
+unlockStreams at wake return ok none
+unlockStreams at done return ok none
+
+readStarted is call
+readStarted in unlockStreams
+readStarted invokes heap.threaded
+readStarted argument none
+readStarted result started Bool
+readStarted ownedBy none
+readStarted cleanedBy none
+readStarted borrows none
+readStarted catch none
+readStarted suppresses none
+
+readWord is call
+readWord in unlockStreams
+readWord invokes kernel.stateAt
+readWord argument offset Int64 n28976 copy
+readWord result word machine.Address
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+readHolderCell is call
+readHolderCell in unlockStreams
+readHolderCell invokes kernel.stateAt
+readHolderCell argument offset Int64 n28984 copy
+readHolderCell result holderCell machine.Address
+readHolderCell ownedBy none
+readHolderCell cleanedBy none
+readHolderCell borrows none
+readHolderCell catch none
+readHolderCell suppresses none
+
+readDepthCell is call
+readDepthCell in unlockStreams
+readDepthCell invokes kernel.stateAt
+readDepthCell argument offset Int64 n28992 copy
+readDepthCell result depthCell machine.Address
+readDepthCell ownedBy none
+readDepthCell cleanedBy none
+readDepthCell borrows none
+readDepthCell catch none
+readDepthCell suppresses none
+
+readDepth is call
+readDepth in unlockStreams
+readDepth invokes machine.loadInt64
+readDepth argument address machine.Address depthCell copy
+readDepth result depth Int64
+readDepth ownedBy none
+readDepth cleanedBy none
+readDepth borrows none
+readDepth catch none
+readDepth suppresses none
+
+findCheck11 is call
+findCheck11 in unlockStreams
+findCheck11 invokes compare.greaterThanInt64
+findCheck11 argument left Int64 depth copy
+findCheck11 argument right Int64 one copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doStoreInt64Step1 is call
+doStoreInt64Step1 in unlockStreams
+doStoreInt64Step1 invokes math.subtractInt64
+doStoreInt64Step1 argument left Int64 depth copy
+doStoreInt64Step1 argument right Int64 one copy
+doStoreInt64Step1 result doStoreInt64Part1 Int64
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in unlockStreams
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address depthCell copy
+doStoreInt64 argument value Int64 doStoreInt64Part1 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in unlockStreams
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address depthCell copy
+doStoreInt642 argument value Int64 zero copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+doStoreInt643 is call
+doStoreInt643 in unlockStreams
+doStoreInt643 invokes machine.storeInt64
+doStoreInt643 argument address machine.Address holderCell copy
+doStoreInt643 argument value Int64 zero copy
+doStoreInt643 result none
+doStoreInt643 ownedBy none
+doStoreInt643 cleanedBy none
+doStoreInt643 borrows none
+doStoreInt643 catch none
+doStoreInt643 suppresses none
+
+readPrevious is call
+readPrevious in unlockStreams
+readPrevious invokes machine.compareExchange32
+readPrevious argument address machine.Address word copy
+readPrevious argument expected Int32 int321 copy
+readPrevious argument desired Int32 int320 copy
+readPrevious result previous Int32
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+findCheck21 is call
+findCheck21 in unlockStreams
+findCheck21 invokes compare.equalInt32
+findCheck21 argument left Int32 previous copy
+findCheck21 argument right Int32 int321 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in unlockStreams
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address word copy
+doStoreInt32 argument value Int32 int320 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+readNowhere is call
+readNowhere in unlockStreams
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readUnusedFutex is call
+readUnusedFutex in unlockStreams
+readUnusedFutex invokes system.futex
+readUnusedFutex argument address machine.Address word copy
+readUnusedFutex argument operation Int64 n129 copy
+readUnusedFutex argument value Int64 one copy
+readUnusedFutex argument timeout machine.Address nowhere copy
+readUnusedFutex argument address2 machine.Address nowhere copy
+readUnusedFutex argument value3 Int64 zero copy
+readUnusedFutex result unusedFutex Int64
+readUnusedFutex ownedBy none
+readUnusedFutex cleanedBy none
+readUnusedFutex borrows none
+readUnusedFutex catch none
+readUnusedFutex suppresses none
+
+putBytes is operation
+putBytes purpose "Write bytes to a stream as its buffering says: how many were taken (all of them, or 0 when the stream cannot be written or the write fails, errno set); under the streams' lock once threads were started (D-166)"
+putBytes invariant none
+putBytes typeParameter none
+putBytes input stream machine.Address copied
+putBytes input data machine.Address copied
+putBytes input bytes Int64 copied
+putBytes output Int64
+putBytes outputOwnedBy none
+putBytes raises none
+putBytes effect use machine.memory
+putBytes effect use system.calls
+putBytes uses memoryAccess
+putBytes uses systemCalls
+putBytes memoryHeap false
+putBytes async false
+putBytes maxRecursion none
+putBytes label begin loopKind none
+putBytes label begin within none
+putBytes let none
+putBytes at begin do doLockStreams
+putBytes at begin do readResult
+putBytes at begin do doUnlockStreams
+putBytes at begin return ok result
+
+doLockStreams is call
+doLockStreams in putBytes
+doLockStreams invokes lockStreams
+doLockStreams argument none
+doLockStreams result none
+doLockStreams ownedBy none
+doLockStreams cleanedBy none
+doLockStreams borrows none
+doLockStreams catch none
+doLockStreams suppresses none
+
+readResult is call
+readResult in putBytes
+readResult invokes putBytesHeld
+readResult argument stream machine.Address stream copy
+readResult argument data machine.Address data copy
+readResult argument bytes Int64 bytes copy
+readResult result result Int64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doUnlockStreams is call
+doUnlockStreams in putBytes
+doUnlockStreams invokes unlockStreams
+doUnlockStreams argument none
+doUnlockStreams result none
+doUnlockStreams ownedBy none
+doUnlockStreams cleanedBy none
+doUnlockStreams borrows none
+doUnlockStreams catch none
+doUnlockStreams suppresses none
+
+getByte is operation
+getByte purpose "Read one byte from a stream as an unsigned char, or -1 (EOF) at the end or on an error; what ungetc pushed back comes first, and the end of file stays once reached; under the streams' lock once threads were started (D-166)"
+getByte invariant none
+getByte typeParameter none
+getByte input stream machine.Address copied
+getByte output Int64
+getByte outputOwnedBy none
+getByte raises none
+getByte effect use machine.memory
+getByte effect use system.calls
+getByte uses memoryAccess
+getByte uses systemCalls
+getByte memoryHeap false
+getByte async false
+getByte maxRecursion none
+getByte label begin loopKind none
+getByte label begin within none
+getByte let none
+getByte at begin do doLockStreams
+getByte at begin do readResult
+getByte at begin do doUnlockStreams
+getByte at begin return ok result
+
+doLockStreams is call
+doLockStreams in getByte
+doLockStreams invokes lockStreams
+doLockStreams argument none
+doLockStreams result none
+doLockStreams ownedBy none
+doLockStreams cleanedBy none
+doLockStreams borrows none
+doLockStreams catch none
+doLockStreams suppresses none
+
+readResult is call
+readResult in getByte
+readResult invokes getByteHeld
+readResult argument stream machine.Address stream copy
+readResult result result Int64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doUnlockStreams is call
+doUnlockStreams in getByte
+doUnlockStreams invokes unlockStreams
+doUnlockStreams argument none
+doUnlockStreams result none
+doUnlockStreams ownedBy none
+doUnlockStreams cleanedBy none
+doUnlockStreams borrows none
+doUnlockStreams catch none
+doUnlockStreams suppresses none
+
+ungetByte is operation
+ungetByte purpose "ungetc: push a byte back onto a stream (8 at most), clearing its end of file; gives the byte, or EOF for EOF or when there is no room; under the streams' lock once threads were started (D-166)"
+ungetByte invariant none
+ungetByte typeParameter none
+ungetByte input stream machine.Address copied
+ungetByte input value Int64 copied
+ungetByte output Int64
+ungetByte outputOwnedBy none
+ungetByte raises none
+ungetByte effect use machine.memory
+ungetByte effect use system.calls
+ungetByte uses memoryAccess
+ungetByte uses systemCalls
+ungetByte memoryHeap false
+ungetByte async false
+ungetByte maxRecursion none
+ungetByte label begin loopKind none
+ungetByte label begin within none
+ungetByte let none
+ungetByte at begin do doLockStreams
+ungetByte at begin do readResult
+ungetByte at begin do doUnlockStreams
+ungetByte at begin return ok result
+
+doLockStreams is call
+doLockStreams in ungetByte
+doLockStreams invokes lockStreams
+doLockStreams argument none
+doLockStreams result none
+doLockStreams ownedBy none
+doLockStreams cleanedBy none
+doLockStreams borrows none
+doLockStreams catch none
+doLockStreams suppresses none
+
+readResult is call
+readResult in ungetByte
+readResult invokes ungetByteHeld
+readResult argument stream machine.Address stream copy
+readResult argument value Int64 value copy
+readResult result result Int64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doUnlockStreams is call
+doUnlockStreams in ungetByte
+doUnlockStreams invokes unlockStreams
+doUnlockStreams argument none
+doUnlockStreams result none
+doUnlockStreams ownedBy none
+doUnlockStreams cleanedBy none
+doUnlockStreams borrows none
+doUnlockStreams catch none
+doUnlockStreams suppresses none
+
+flushPending is operation
+flushPending purpose "Write the bytes waiting in a stream's buffer: 0, or -1 when the write fails (the error flag set); under the streams' lock once threads were started (D-166)"
+flushPending invariant none
+flushPending typeParameter none
+flushPending input stream machine.Address copied
+flushPending output Int32
+flushPending outputOwnedBy none
+flushPending raises none
+flushPending effect use machine.memory
+flushPending effect use system.calls
+flushPending uses memoryAccess
+flushPending uses systemCalls
+flushPending memoryHeap false
+flushPending async false
+flushPending maxRecursion none
+flushPending label begin loopKind none
+flushPending label begin within none
+flushPending let none
+flushPending at begin do doLockStreams
+flushPending at begin do readResult
+flushPending at begin do doUnlockStreams
+flushPending at begin return ok result
+
+doLockStreams is call
+doLockStreams in flushPending
+doLockStreams invokes lockStreams
+doLockStreams argument none
+doLockStreams result none
+doLockStreams ownedBy none
+doLockStreams cleanedBy none
+doLockStreams borrows none
+doLockStreams catch none
+doLockStreams suppresses none
+
+readResult is call
+readResult in flushPending
+readResult invokes flushPendingHeld
+readResult argument stream machine.Address stream copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doUnlockStreams is call
+doUnlockStreams in flushPending
+doUnlockStreams invokes unlockStreams
+doUnlockStreams argument none
+doUnlockStreams result none
+doUnlockStreams ownedBy none
+doUnlockStreams cleanedBy none
+doUnlockStreams borrows none
+doUnlockStreams catch none
+doUnlockStreams suppresses none
+
+flushAll is operation
+flushAll purpose "fflush(NULL): write what every stream holds, the standard ones and those fopen opened; 0, or -1 when a write failed; under the streams' lock once threads were started (D-166)"
+flushAll invariant flushesEvery "\"Every stream's waiting bytes are written\""
+flushAll typeParameter none
+flushAll input none
+flushAll output Int32
+flushAll outputOwnedBy none
+flushAll raises none
+flushAll effect use machine.memory
+flushAll effect use system.calls
+flushAll uses memoryAccess
+flushAll uses systemCalls
+flushAll memoryHeap false
+flushAll async false
+flushAll maxRecursion none
+flushAll label begin loopKind none
+flushAll label begin within none
+flushAll let none
+flushAll at begin do doLockStreams
+flushAll at begin do readResult
+flushAll at begin do doUnlockStreams
+flushAll at begin return ok result
+
+doLockStreams is call
+doLockStreams in flushAll
+doLockStreams invokes lockStreams
+doLockStreams argument none
+doLockStreams result none
+doLockStreams ownedBy none
+doLockStreams cleanedBy none
+doLockStreams borrows none
+doLockStreams catch none
+doLockStreams suppresses none
+
+readResult is call
+readResult in flushAll
+readResult invokes flushAllHeld
+readResult argument none
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doUnlockStreams is call
+doUnlockStreams in flushAll
+doUnlockStreams invokes unlockStreams
+doUnlockStreams argument none
+doUnlockStreams result none
+doUnlockStreams ownedBy none
+doUnlockStreams cleanedBy none
+doUnlockStreams borrows none
+doUnlockStreams catch none
+doUnlockStreams suppresses none

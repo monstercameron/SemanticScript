@@ -1,0 +1,4224 @@
+# threads.h for the runtime's C library, written in SemanticScript (D-166): C11 threads on Linux's own
+# threads, mutexes, condition variables, thread-specific storage, and call_once.
+#
+# This module is generated from tools/cthreads.dsl by tools/build.py.
+
+cthreads is module
+cthreads purpose "threads.h for the runtime's C library: C11 threads on Linux's own threads (clone), mutexes, condition variables, thread-specific storage, and call_once, on futexes (D-166)"
+cthreads path cthreads
+cthreads imports standard.machine
+cthreads imports standard.system
+cthreads imports standard.math
+cthreads imports standard.compare
+cthreads imports standard.convert
+cthreads imports standard.bits
+cthreads imports standard.logic
+cthreads imports standard.test
+cthreads imports kernel
+cthreads imports heap
+cthreads imports clibrary
+cthreads exports none
+
+memoryAccess is capability
+memoryAccess purpose "Authority to read and write threads' records, mutexes, and condition variables"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to start threads, wait on futexes, sleep, and yield"
+systemCalls grants use system.calls none
+
+# D-166: a thread (thrd_t, the address of its record: a heap block of 64 bytes: 0 its thread id, which the kernel
+# clears and wakes when the thread ends (CLONE_CHILD_CLEARTID), 8 what it gave, 16 its stack, 24 the stack's size, 32
+# its thread block, 40 whether it is detached, 48 the function, 56 its argument) runs on a stack of 8 MiB and a thread
+# block of its own (the thread pointer: on x86_64 the stack protector's canary at 0x28, copied from the first
+# thread's, and errno at 0x40). A mutex (mtx_t, glibc's 40 bytes) is 0 its state (0 free, 1 held, 2 held with
+# waiters), 8 its owner's thread id, 16 how many times a recursive one is held, 24 its kind; a condition variable
+# (cnd_t, 48 bytes) is 0 a sequence the waiters wait on. Thread-specific storage keeps 128 keys, each thread's values in
+# its block from 0x80. Windows has no C threads here (thrd_create gives thrd_error): a program there reaches the
+# library through `ffi`, with no C function to start; mutexes, once, and storage work in its one thread.
+# machine.state bytes 28480 to 28999 belong to this module: 28480 the first thread's record, 28488 how many keys
+# were made, 28496 the block of each key's destructor (64 keys), 28504 the block of the first thread's values.
+success is constant
+success purpose "thrd_success: the call did what it was asked"
+success type Int32
+success value 0
+
+busy is constant
+busy purpose "thrd_busy: another thread holds the mutex"
+busy type Int32
+busy value 1
+
+error is constant
+error purpose "thrd_error: the call could not do what it was asked"
+error type Int32
+error value 2
+
+timedOut is constant
+timedOut purpose "thrd_timedout: the deadline passed first"
+timedOut type Int32
+timedOut value 4
+
+stackBytes is constant
+stackBytes purpose "A thread's stack: 8 MiB"
+stackBytes type Int64
+stackBytes value 8388608
+
+forever is constant
+forever purpose "The bound of a loop that ends when its work does"
+forever type Int64
+forever value 9223372036854775807
+
+firstRecordAt is constant
+firstRecordAt purpose "Where the first thread's record is kept, in machine.state (0 until thrd_current asks)"
+firstRecordAt type Int64
+firstRecordAt value 28480
+
+keysAt is constant
+keysAt purpose "Where how many thread-specific keys were made is kept, in machine.state"
+keysAt type Int64
+keysAt value 28488
+
+destructorsAt is constant
+destructorsAt purpose "Where the block of each key's destructor is kept, in machine.state"
+destructorsAt type Int64
+destructorsAt value 28496
+
+firstValuesAt is constant
+firstValuesAt purpose "Where the block of the first thread's thread-specific values is kept, in machine.state"
+firstValuesAt type Int64
+firstValuesAt value 28504
+
+# ---------------------------------------------------------------- futexes
+futexWait is operation
+futexWait purpose "Wait while a 32-bit cell holds a value (FUTEX_WAIT, private), or until woken"
+futexWait invariant none
+futexWait typeParameter none
+futexWait input cell machine.Address copied
+futexWait input value Int32 copied
+futexWait output none
+futexWait outputOwnedBy none
+futexWait raises none
+futexWait effect use machine.memory
+futexWait effect use system.calls
+futexWait uses memoryAccess
+futexWait uses systemCalls
+futexWait memoryHeap false
+futexWait async false
+futexWait maxRecursion none
+futexWait label begin loopKind none
+futexWait label begin within none
+futexWait let n128 Int64 128 immutable
+futexWait let zero Int64 0 immutable
+futexWait at begin do readNowhere
+futexWait at begin do findWideValue1
+futexWait at begin do readUnusedFutex
+futexWait at begin return ok none
+
+readNowhere is call
+readNowhere in futexWait
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findWideValue1 is call
+findWideValue1 in futexWait
+findWideValue1 invokes convert.int32ToInt64
+findWideValue1 argument value Int32 value copy
+findWideValue1 result wideValue Int64
+findWideValue1 ownedBy none
+findWideValue1 cleanedBy none
+findWideValue1 borrows none
+findWideValue1 catch none
+findWideValue1 suppresses none
+
+readUnusedFutex is call
+readUnusedFutex in futexWait
+readUnusedFutex invokes system.futex
+readUnusedFutex argument address machine.Address cell copy
+readUnusedFutex argument operation Int64 n128 copy
+readUnusedFutex argument value Int64 wideValue copy
+readUnusedFutex argument timeout machine.Address nowhere copy
+readUnusedFutex argument address2 machine.Address nowhere copy
+readUnusedFutex argument value3 Int64 zero copy
+readUnusedFutex result unusedFutex Int64
+readUnusedFutex ownedBy none
+readUnusedFutex cleanedBy none
+readUnusedFutex borrows none
+readUnusedFutex catch none
+readUnusedFutex suppresses none
+
+futexWake is operation
+futexWake purpose "Wake up to a count of threads waiting on a cell (FUTEX_WAKE, private)"
+futexWake invariant none
+futexWake typeParameter none
+futexWake input cell machine.Address copied
+futexWake input count Int64 copied
+futexWake output none
+futexWake outputOwnedBy none
+futexWake raises none
+futexWake effect use machine.memory
+futexWake effect use system.calls
+futexWake uses memoryAccess
+futexWake uses systemCalls
+futexWake memoryHeap false
+futexWake async false
+futexWake maxRecursion none
+futexWake label begin loopKind none
+futexWake label begin within none
+futexWake let n129 Int64 129 immutable
+futexWake let zero Int64 0 immutable
+futexWake at begin do readNowhere
+futexWake at begin do readUnusedFutex
+futexWake at begin return ok none
+
+readNowhere is call
+readNowhere in futexWake
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readUnusedFutex is call
+readUnusedFutex in futexWake
+readUnusedFutex invokes system.futex
+readUnusedFutex argument address machine.Address cell copy
+readUnusedFutex argument operation Int64 n129 copy
+readUnusedFutex argument value Int64 count copy
+readUnusedFutex argument timeout machine.Address nowhere copy
+readUnusedFutex argument address2 machine.Address nowhere copy
+readUnusedFutex argument value3 Int64 zero copy
+readUnusedFutex result unusedFutex Int64
+readUnusedFutex ownedBy none
+readUnusedFutex cleanedBy none
+readUnusedFutex borrows none
+readUnusedFutex catch none
+readUnusedFutex suppresses none
+
+exchange32 is operation
+exchange32 purpose "Compare and exchange a 32-bit cell's value (seq_cst): the value it held"
+exchange32 invariant none
+exchange32 typeParameter none
+exchange32 input cell machine.Address copied
+exchange32 input expected Int32 copied
+exchange32 input desired Int32 copied
+exchange32 output Int32
+exchange32 outputOwnedBy none
+exchange32 raises none
+exchange32 effect use machine.memory
+exchange32 uses memoryAccess
+exchange32 memoryHeap false
+exchange32 async false
+exchange32 maxRecursion none
+exchange32 label begin loopKind none
+exchange32 label begin within none
+exchange32 let none
+exchange32 at begin do readOld
+exchange32 at begin return ok old
+
+readOld is call
+readOld in exchange32
+readOld invokes machine.compareExchange32
+readOld argument address machine.Address cell copy
+readOld argument expected Int32 expected copy
+readOld argument desired Int32 desired copy
+readOld result old Int32
+readOld ownedBy none
+readOld cleanedBy none
+readOld borrows none
+readOld catch none
+readOld suppresses none
+
+# ---------------------------------------------------------------- threads
+currentRecord is operation
+currentRecord purpose "The running thread's record: from its thread block on Linux (the first thread's made when first asked), the first thread's elsewhere"
+currentRecord invariant none
+currentRecord typeParameter none
+currentRecord input none
+currentRecord output machine.Address
+currentRecord outputOwnedBy none
+currentRecord raises none
+currentRecord effect use machine.memory
+currentRecord effect use system.calls
+currentRecord uses memoryAccess
+currentRecord uses systemCalls
+currentRecord memoryHeap false
+currentRecord async false
+currentRecord maxRecursion none
+currentRecord label begin loopKind none
+currentRecord label begin within none
+currentRecord label makeFirst loopKind none
+currentRecord label makeFirst within none
+currentRecord label known loopKind none
+currentRecord label known within none
+currentRecord label firstThread loopKind none
+currentRecord label firstThread within none
+currentRecord label fromBlock loopKind none
+currentRecord label fromBlock within none
+currentRecord label own loopKind none
+currentRecord label own within none
+currentRecord let sixtyFour Int64 64 immutable
+currentRecord let n2352 Int64 2352 immutable
+currentRecord let n56 Int64 56 immutable
+currentRecord at begin do readFirstCell
+currentRecord at begin do readFirst
+currentRecord at begin do readNowhere
+currentRecord at begin do findCheck11
+currentRecord at begin branch if check1 goto makeFirst else goto known
+currentRecord at makeFirst do readMade
+currentRecord at makeFirst do doStoreAddress
+currentRecord at makeFirst goto known
+currentRecord at known do readBlockCell
+currentRecord at known do readBlock
+currentRecord at known do findCheck21
+currentRecord at known branch if check2 goto firstThread else goto fromBlock
+currentRecord at firstThread do readFirstNow
+currentRecord at firstThread return ok firstNow
+currentRecord at fromBlock do readPointer
+currentRecord at fromBlock do findRecordAt1
+currentRecord at fromBlock do readRecord
+currentRecord at fromBlock do findCheck31
+currentRecord at fromBlock branch if check3 goto firstThread else goto own
+currentRecord at own return ok record
+
+readFirstCell is call
+readFirstCell in currentRecord
+readFirstCell invokes kernel.stateAt
+readFirstCell argument offset Int64 firstRecordAt copy
+readFirstCell result firstCell machine.Address
+readFirstCell ownedBy none
+readFirstCell cleanedBy none
+readFirstCell borrows none
+readFirstCell catch none
+readFirstCell suppresses none
+
+readFirst is call
+readFirst in currentRecord
+readFirst invokes machine.loadAddress
+readFirst argument address machine.Address firstCell copy
+readFirst result first machine.Address
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+readNowhere is call
+readNowhere in currentRecord
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findCheck11 is call
+findCheck11 in currentRecord
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address first copy
+findCheck11 argument right machine.Address nowhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readMade is call
+readMade in currentRecord
+readMade invokes heap.take
+readMade argument bytes Int64 sixtyFour copy
+readMade result made machine.Address
+readMade ownedBy none
+readMade cleanedBy none
+readMade borrows none
+readMade catch none
+readMade suppresses none
+
+doStoreAddress is call
+doStoreAddress in currentRecord
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address firstCell copy
+doStoreAddress argument value machine.Address made copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+readBlockCell is call
+readBlockCell in currentRecord
+readBlockCell invokes kernel.stateAt
+readBlockCell argument offset Int64 n2352 copy
+readBlockCell result blockCell machine.Address
+readBlockCell ownedBy none
+readBlockCell cleanedBy none
+readBlockCell borrows none
+readBlockCell catch none
+readBlockCell suppresses none
+
+readBlock is call
+readBlock in currentRecord
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address blockCell copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+findCheck21 is call
+findCheck21 in currentRecord
+findCheck21 invokes machine.equal
+findCheck21 argument left machine.Address block copy
+findCheck21 argument right machine.Address nowhere copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+readFirstNow is call
+readFirstNow in currentRecord
+readFirstNow invokes machine.loadAddress
+readFirstNow argument address machine.Address firstCell copy
+readFirstNow result firstNow machine.Address
+readFirstNow ownedBy none
+readFirstNow cleanedBy none
+readFirstNow borrows none
+readFirstNow catch none
+readFirstNow suppresses none
+
+readPointer is call
+readPointer in currentRecord
+readPointer invokes machine.threadPointer
+readPointer argument none
+readPointer result pointer machine.Address
+readPointer ownedBy none
+readPointer cleanedBy none
+readPointer borrows none
+readPointer catch none
+readPointer suppresses none
+
+findRecordAt1 is call
+findRecordAt1 in currentRecord
+findRecordAt1 invokes machine.offset
+findRecordAt1 argument address machine.Address pointer copy
+findRecordAt1 argument bytes Int64 n56 copy
+findRecordAt1 result recordAt machine.Address
+findRecordAt1 ownedBy none
+findRecordAt1 cleanedBy none
+findRecordAt1 borrows none
+findRecordAt1 catch none
+findRecordAt1 suppresses none
+
+readRecord is call
+readRecord in currentRecord
+readRecord invokes machine.loadAddress
+readRecord argument address machine.Address recordAt copy
+readRecord result record machine.Address
+readRecord ownedBy none
+readRecord cleanedBy none
+readRecord borrows none
+readRecord catch none
+readRecord suppresses none
+
+findCheck31 is call
+findCheck31 in currentRecord
+findCheck31 invokes machine.equal
+findCheck31 argument left machine.Address record copy
+findCheck31 argument right machine.Address nowhere copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+threadMain is operation
+threadMain purpose "Where a new thread starts (the compiler's routine calls it on the thread's own stack): run its function with its argument, keep what it gives, and run its thread-specific values' destructors; the routine then ends the thread"
+threadMain invariant none
+threadMain typeParameter none
+threadMain input record machine.Address copied
+threadMain output none
+threadMain outputOwnedBy none
+threadMain raises none
+threadMain effect use machine.memory
+threadMain effect use system.calls
+threadMain uses memoryAccess
+threadMain uses systemCalls
+threadMain memoryHeap false
+threadMain async false
+threadMain maxRecursion none
+threadMain abi c "refined_c_thread_main"
+threadMain label begin loopKind none
+threadMain label begin within none
+threadMain let n48 Int64 48 immutable
+threadMain let n56 Int64 56 immutable
+threadMain let eight Int64 8 immutable
+threadMain at begin do findFunctionAt1
+threadMain at begin do readFunction
+threadMain at begin do findArgumentAt1
+threadMain at begin do readArgument
+threadMain at begin do readResult
+threadMain at begin do findResultAt1
+threadMain at begin do doStoreInt32
+threadMain at begin do doRunDestructors
+threadMain at begin return ok none
+
+findFunctionAt1 is call
+findFunctionAt1 in threadMain
+findFunctionAt1 invokes machine.offset
+findFunctionAt1 argument address machine.Address record copy
+findFunctionAt1 argument bytes Int64 n48 copy
+findFunctionAt1 result functionAt machine.Address
+findFunctionAt1 ownedBy none
+findFunctionAt1 cleanedBy none
+findFunctionAt1 borrows none
+findFunctionAt1 catch none
+findFunctionAt1 suppresses none
+
+readFunction is call
+readFunction in threadMain
+readFunction invokes machine.loadAddress
+readFunction argument address machine.Address functionAt copy
+readFunction result function machine.Address
+readFunction ownedBy none
+readFunction cleanedBy none
+readFunction borrows none
+readFunction catch none
+readFunction suppresses none
+
+findArgumentAt1 is call
+findArgumentAt1 in threadMain
+findArgumentAt1 invokes machine.offset
+findArgumentAt1 argument address machine.Address record copy
+findArgumentAt1 argument bytes Int64 n56 copy
+findArgumentAt1 result argumentAt machine.Address
+findArgumentAt1 ownedBy none
+findArgumentAt1 cleanedBy none
+findArgumentAt1 borrows none
+findArgumentAt1 catch none
+findArgumentAt1 suppresses none
+
+readArgument is call
+readArgument in threadMain
+readArgument invokes machine.loadAddress
+readArgument argument address machine.Address argumentAt copy
+readArgument result argument machine.Address
+readArgument ownedBy none
+readArgument cleanedBy none
+readArgument borrows none
+readArgument catch none
+readArgument suppresses none
+
+readResult is call
+readResult in threadMain
+readResult invokes machine.callComparison
+readResult argument function machine.Address function copy
+readResult argument left machine.Address argument copy
+readResult argument right machine.Address argument copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+findResultAt1 is call
+findResultAt1 in threadMain
+findResultAt1 invokes machine.offset
+findResultAt1 argument address machine.Address record copy
+findResultAt1 argument bytes Int64 eight copy
+findResultAt1 result resultAt machine.Address
+findResultAt1 ownedBy none
+findResultAt1 cleanedBy none
+findResultAt1 borrows none
+findResultAt1 catch none
+findResultAt1 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in threadMain
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address resultAt copy
+doStoreInt32 argument value Int32 result copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+doRunDestructors is call
+doRunDestructors in threadMain
+doRunDestructors invokes runDestructors
+doRunDestructors argument none
+doRunDestructors result none
+doRunDestructors ownedBy none
+doRunDestructors cleanedBy none
+doRunDestructors borrows none
+doRunDestructors catch none
+doRunDestructors suppresses none
+
+createThread is operation
+createThread purpose "thrd_create: start a thread running func(arg) on a stack and thread block of its own; thrd_success with the thread stored, thrd_nomem with no memory, thrd_error where there are no C threads (Windows)"
+createThread invariant none
+createThread typeParameter none
+createThread input thread machine.Address copied
+createThread input function machine.Address copied
+createThread input argument machine.Address copied
+createThread output Int32
+createThread outputOwnedBy none
+createThread raises none
+createThread effect use machine.memory
+createThread effect use system.calls
+createThread uses memoryAccess
+createThread uses systemCalls
+createThread memoryHeap false
+createThread async false
+createThread maxRecursion none
+createThread abi library "thrd_create"
+createThread label begin loopKind none
+createThread label begin within none
+createThread label refuse loopKind none
+createThread label refuse within none
+createThread label linux loopKind none
+createThread label linux within none
+createThread label noStack loopKind none
+createThread label noStack within none
+createThread label made loopKind none
+createThread label made within none
+createThread label canary loopKind none
+createThread label canary within none
+createThread label noCanary loopKind none
+createThread label noCanary within none
+createThread label fill loopKind none
+createThread label fill within none
+createThread label failed loopKind none
+createThread label failed within none
+createThread label done loopKind none
+createThread label done within none
+createThread let noMemory Int32 3 immutable
+createThread let sixtyFour Int64 64 immutable
+createThread let n640 Int64 640 immutable
+createThread let sixteen Int64 16 immutable
+createThread let n2352 Int64 2352 immutable
+createThread let n40 Int64 40 immutable
+createThread let eight Int64 8 immutable
+createThread let n56 Int64 56 immutable
+createThread let n24 Int64 24 immutable
+createThread let thirtyTwo Int64 32 immutable
+createThread let n48 Int64 48 immutable
+createThread let zero Int64 0 immutable
+createThread at begin do readOnLinux
+createThread at begin branch if onLinux goto linux else goto refuse
+createThread at refuse return ok error
+createThread at linux do doStartThreads
+createThread at linux do readRecord
+createThread at linux do readStack
+createThread at linux do readNowhere
+createThread at linux do findCheck11
+createThread at linux branch if check1 goto noStack else goto made
+createThread at noStack do doGive
+createThread at noStack return ok noMemory
+createThread at made do readBlock
+createThread at made do doStoreAddress
+createThread at made do findSelfAt1
+createThread at made do doStoreAddress2
+createThread at made do readFirstBlockCell
+createThread at made do readFirstBlock
+createThread at made do findCheck21
+createThread at made branch if check2 goto noCanary else goto canary
+createThread at canary do findFromAt1
+createThread at canary do findToAt1
+createThread at canary do doCopy
+createThread at canary goto fill
+createThread at noCanary goto fill
+createThread at fill do findRecordAt1
+createThread at fill do doStoreAddress3
+createThread at fill do findStackAt1
+createThread at fill do doStoreAddress4
+createThread at fill do findSizeAt1
+createThread at fill do doStoreInt64
+createThread at fill do findBlockAt1
+createThread at fill do doStoreAddress5
+createThread at fill do findFunctionAt1
+createThread at fill do doStoreAddress6
+createThread at fill do findArgumentAt1
+createThread at fill do doStoreAddress7
+createThread at fill do findTop1
+createThread at fill do readStarted
+createThread at fill do findCheck31
+createThread at fill branch if check3 goto failed else goto done
+createThread at failed do doUnmapMemory
+createThread at failed do doGive2
+createThread at failed do doGive3
+createThread at failed return ok error
+createThread at done do doStoreAddress8
+createThread at done return ok success
+
+readOnLinux is call
+readOnLinux in createThread
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+doStartThreads is call
+doStartThreads in createThread
+doStartThreads invokes heap.startThreads
+doStartThreads argument none
+doStartThreads result none
+doStartThreads ownedBy none
+doStartThreads cleanedBy none
+doStartThreads borrows none
+doStartThreads catch none
+doStartThreads suppresses none
+
+readRecord is call
+readRecord in createThread
+readRecord invokes heap.take
+readRecord argument bytes Int64 sixtyFour copy
+readRecord result record machine.Address
+readRecord ownedBy none
+readRecord cleanedBy none
+readRecord borrows none
+readRecord catch none
+readRecord suppresses none
+
+readStack is call
+readStack in createThread
+readStack invokes kernel.mapStack
+readStack argument bytes Int64 stackBytes copy
+readStack result stack machine.Address
+readStack ownedBy none
+readStack cleanedBy none
+readStack borrows none
+readStack catch none
+readStack suppresses none
+
+readNowhere is call
+readNowhere in createThread
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findCheck11 is call
+findCheck11 in createThread
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address stack copy
+findCheck11 argument right machine.Address nowhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doGive is call
+doGive in createThread
+doGive invokes heap.give
+doGive argument block machine.Address record copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+readBlock is call
+readBlock in createThread
+readBlock invokes heap.take
+readBlock argument bytes Int64 n640 copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+doStoreAddress is call
+doStoreAddress in createThread
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address block copy
+doStoreAddress argument value machine.Address block copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+findSelfAt1 is call
+findSelfAt1 in createThread
+findSelfAt1 invokes machine.offset
+findSelfAt1 argument address machine.Address block copy
+findSelfAt1 argument bytes Int64 sixteen copy
+findSelfAt1 result selfAt machine.Address
+findSelfAt1 ownedBy none
+findSelfAt1 cleanedBy none
+findSelfAt1 borrows none
+findSelfAt1 catch none
+findSelfAt1 suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in createThread
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address selfAt copy
+doStoreAddress2 argument value machine.Address block copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+readFirstBlockCell is call
+readFirstBlockCell in createThread
+readFirstBlockCell invokes kernel.stateAt
+readFirstBlockCell argument offset Int64 n2352 copy
+readFirstBlockCell result firstBlockCell machine.Address
+readFirstBlockCell ownedBy none
+readFirstBlockCell cleanedBy none
+readFirstBlockCell borrows none
+readFirstBlockCell catch none
+readFirstBlockCell suppresses none
+
+readFirstBlock is call
+readFirstBlock in createThread
+readFirstBlock invokes machine.loadAddress
+readFirstBlock argument address machine.Address firstBlockCell copy
+readFirstBlock result firstBlock machine.Address
+readFirstBlock ownedBy none
+readFirstBlock cleanedBy none
+readFirstBlock borrows none
+readFirstBlock catch none
+readFirstBlock suppresses none
+
+findCheck21 is call
+findCheck21 in createThread
+findCheck21 invokes machine.equal
+findCheck21 argument left machine.Address firstBlock copy
+findCheck21 argument right machine.Address nowhere copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findFromAt1 is call
+findFromAt1 in createThread
+findFromAt1 invokes machine.offset
+findFromAt1 argument address machine.Address firstBlock copy
+findFromAt1 argument bytes Int64 n40 copy
+findFromAt1 result fromAt machine.Address
+findFromAt1 ownedBy none
+findFromAt1 cleanedBy none
+findFromAt1 borrows none
+findFromAt1 catch none
+findFromAt1 suppresses none
+
+findToAt1 is call
+findToAt1 in createThread
+findToAt1 invokes machine.offset
+findToAt1 argument address machine.Address block copy
+findToAt1 argument bytes Int64 n40 copy
+findToAt1 result toAt machine.Address
+findToAt1 ownedBy none
+findToAt1 cleanedBy none
+findToAt1 borrows none
+findToAt1 catch none
+findToAt1 suppresses none
+
+doCopy is call
+doCopy in createThread
+doCopy invokes machine.copy
+doCopy argument target machine.Address toAt copy
+doCopy argument source machine.Address fromAt copy
+doCopy argument bytes Int64 eight copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+findRecordAt1 is call
+findRecordAt1 in createThread
+findRecordAt1 invokes machine.offset
+findRecordAt1 argument address machine.Address block copy
+findRecordAt1 argument bytes Int64 n56 copy
+findRecordAt1 result recordAt machine.Address
+findRecordAt1 ownedBy none
+findRecordAt1 cleanedBy none
+findRecordAt1 borrows none
+findRecordAt1 catch none
+findRecordAt1 suppresses none
+
+doStoreAddress3 is call
+doStoreAddress3 in createThread
+doStoreAddress3 invokes machine.storeAddress
+doStoreAddress3 argument address machine.Address recordAt copy
+doStoreAddress3 argument value machine.Address record copy
+doStoreAddress3 result none
+doStoreAddress3 ownedBy none
+doStoreAddress3 cleanedBy none
+doStoreAddress3 borrows none
+doStoreAddress3 catch none
+doStoreAddress3 suppresses none
+
+findStackAt1 is call
+findStackAt1 in createThread
+findStackAt1 invokes machine.offset
+findStackAt1 argument address machine.Address record copy
+findStackAt1 argument bytes Int64 sixteen copy
+findStackAt1 result stackAt machine.Address
+findStackAt1 ownedBy none
+findStackAt1 cleanedBy none
+findStackAt1 borrows none
+findStackAt1 catch none
+findStackAt1 suppresses none
+
+doStoreAddress4 is call
+doStoreAddress4 in createThread
+doStoreAddress4 invokes machine.storeAddress
+doStoreAddress4 argument address machine.Address stackAt copy
+doStoreAddress4 argument value machine.Address stack copy
+doStoreAddress4 result none
+doStoreAddress4 ownedBy none
+doStoreAddress4 cleanedBy none
+doStoreAddress4 borrows none
+doStoreAddress4 catch none
+doStoreAddress4 suppresses none
+
+findSizeAt1 is call
+findSizeAt1 in createThread
+findSizeAt1 invokes machine.offset
+findSizeAt1 argument address machine.Address record copy
+findSizeAt1 argument bytes Int64 n24 copy
+findSizeAt1 result sizeAt machine.Address
+findSizeAt1 ownedBy none
+findSizeAt1 cleanedBy none
+findSizeAt1 borrows none
+findSizeAt1 catch none
+findSizeAt1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in createThread
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address sizeAt copy
+doStoreInt64 argument value Int64 stackBytes copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+findBlockAt1 is call
+findBlockAt1 in createThread
+findBlockAt1 invokes machine.offset
+findBlockAt1 argument address machine.Address record copy
+findBlockAt1 argument bytes Int64 thirtyTwo copy
+findBlockAt1 result blockAt machine.Address
+findBlockAt1 ownedBy none
+findBlockAt1 cleanedBy none
+findBlockAt1 borrows none
+findBlockAt1 catch none
+findBlockAt1 suppresses none
+
+doStoreAddress5 is call
+doStoreAddress5 in createThread
+doStoreAddress5 invokes machine.storeAddress
+doStoreAddress5 argument address machine.Address blockAt copy
+doStoreAddress5 argument value machine.Address block copy
+doStoreAddress5 result none
+doStoreAddress5 ownedBy none
+doStoreAddress5 cleanedBy none
+doStoreAddress5 borrows none
+doStoreAddress5 catch none
+doStoreAddress5 suppresses none
+
+findFunctionAt1 is call
+findFunctionAt1 in createThread
+findFunctionAt1 invokes machine.offset
+findFunctionAt1 argument address machine.Address record copy
+findFunctionAt1 argument bytes Int64 n48 copy
+findFunctionAt1 result functionAt machine.Address
+findFunctionAt1 ownedBy none
+findFunctionAt1 cleanedBy none
+findFunctionAt1 borrows none
+findFunctionAt1 catch none
+findFunctionAt1 suppresses none
+
+doStoreAddress6 is call
+doStoreAddress6 in createThread
+doStoreAddress6 invokes machine.storeAddress
+doStoreAddress6 argument address machine.Address functionAt copy
+doStoreAddress6 argument value machine.Address function copy
+doStoreAddress6 result none
+doStoreAddress6 ownedBy none
+doStoreAddress6 cleanedBy none
+doStoreAddress6 borrows none
+doStoreAddress6 catch none
+doStoreAddress6 suppresses none
+
+findArgumentAt1 is call
+findArgumentAt1 in createThread
+findArgumentAt1 invokes machine.offset
+findArgumentAt1 argument address machine.Address record copy
+findArgumentAt1 argument bytes Int64 n56 copy
+findArgumentAt1 result argumentAt machine.Address
+findArgumentAt1 ownedBy none
+findArgumentAt1 cleanedBy none
+findArgumentAt1 borrows none
+findArgumentAt1 catch none
+findArgumentAt1 suppresses none
+
+doStoreAddress7 is call
+doStoreAddress7 in createThread
+doStoreAddress7 invokes machine.storeAddress
+doStoreAddress7 argument address machine.Address argumentAt copy
+doStoreAddress7 argument value machine.Address argument copy
+doStoreAddress7 result none
+doStoreAddress7 ownedBy none
+doStoreAddress7 cleanedBy none
+doStoreAddress7 borrows none
+doStoreAddress7 catch none
+doStoreAddress7 suppresses none
+
+findTop1 is call
+findTop1 in createThread
+findTop1 invokes machine.offset
+findTop1 argument address machine.Address stack copy
+findTop1 argument bytes Int64 stackBytes copy
+findTop1 result top machine.Address
+findTop1 ownedBy none
+findTop1 cleanedBy none
+findTop1 borrows none
+findTop1 catch none
+findTop1 suppresses none
+
+readStarted is call
+readStarted in createThread
+readStarted invokes machine.startThread
+readStarted argument stackTop machine.Address top copy
+readStarted argument block machine.Address block copy
+readStarted argument tidAt machine.Address record copy
+readStarted argument record machine.Address record copy
+readStarted result started Int64
+readStarted ownedBy none
+readStarted cleanedBy none
+readStarted borrows none
+readStarted catch none
+readStarted suppresses none
+
+findCheck31 is call
+findCheck31 in createThread
+findCheck31 invokes compare.lessThanInt64
+findCheck31 argument left Int64 started copy
+findCheck31 argument right Int64 zero copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+doUnmapMemory is call
+doUnmapMemory in createThread
+doUnmapMemory invokes kernel.unmapMemory
+doUnmapMemory argument address machine.Address stack copy
+doUnmapMemory argument bytes Int64 stackBytes copy
+doUnmapMemory result none
+doUnmapMemory ownedBy none
+doUnmapMemory cleanedBy none
+doUnmapMemory borrows none
+doUnmapMemory catch none
+doUnmapMemory suppresses none
+
+doGive2 is call
+doGive2 in createThread
+doGive2 invokes heap.give
+doGive2 argument block machine.Address block copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doGive3 is call
+doGive3 in createThread
+doGive3 invokes heap.give
+doGive3 argument block machine.Address record copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+doStoreAddress8 is call
+doStoreAddress8 in createThread
+doStoreAddress8 invokes machine.storeAddress
+doStoreAddress8 argument address machine.Address thread copy
+doStoreAddress8 argument value machine.Address record copy
+doStoreAddress8 result none
+doStoreAddress8 ownedBy none
+doStoreAddress8 cleanedBy none
+doStoreAddress8 borrows none
+doStoreAddress8 catch none
+doStoreAddress8 suppresses none
+
+joinThread is operation
+joinThread purpose "thrd_join: wait for a thread to end, store what it gave, and free its stack and record"
+joinThread invariant none
+joinThread typeParameter none
+joinThread input thread machine.Address copied
+joinThread input result machine.Address copied
+joinThread output Int32
+joinThread outputOwnedBy none
+joinThread raises none
+joinThread effect use machine.memory
+joinThread effect use system.calls
+joinThread uses memoryAccess
+joinThread uses systemCalls
+joinThread memoryHeap false
+joinThread async false
+joinThread maxRecursion none
+joinThread abi library "thrd_join"
+joinThread label begin loopKind none
+joinThread label begin within none
+joinThread label waiting loopKind while
+joinThread label waiting within none
+joinThread label waiting maxIterations forever
+joinThread label wait loopKind none
+joinThread label wait within waiting
+joinThread label ended loopKind none
+joinThread label ended within none
+joinThread label store loopKind none
+joinThread label store within none
+joinThread label release loopKind none
+joinThread label release within none
+joinThread let int320 Int32 0 immutable
+joinThread let eight Int64 8 immutable
+joinThread let sixteen Int64 16 immutable
+joinThread let thirtyTwo Int64 32 immutable
+joinThread at begin goto waiting
+joinThread at waiting do readTid
+joinThread at waiting do findCheck11
+joinThread at waiting branch if check1 goto ended else goto wait
+joinThread at wait do doFutexWait
+joinThread at wait goto waiting
+joinThread at ended do readNowhere
+joinThread at ended do findCheck21
+joinThread at ended branch if check2 goto release else goto store
+joinThread at store do findResultAt1
+joinThread at store do readValue
+joinThread at store do doStoreInt32
+joinThread at store goto release
+joinThread at release do findStackAt1
+joinThread at release do readStack
+joinThread at release do doUnmapMemory
+joinThread at release do findBlockAt1
+joinThread at release do readBlock
+joinThread at release do doGive
+joinThread at release do doGive2
+joinThread at release return ok success
+
+readTid is call
+readTid in joinThread
+readTid invokes machine.loadInt32
+readTid argument address machine.Address thread copy
+readTid result tid Int32
+readTid ownedBy none
+readTid cleanedBy none
+readTid borrows none
+readTid catch none
+readTid suppresses none
+
+findCheck11 is call
+findCheck11 in joinThread
+findCheck11 invokes compare.equalInt32
+findCheck11 argument left Int32 tid copy
+findCheck11 argument right Int32 int320 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doFutexWait is call
+doFutexWait in joinThread
+doFutexWait invokes futexWait
+doFutexWait argument cell machine.Address thread copy
+doFutexWait argument value Int32 tid copy
+doFutexWait result none
+doFutexWait ownedBy none
+doFutexWait cleanedBy none
+doFutexWait borrows none
+doFutexWait catch none
+doFutexWait suppresses none
+
+readNowhere is call
+readNowhere in joinThread
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findCheck21 is call
+findCheck21 in joinThread
+findCheck21 invokes machine.equal
+findCheck21 argument left machine.Address result copy
+findCheck21 argument right machine.Address nowhere copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findResultAt1 is call
+findResultAt1 in joinThread
+findResultAt1 invokes machine.offset
+findResultAt1 argument address machine.Address thread copy
+findResultAt1 argument bytes Int64 eight copy
+findResultAt1 result resultAt machine.Address
+findResultAt1 ownedBy none
+findResultAt1 cleanedBy none
+findResultAt1 borrows none
+findResultAt1 catch none
+findResultAt1 suppresses none
+
+readValue is call
+readValue in joinThread
+readValue invokes machine.loadInt32
+readValue argument address machine.Address resultAt copy
+readValue result value Int32
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in joinThread
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address result copy
+doStoreInt32 argument value Int32 value copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+findStackAt1 is call
+findStackAt1 in joinThread
+findStackAt1 invokes machine.offset
+findStackAt1 argument address machine.Address thread copy
+findStackAt1 argument bytes Int64 sixteen copy
+findStackAt1 result stackAt machine.Address
+findStackAt1 ownedBy none
+findStackAt1 cleanedBy none
+findStackAt1 borrows none
+findStackAt1 catch none
+findStackAt1 suppresses none
+
+readStack is call
+readStack in joinThread
+readStack invokes machine.loadAddress
+readStack argument address machine.Address stackAt copy
+readStack result stack machine.Address
+readStack ownedBy none
+readStack cleanedBy none
+readStack borrows none
+readStack catch none
+readStack suppresses none
+
+doUnmapMemory is call
+doUnmapMemory in joinThread
+doUnmapMemory invokes kernel.unmapMemory
+doUnmapMemory argument address machine.Address stack copy
+doUnmapMemory argument bytes Int64 stackBytes copy
+doUnmapMemory result none
+doUnmapMemory ownedBy none
+doUnmapMemory cleanedBy none
+doUnmapMemory borrows none
+doUnmapMemory catch none
+doUnmapMemory suppresses none
+
+findBlockAt1 is call
+findBlockAt1 in joinThread
+findBlockAt1 invokes machine.offset
+findBlockAt1 argument address machine.Address thread copy
+findBlockAt1 argument bytes Int64 thirtyTwo copy
+findBlockAt1 result blockAt machine.Address
+findBlockAt1 ownedBy none
+findBlockAt1 cleanedBy none
+findBlockAt1 borrows none
+findBlockAt1 catch none
+findBlockAt1 suppresses none
+
+readBlock is call
+readBlock in joinThread
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address blockAt copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+doGive is call
+doGive in joinThread
+doGive invokes heap.give
+doGive argument block machine.Address block copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in joinThread
+doGive2 invokes heap.give
+doGive2 argument block machine.Address thread copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+exitThread is operation
+exitThread purpose "thrd_exit: end the running thread, giving a result to thrd_join (the first thread's exit ends it alone too)"
+exitThread invariant none
+exitThread typeParameter none
+exitThread input result Int32 copied
+exitThread output none
+exitThread outputOwnedBy none
+exitThread raises none
+exitThread effect use machine.memory
+exitThread effect use system.calls
+exitThread uses memoryAccess
+exitThread uses systemCalls
+exitThread memoryHeap false
+exitThread async false
+exitThread maxRecursion none
+exitThread abi library "thrd_exit"
+exitThread label begin loopKind none
+exitThread label begin within none
+exitThread let eight Int64 8 immutable
+exitThread let zero Int64 0 immutable
+exitThread at begin do readRecord
+exitThread at begin do findResultAt1
+exitThread at begin do doStoreInt32
+exitThread at begin do readUnusedExit
+exitThread at begin return ok none
+
+readRecord is call
+readRecord in exitThread
+readRecord invokes currentRecord
+readRecord argument none
+readRecord result record machine.Address
+readRecord ownedBy none
+readRecord cleanedBy none
+readRecord borrows none
+readRecord catch none
+readRecord suppresses none
+
+findResultAt1 is call
+findResultAt1 in exitThread
+findResultAt1 invokes machine.offset
+findResultAt1 argument address machine.Address record copy
+findResultAt1 argument bytes Int64 eight copy
+findResultAt1 result resultAt machine.Address
+findResultAt1 ownedBy none
+findResultAt1 cleanedBy none
+findResultAt1 borrows none
+findResultAt1 catch none
+findResultAt1 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in exitThread
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address resultAt copy
+doStoreInt32 argument value Int32 result copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+readUnusedExit is call
+readUnusedExit in exitThread
+readUnusedExit invokes system.exit
+readUnusedExit argument code Int64 zero copy
+readUnusedExit result unusedExit Int64
+readUnusedExit ownedBy none
+readUnusedExit cleanedBy none
+readUnusedExit borrows none
+readUnusedExit catch none
+readUnusedExit suppresses none
+
+currentThread is operation
+currentThread purpose "thrd_current: the running thread"
+currentThread invariant knowsItself "\"Gives the same thread each time a thread asks\""
+currentThread typeParameter none
+currentThread input none
+currentThread output machine.Address
+currentThread outputOwnedBy none
+currentThread raises none
+currentThread effect use machine.memory
+currentThread effect use system.calls
+currentThread uses memoryAccess
+currentThread uses systemCalls
+currentThread memoryHeap false
+currentThread async false
+currentThread maxRecursion none
+currentThread abi library "thrd_current"
+currentThread label begin loopKind none
+currentThread label begin within none
+currentThread let none
+currentThread at begin do readRecord
+currentThread at begin return ok record
+
+readRecord is call
+readRecord in currentThread
+readRecord invokes currentRecord
+readRecord argument none
+readRecord result record machine.Address
+readRecord ownedBy none
+readRecord cleanedBy none
+readRecord borrows none
+readRecord catch none
+readRecord suppresses none
+
+sameThread is operation
+sameThread purpose "thrd_equal: nonzero when two threads are one"
+sameThread invariant none
+sameThread typeParameter none
+sameThread input left machine.Address copied
+sameThread input right machine.Address copied
+sameThread output Int32
+sameThread outputOwnedBy none
+sameThread raises none
+sameThread effect use machine.memory
+sameThread uses memoryAccess
+sameThread memoryHeap false
+sameThread async false
+sameThread maxRecursion none
+sameThread abi library "thrd_equal"
+sameThread label begin loopKind none
+sameThread label begin within none
+sameThread label same loopKind none
+sameThread label same within none
+sameThread label differ loopKind none
+sameThread label differ within none
+sameThread let yes Int32 1 immutable
+sameThread let no Int32 0 immutable
+sameThread at begin do findCheck11
+sameThread at begin branch if check1 goto same else goto differ
+sameThread at same return ok yes
+sameThread at differ return ok no
+
+findCheck11 is call
+findCheck11 in sameThread
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address left copy
+findCheck11 argument right machine.Address right copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+detachThread is operation
+detachThread purpose "thrd_detach: the thread's stack and record are not freed by a join (they stay until the process ends)"
+detachThread invariant none
+detachThread typeParameter none
+detachThread input thread machine.Address copied
+detachThread output Int32
+detachThread outputOwnedBy none
+detachThread raises none
+detachThread effect use machine.memory
+detachThread uses memoryAccess
+detachThread memoryHeap false
+detachThread async false
+detachThread maxRecursion none
+detachThread abi library "thrd_detach"
+detachThread label begin loopKind none
+detachThread label begin within none
+detachThread let n40 Int64 40 immutable
+detachThread let one Int64 1 immutable
+detachThread at begin do findDetachedAt1
+detachThread at begin do doStoreInt64
+detachThread at begin return ok success
+
+findDetachedAt1 is call
+findDetachedAt1 in detachThread
+findDetachedAt1 invokes machine.offset
+findDetachedAt1 argument address machine.Address thread copy
+findDetachedAt1 argument bytes Int64 n40 copy
+findDetachedAt1 result detachedAt machine.Address
+findDetachedAt1 ownedBy none
+findDetachedAt1 cleanedBy none
+findDetachedAt1 borrows none
+findDetachedAt1 catch none
+findDetachedAt1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in detachThread
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address detachedAt copy
+doStoreInt64 argument value Int64 one copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+yieldThread is operation
+yieldThread purpose "thrd_yield: let another thread run (sched_yield)"
+yieldThread invariant none
+yieldThread typeParameter none
+yieldThread input none
+yieldThread output none
+yieldThread outputOwnedBy none
+yieldThread raises none
+yieldThread effect use system.calls
+yieldThread uses systemCalls
+yieldThread memoryHeap false
+yieldThread async false
+yieldThread maxRecursion none
+yieldThread abi library "thrd_yield"
+yieldThread label begin loopKind none
+yieldThread label begin within none
+yieldThread label linux loopKind none
+yieldThread label linux within none
+yieldThread label done loopKind none
+yieldThread label done within none
+yieldThread let none
+yieldThread at begin do readOnLinux
+yieldThread at begin branch if onLinux goto linux else goto done
+yieldThread at linux do readUnusedSchedYield
+yieldThread at linux return ok none
+yieldThread at done return ok none
+
+readOnLinux is call
+readOnLinux in yieldThread
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readUnusedSchedYield is call
+readUnusedSchedYield in yieldThread
+readUnusedSchedYield invokes system.schedYield
+readUnusedSchedYield argument none
+readUnusedSchedYield result unusedSchedYield Int64
+readUnusedSchedYield ownedBy none
+readUnusedSchedYield cleanedBy none
+readUnusedSchedYield borrows none
+readUnusedSchedYield catch none
+readUnusedSchedYield suppresses none
+
+sleepThread is operation
+sleepThread purpose "thrd_sleep: sleep for a timespec: 0, or -1 when interrupted (the time left stored), -2 for another failure"
+sleepThread invariant none
+sleepThread typeParameter none
+sleepThread input duration machine.Address copied
+sleepThread input remaining machine.Address copied
+sleepThread output Int32
+sleepThread outputOwnedBy none
+sleepThread raises none
+sleepThread effect use machine.memory
+sleepThread effect use system.calls
+sleepThread uses memoryAccess
+sleepThread uses systemCalls
+sleepThread memoryHeap false
+sleepThread async false
+sleepThread maxRecursion none
+sleepThread abi library "thrd_sleep"
+sleepThread label begin loopKind none
+sleepThread label begin within none
+sleepThread label linux loopKind none
+sleepThread label linux within none
+sleepThread label notSlept loopKind none
+sleepThread label notSlept within none
+sleepThread label stopped loopKind none
+sleepThread label stopped within none
+sleepThread label failed loopKind none
+sleepThread label failed within none
+sleepThread label windows loopKind none
+sleepThread label windows within none
+sleepThread label slept loopKind none
+sleepThread label slept within none
+sleepThread let interrupted Int32 -1 immutable
+sleepThread let other Int32 -2 immutable
+sleepThread let zero Int64 0 immutable
+sleepThread let minus4 Int64 -4 immutable
+sleepThread let eight Int64 8 immutable
+sleepThread let n1000 Int64 1000 immutable
+sleepThread let n1000000 Int64 1000000 immutable
+sleepThread at begin do readOnLinux
+sleepThread at begin branch if onLinux goto linux else goto windows
+sleepThread at linux do readResult
+sleepThread at linux do findCheck11
+sleepThread at linux branch if check1 goto slept else goto notSlept
+sleepThread at notSlept do findCheck21
+sleepThread at notSlept branch if check2 goto stopped else goto failed
+sleepThread at stopped return ok interrupted
+sleepThread at failed return ok other
+sleepThread at windows do readSeconds
+sleepThread at windows do findNanosAt1
+sleepThread at windows do readNanos
+sleepThread at windows do millisecondsStep1
+sleepThread at windows do millisecondsStep2
+sleepThread at windows do millisecondsStep3
+sleepThread at windows do findMilliseconds1
+sleepThread at windows do doSleep
+sleepThread at windows goto slept
+sleepThread at slept return ok success
+
+readOnLinux is call
+readOnLinux in sleepThread
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readResult is call
+readResult in sleepThread
+readResult invokes system.nanosleep
+readResult argument duration machine.Address duration copy
+readResult argument left machine.Address remaining copy
+readResult result result Int64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+findCheck11 is call
+findCheck11 in sleepThread
+findCheck11 invokes compare.equalInt64
+findCheck11 argument left Int64 result copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findCheck21 is call
+findCheck21 in sleepThread
+findCheck21 invokes compare.equalInt64
+findCheck21 argument left Int64 result copy
+findCheck21 argument right Int64 minus4 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+readSeconds is call
+readSeconds in sleepThread
+readSeconds invokes machine.loadInt64
+readSeconds argument address machine.Address duration copy
+readSeconds result seconds Int64
+readSeconds ownedBy none
+readSeconds cleanedBy none
+readSeconds borrows none
+readSeconds catch none
+readSeconds suppresses none
+
+findNanosAt1 is call
+findNanosAt1 in sleepThread
+findNanosAt1 invokes machine.offset
+findNanosAt1 argument address machine.Address duration copy
+findNanosAt1 argument bytes Int64 eight copy
+findNanosAt1 result nanosAt machine.Address
+findNanosAt1 ownedBy none
+findNanosAt1 cleanedBy none
+findNanosAt1 borrows none
+findNanosAt1 catch none
+findNanosAt1 suppresses none
+
+readNanos is call
+readNanos in sleepThread
+readNanos invokes machine.loadInt64
+readNanos argument address machine.Address nanosAt copy
+readNanos result nanos Int64
+readNanos ownedBy none
+readNanos cleanedBy none
+readNanos borrows none
+readNanos catch none
+readNanos suppresses none
+
+millisecondsStep1 is call
+millisecondsStep1 in sleepThread
+millisecondsStep1 invokes math.multiplyInt64
+millisecondsStep1 argument left Int64 seconds copy
+millisecondsStep1 argument right Int64 n1000 copy
+millisecondsStep1 result millisecondsPart1 Int64
+millisecondsStep1 ownedBy none
+millisecondsStep1 cleanedBy none
+millisecondsStep1 borrows none
+millisecondsStep1 catch none
+millisecondsStep1 suppresses none
+
+millisecondsStep2 is call
+millisecondsStep2 in sleepThread
+millisecondsStep2 invokes math.divideInt64
+millisecondsStep2 argument left Int64 nanos copy
+millisecondsStep2 argument right Int64 n1000000 copy
+millisecondsStep2 result millisecondsPart2 Int64
+millisecondsStep2 ownedBy none
+millisecondsStep2 cleanedBy none
+millisecondsStep2 borrows none
+millisecondsStep2 catch none
+millisecondsStep2 suppresses none
+
+millisecondsStep3 is call
+millisecondsStep3 in sleepThread
+millisecondsStep3 invokes math.addInt64
+millisecondsStep3 argument left Int64 millisecondsPart1 copy
+millisecondsStep3 argument right Int64 millisecondsPart2 copy
+millisecondsStep3 result millisecondsPart3 Int64
+millisecondsStep3 ownedBy none
+millisecondsStep3 cleanedBy none
+millisecondsStep3 borrows none
+millisecondsStep3 catch none
+millisecondsStep3 suppresses none
+
+findMilliseconds1 is call
+findMilliseconds1 in sleepThread
+findMilliseconds1 invokes clibrary.lowInt32
+findMilliseconds1 argument value Int64 millisecondsPart3 copy
+findMilliseconds1 result milliseconds Int32
+findMilliseconds1 ownedBy none
+findMilliseconds1 cleanedBy none
+findMilliseconds1 borrows none
+findMilliseconds1 catch none
+findMilliseconds1 suppresses none
+
+doSleep is call
+doSleep in sleepThread
+doSleep invokes system.sleep
+doSleep argument milliseconds Int32 milliseconds copy
+doSleep result none
+doSleep ownedBy none
+doSleep cleanedBy none
+doSleep borrows none
+doSleep catch none
+doSleep suppresses none
+
+# ---------------------------------------------------------------- mutexes
+threadId is operation
+threadId purpose "The running thread's id: gettid on Linux, 1 elsewhere"
+threadId invariant none
+threadId typeParameter none
+threadId input none
+threadId output Int64
+threadId outputOwnedBy none
+threadId raises none
+threadId effect use system.calls
+threadId uses systemCalls
+threadId memoryHeap false
+threadId async false
+threadId maxRecursion none
+threadId label begin loopKind none
+threadId label begin within none
+threadId label linux loopKind none
+threadId label linux within none
+threadId label other loopKind none
+threadId label other within none
+threadId let one Int64 1 immutable
+threadId at begin do readOnLinux
+threadId at begin branch if onLinux goto linux else goto other
+threadId at linux do readId
+threadId at linux return ok id
+threadId at other return ok one
+
+readOnLinux is call
+readOnLinux in threadId
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readId is call
+readId in threadId
+readId invokes system.gettid
+readId argument none
+readId result id Int64
+readId ownedBy none
+readId cleanedBy none
+readId borrows none
+readId catch none
+readId suppresses none
+
+initMutex is operation
+initMutex purpose "mtx_init: a free mutex of a kind (mtx_plain 0, mtx_recursive 1, mtx_timed 2, or recursive and timed)"
+initMutex invariant none
+initMutex typeParameter none
+initMutex input mutex machine.Address copied
+initMutex input kind Int32 copied
+initMutex output Int32
+initMutex outputOwnedBy none
+initMutex raises none
+initMutex effect use machine.memory
+initMutex uses memoryAccess
+initMutex memoryHeap false
+initMutex async false
+initMutex maxRecursion none
+initMutex abi library "mtx_init"
+initMutex label begin loopKind none
+initMutex label begin within none
+initMutex let byte0 Byte 0 immutable
+initMutex let n40 Int64 40 immutable
+initMutex let n24 Int64 24 immutable
+initMutex at begin do doFill
+initMutex at begin do findKindAt1
+initMutex at begin do doStoreInt32
+initMutex at begin return ok success
+
+doFill is call
+doFill in initMutex
+doFill invokes machine.fill
+doFill argument target machine.Address mutex copy
+doFill argument value Byte byte0 copy
+doFill argument bytes Int64 n40 copy
+doFill result none
+doFill ownedBy none
+doFill cleanedBy none
+doFill borrows none
+doFill catch none
+doFill suppresses none
+
+findKindAt1 is call
+findKindAt1 in initMutex
+findKindAt1 invokes machine.offset
+findKindAt1 argument address machine.Address mutex copy
+findKindAt1 argument bytes Int64 n24 copy
+findKindAt1 result kindAt machine.Address
+findKindAt1 ownedBy none
+findKindAt1 cleanedBy none
+findKindAt1 borrows none
+findKindAt1 catch none
+findKindAt1 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in initMutex
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address kindAt copy
+doStoreInt32 argument value Int32 kind copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+lockMutex is operation
+lockMutex purpose "mtx_lock: take a mutex, waiting while another thread holds it; a recursive one its holder takes again"
+lockMutex invariant excludesOthers "\"While one holds a plain mutex no other take succeeds; a recursive one is taken again by its holder\""
+lockMutex typeParameter none
+lockMutex input mutex machine.Address copied
+lockMutex output Int32
+lockMutex outputOwnedBy none
+lockMutex raises none
+lockMutex effect use machine.memory
+lockMutex effect use system.calls
+lockMutex uses memoryAccess
+lockMutex uses systemCalls
+lockMutex memoryHeap false
+lockMutex async false
+lockMutex maxRecursion none
+lockMutex abi library "mtx_lock"
+lockMutex label begin loopKind none
+lockMutex label begin within none
+lockMutex label again loopKind none
+lockMutex label again within none
+lockMutex label take loopKind none
+lockMutex label take within none
+lockMutex label contended loopKind while
+lockMutex label contended within none
+lockMutex label contended maxIterations forever
+lockMutex label waitTurn loopKind none
+lockMutex label waitTurn within contended
+lockMutex label retake loopKind none
+lockMutex label retake within contended
+lockMutex label held loopKind none
+lockMutex label held within none
+lockMutex let eight Int64 8 immutable
+lockMutex let sixteen Int64 16 immutable
+lockMutex let n24 Int64 24 immutable
+lockMutex let int321 Int32 1 immutable
+lockMutex let one Int64 1 immutable
+lockMutex let int320 Int32 0 immutable
+lockMutex let int322 Int32 2 immutable
+lockMutex at begin do readSelf
+lockMutex at begin do findOwnerAt1
+lockMutex at begin do findCountAt1
+lockMutex at begin do findKindAt1
+lockMutex at begin do readKind
+lockMutex at begin do readHolder
+lockMutex at begin do check1Step1
+lockMutex at begin do check1Step2
+lockMutex at begin do check1Step3
+lockMutex at begin do findCheck11
+lockMutex at begin branch if check1 goto again else goto take
+lockMutex at again do readCount
+lockMutex at again do doStoreInt64Step1
+lockMutex at again do doStoreInt64
+lockMutex at again return ok success
+lockMutex at take do readFirst
+lockMutex at take do findCheck21
+lockMutex at take branch if check2 goto held else goto contended
+lockMutex at contended do readPrevious
+lockMutex at contended do findCheck31
+lockMutex at contended branch if check3 goto retake else goto waitTurn
+lockMutex at waitTurn do doFutexWait
+lockMutex at waitTurn goto retake
+lockMutex at retake do readTaken
+lockMutex at retake do findCheck41
+lockMutex at retake branch if check4 goto held else goto contended
+lockMutex at held do doStoreInt642
+lockMutex at held do doStoreInt643
+lockMutex at held return ok success
+
+readSelf is call
+readSelf in lockMutex
+readSelf invokes threadId
+readSelf argument none
+readSelf result self Int64
+readSelf ownedBy none
+readSelf cleanedBy none
+readSelf borrows none
+readSelf catch none
+readSelf suppresses none
+
+findOwnerAt1 is call
+findOwnerAt1 in lockMutex
+findOwnerAt1 invokes machine.offset
+findOwnerAt1 argument address machine.Address mutex copy
+findOwnerAt1 argument bytes Int64 eight copy
+findOwnerAt1 result ownerAt machine.Address
+findOwnerAt1 ownedBy none
+findOwnerAt1 cleanedBy none
+findOwnerAt1 borrows none
+findOwnerAt1 catch none
+findOwnerAt1 suppresses none
+
+findCountAt1 is call
+findCountAt1 in lockMutex
+findCountAt1 invokes machine.offset
+findCountAt1 argument address machine.Address mutex copy
+findCountAt1 argument bytes Int64 sixteen copy
+findCountAt1 result countAt machine.Address
+findCountAt1 ownedBy none
+findCountAt1 cleanedBy none
+findCountAt1 borrows none
+findCountAt1 catch none
+findCountAt1 suppresses none
+
+findKindAt1 is call
+findKindAt1 in lockMutex
+findKindAt1 invokes machine.offset
+findKindAt1 argument address machine.Address mutex copy
+findKindAt1 argument bytes Int64 n24 copy
+findKindAt1 result kindAt machine.Address
+findKindAt1 ownedBy none
+findKindAt1 cleanedBy none
+findKindAt1 borrows none
+findKindAt1 catch none
+findKindAt1 suppresses none
+
+readKind is call
+readKind in lockMutex
+readKind invokes machine.loadInt32
+readKind argument address machine.Address kindAt copy
+readKind result kind Int32
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+readHolder is call
+readHolder in lockMutex
+readHolder invokes machine.loadInt64
+readHolder argument address machine.Address ownerAt copy
+readHolder result holder Int64
+readHolder ownedBy none
+readHolder cleanedBy none
+readHolder borrows none
+readHolder catch none
+readHolder suppresses none
+
+check1Step1 is call
+check1Step1 in lockMutex
+check1Step1 invokes bits.andInt32
+check1Step1 argument left Int32 kind copy
+check1Step1 argument right Int32 int321 copy
+check1Step1 result check1Part1 Int32
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in lockMutex
+check1Step2 invokes compare.equalInt32
+check1Step2 argument left Int32 check1Part1 copy
+check1Step2 argument right Int32 int321 copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+check1Step3 is call
+check1Step3 in lockMutex
+check1Step3 invokes compare.equalInt64
+check1Step3 argument left Int64 holder copy
+check1Step3 argument right Int64 self copy
+check1Step3 result check1Part3 Bool
+check1Step3 ownedBy none
+check1Step3 cleanedBy none
+check1Step3 borrows none
+check1Step3 catch none
+check1Step3 suppresses none
+
+findCheck11 is call
+findCheck11 in lockMutex
+findCheck11 invokes logic.and
+findCheck11 argument left Bool check1Part2 copy
+findCheck11 argument right Bool check1Part3 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readCount is call
+readCount in lockMutex
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countAt copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+doStoreInt64Step1 is call
+doStoreInt64Step1 in lockMutex
+doStoreInt64Step1 invokes math.addInt64
+doStoreInt64Step1 argument left Int64 count copy
+doStoreInt64Step1 argument right Int64 one copy
+doStoreInt64Step1 result doStoreInt64Part1 Int64
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in lockMutex
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address countAt copy
+doStoreInt64 argument value Int64 doStoreInt64Part1 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+readFirst is call
+readFirst in lockMutex
+readFirst invokes exchange32
+readFirst argument cell machine.Address mutex copy
+readFirst argument expected Int32 int320 copy
+readFirst argument desired Int32 int321 copy
+readFirst result first Int32
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+findCheck21 is call
+findCheck21 in lockMutex
+findCheck21 invokes compare.equalInt32
+findCheck21 argument left Int32 first copy
+findCheck21 argument right Int32 int320 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+readPrevious is call
+readPrevious in lockMutex
+readPrevious invokes exchange32
+readPrevious argument cell machine.Address mutex copy
+readPrevious argument expected Int32 int321 copy
+readPrevious argument desired Int32 int322 copy
+readPrevious result previous Int32
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+findCheck31 is call
+findCheck31 in lockMutex
+findCheck31 invokes compare.equalInt32
+findCheck31 argument left Int32 previous copy
+findCheck31 argument right Int32 int320 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+doFutexWait is call
+doFutexWait in lockMutex
+doFutexWait invokes futexWait
+doFutexWait argument cell machine.Address mutex copy
+doFutexWait argument value Int32 int322 copy
+doFutexWait result none
+doFutexWait ownedBy none
+doFutexWait cleanedBy none
+doFutexWait borrows none
+doFutexWait catch none
+doFutexWait suppresses none
+
+readTaken is call
+readTaken in lockMutex
+readTaken invokes exchange32
+readTaken argument cell machine.Address mutex copy
+readTaken argument expected Int32 int320 copy
+readTaken argument desired Int32 int322 copy
+readTaken result taken Int32
+readTaken ownedBy none
+readTaken cleanedBy none
+readTaken borrows none
+readTaken catch none
+readTaken suppresses none
+
+findCheck41 is call
+findCheck41 in lockMutex
+findCheck41 invokes compare.equalInt32
+findCheck41 argument left Int32 taken copy
+findCheck41 argument right Int32 int320 copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in lockMutex
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address ownerAt copy
+doStoreInt642 argument value Int64 self copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+doStoreInt643 is call
+doStoreInt643 in lockMutex
+doStoreInt643 invokes machine.storeInt64
+doStoreInt643 argument address machine.Address countAt copy
+doStoreInt643 argument value Int64 one copy
+doStoreInt643 result none
+doStoreInt643 ownedBy none
+doStoreInt643 cleanedBy none
+doStoreInt643 borrows none
+doStoreInt643 catch none
+doStoreInt643 suppresses none
+
+tryLockMutex is operation
+tryLockMutex purpose "mtx_trylock: take a mutex if no other thread holds it: thrd_success, or thrd_busy"
+tryLockMutex invariant none
+tryLockMutex typeParameter none
+tryLockMutex input mutex machine.Address copied
+tryLockMutex output Int32
+tryLockMutex outputOwnedBy none
+tryLockMutex raises none
+tryLockMutex effect use machine.memory
+tryLockMutex effect use system.calls
+tryLockMutex uses memoryAccess
+tryLockMutex uses systemCalls
+tryLockMutex memoryHeap false
+tryLockMutex async false
+tryLockMutex maxRecursion none
+tryLockMutex abi library "mtx_trylock"
+tryLockMutex label begin loopKind none
+tryLockMutex label begin within none
+tryLockMutex label again loopKind none
+tryLockMutex label again within none
+tryLockMutex label take loopKind none
+tryLockMutex label take within none
+tryLockMutex label taken loopKind none
+tryLockMutex label taken within none
+tryLockMutex label held loopKind none
+tryLockMutex label held within none
+tryLockMutex let eight Int64 8 immutable
+tryLockMutex let sixteen Int64 16 immutable
+tryLockMutex let n24 Int64 24 immutable
+tryLockMutex let int321 Int32 1 immutable
+tryLockMutex let one Int64 1 immutable
+tryLockMutex let int320 Int32 0 immutable
+tryLockMutex at begin do readSelf
+tryLockMutex at begin do findOwnerAt1
+tryLockMutex at begin do findCountAt1
+tryLockMutex at begin do findKindAt1
+tryLockMutex at begin do readKind
+tryLockMutex at begin do readHolder
+tryLockMutex at begin do check1Step1
+tryLockMutex at begin do check1Step2
+tryLockMutex at begin do check1Step3
+tryLockMutex at begin do findCheck11
+tryLockMutex at begin branch if check1 goto again else goto take
+tryLockMutex at again do readCount
+tryLockMutex at again do doStoreInt64Step1
+tryLockMutex at again do doStoreInt64
+tryLockMutex at again return ok success
+tryLockMutex at take do readFirst
+tryLockMutex at take do findCheck21
+tryLockMutex at take branch if check2 goto held else goto taken
+tryLockMutex at taken return ok busy
+tryLockMutex at held do doStoreInt642
+tryLockMutex at held do doStoreInt643
+tryLockMutex at held return ok success
+
+readSelf is call
+readSelf in tryLockMutex
+readSelf invokes threadId
+readSelf argument none
+readSelf result self Int64
+readSelf ownedBy none
+readSelf cleanedBy none
+readSelf borrows none
+readSelf catch none
+readSelf suppresses none
+
+findOwnerAt1 is call
+findOwnerAt1 in tryLockMutex
+findOwnerAt1 invokes machine.offset
+findOwnerAt1 argument address machine.Address mutex copy
+findOwnerAt1 argument bytes Int64 eight copy
+findOwnerAt1 result ownerAt machine.Address
+findOwnerAt1 ownedBy none
+findOwnerAt1 cleanedBy none
+findOwnerAt1 borrows none
+findOwnerAt1 catch none
+findOwnerAt1 suppresses none
+
+findCountAt1 is call
+findCountAt1 in tryLockMutex
+findCountAt1 invokes machine.offset
+findCountAt1 argument address machine.Address mutex copy
+findCountAt1 argument bytes Int64 sixteen copy
+findCountAt1 result countAt machine.Address
+findCountAt1 ownedBy none
+findCountAt1 cleanedBy none
+findCountAt1 borrows none
+findCountAt1 catch none
+findCountAt1 suppresses none
+
+findKindAt1 is call
+findKindAt1 in tryLockMutex
+findKindAt1 invokes machine.offset
+findKindAt1 argument address machine.Address mutex copy
+findKindAt1 argument bytes Int64 n24 copy
+findKindAt1 result kindAt machine.Address
+findKindAt1 ownedBy none
+findKindAt1 cleanedBy none
+findKindAt1 borrows none
+findKindAt1 catch none
+findKindAt1 suppresses none
+
+readKind is call
+readKind in tryLockMutex
+readKind invokes machine.loadInt32
+readKind argument address machine.Address kindAt copy
+readKind result kind Int32
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+readHolder is call
+readHolder in tryLockMutex
+readHolder invokes machine.loadInt64
+readHolder argument address machine.Address ownerAt copy
+readHolder result holder Int64
+readHolder ownedBy none
+readHolder cleanedBy none
+readHolder borrows none
+readHolder catch none
+readHolder suppresses none
+
+check1Step1 is call
+check1Step1 in tryLockMutex
+check1Step1 invokes bits.andInt32
+check1Step1 argument left Int32 kind copy
+check1Step1 argument right Int32 int321 copy
+check1Step1 result check1Part1 Int32
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in tryLockMutex
+check1Step2 invokes compare.equalInt32
+check1Step2 argument left Int32 check1Part1 copy
+check1Step2 argument right Int32 int321 copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+check1Step3 is call
+check1Step3 in tryLockMutex
+check1Step3 invokes compare.equalInt64
+check1Step3 argument left Int64 holder copy
+check1Step3 argument right Int64 self copy
+check1Step3 result check1Part3 Bool
+check1Step3 ownedBy none
+check1Step3 cleanedBy none
+check1Step3 borrows none
+check1Step3 catch none
+check1Step3 suppresses none
+
+findCheck11 is call
+findCheck11 in tryLockMutex
+findCheck11 invokes logic.and
+findCheck11 argument left Bool check1Part2 copy
+findCheck11 argument right Bool check1Part3 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readCount is call
+readCount in tryLockMutex
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countAt copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+doStoreInt64Step1 is call
+doStoreInt64Step1 in tryLockMutex
+doStoreInt64Step1 invokes math.addInt64
+doStoreInt64Step1 argument left Int64 count copy
+doStoreInt64Step1 argument right Int64 one copy
+doStoreInt64Step1 result doStoreInt64Part1 Int64
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in tryLockMutex
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address countAt copy
+doStoreInt64 argument value Int64 doStoreInt64Part1 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+readFirst is call
+readFirst in tryLockMutex
+readFirst invokes exchange32
+readFirst argument cell machine.Address mutex copy
+readFirst argument expected Int32 int320 copy
+readFirst argument desired Int32 int321 copy
+readFirst result first Int32
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+findCheck21 is call
+findCheck21 in tryLockMutex
+findCheck21 invokes compare.equalInt32
+findCheck21 argument left Int32 first copy
+findCheck21 argument right Int32 int320 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in tryLockMutex
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address ownerAt copy
+doStoreInt642 argument value Int64 self copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+doStoreInt643 is call
+doStoreInt643 in tryLockMutex
+doStoreInt643 invokes machine.storeInt64
+doStoreInt643 argument address machine.Address countAt copy
+doStoreInt643 argument value Int64 one copy
+doStoreInt643 result none
+doStoreInt643 ownedBy none
+doStoreInt643 cleanedBy none
+doStoreInt643 borrows none
+doStoreInt643 catch none
+doStoreInt643 suppresses none
+
+timedLockMutex is operation
+timedLockMutex purpose "mtx_timedlock: mtx_lock (the deadline is not watched: a timed lock waits as a plain one, D-166)"
+timedLockMutex invariant none
+timedLockMutex typeParameter none
+timedLockMutex input mutex machine.Address copied
+timedLockMutex input deadline machine.Address copied
+timedLockMutex output Int32
+timedLockMutex outputOwnedBy none
+timedLockMutex raises none
+timedLockMutex effect use machine.memory
+timedLockMutex effect use system.calls
+timedLockMutex uses memoryAccess
+timedLockMutex uses systemCalls
+timedLockMutex memoryHeap false
+timedLockMutex async false
+timedLockMutex maxRecursion none
+timedLockMutex abi library "mtx_timedlock"
+timedLockMutex label begin loopKind none
+timedLockMutex label begin within none
+timedLockMutex let none
+timedLockMutex at begin do readResult
+timedLockMutex at begin return ok result
+
+readResult is call
+readResult in timedLockMutex
+readResult invokes lockMutex
+readResult argument mutex machine.Address mutex copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+unlockMutex is operation
+unlockMutex purpose "mtx_unlock: give a mutex back (a recursive one when its count comes to 0), waking a waiter"
+unlockMutex invariant none
+unlockMutex typeParameter none
+unlockMutex input mutex machine.Address copied
+unlockMutex output Int32
+unlockMutex outputOwnedBy none
+unlockMutex raises none
+unlockMutex effect use machine.memory
+unlockMutex effect use system.calls
+unlockMutex uses memoryAccess
+unlockMutex uses systemCalls
+unlockMutex memoryHeap false
+unlockMutex async false
+unlockMutex maxRecursion none
+unlockMutex abi library "mtx_unlock"
+unlockMutex label begin loopKind none
+unlockMutex label begin within none
+unlockMutex label down loopKind none
+unlockMutex label down within none
+unlockMutex label free loopKind none
+unlockMutex label free within none
+unlockMutex label contended loopKind none
+unlockMutex label contended within none
+unlockMutex label done loopKind none
+unlockMutex label done within none
+unlockMutex let eight Int64 8 immutable
+unlockMutex let sixteen Int64 16 immutable
+unlockMutex let one Int64 1 immutable
+unlockMutex let zero Int64 0 immutable
+unlockMutex let int321 Int32 1 immutable
+unlockMutex let int320 Int32 0 immutable
+unlockMutex at begin do findOwnerAt1
+unlockMutex at begin do findCountAt1
+unlockMutex at begin do readCount
+unlockMutex at begin do findCheck11
+unlockMutex at begin branch if check1 goto down else goto free
+unlockMutex at down do doStoreInt64Step1
+unlockMutex at down do doStoreInt64
+unlockMutex at down return ok success
+unlockMutex at free do doStoreInt642
+unlockMutex at free do doStoreInt643
+unlockMutex at free do readPrevious
+unlockMutex at free do findCheck21
+unlockMutex at free branch if check2 goto done else goto contended
+unlockMutex at contended do doStoreInt32
+unlockMutex at contended do doFutexWake
+unlockMutex at contended return ok success
+unlockMutex at done return ok success
+
+findOwnerAt1 is call
+findOwnerAt1 in unlockMutex
+findOwnerAt1 invokes machine.offset
+findOwnerAt1 argument address machine.Address mutex copy
+findOwnerAt1 argument bytes Int64 eight copy
+findOwnerAt1 result ownerAt machine.Address
+findOwnerAt1 ownedBy none
+findOwnerAt1 cleanedBy none
+findOwnerAt1 borrows none
+findOwnerAt1 catch none
+findOwnerAt1 suppresses none
+
+findCountAt1 is call
+findCountAt1 in unlockMutex
+findCountAt1 invokes machine.offset
+findCountAt1 argument address machine.Address mutex copy
+findCountAt1 argument bytes Int64 sixteen copy
+findCountAt1 result countAt machine.Address
+findCountAt1 ownedBy none
+findCountAt1 cleanedBy none
+findCountAt1 borrows none
+findCountAt1 catch none
+findCountAt1 suppresses none
+
+readCount is call
+readCount in unlockMutex
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countAt copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCheck11 is call
+findCheck11 in unlockMutex
+findCheck11 invokes compare.greaterThanInt64
+findCheck11 argument left Int64 count copy
+findCheck11 argument right Int64 one copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doStoreInt64Step1 is call
+doStoreInt64Step1 in unlockMutex
+doStoreInt64Step1 invokes math.subtractInt64
+doStoreInt64Step1 argument left Int64 count copy
+doStoreInt64Step1 argument right Int64 one copy
+doStoreInt64Step1 result doStoreInt64Part1 Int64
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in unlockMutex
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address countAt copy
+doStoreInt64 argument value Int64 doStoreInt64Part1 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in unlockMutex
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address countAt copy
+doStoreInt642 argument value Int64 zero copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+doStoreInt643 is call
+doStoreInt643 in unlockMutex
+doStoreInt643 invokes machine.storeInt64
+doStoreInt643 argument address machine.Address ownerAt copy
+doStoreInt643 argument value Int64 zero copy
+doStoreInt643 result none
+doStoreInt643 ownedBy none
+doStoreInt643 cleanedBy none
+doStoreInt643 borrows none
+doStoreInt643 catch none
+doStoreInt643 suppresses none
+
+readPrevious is call
+readPrevious in unlockMutex
+readPrevious invokes exchange32
+readPrevious argument cell machine.Address mutex copy
+readPrevious argument expected Int32 int321 copy
+readPrevious argument desired Int32 int320 copy
+readPrevious result previous Int32
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+findCheck21 is call
+findCheck21 in unlockMutex
+findCheck21 invokes compare.equalInt32
+findCheck21 argument left Int32 previous copy
+findCheck21 argument right Int32 int321 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in unlockMutex
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address mutex copy
+doStoreInt32 argument value Int32 int320 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+doFutexWake is call
+doFutexWake in unlockMutex
+doFutexWake invokes futexWake
+doFutexWake argument cell machine.Address mutex copy
+doFutexWake argument count Int64 one copy
+doFutexWake result none
+doFutexWake ownedBy none
+doFutexWake cleanedBy none
+doFutexWake borrows none
+doFutexWake catch none
+doFutexWake suppresses none
+
+destroyMutex is operation
+destroyMutex purpose "mtx_destroy: nothing to give back"
+destroyMutex invariant none
+destroyMutex typeParameter none
+destroyMutex input mutex machine.Address copied
+destroyMutex output none
+destroyMutex outputOwnedBy none
+destroyMutex raises none
+destroyMutex effect none
+destroyMutex uses none
+destroyMutex memoryHeap false
+destroyMutex async false
+destroyMutex maxRecursion none
+destroyMutex abi library "mtx_destroy"
+destroyMutex label begin loopKind none
+destroyMutex label begin within none
+destroyMutex let none
+destroyMutex at begin return ok none
+
+# ---------------------------------------------------------------- condition variables
+initCondition is operation
+initCondition purpose "cnd_init: a condition variable no thread waits on"
+initCondition invariant none
+initCondition typeParameter none
+initCondition input condition machine.Address copied
+initCondition output Int32
+initCondition outputOwnedBy none
+initCondition raises none
+initCondition effect use machine.memory
+initCondition uses memoryAccess
+initCondition memoryHeap false
+initCondition async false
+initCondition maxRecursion none
+initCondition abi library "cnd_init"
+initCondition label begin loopKind none
+initCondition label begin within none
+initCondition let byte0 Byte 0 immutable
+initCondition let n48 Int64 48 immutable
+initCondition at begin do doFill
+initCondition at begin return ok success
+
+doFill is call
+doFill in initCondition
+doFill invokes machine.fill
+doFill argument target machine.Address condition copy
+doFill argument value Byte byte0 copy
+doFill argument bytes Int64 n48 copy
+doFill result none
+doFill ownedBy none
+doFill cleanedBy none
+doFill borrows none
+doFill catch none
+doFill suppresses none
+
+waitCondition is operation
+waitCondition purpose "cnd_wait: give a mutex back, wait until signalled, and take it again"
+waitCondition invariant none
+waitCondition typeParameter none
+waitCondition input condition machine.Address copied
+waitCondition input mutex machine.Address copied
+waitCondition output Int32
+waitCondition outputOwnedBy none
+waitCondition raises none
+waitCondition effect use machine.memory
+waitCondition effect use system.calls
+waitCondition uses memoryAccess
+waitCondition uses systemCalls
+waitCondition memoryHeap false
+waitCondition async false
+waitCondition maxRecursion none
+waitCondition abi library "cnd_wait"
+waitCondition label begin loopKind none
+waitCondition label begin within none
+waitCondition let none
+waitCondition at begin do readSequence
+waitCondition at begin do readUnusedUnlockMutex
+waitCondition at begin do doFutexWait
+waitCondition at begin do readUnusedLockMutex
+waitCondition at begin return ok success
+
+readSequence is call
+readSequence in waitCondition
+readSequence invokes machine.loadInt32
+readSequence argument address machine.Address condition copy
+readSequence result sequence Int32
+readSequence ownedBy none
+readSequence cleanedBy none
+readSequence borrows none
+readSequence catch none
+readSequence suppresses none
+
+readUnusedUnlockMutex is call
+readUnusedUnlockMutex in waitCondition
+readUnusedUnlockMutex invokes unlockMutex
+readUnusedUnlockMutex argument mutex machine.Address mutex copy
+readUnusedUnlockMutex result unusedUnlockMutex Int32
+readUnusedUnlockMutex ownedBy none
+readUnusedUnlockMutex cleanedBy none
+readUnusedUnlockMutex borrows none
+readUnusedUnlockMutex catch none
+readUnusedUnlockMutex suppresses none
+
+doFutexWait is call
+doFutexWait in waitCondition
+doFutexWait invokes futexWait
+doFutexWait argument cell machine.Address condition copy
+doFutexWait argument value Int32 sequence copy
+doFutexWait result none
+doFutexWait ownedBy none
+doFutexWait cleanedBy none
+doFutexWait borrows none
+doFutexWait catch none
+doFutexWait suppresses none
+
+readUnusedLockMutex is call
+readUnusedLockMutex in waitCondition
+readUnusedLockMutex invokes lockMutex
+readUnusedLockMutex argument mutex machine.Address mutex copy
+readUnusedLockMutex result unusedLockMutex Int32
+readUnusedLockMutex ownedBy none
+readUnusedLockMutex cleanedBy none
+readUnusedLockMutex borrows none
+readUnusedLockMutex catch none
+readUnusedLockMutex suppresses none
+
+timedWaitCondition is operation
+timedWaitCondition purpose "cnd_timedwait: cnd_wait (the deadline is not watched, D-166)"
+timedWaitCondition invariant none
+timedWaitCondition typeParameter none
+timedWaitCondition input condition machine.Address copied
+timedWaitCondition input mutex machine.Address copied
+timedWaitCondition input deadline machine.Address copied
+timedWaitCondition output Int32
+timedWaitCondition outputOwnedBy none
+timedWaitCondition raises none
+timedWaitCondition effect use machine.memory
+timedWaitCondition effect use system.calls
+timedWaitCondition uses memoryAccess
+timedWaitCondition uses systemCalls
+timedWaitCondition memoryHeap false
+timedWaitCondition async false
+timedWaitCondition maxRecursion none
+timedWaitCondition abi library "cnd_timedwait"
+timedWaitCondition label begin loopKind none
+timedWaitCondition label begin within none
+timedWaitCondition let none
+timedWaitCondition at begin do readResult
+timedWaitCondition at begin return ok result
+
+readResult is call
+readResult in timedWaitCondition
+readResult invokes waitCondition
+readResult argument condition machine.Address condition copy
+readResult argument mutex machine.Address mutex copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+signalCondition is operation
+signalCondition purpose "cnd_signal: wake one waiter"
+signalCondition invariant none
+signalCondition typeParameter none
+signalCondition input condition machine.Address copied
+signalCondition output Int32
+signalCondition outputOwnedBy none
+signalCondition raises none
+signalCondition effect use machine.memory
+signalCondition effect use system.calls
+signalCondition uses memoryAccess
+signalCondition uses systemCalls
+signalCondition memoryHeap false
+signalCondition async false
+signalCondition maxRecursion none
+signalCondition abi library "cnd_signal"
+signalCondition label begin loopKind none
+signalCondition label begin within none
+signalCondition let one Int64 1 immutable
+signalCondition at begin do doBumpSequence
+signalCondition at begin do doFutexWake
+signalCondition at begin return ok success
+
+doBumpSequence is call
+doBumpSequence in signalCondition
+doBumpSequence invokes bumpSequence
+doBumpSequence argument condition machine.Address condition copy
+doBumpSequence result none
+doBumpSequence ownedBy none
+doBumpSequence cleanedBy none
+doBumpSequence borrows none
+doBumpSequence catch none
+doBumpSequence suppresses none
+
+doFutexWake is call
+doFutexWake in signalCondition
+doFutexWake invokes futexWake
+doFutexWake argument cell machine.Address condition copy
+doFutexWake argument count Int64 one copy
+doFutexWake result none
+doFutexWake ownedBy none
+doFutexWake cleanedBy none
+doFutexWake borrows none
+doFutexWake catch none
+doFutexWake suppresses none
+
+broadcastCondition is operation
+broadcastCondition purpose "cnd_broadcast: wake every waiter"
+broadcastCondition invariant none
+broadcastCondition typeParameter none
+broadcastCondition input condition machine.Address copied
+broadcastCondition output Int32
+broadcastCondition outputOwnedBy none
+broadcastCondition raises none
+broadcastCondition effect use machine.memory
+broadcastCondition effect use system.calls
+broadcastCondition uses memoryAccess
+broadcastCondition uses systemCalls
+broadcastCondition memoryHeap false
+broadcastCondition async false
+broadcastCondition maxRecursion none
+broadcastCondition abi library "cnd_broadcast"
+broadcastCondition label begin loopKind none
+broadcastCondition label begin within none
+broadcastCondition let n2147483647 Int64 2147483647 immutable
+broadcastCondition at begin do doBumpSequence
+broadcastCondition at begin do doFutexWake
+broadcastCondition at begin return ok success
+
+doBumpSequence is call
+doBumpSequence in broadcastCondition
+doBumpSequence invokes bumpSequence
+doBumpSequence argument condition machine.Address condition copy
+doBumpSequence result none
+doBumpSequence ownedBy none
+doBumpSequence cleanedBy none
+doBumpSequence borrows none
+doBumpSequence catch none
+doBumpSequence suppresses none
+
+doFutexWake is call
+doFutexWake in broadcastCondition
+doFutexWake invokes futexWake
+doFutexWake argument cell machine.Address condition copy
+doFutexWake argument count Int64 n2147483647 copy
+doFutexWake result none
+doFutexWake ownedBy none
+doFutexWake cleanedBy none
+doFutexWake borrows none
+doFutexWake catch none
+doFutexWake suppresses none
+
+bumpSequence is operation
+bumpSequence purpose "Move a condition variable's sequence on, atomically"
+bumpSequence invariant none
+bumpSequence typeParameter none
+bumpSequence input condition machine.Address copied
+bumpSequence output none
+bumpSequence outputOwnedBy none
+bumpSequence raises none
+bumpSequence effect use machine.memory
+bumpSequence uses memoryAccess
+bumpSequence memoryHeap false
+bumpSequence async false
+bumpSequence maxRecursion none
+bumpSequence label begin loopKind none
+bumpSequence label begin within none
+bumpSequence label attempt loopKind while
+bumpSequence label attempt within none
+bumpSequence label attempt maxIterations forever
+bumpSequence label done loopKind none
+bumpSequence label done within none
+bumpSequence let one Int64 1 immutable
+bumpSequence at begin goto attempt
+bumpSequence at attempt do readCurrent
+bumpSequence at attempt do nextStep1
+bumpSequence at attempt do nextStep2
+bumpSequence at attempt do findNext1
+bumpSequence at attempt do readPrevious
+bumpSequence at attempt do findCheck11
+bumpSequence at attempt branch if check1 goto done else goto attempt
+bumpSequence at done return ok none
+
+readCurrent is call
+readCurrent in bumpSequence
+readCurrent invokes machine.loadInt32
+readCurrent argument address machine.Address condition copy
+readCurrent result current Int32
+readCurrent ownedBy none
+readCurrent cleanedBy none
+readCurrent borrows none
+readCurrent catch none
+readCurrent suppresses none
+
+nextStep1 is call
+nextStep1 in bumpSequence
+nextStep1 invokes convert.int32ToInt64
+nextStep1 argument value Int32 current copy
+nextStep1 result nextPart1 Int64
+nextStep1 ownedBy none
+nextStep1 cleanedBy none
+nextStep1 borrows none
+nextStep1 catch none
+nextStep1 suppresses none
+
+nextStep2 is call
+nextStep2 in bumpSequence
+nextStep2 invokes math.addInt64
+nextStep2 argument left Int64 nextPart1 copy
+nextStep2 argument right Int64 one copy
+nextStep2 result nextPart2 Int64
+nextStep2 ownedBy none
+nextStep2 cleanedBy none
+nextStep2 borrows none
+nextStep2 catch none
+nextStep2 suppresses none
+
+findNext1 is call
+findNext1 in bumpSequence
+findNext1 invokes clibrary.lowInt32
+findNext1 argument value Int64 nextPart2 copy
+findNext1 result next Int32
+findNext1 ownedBy none
+findNext1 cleanedBy none
+findNext1 borrows none
+findNext1 catch none
+findNext1 suppresses none
+
+readPrevious is call
+readPrevious in bumpSequence
+readPrevious invokes exchange32
+readPrevious argument cell machine.Address condition copy
+readPrevious argument expected Int32 current copy
+readPrevious argument desired Int32 next copy
+readPrevious result previous Int32
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+findCheck11 is call
+findCheck11 in bumpSequence
+findCheck11 invokes compare.equalInt32
+findCheck11 argument left Int32 previous copy
+findCheck11 argument right Int32 current copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+destroyCondition is operation
+destroyCondition purpose "cnd_destroy: nothing to give back"
+destroyCondition invariant none
+destroyCondition typeParameter none
+destroyCondition input condition machine.Address copied
+destroyCondition output none
+destroyCondition outputOwnedBy none
+destroyCondition raises none
+destroyCondition effect none
+destroyCondition uses none
+destroyCondition memoryHeap false
+destroyCondition async false
+destroyCondition maxRecursion none
+destroyCondition abi library "cnd_destroy"
+destroyCondition label begin loopKind none
+destroyCondition label begin within none
+destroyCondition let none
+destroyCondition at begin return ok none
+
+# ---------------------------------------------------------------- once
+callOnce is operation
+callOnce purpose "call_once: call a function the first time a flag is passed, the other callers waiting until it returns"
+callOnce invariant none
+callOnce typeParameter none
+callOnce input flag machine.Address copied
+callOnce input function machine.Address copied
+callOnce output none
+callOnce outputOwnedBy none
+callOnce raises none
+callOnce effect use machine.memory
+callOnce effect use system.calls
+callOnce uses memoryAccess
+callOnce uses systemCalls
+callOnce memoryHeap false
+callOnce async false
+callOnce maxRecursion none
+callOnce abi library "call_once"
+callOnce label begin loopKind none
+callOnce label begin within none
+callOnce label call loopKind none
+callOnce label call within none
+callOnce label wait loopKind while
+callOnce label wait within none
+callOnce label wait maxIterations forever
+callOnce label sleep loopKind none
+callOnce label sleep within wait
+callOnce label done loopKind none
+callOnce label done within none
+callOnce let int320 Int32 0 immutable
+callOnce let int321 Int32 1 immutable
+callOnce let int322 Int32 2 immutable
+callOnce let n2147483647 Int64 2147483647 immutable
+callOnce at begin do readPrevious
+callOnce at begin do findCheck11
+callOnce at begin branch if check1 goto call else goto wait
+callOnce at call do readNowhere
+callOnce at call do doCallWithAddress
+callOnce at call do doStoreInt32
+callOnce at call do doFutexWake
+callOnce at call return ok none
+callOnce at wait do readState
+callOnce at wait do findCheck21
+callOnce at wait branch if check2 goto done else goto sleep
+callOnce at sleep do doFutexWait
+callOnce at sleep goto wait
+callOnce at done return ok none
+
+readPrevious is call
+readPrevious in callOnce
+readPrevious invokes exchange32
+readPrevious argument cell machine.Address flag copy
+readPrevious argument expected Int32 int320 copy
+readPrevious argument desired Int32 int321 copy
+readPrevious result previous Int32
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+findCheck11 is call
+findCheck11 in callOnce
+findCheck11 invokes compare.equalInt32
+findCheck11 argument left Int32 previous copy
+findCheck11 argument right Int32 int320 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readNowhere is call
+readNowhere in callOnce
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+doCallWithAddress is call
+doCallWithAddress in callOnce
+doCallWithAddress invokes machine.callWithAddress
+doCallWithAddress argument function machine.Address function copy
+doCallWithAddress argument argument machine.Address nowhere copy
+doCallWithAddress result none
+doCallWithAddress ownedBy none
+doCallWithAddress cleanedBy none
+doCallWithAddress borrows none
+doCallWithAddress catch none
+doCallWithAddress suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in callOnce
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address flag copy
+doStoreInt32 argument value Int32 int322 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+doFutexWake is call
+doFutexWake in callOnce
+doFutexWake invokes futexWake
+doFutexWake argument cell machine.Address flag copy
+doFutexWake argument count Int64 n2147483647 copy
+doFutexWake result none
+doFutexWake ownedBy none
+doFutexWake cleanedBy none
+doFutexWake borrows none
+doFutexWake catch none
+doFutexWake suppresses none
+
+readState is call
+readState in callOnce
+readState invokes machine.loadInt32
+readState argument address machine.Address flag copy
+readState result state Int32
+readState ownedBy none
+readState cleanedBy none
+readState borrows none
+readState catch none
+readState suppresses none
+
+findCheck21 is call
+findCheck21 in callOnce
+findCheck21 invokes compare.equalInt32
+findCheck21 argument left Int32 state copy
+findCheck21 argument right Int32 int322 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doFutexWait is call
+doFutexWait in callOnce
+doFutexWait invokes futexWait
+doFutexWait argument cell machine.Address flag copy
+doFutexWait argument value Int32 int321 copy
+doFutexWait result none
+doFutexWait ownedBy none
+doFutexWait cleanedBy none
+doFutexWait borrows none
+doFutexWait catch none
+doFutexWait suppresses none
+
+# ---------------------------------------------------------------- thread-specific storage
+keyBlock is operation
+keyBlock purpose "A block of 64 cells kept at a place of machine.state, made zeroed the first time"
+keyBlock invariant none
+keyBlock typeParameter none
+keyBlock input cellAt Int64 copied
+keyBlock output machine.Address
+keyBlock outputOwnedBy none
+keyBlock raises none
+keyBlock effect use machine.memory
+keyBlock effect use system.calls
+keyBlock uses memoryAccess
+keyBlock uses systemCalls
+keyBlock memoryHeap false
+keyBlock async false
+keyBlock maxRecursion none
+keyBlock label begin loopKind none
+keyBlock label begin within none
+keyBlock label make loopKind none
+keyBlock label make within none
+keyBlock label done loopKind none
+keyBlock label done within none
+keyBlock let n512 Int64 512 immutable
+keyBlock at begin do readCell
+keyBlock at begin do readBlock
+keyBlock at begin do readNowhere
+keyBlock at begin do findCheck11
+keyBlock at begin branch if check1 goto make else goto done
+keyBlock at make do readMade
+keyBlock at make do doStoreAddress
+keyBlock at make return ok made
+keyBlock at done return ok block
+
+readCell is call
+readCell in keyBlock
+readCell invokes kernel.stateAt
+readCell argument offset Int64 cellAt copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+readBlock is call
+readBlock in keyBlock
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address cell copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+readNowhere is call
+readNowhere in keyBlock
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findCheck11 is call
+findCheck11 in keyBlock
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address block copy
+findCheck11 argument right machine.Address nowhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readMade is call
+readMade in keyBlock
+readMade invokes heap.take
+readMade argument bytes Int64 n512 copy
+readMade result made machine.Address
+readMade ownedBy none
+readMade cleanedBy none
+readMade borrows none
+readMade catch none
+readMade suppresses none
+
+doStoreAddress is call
+doStoreAddress in keyBlock
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address cell copy
+doStoreAddress argument value machine.Address made copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+valuesOf is operation
+valuesOf purpose "Where the running thread's thread-specific values are: from 0x80 of its thread block, or in machine.state for the first thread when there are no blocks"
+valuesOf invariant none
+valuesOf typeParameter none
+valuesOf input none
+valuesOf output machine.Address
+valuesOf outputOwnedBy none
+valuesOf raises none
+valuesOf effect use machine.memory
+valuesOf effect use system.calls
+valuesOf uses memoryAccess
+valuesOf uses systemCalls
+valuesOf memoryHeap false
+valuesOf async false
+valuesOf maxRecursion none
+valuesOf label begin loopKind none
+valuesOf label begin within none
+valuesOf label fromState loopKind none
+valuesOf label fromState within none
+valuesOf label fromBlock loopKind none
+valuesOf label fromBlock within none
+valuesOf let n2352 Int64 2352 immutable
+valuesOf let n128 Int64 128 immutable
+valuesOf at begin do readBlockCell
+valuesOf at begin do readBlock
+valuesOf at begin do readNowhere
+valuesOf at begin do findCheck11
+valuesOf at begin branch if check1 goto fromState else goto fromBlock
+valuesOf at fromState do readValues
+valuesOf at fromState return ok values
+valuesOf at fromBlock do readPointer
+valuesOf at fromBlock do findBlockValues1
+valuesOf at fromBlock return ok blockValues
+
+readBlockCell is call
+readBlockCell in valuesOf
+readBlockCell invokes kernel.stateAt
+readBlockCell argument offset Int64 n2352 copy
+readBlockCell result blockCell machine.Address
+readBlockCell ownedBy none
+readBlockCell cleanedBy none
+readBlockCell borrows none
+readBlockCell catch none
+readBlockCell suppresses none
+
+readBlock is call
+readBlock in valuesOf
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address blockCell copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+readNowhere is call
+readNowhere in valuesOf
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findCheck11 is call
+findCheck11 in valuesOf
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address block copy
+findCheck11 argument right machine.Address nowhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readValues is call
+readValues in valuesOf
+readValues invokes keyBlock
+readValues argument cellAt Int64 firstValuesAt copy
+readValues result values machine.Address
+readValues ownedBy none
+readValues cleanedBy none
+readValues borrows none
+readValues catch none
+readValues suppresses none
+
+readPointer is call
+readPointer in valuesOf
+readPointer invokes machine.threadPointer
+readPointer argument none
+readPointer result pointer machine.Address
+readPointer ownedBy none
+readPointer cleanedBy none
+readPointer borrows none
+readPointer catch none
+readPointer suppresses none
+
+findBlockValues1 is call
+findBlockValues1 in valuesOf
+findBlockValues1 invokes machine.offset
+findBlockValues1 argument address machine.Address pointer copy
+findBlockValues1 argument bytes Int64 n128 copy
+findBlockValues1 result blockValues machine.Address
+findBlockValues1 ownedBy none
+findBlockValues1 cleanedBy none
+findBlockValues1 borrows none
+findBlockValues1 catch none
+findBlockValues1 suppresses none
+
+createKey is operation
+createKey purpose "tss_create: a new key (64 at most), with the destructor a thread's value of it gets when the thread ends: thrd_success, or thrd_error when all are taken"
+createKey invariant none
+createKey typeParameter none
+createKey input key machine.Address copied
+createKey input destructor machine.Address copied
+createKey output Int32
+createKey outputOwnedBy none
+createKey raises none
+createKey effect use machine.memory
+createKey effect use system.calls
+createKey uses memoryAccess
+createKey uses systemCalls
+createKey memoryHeap false
+createKey async false
+createKey maxRecursion none
+createKey abi library "tss_create"
+createKey label begin loopKind none
+createKey label begin within none
+createKey label full loopKind none
+createKey label full within none
+createKey label make loopKind none
+createKey label make within none
+createKey let sixtyFour Int64 64 immutable
+createKey let one Int64 1 immutable
+createKey let eight Int64 8 immutable
+createKey at begin do readCountCell
+createKey at begin do readCount
+createKey at begin do findCheck11
+createKey at begin branch if check1 goto full else goto make
+createKey at full return ok error
+createKey at make do doStoreInt64Step1
+createKey at make do doStoreInt64
+createKey at make do readDestructors
+createKey at make do destructorCellStep1
+createKey at make do findDestructorCell1
+createKey at make do doStoreAddress
+createKey at make do doStoreInt32Step1
+createKey at make do doStoreInt32
+createKey at make return ok success
+
+readCountCell is call
+readCountCell in createKey
+readCountCell invokes kernel.stateAt
+readCountCell argument offset Int64 keysAt copy
+readCountCell result countCell machine.Address
+readCountCell ownedBy none
+readCountCell cleanedBy none
+readCountCell borrows none
+readCountCell catch none
+readCountCell suppresses none
+
+readCount is call
+readCount in createKey
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countCell copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCheck11 is call
+findCheck11 in createKey
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 count copy
+findCheck11 argument right Int64 sixtyFour copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doStoreInt64Step1 is call
+doStoreInt64Step1 in createKey
+doStoreInt64Step1 invokes math.addInt64
+doStoreInt64Step1 argument left Int64 count copy
+doStoreInt64Step1 argument right Int64 one copy
+doStoreInt64Step1 result doStoreInt64Part1 Int64
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in createKey
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address countCell copy
+doStoreInt64 argument value Int64 doStoreInt64Part1 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+readDestructors is call
+readDestructors in createKey
+readDestructors invokes keyBlock
+readDestructors argument cellAt Int64 destructorsAt copy
+readDestructors result destructors machine.Address
+readDestructors ownedBy none
+readDestructors cleanedBy none
+readDestructors borrows none
+readDestructors catch none
+readDestructors suppresses none
+
+destructorCellStep1 is call
+destructorCellStep1 in createKey
+destructorCellStep1 invokes math.multiplyInt64
+destructorCellStep1 argument left Int64 count copy
+destructorCellStep1 argument right Int64 eight copy
+destructorCellStep1 result destructorCellPart1 Int64
+destructorCellStep1 ownedBy none
+destructorCellStep1 cleanedBy none
+destructorCellStep1 borrows none
+destructorCellStep1 catch none
+destructorCellStep1 suppresses none
+
+findDestructorCell1 is call
+findDestructorCell1 in createKey
+findDestructorCell1 invokes machine.offset
+findDestructorCell1 argument address machine.Address destructors copy
+findDestructorCell1 argument bytes Int64 destructorCellPart1 copy
+findDestructorCell1 result destructorCell machine.Address
+findDestructorCell1 ownedBy none
+findDestructorCell1 cleanedBy none
+findDestructorCell1 borrows none
+findDestructorCell1 catch none
+findDestructorCell1 suppresses none
+
+doStoreAddress is call
+doStoreAddress in createKey
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address destructorCell copy
+doStoreAddress argument value machine.Address destructor copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+doStoreInt32Step1 is call
+doStoreInt32Step1 in createKey
+doStoreInt32Step1 invokes clibrary.lowInt32
+doStoreInt32Step1 argument value Int64 count copy
+doStoreInt32Step1 result doStoreInt32Part1 Int32
+doStoreInt32Step1 ownedBy none
+doStoreInt32Step1 cleanedBy none
+doStoreInt32Step1 borrows none
+doStoreInt32Step1 catch none
+doStoreInt32Step1 suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in createKey
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address key copy
+doStoreInt32 argument value Int32 doStoreInt32Part1 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+keyValue is operation
+keyValue purpose "tss_get: the running thread's value of a key"
+keyValue invariant keepsValues "\"Gives the value the running thread set for the key\""
+keyValue typeParameter none
+keyValue input key Int32 copied
+keyValue output machine.Address
+keyValue outputOwnedBy none
+keyValue raises none
+keyValue effect use machine.memory
+keyValue effect use system.calls
+keyValue uses memoryAccess
+keyValue uses systemCalls
+keyValue memoryHeap false
+keyValue async false
+keyValue maxRecursion none
+keyValue abi library "tss_get"
+keyValue label begin loopKind none
+keyValue label begin within none
+keyValue let int3263 Int32 63 immutable
+keyValue let eight Int64 8 immutable
+keyValue at begin do readValues
+keyValue at begin do atStep1
+keyValue at begin do atStep2
+keyValue at begin do atStep3
+keyValue at begin do findAt1
+keyValue at begin do readValue
+keyValue at begin return ok value
+
+readValues is call
+readValues in keyValue
+readValues invokes valuesOf
+readValues argument none
+readValues result values machine.Address
+readValues ownedBy none
+readValues cleanedBy none
+readValues borrows none
+readValues catch none
+readValues suppresses none
+
+atStep1 is call
+atStep1 in keyValue
+atStep1 invokes bits.andInt32
+atStep1 argument left Int32 key copy
+atStep1 argument right Int32 int3263 copy
+atStep1 result atPart1 Int32
+atStep1 ownedBy none
+atStep1 cleanedBy none
+atStep1 borrows none
+atStep1 catch none
+atStep1 suppresses none
+
+atStep2 is call
+atStep2 in keyValue
+atStep2 invokes convert.int32ToInt64
+atStep2 argument value Int32 atPart1 copy
+atStep2 result atPart2 Int64
+atStep2 ownedBy none
+atStep2 cleanedBy none
+atStep2 borrows none
+atStep2 catch none
+atStep2 suppresses none
+
+atStep3 is call
+atStep3 in keyValue
+atStep3 invokes math.multiplyInt64
+atStep3 argument left Int64 atPart2 copy
+atStep3 argument right Int64 eight copy
+atStep3 result atPart3 Int64
+atStep3 ownedBy none
+atStep3 cleanedBy none
+atStep3 borrows none
+atStep3 catch none
+atStep3 suppresses none
+
+findAt1 is call
+findAt1 in keyValue
+findAt1 invokes machine.offset
+findAt1 argument address machine.Address values copy
+findAt1 argument bytes Int64 atPart3 copy
+findAt1 result at machine.Address
+findAt1 ownedBy none
+findAt1 cleanedBy none
+findAt1 borrows none
+findAt1 catch none
+findAt1 suppresses none
+
+readValue is call
+readValue in keyValue
+readValue invokes machine.loadAddress
+readValue argument address machine.Address at copy
+readValue result value machine.Address
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+setKeyValue is operation
+setKeyValue purpose "tss_set: set the running thread's value of a key"
+setKeyValue invariant none
+setKeyValue typeParameter none
+setKeyValue input key Int32 copied
+setKeyValue input value machine.Address copied
+setKeyValue output Int32
+setKeyValue outputOwnedBy none
+setKeyValue raises none
+setKeyValue effect use machine.memory
+setKeyValue effect use system.calls
+setKeyValue uses memoryAccess
+setKeyValue uses systemCalls
+setKeyValue memoryHeap false
+setKeyValue async false
+setKeyValue maxRecursion none
+setKeyValue abi library "tss_set"
+setKeyValue label begin loopKind none
+setKeyValue label begin within none
+setKeyValue let int3263 Int32 63 immutable
+setKeyValue let eight Int64 8 immutable
+setKeyValue at begin do readValues
+setKeyValue at begin do atStep1
+setKeyValue at begin do atStep2
+setKeyValue at begin do atStep3
+setKeyValue at begin do findAt1
+setKeyValue at begin do doStoreAddress
+setKeyValue at begin return ok success
+
+readValues is call
+readValues in setKeyValue
+readValues invokes valuesOf
+readValues argument none
+readValues result values machine.Address
+readValues ownedBy none
+readValues cleanedBy none
+readValues borrows none
+readValues catch none
+readValues suppresses none
+
+atStep1 is call
+atStep1 in setKeyValue
+atStep1 invokes bits.andInt32
+atStep1 argument left Int32 key copy
+atStep1 argument right Int32 int3263 copy
+atStep1 result atPart1 Int32
+atStep1 ownedBy none
+atStep1 cleanedBy none
+atStep1 borrows none
+atStep1 catch none
+atStep1 suppresses none
+
+atStep2 is call
+atStep2 in setKeyValue
+atStep2 invokes convert.int32ToInt64
+atStep2 argument value Int32 atPart1 copy
+atStep2 result atPart2 Int64
+atStep2 ownedBy none
+atStep2 cleanedBy none
+atStep2 borrows none
+atStep2 catch none
+atStep2 suppresses none
+
+atStep3 is call
+atStep3 in setKeyValue
+atStep3 invokes math.multiplyInt64
+atStep3 argument left Int64 atPart2 copy
+atStep3 argument right Int64 eight copy
+atStep3 result atPart3 Int64
+atStep3 ownedBy none
+atStep3 cleanedBy none
+atStep3 borrows none
+atStep3 catch none
+atStep3 suppresses none
+
+findAt1 is call
+findAt1 in setKeyValue
+findAt1 invokes machine.offset
+findAt1 argument address machine.Address values copy
+findAt1 argument bytes Int64 atPart3 copy
+findAt1 result at machine.Address
+findAt1 ownedBy none
+findAt1 cleanedBy none
+findAt1 borrows none
+findAt1 catch none
+findAt1 suppresses none
+
+doStoreAddress is call
+doStoreAddress in setKeyValue
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address at copy
+doStoreAddress argument value machine.Address value copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+deleteKey is operation
+deleteKey purpose "tss_delete: forget a key's destructor (values stay where they are, as C allows)"
+deleteKey invariant none
+deleteKey typeParameter none
+deleteKey input key Int32 copied
+deleteKey output none
+deleteKey outputOwnedBy none
+deleteKey raises none
+deleteKey effect use machine.memory
+deleteKey effect use system.calls
+deleteKey uses memoryAccess
+deleteKey uses systemCalls
+deleteKey memoryHeap false
+deleteKey async false
+deleteKey maxRecursion none
+deleteKey abi library "tss_delete"
+deleteKey label begin loopKind none
+deleteKey label begin within none
+deleteKey let int3263 Int32 63 immutable
+deleteKey let eight Int64 8 immutable
+deleteKey at begin do readDestructors
+deleteKey at begin do destructorCellStep1
+deleteKey at begin do destructorCellStep2
+deleteKey at begin do destructorCellStep3
+deleteKey at begin do findDestructorCell1
+deleteKey at begin do readNowhere
+deleteKey at begin do doStoreAddress
+deleteKey at begin return ok none
+
+readDestructors is call
+readDestructors in deleteKey
+readDestructors invokes keyBlock
+readDestructors argument cellAt Int64 destructorsAt copy
+readDestructors result destructors machine.Address
+readDestructors ownedBy none
+readDestructors cleanedBy none
+readDestructors borrows none
+readDestructors catch none
+readDestructors suppresses none
+
+destructorCellStep1 is call
+destructorCellStep1 in deleteKey
+destructorCellStep1 invokes bits.andInt32
+destructorCellStep1 argument left Int32 key copy
+destructorCellStep1 argument right Int32 int3263 copy
+destructorCellStep1 result destructorCellPart1 Int32
+destructorCellStep1 ownedBy none
+destructorCellStep1 cleanedBy none
+destructorCellStep1 borrows none
+destructorCellStep1 catch none
+destructorCellStep1 suppresses none
+
+destructorCellStep2 is call
+destructorCellStep2 in deleteKey
+destructorCellStep2 invokes convert.int32ToInt64
+destructorCellStep2 argument value Int32 destructorCellPart1 copy
+destructorCellStep2 result destructorCellPart2 Int64
+destructorCellStep2 ownedBy none
+destructorCellStep2 cleanedBy none
+destructorCellStep2 borrows none
+destructorCellStep2 catch none
+destructorCellStep2 suppresses none
+
+destructorCellStep3 is call
+destructorCellStep3 in deleteKey
+destructorCellStep3 invokes math.multiplyInt64
+destructorCellStep3 argument left Int64 destructorCellPart2 copy
+destructorCellStep3 argument right Int64 eight copy
+destructorCellStep3 result destructorCellPart3 Int64
+destructorCellStep3 ownedBy none
+destructorCellStep3 cleanedBy none
+destructorCellStep3 borrows none
+destructorCellStep3 catch none
+destructorCellStep3 suppresses none
+
+findDestructorCell1 is call
+findDestructorCell1 in deleteKey
+findDestructorCell1 invokes machine.offset
+findDestructorCell1 argument address machine.Address destructors copy
+findDestructorCell1 argument bytes Int64 destructorCellPart3 copy
+findDestructorCell1 result destructorCell machine.Address
+findDestructorCell1 ownedBy none
+findDestructorCell1 cleanedBy none
+findDestructorCell1 borrows none
+findDestructorCell1 catch none
+findDestructorCell1 suppresses none
+
+readNowhere is call
+readNowhere in deleteKey
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+doStoreAddress is call
+doStoreAddress in deleteKey
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address destructorCell copy
+doStoreAddress argument value machine.Address nowhere copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+runDestructors is operation
+runDestructors purpose "When a thread ends: call each key's destructor with the thread's value when both are there, once"
+runDestructors invariant none
+runDestructors typeParameter none
+runDestructors input none
+runDestructors output none
+runDestructors outputOwnedBy none
+runDestructors raises none
+runDestructors effect use machine.memory
+runDestructors effect use system.calls
+runDestructors uses memoryAccess
+runDestructors uses systemCalls
+runDestructors memoryHeap false
+runDestructors async false
+runDestructors maxRecursion none
+runDestructors label begin loopKind none
+runDestructors label begin within none
+runDestructors label eachKey loopKind while
+runDestructors label eachKey within none
+runDestructors label eachKey maxIterations forever
+runDestructors label check loopKind none
+runDestructors label check within eachKey
+runDestructors label call loopKind none
+runDestructors label call within eachKey
+runDestructors label next loopKind none
+runDestructors label next within eachKey
+runDestructors label done loopKind none
+runDestructors label done within none
+runDestructors let at Int64 0 mutable
+runDestructors let eight Int64 8 immutable
+runDestructors let one Int64 1 immutable
+runDestructors at begin do readValues
+runDestructors at begin do readDestructors
+runDestructors at begin do readCountCell
+runDestructors at begin do readCount
+runDestructors at begin do readNowhere
+runDestructors at begin goto eachKey
+runDestructors at eachKey do findCheck11
+runDestructors at eachKey branch if check1 goto done else goto check
+runDestructors at check do valueAtStep1
+runDestructors at check do findValueAt1
+runDestructors at check do readValue
+runDestructors at check do destructorCellStep1
+runDestructors at check do findDestructorCell1
+runDestructors at check do readDestructor
+runDestructors at check do check2Step1
+runDestructors at check do check2Step2
+runDestructors at check do check2Step3
+runDestructors at check do check2Step4
+runDestructors at check do findCheck21
+runDestructors at check branch if check2 goto call else goto next
+runDestructors at call do doStoreAddress
+runDestructors at call do doCallWithAddress
+runDestructors at call goto next
+runDestructors at next do findAtNext11
+runDestructors at next set at atNext1
+runDestructors at next goto eachKey
+runDestructors at done return ok none
+
+readValues is call
+readValues in runDestructors
+readValues invokes valuesOf
+readValues argument none
+readValues result values machine.Address
+readValues ownedBy none
+readValues cleanedBy none
+readValues borrows none
+readValues catch none
+readValues suppresses none
+
+readDestructors is call
+readDestructors in runDestructors
+readDestructors invokes keyBlock
+readDestructors argument cellAt Int64 destructorsAt copy
+readDestructors result destructors machine.Address
+readDestructors ownedBy none
+readDestructors cleanedBy none
+readDestructors borrows none
+readDestructors catch none
+readDestructors suppresses none
+
+readCountCell is call
+readCountCell in runDestructors
+readCountCell invokes kernel.stateAt
+readCountCell argument offset Int64 keysAt copy
+readCountCell result countCell machine.Address
+readCountCell ownedBy none
+readCountCell cleanedBy none
+readCountCell borrows none
+readCountCell catch none
+readCountCell suppresses none
+
+readCount is call
+readCount in runDestructors
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countCell copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readNowhere is call
+readNowhere in runDestructors
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findCheck11 is call
+findCheck11 in runDestructors
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 at copy
+findCheck11 argument right Int64 count copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+valueAtStep1 is call
+valueAtStep1 in runDestructors
+valueAtStep1 invokes math.multiplyInt64
+valueAtStep1 argument left Int64 at copy
+valueAtStep1 argument right Int64 eight copy
+valueAtStep1 result valueAtPart1 Int64
+valueAtStep1 ownedBy none
+valueAtStep1 cleanedBy none
+valueAtStep1 borrows none
+valueAtStep1 catch none
+valueAtStep1 suppresses none
+
+findValueAt1 is call
+findValueAt1 in runDestructors
+findValueAt1 invokes machine.offset
+findValueAt1 argument address machine.Address values copy
+findValueAt1 argument bytes Int64 valueAtPart1 copy
+findValueAt1 result valueAt machine.Address
+findValueAt1 ownedBy none
+findValueAt1 cleanedBy none
+findValueAt1 borrows none
+findValueAt1 catch none
+findValueAt1 suppresses none
+
+readValue is call
+readValue in runDestructors
+readValue invokes machine.loadAddress
+readValue argument address machine.Address valueAt copy
+readValue result value machine.Address
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+destructorCellStep1 is call
+destructorCellStep1 in runDestructors
+destructorCellStep1 invokes math.multiplyInt64
+destructorCellStep1 argument left Int64 at copy
+destructorCellStep1 argument right Int64 eight copy
+destructorCellStep1 result destructorCellPart1 Int64
+destructorCellStep1 ownedBy none
+destructorCellStep1 cleanedBy none
+destructorCellStep1 borrows none
+destructorCellStep1 catch none
+destructorCellStep1 suppresses none
+
+findDestructorCell1 is call
+findDestructorCell1 in runDestructors
+findDestructorCell1 invokes machine.offset
+findDestructorCell1 argument address machine.Address destructors copy
+findDestructorCell1 argument bytes Int64 destructorCellPart1 copy
+findDestructorCell1 result destructorCell machine.Address
+findDestructorCell1 ownedBy none
+findDestructorCell1 cleanedBy none
+findDestructorCell1 borrows none
+findDestructorCell1 catch none
+findDestructorCell1 suppresses none
+
+readDestructor is call
+readDestructor in runDestructors
+readDestructor invokes machine.loadAddress
+readDestructor argument address machine.Address destructorCell copy
+readDestructor result destructor machine.Address
+readDestructor ownedBy none
+readDestructor cleanedBy none
+readDestructor borrows none
+readDestructor catch none
+readDestructor suppresses none
+
+check2Step1 is call
+check2Step1 in runDestructors
+check2Step1 invokes machine.equal
+check2Step1 argument left machine.Address value copy
+check2Step1 argument right machine.Address nowhere copy
+check2Step1 result check2Part1 Bool
+check2Step1 ownedBy none
+check2Step1 cleanedBy none
+check2Step1 borrows none
+check2Step1 catch none
+check2Step1 suppresses none
+
+check2Step2 is call
+check2Step2 in runDestructors
+check2Step2 invokes logic.not
+check2Step2 argument value Bool check2Part1 copy
+check2Step2 result check2Part2 Bool
+check2Step2 ownedBy none
+check2Step2 cleanedBy none
+check2Step2 borrows none
+check2Step2 catch none
+check2Step2 suppresses none
+
+check2Step3 is call
+check2Step3 in runDestructors
+check2Step3 invokes machine.equal
+check2Step3 argument left machine.Address destructor copy
+check2Step3 argument right machine.Address nowhere copy
+check2Step3 result check2Part3 Bool
+check2Step3 ownedBy none
+check2Step3 cleanedBy none
+check2Step3 borrows none
+check2Step3 catch none
+check2Step3 suppresses none
+
+check2Step4 is call
+check2Step4 in runDestructors
+check2Step4 invokes logic.not
+check2Step4 argument value Bool check2Part3 copy
+check2Step4 result check2Part4 Bool
+check2Step4 ownedBy none
+check2Step4 cleanedBy none
+check2Step4 borrows none
+check2Step4 catch none
+check2Step4 suppresses none
+
+findCheck21 is call
+findCheck21 in runDestructors
+findCheck21 invokes logic.and
+findCheck21 argument left Bool check2Part2 copy
+findCheck21 argument right Bool check2Part4 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doStoreAddress is call
+doStoreAddress in runDestructors
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address valueAt copy
+doStoreAddress argument value machine.Address nowhere copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+doCallWithAddress is call
+doCallWithAddress in runDestructors
+doCallWithAddress invokes machine.callWithAddress
+doCallWithAddress argument function machine.Address destructor copy
+doCallWithAddress argument argument machine.Address value copy
+doCallWithAddress result none
+doCallWithAddress ownedBy none
+doCallWithAddress cleanedBy none
+doCallWithAddress borrows none
+doCallWithAddress catch none
+doCallWithAddress suppresses none
+
+findAtNext11 is call
+findAtNext11 in runDestructors
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+floatControl is operation
+floatControl purpose "The running thread's floating-point control and status (D-167: MXCSR on x86_64, FPCR | FPSR << 32 on AArch64); a thread threads.h starts begins with its creator's, which clone copies"
+floatControl invariant startsAsCreator "\"Reads the control and status the thread runs with\""
+floatControl typeParameter none
+floatControl input none
+floatControl output UInt64
+floatControl outputOwnedBy none
+floatControl raises none
+floatControl effect use machine.memory
+floatControl uses memoryAccess
+floatControl memoryHeap false
+floatControl async false
+floatControl maxRecursion none
+floatControl label begin loopKind none
+floatControl label begin within none
+floatControl let none
+floatControl at begin do readControl
+floatControl at begin return ok control
+
+readControl is call
+readControl in floatControl
+readControl invokes machine.loadFloatControl
+readControl argument none
+readControl result control UInt64
+readControl ownedBy none
+readControl cleanedBy none
+readControl borrows none
+readControl catch none
+readControl suppresses none

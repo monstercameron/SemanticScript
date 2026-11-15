@@ -278,6 +278,25 @@ def _machine() -> dict:
         # with the value (1 for 0). Nothing else may call them: only the routine itself sees its caller's frame
         "saveContext": Sig((_at("buffer"),), "Int32", effects=_MEM),
         "resumeContext": Sig((_at("buffer"), P("value", "Int32", "copied")), effects=_MEM),
+        # D-166: threads. `compareExchange32` is an atomic compare-and-exchange of a 32-bit cell (sequentially
+        # consistent), giving what the cell held; `threadPointer` reads the running thread's pointer (%fs:0, which a
+        # thread block holds itself at, on x86_64; tpidr_el0 on AArch64); `startThread` clones a thread (Linux) on a
+        # stack whose top it is given, with a thread block for its thread pointer, its id kept at `tidAt` (cleared and
+        # woken when it ends), running `refined_c_thread_main(record)` and ending: the new id, or a negative errno
+        "compareExchange32": Sig((_at("address"), P("expected", "Int32", "copied"), P("desired", "Int32", "copied")),
+                                 "Int32", effects=_MEM),
+        "threadPointer": Sig((), _A, effects=_MEM),
+        "setThreadPointer": Sig((_at("block"),), effects=_MEM),
+        "startThread": Sig((_at("stackTop"), _at("block"), _at("tidAt"), _at("record")), "Int64", effects=_MEM),
+        # D-167: fenv.h and fma. `loadFloatControl` is the floating-point control and status (x86_64: MXCSR in the low
+        # 32 bits; AArch64: FPCR | FPSR << 32), `storeFloatControl` sets them; `fusedMultiplyAdd` is a * b + c rounded
+        # once (llvm.fma: one instruction, FMA3 on x86_64, which every x86_64 processor since 2015 has)
+        "loadFloatControl": Sig((), "UInt64", effects=_MEM),
+        "storeFloatControl": Sig((P("value", "UInt64", "copied"),), effects=_MEM),
+        "fusedMultiplyAdd": Sig((P("left", "Float64", "copied"), P("right", "Float64", "copied"),
+                                 P("addend", "Float64", "copied")), "Float64", effects=_MEM),
+        "fusedMultiplyAdd32": Sig((P("left", "Float32", "copied"), P("right", "Float32", "copied"),
+                                   P("addend", "Float32", "copied")), "Float32", effects=_MEM),
     }
     for t in ("Byte", "Int32", "Int64", "UInt64", "Float64", "Float32", "Address"):
         canon = _A if t == "Address" else t
@@ -491,6 +510,10 @@ LINUX_CALLS: dict[str, tuple[int, Sig]] = {
     "archPrctl": _linux(158, ("code", "address:A")),
     # D-160: stdio's `rename`
     "renameat2": _linux(316, ("oldDirectory", "oldPath:A", "newDirectory", "newPath:A", "flags")),
+    # D-166: threads.h's mutexes, condition variables, and joins wait on futexes
+    "futex": _linux(202, ("address:A", "operation", "value", "timeout:A", "address2:A", "value3")),
+    "gettid": _linux(186, ()),
+    "schedYield": _linux(24, ()),
 }
 
 # D-150: the same system calls on AArch64, by the kernel's generic numbers. AArch64 has no `poll`, `fork`, or `dup2`:
@@ -502,7 +525,7 @@ AARCH64_NUMBERS: dict[str, int] = {
     "getdents64": 61, "clockGettime": 113, "exitGroup": 94, "openat": 56, "mkdirat": 34, "newfstatat": 79,
     "unlinkat": 35, "readlinkat": 78, "pipe2": 59, "pidfdOpen": 434, "socket": 198, "connect": 203, "sendto": 206,
     "recvfrom": 207, "shutdown": 210, "bind": 200, "listen": 201, "setsockopt": 208, "getsockopt": 209,
-    "accept4": 242, "getrandom": 278, "renameat2": 276,
+    "accept4": 242, "getrandom": 278, "renameat2": 276, "futex": 98, "gettid": 178, "schedYield": 124,
 }  # D-155: `archPrctl` has no AArch64 number (the thread pointer is a register there); the backend lowers it to a trap
 
 LIBRARY: dict[str, dict] = {

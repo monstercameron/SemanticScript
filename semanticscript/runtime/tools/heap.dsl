@@ -1,7 +1,7 @@
 module heap "Memory that grows and is given back piece by piece, from the process heap, and traps whose message is put together from parts"
   path heap
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test kernel numbers frames
-  exports take resize give joinMessage numbersMessage
+  exports take resize give joinMessage numbersMessage startThreads threaded
 
 capability memoryAccess "Authority to keep the process heap's handle in machine.state and to put a trap's message together" use machine.memory none
 
@@ -103,7 +103,9 @@ op take "A zeroed block of memory of a number of bytes (at least one) from the p
   osCheck: onLinux = system.linux()
   if onLinux linuxTake windowsTake
 :linuxTake
+  lockHeap()
   takeLinuxBlock: linuxBlock = takeLinux(size)
+  unlockHeap()
   return linuxBlock
 :windowsTake
   findHeap: heapHandle = processHeap()
@@ -144,7 +146,9 @@ op resize "A block of memory grown or shrunk to a number of bytes, its old bytes
   osCheck: onLinux = system.linux()
   if onLinux linuxResize windowsResize
 :linuxResize
+  lockHeap()
   resizeLinuxBlock: linuxBlock = resizeLinux(block, size)
+  unlockHeap()
   return linuxBlock
 :windowsResize
   findHeap: heapHandle = processHeap()
@@ -172,7 +176,9 @@ op give "Give a block of memory back to the process heap; the address 0 is nothi
   osCheck: onLinux = system.linux()
   if onLinux linuxGive windowsGive
 :linuxGive
+  lockHeap()
   giveLinuxBlock: giveLinux(block)
+  unlockHeap()
   goto done
 :windowsGive
   findHeap: heapHandle = processHeap()
@@ -434,17 +440,101 @@ op numbersMessage "A trap's message put together in a new block: a text, a numbe
   storeLength: machine.storeInt64(lengthAt, totalBytes)
   return message
 
+## ---------------------------------------------------------------- threads (D-166)
+##
+## The runtime's heap on Linux is one free list for the whole process; once a C program starts a thread
+## (threads.h's thrd_create), every take, give, and resize holds a lock: a futex word at machine.state byte 28960
+## (0 free, 1 held, 2 held with waiters), switched on by byte 28968.
+
+constant spinBound "The bound of the loop that waits for the heap's lock" Int64 9223372036854775807
+
+constant lockAt "Where the heap's lock word is, in machine.state" Int64 28960
+
+constant threadedAt "Where whether threads were started is kept, in machine.state" Int64 28968
+
+op startThreads "Note that the process has more than one thread, so the heap locks from now on"
+  invariant locksFromNow "After it, the heap takes and gives blocks under its lock"
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  flag = kernel.stateAt(threadedAt)
+  machine.storeInt64(flag, 1)
+  return
+
+op threaded "Whether the process has more than one thread (threads.h started one)"
+  invariant saysThreaded "Gives whether startThreads was called"
+  output Bool
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  flag = kernel.stateAt(threadedAt)
+  value = machine.loadInt64(flag)
+  calc started = value != 0
+  return started
+
+op lockHeap "Take the heap's lock, when threads were started (waiting on the futex while another thread holds it)"
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  started = threaded()
+  if started acquire done
+:acquire
+  word = kernel.stateAt(lockAt)
+  first = machine.compareExchange32(word, 0, 1)
+  when first == 0 done contended
+:contended loop=while max=spinBound
+  previous = machine.compareExchange32(word, 1, 2)
+  when previous == 0 retake wait
+:wait in=contended
+  nowhere = machine.zero()
+  system.futex(word, 128, 2, nowhere, nowhere, 0)
+  goto retake
+:retake in=contended
+  taken = machine.compareExchange32(word, 0, 2)
+  when taken == 0 done contended
+:done
+  return
+
+op unlockHeap "Give the heap's lock back, waking a waiter"
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  started = threaded()
+  if started release done
+:release
+  word = kernel.stateAt(lockAt)
+  previous = machine.compareExchange32(word, 1, 0)
+  when previous == 1 done wake
+:wake
+  machine.storeInt32(word, 0)
+  nowhere = machine.zero()
+  system.futex(word, 129, 1, nowhere, nowhere, 0)
+  return
+:done
+  return
+
 @tests
 
 test takeTest "A block from the heap is zeroed, can be written, grows with its bytes kept, and goes back"
   verifies take takesZeroed
   verifies resize keepsBytes
   verifies give givesBack
+  verifies startThreads locksFromNow
+  verifies threaded saysThreaded
   effect use machine.memory
   effect use system.calls
   uses memoryAccess
   uses systemCalls
 :begin
+  before = threaded()
+  test.assertTrue(!before)
+  startThreads()
+  after = threaded()
+  test.assertTrue(after)
   takeBlock: block = take(sixtyFour=64)
   findLast: lastAt = machine.offset(block, sixtyThree=63)
   readLast: lastByte = machine.loadByte(lastAt)

@@ -42,6 +42,7 @@ clibrary exports parseWhole
 clibrary exports parseReal
 clibrary exports runHandlers
 clibrary exports checkFits
+clibrary exports errnoCell
 
 memoryAccess is capability
 memoryAccess purpose "Authority to read and write the memory C callers hand the library"
@@ -445,20 +446,20 @@ setErrno maxRecursion none
 setErrno label begin loopKind none
 setErrno label begin within none
 setErrno let none
-setErrno at begin do findCell
+setErrno at begin do readCell
 setErrno at begin do storeIt
 setErrno at begin return ok none
 
-findCell is call
-findCell in setErrno
-findCell invokes kernel.stateAt
-findCell argument offset Int64 errnoAt copy
-findCell result cell machine.Address
-findCell ownedBy none
-findCell cleanedBy none
-findCell borrows none
-findCell catch none
-findCell suppresses none
+readCell is call
+readCell in setErrno
+readCell invokes errnoCell
+readCell argument none
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
 
 storeIt is call
 storeIt in setErrno
@@ -471,6 +472,133 @@ storeIt cleanedBy none
 storeIt borrows none
 storeIt catch none
 storeIt suppresses none
+
+errnoCell is operation
+errnoCell purpose "The running thread's errno (D-166): machine.state's cell for the first thread (and wherever no C program started threads), and 0x40 of its thread block for a thread threads.h started"
+errnoCell invariant firstThreadsCell "\"The first thread's errno is machine.state's cell\""
+errnoCell typeParameter none
+errnoCell input none
+errnoCell output machine.Address
+errnoCell outputOwnedBy none
+errnoCell raises none
+errnoCell effect use machine.memory
+errnoCell uses memoryAccess
+errnoCell memoryHeap false
+errnoCell async false
+errnoCell maxRecursion none
+errnoCell label begin loopKind none
+errnoCell label begin within none
+errnoCell label ownCheck loopKind none
+errnoCell label ownCheck within none
+errnoCell label own loopKind none
+errnoCell label own within none
+errnoCell label shared loopKind none
+errnoCell label shared within none
+errnoCell let n2352 Int64 2352 immutable
+errnoCell let sixtyFour Int64 64 immutable
+errnoCell at begin do readFirstCell
+errnoCell at begin do readFirst
+errnoCell at begin do readNowhere
+errnoCell at begin do findCheck11
+errnoCell at begin branch if check1 goto shared else goto ownCheck
+errnoCell at ownCheck do readPointer
+errnoCell at ownCheck do findCheck21
+errnoCell at ownCheck branch if check2 goto shared else goto own
+errnoCell at own do findOwnCell1
+errnoCell at own return ok ownCell
+errnoCell at shared do readCell
+errnoCell at shared return ok cell
+
+readFirstCell is call
+readFirstCell in errnoCell
+readFirstCell invokes kernel.stateAt
+readFirstCell argument offset Int64 n2352 copy
+readFirstCell result firstCell machine.Address
+readFirstCell ownedBy none
+readFirstCell cleanedBy none
+readFirstCell borrows none
+readFirstCell catch none
+readFirstCell suppresses none
+
+readFirst is call
+readFirst in errnoCell
+readFirst invokes machine.loadAddress
+readFirst argument address machine.Address firstCell copy
+readFirst result first machine.Address
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+readNowhere is call
+readNowhere in errnoCell
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+findCheck11 is call
+findCheck11 in errnoCell
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address first copy
+findCheck11 argument right machine.Address nowhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readPointer is call
+readPointer in errnoCell
+readPointer invokes machine.threadPointer
+readPointer argument none
+readPointer result pointer machine.Address
+readPointer ownedBy none
+readPointer cleanedBy none
+readPointer borrows none
+readPointer catch none
+readPointer suppresses none
+
+findCheck21 is call
+findCheck21 in errnoCell
+findCheck21 invokes machine.equal
+findCheck21 argument left machine.Address pointer copy
+findCheck21 argument right machine.Address first copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findOwnCell1 is call
+findOwnCell1 in errnoCell
+findOwnCell1 invokes machine.offset
+findOwnCell1 argument address machine.Address pointer copy
+findOwnCell1 argument bytes Int64 sixtyFour copy
+findOwnCell1 result ownCell machine.Address
+findOwnCell1 ownedBy none
+findOwnCell1 cleanedBy none
+findOwnCell1 borrows none
+findOwnCell1 catch none
+findOwnCell1 suppresses none
+
+readCell is call
+readCell in errnoCell
+readCell invokes kernel.stateAt
+readCell argument offset Int64 errnoAt copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
 
 lowInt32 is operation
 lowInt32 purpose "The low 32 bits of a whole number as an Int32, as C converts a long to an int"
@@ -11701,19 +11829,19 @@ errnoLocation abi library "__errno_location"
 errnoLocation label begin loopKind none
 errnoLocation label begin within none
 errnoLocation let none
-errnoLocation at begin do findCell
+errnoLocation at begin do readCell
 errnoLocation at begin return ok cell
 
-findCell is call
-findCell in errnoLocation
-findCell invokes kernel.stateAt
-findCell argument offset Int64 errnoAt copy
-findCell result cell machine.Address
-findCell ownedBy none
-findCell cleanedBy none
-findCell borrows none
-findCell catch none
-findCell suppresses none
+readCell is call
+readCell in errnoLocation
+readCell invokes errnoCell
+readCell argument none
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
 
 errorText is operation
 errorText purpose "strerror: the text for an error number, in a block of machine.state the next call replaces; for now every number is `Unknown error N` (D-160: glibc's messages are a known gap)"
@@ -12155,8 +12283,8 @@ errorMessage at begin return ok text
 
 readCell is call
 readCell in errorMessage
-readCell invokes kernel.stateAt
-readCell argument offset Int64 errnoAt copy
+readCell invokes errnoCell
+readCell argument none
 readCell result cell machine.Address
 readCell ownedBy none
 readCell cleanedBy none

@@ -110,6 +110,8 @@ based on [Keep a Changelog](https://keepachangelog.com/).
 - Exit handlers (atexit, at_quick_exit, quick_exit, `_Exit`), ldiv and its kin returning a pair, setjmp and
   longjmp (routines the compiler emits), signal and raise, abort through SIGABRT, and system (D-162 to D-164).
 - The `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call, with glibc's overflow report (D-165).
+- threads.h on Linux's threads, with a locked heap and streams and errno per thread; the floating-point control and
+  fused multiply-add primitives (D-166, D-167).
 
 ### The runtime in SemanticScript: `ffi` everywhere
 

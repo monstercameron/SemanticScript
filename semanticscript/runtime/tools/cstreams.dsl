@@ -501,7 +501,7 @@ op decideBuffer "Give a stream its buffer the first time it reads or writes, unl
 :done
   return
 
-op flushPending "Write the bytes waiting in a stream's buffer: 0, or -1 when the write fails (the error flag set)"
+op flushPendingHeld "Write the bytes waiting in a stream's buffer: 0, or -1 when the write fails (the error flag set)"
   input stream machine.Address copied
   output Int32
   effect use machine.memory
@@ -559,7 +559,7 @@ op dropReadAhead "Give back what a stream read ahead: move the file back over th
 :done
   return
 
-op putBytes "Write bytes to a stream as its buffering says: how many were taken (all of them, or 0 when the stream cannot be written or the write fails, errno set)"
+op putBytesHeld "Write bytes to a stream as its buffering says: how many were taken (all of them, or 0 when the stream cannot be written or the write fails, errno set)"
   input stream machine.Address copied
   input data machine.Address copied
   input bytes Int64 copied
@@ -683,7 +683,7 @@ op fillBuffer "Read into a stream's empty buffer: how many bytes came (0 at the 
   addFlag(stream, failed)
   return failure
 
-op getByte "Read one byte from a stream as an unsigned char, or -1 (EOF) at the end or on an error; what ungetc pushed back comes first, and the end of file stays once reached"
+op getByteHeld "Read one byte from a stream as an unsigned char, or -1 (EOF) at the end or on an error; what ungetc pushed back comes first, and the end of file stays once reached"
   input stream machine.Address copied
   output Int64
   effect use machine.memory
@@ -735,7 +735,7 @@ op getByte "Read one byte from a stream as an unsigned char, or -1 (EOF) at the 
 :giveEnd
   return endOfFile
 
-op ungetByte "ungetc: push a byte back onto a stream (8 at most), clearing its end of file; gives the byte, or EOF for EOF or when there is no room"
+op ungetByteHeld "ungetc: push a byte back onto a stream (8 at most), clearing its end of file; gives the byte, or EOF for EOF or when there is no room"
   input stream machine.Address copied
   input value Int64 copied
   output Int64
@@ -757,8 +757,7 @@ op ungetByte "ungetc: push a byte back onto a stream (8 at most), clearing its e
 :refuse
   return endOfFile
 
-op flushAll "fflush(NULL): write what every stream holds, the standard ones and those fopen opened; 0, or -1 when a write failed"
-  invariant flushesEvery "Every stream's waiting bytes are written"
+op flushAllHeld "fflush(NULL): write what every stream holds, the standard ones and those fopen opened; 0, or -1 when a write failed"
   output Int32
   effect use machine.memory
   effect use system.calls
@@ -2293,7 +2292,9 @@ op scanUnget "Give a byte scanf read back to its stream (nothing for -1)"
   input scanner machine.Address copied
   input value Int64 copied
   effect use machine.memory
+  effect use system.calls
   uses memoryAccess
+  uses systemCalls
 :begin
   when value >= 0 giveBack done
 :giveBack
@@ -3648,6 +3649,149 @@ op printListBoundedChecked "__vsnprintf_chk: vsnprintf, failing when its bound p
   list = listFor(arguments)
   result = storeChecked(target, limit, room, format, list)
   releaseList(list)
+  return result
+
+## ---------------------------------------------------------------- the streams' lock (D-166)
+##
+## Once a C program starts a thread, the stream operations below hold one lock for every stream: a futex word at
+## machine.state 28976 (0 free, 1 held, 2 held with waiters), its holder's thread id at 28984 and how many times it
+## holds it at 28992, so an operation that calls another under the lock takes it again.
+
+op lockStreams "Take the streams' lock when threads were started; its holder takes it again"
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  started = heap.threaded()
+  if started take done
+:take
+  word = kernel.stateAt(28976)
+  holderCell = kernel.stateAt(28984)
+  depthCell = kernel.stateAt(28992)
+  self = system.gettid()
+  holder = machine.loadInt64(holderCell)
+  when holder == self again acquire
+:again
+  depth = machine.loadInt64(depthCell)
+  machine.storeInt64(depthCell, depth + 1)
+  return
+:acquire
+  first = machine.compareExchange32(word, 0, 1)
+  when first == 0 held contended
+:contended loop=while max=forever
+  previous = machine.compareExchange32(word, 1, 2)
+  when previous == 0 retake wait
+:wait in=contended
+  nowhere = machine.zero()
+  system.futex(word, 128, 2, nowhere, nowhere, 0)
+  goto retake
+:retake in=contended
+  taken = machine.compareExchange32(word, 0, 2)
+  when taken == 0 held contended
+:held
+  machine.storeInt64(holderCell, self)
+  machine.storeInt64(depthCell, 1)
+  return
+:done
+  return
+
+op unlockStreams "Give the streams' lock back when its holder's count comes to 0, waking a waiter"
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  started = heap.threaded()
+  if started release done
+:release
+  word = kernel.stateAt(28976)
+  holderCell = kernel.stateAt(28984)
+  depthCell = kernel.stateAt(28992)
+  depth = machine.loadInt64(depthCell)
+  when depth > 1 down free
+:down
+  machine.storeInt64(depthCell, depth - 1)
+  return
+:free
+  machine.storeInt64(depthCell, 0)
+  machine.storeInt64(holderCell, 0)
+  previous = machine.compareExchange32(word, 1, 0)
+  when previous == 1 done wake
+:wake
+  machine.storeInt32(word, 0)
+  nowhere = machine.zero()
+  system.futex(word, 129, 1, nowhere, nowhere, 0)
+  return
+:done
+  return
+
+op putBytes "Write bytes to a stream as its buffering says: how many were taken (all of them, or 0 when the stream cannot be written or the write fails, errno set); under the streams' lock once threads were started (D-166)"
+  input stream machine.Address copied
+  input data machine.Address copied
+  input bytes Int64 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  lockStreams()
+  result = putBytesHeld(stream, data, bytes)
+  unlockStreams()
+  return result
+
+op getByte "Read one byte from a stream as an unsigned char, or -1 (EOF) at the end or on an error; what ungetc pushed back comes first, and the end of file stays once reached; under the streams' lock once threads were started (D-166)"
+  input stream machine.Address copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  lockStreams()
+  result = getByteHeld(stream)
+  unlockStreams()
+  return result
+
+op ungetByte "ungetc: push a byte back onto a stream (8 at most), clearing its end of file; gives the byte, or EOF for EOF or when there is no room; under the streams' lock once threads were started (D-166)"
+  input stream machine.Address copied
+  input value Int64 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  lockStreams()
+  result = ungetByteHeld(stream, value)
+  unlockStreams()
+  return result
+
+op flushPending "Write the bytes waiting in a stream's buffer: 0, or -1 when the write fails (the error flag set); under the streams' lock once threads were started (D-166)"
+  input stream machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  lockStreams()
+  result = flushPendingHeld(stream)
+  unlockStreams()
+  return result
+
+op flushAll "fflush(NULL): write what every stream holds, the standard ones and those fopen opened; 0, or -1 when a write failed; under the streams' lock once threads were started (D-166)"
+  invariant flushesEvery "Every stream's waiting bytes are written"
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  lockStreams()
+  result = flushAllHeld()
+  unlockStreams()
   return result
 
 @tests

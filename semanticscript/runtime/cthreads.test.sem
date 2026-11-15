@@ -1,0 +1,682 @@
+# Tests of the `cthreads` module; generated from tools/cthreads.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+mutexTest is test
+mutexTest purpose "A plain mutex is taken, refused to a second try, and given back; a recursive one is taken twice by its holder; storage keeps a value; thrd_current is equal to itself"
+mutexTest verifies lockMutex excludesOthers
+mutexTest verifies keyValue keepsValues
+mutexTest verifies currentThread knowsItself
+mutexTest typeParameter none
+mutexTest input none
+mutexTest output none
+mutexTest outputOwnedBy none
+mutexTest raises none
+mutexTest effect use machine.memory
+mutexTest effect use system.calls
+mutexTest uses memoryAccess
+mutexTest uses systemCalls
+mutexTest memoryHeap false
+mutexTest async false
+mutexTest maxRecursion none
+mutexTest label begin loopKind none
+mutexTest label begin within none
+mutexTest let n40 Int64 40 immutable
+mutexTest let int320 Int32 0 immutable
+mutexTest let int321 Int32 1 immutable
+mutexTest let eight Int64 8 immutable
+mutexTest at begin do readMutex
+mutexTest at begin do readUnusedInitMutex
+mutexTest at begin do readFirst
+mutexTest at begin do doAssertTrueStep1
+mutexTest at begin do doAssertTrue
+mutexTest at begin do readSecond
+mutexTest at begin do doAssertTrueStep2
+mutexTest at begin do doAssertTrue2
+mutexTest at begin do readUnusedUnlockMutex
+mutexTest at begin do readThird
+mutexTest at begin do doAssertTrueStep3
+mutexTest at begin do doAssertTrue3
+mutexTest at begin do readUnusedUnlockMutex2
+mutexTest at begin do readUnusedInitMutex2
+mutexTest at begin do readUnusedLockMutex
+mutexTest at begin do readAgain
+mutexTest at begin do doAssertTrueStep4
+mutexTest at begin do doAssertTrue4
+mutexTest at begin do readUnusedUnlockMutex3
+mutexTest at begin do readUnusedUnlockMutex4
+mutexTest at begin do readFree
+mutexTest at begin do doAssertTrueStep5
+mutexTest at begin do doAssertTrue5
+mutexTest at begin do readKey
+mutexTest at begin do readNowhere
+mutexTest at begin do readMade
+mutexTest at begin do doAssertTrueStep6
+mutexTest at begin do doAssertTrue6
+mutexTest at begin do readKeyNumber
+mutexTest at begin do readUnusedSetKeyValue
+mutexTest at begin do readValue
+mutexTest at begin do doAssertTrueStep7
+mutexTest at begin do doAssertTrue7
+mutexTest at begin do readCurrent
+mutexTest at begin do readSame
+mutexTest at begin do doAssertTrueStep8
+mutexTest at begin do doAssertTrue8
+mutexTest at begin return ok none
+
+readMutex is call
+readMutex in mutexTest
+readMutex invokes heap.take
+readMutex argument bytes Int64 n40 copy
+readMutex result mutex machine.Address
+readMutex ownedBy none
+readMutex cleanedBy none
+readMutex borrows none
+readMutex catch none
+readMutex suppresses none
+
+readUnusedInitMutex is call
+readUnusedInitMutex in mutexTest
+readUnusedInitMutex invokes initMutex
+readUnusedInitMutex argument mutex machine.Address mutex copy
+readUnusedInitMutex argument kind Int32 int320 copy
+readUnusedInitMutex result unusedInitMutex Int32
+readUnusedInitMutex ownedBy none
+readUnusedInitMutex cleanedBy none
+readUnusedInitMutex borrows none
+readUnusedInitMutex catch none
+readUnusedInitMutex suppresses none
+
+readFirst is call
+readFirst in mutexTest
+readFirst invokes lockMutex
+readFirst argument mutex machine.Address mutex copy
+readFirst result first Int32
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in mutexTest
+doAssertTrueStep1 invokes compare.equalInt32
+doAssertTrueStep1 argument left Int32 first copy
+doAssertTrueStep1 argument right Int32 int320 copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in mutexTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readSecond is call
+readSecond in mutexTest
+readSecond invokes tryLockMutex
+readSecond argument mutex machine.Address mutex copy
+readSecond result second Int32
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+readSecond suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in mutexTest
+doAssertTrueStep2 invokes compare.equalInt32
+doAssertTrueStep2 argument left Int32 second copy
+doAssertTrueStep2 argument right Int32 int321 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in mutexTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool doAssertTruePart2 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+readUnusedUnlockMutex is call
+readUnusedUnlockMutex in mutexTest
+readUnusedUnlockMutex invokes unlockMutex
+readUnusedUnlockMutex argument mutex machine.Address mutex copy
+readUnusedUnlockMutex result unusedUnlockMutex Int32
+readUnusedUnlockMutex ownedBy none
+readUnusedUnlockMutex cleanedBy none
+readUnusedUnlockMutex borrows none
+readUnusedUnlockMutex catch none
+readUnusedUnlockMutex suppresses none
+
+readThird is call
+readThird in mutexTest
+readThird invokes tryLockMutex
+readThird argument mutex machine.Address mutex copy
+readThird result third Int32
+readThird ownedBy none
+readThird cleanedBy none
+readThird borrows none
+readThird catch none
+readThird suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in mutexTest
+doAssertTrueStep3 invokes compare.equalInt32
+doAssertTrueStep3 argument left Int32 third copy
+doAssertTrueStep3 argument right Int32 int320 copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in mutexTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart3 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+readUnusedUnlockMutex2 is call
+readUnusedUnlockMutex2 in mutexTest
+readUnusedUnlockMutex2 invokes unlockMutex
+readUnusedUnlockMutex2 argument mutex machine.Address mutex copy
+readUnusedUnlockMutex2 result unusedUnlockMutex2 Int32
+readUnusedUnlockMutex2 ownedBy none
+readUnusedUnlockMutex2 cleanedBy none
+readUnusedUnlockMutex2 borrows none
+readUnusedUnlockMutex2 catch none
+readUnusedUnlockMutex2 suppresses none
+
+readUnusedInitMutex2 is call
+readUnusedInitMutex2 in mutexTest
+readUnusedInitMutex2 invokes initMutex
+readUnusedInitMutex2 argument mutex machine.Address mutex copy
+readUnusedInitMutex2 argument kind Int32 int321 copy
+readUnusedInitMutex2 result unusedInitMutex2 Int32
+readUnusedInitMutex2 ownedBy none
+readUnusedInitMutex2 cleanedBy none
+readUnusedInitMutex2 borrows none
+readUnusedInitMutex2 catch none
+readUnusedInitMutex2 suppresses none
+
+readUnusedLockMutex is call
+readUnusedLockMutex in mutexTest
+readUnusedLockMutex invokes lockMutex
+readUnusedLockMutex argument mutex machine.Address mutex copy
+readUnusedLockMutex result unusedLockMutex Int32
+readUnusedLockMutex ownedBy none
+readUnusedLockMutex cleanedBy none
+readUnusedLockMutex borrows none
+readUnusedLockMutex catch none
+readUnusedLockMutex suppresses none
+
+readAgain is call
+readAgain in mutexTest
+readAgain invokes tryLockMutex
+readAgain argument mutex machine.Address mutex copy
+readAgain result again Int32
+readAgain ownedBy none
+readAgain cleanedBy none
+readAgain borrows none
+readAgain catch none
+readAgain suppresses none
+
+doAssertTrueStep4 is call
+doAssertTrueStep4 in mutexTest
+doAssertTrueStep4 invokes compare.equalInt32
+doAssertTrueStep4 argument left Int32 again copy
+doAssertTrueStep4 argument right Int32 int320 copy
+doAssertTrueStep4 result doAssertTruePart4 Bool
+doAssertTrueStep4 ownedBy none
+doAssertTrueStep4 cleanedBy none
+doAssertTrueStep4 borrows none
+doAssertTrueStep4 catch none
+doAssertTrueStep4 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in mutexTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool doAssertTruePart4 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+readUnusedUnlockMutex3 is call
+readUnusedUnlockMutex3 in mutexTest
+readUnusedUnlockMutex3 invokes unlockMutex
+readUnusedUnlockMutex3 argument mutex machine.Address mutex copy
+readUnusedUnlockMutex3 result unusedUnlockMutex3 Int32
+readUnusedUnlockMutex3 ownedBy none
+readUnusedUnlockMutex3 cleanedBy none
+readUnusedUnlockMutex3 borrows none
+readUnusedUnlockMutex3 catch none
+readUnusedUnlockMutex3 suppresses none
+
+readUnusedUnlockMutex4 is call
+readUnusedUnlockMutex4 in mutexTest
+readUnusedUnlockMutex4 invokes unlockMutex
+readUnusedUnlockMutex4 argument mutex machine.Address mutex copy
+readUnusedUnlockMutex4 result unusedUnlockMutex4 Int32
+readUnusedUnlockMutex4 ownedBy none
+readUnusedUnlockMutex4 cleanedBy none
+readUnusedUnlockMutex4 borrows none
+readUnusedUnlockMutex4 catch none
+readUnusedUnlockMutex4 suppresses none
+
+readFree is call
+readFree in mutexTest
+readFree invokes tryLockMutex
+readFree argument mutex machine.Address mutex copy
+readFree result free Int32
+readFree ownedBy none
+readFree cleanedBy none
+readFree borrows none
+readFree catch none
+readFree suppresses none
+
+doAssertTrueStep5 is call
+doAssertTrueStep5 in mutexTest
+doAssertTrueStep5 invokes compare.equalInt32
+doAssertTrueStep5 argument left Int32 free copy
+doAssertTrueStep5 argument right Int32 int320 copy
+doAssertTrueStep5 result doAssertTruePart5 Bool
+doAssertTrueStep5 ownedBy none
+doAssertTrueStep5 cleanedBy none
+doAssertTrueStep5 borrows none
+doAssertTrueStep5 catch none
+doAssertTrueStep5 suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in mutexTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool doAssertTruePart5 copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+readKey is call
+readKey in mutexTest
+readKey invokes heap.take
+readKey argument bytes Int64 eight copy
+readKey result key machine.Address
+readKey ownedBy none
+readKey cleanedBy none
+readKey borrows none
+readKey catch none
+readKey suppresses none
+
+readNowhere is call
+readNowhere in mutexTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readMade is call
+readMade in mutexTest
+readMade invokes createKey
+readMade argument key machine.Address key copy
+readMade argument destructor machine.Address nowhere copy
+readMade result made Int32
+readMade ownedBy none
+readMade cleanedBy none
+readMade borrows none
+readMade catch none
+readMade suppresses none
+
+doAssertTrueStep6 is call
+doAssertTrueStep6 in mutexTest
+doAssertTrueStep6 invokes compare.equalInt32
+doAssertTrueStep6 argument left Int32 made copy
+doAssertTrueStep6 argument right Int32 int320 copy
+doAssertTrueStep6 result doAssertTruePart6 Bool
+doAssertTrueStep6 ownedBy none
+doAssertTrueStep6 cleanedBy none
+doAssertTrueStep6 borrows none
+doAssertTrueStep6 catch none
+doAssertTrueStep6 suppresses none
+
+doAssertTrue6 is call
+doAssertTrue6 in mutexTest
+doAssertTrue6 invokes test.assertTrue
+doAssertTrue6 argument value Bool doAssertTruePart6 copy
+doAssertTrue6 result none
+doAssertTrue6 ownedBy none
+doAssertTrue6 cleanedBy none
+doAssertTrue6 borrows none
+doAssertTrue6 catch none
+doAssertTrue6 suppresses none
+
+readKeyNumber is call
+readKeyNumber in mutexTest
+readKeyNumber invokes machine.loadInt32
+readKeyNumber argument address machine.Address key copy
+readKeyNumber result keyNumber Int32
+readKeyNumber ownedBy none
+readKeyNumber cleanedBy none
+readKeyNumber borrows none
+readKeyNumber catch none
+readKeyNumber suppresses none
+
+readUnusedSetKeyValue is call
+readUnusedSetKeyValue in mutexTest
+readUnusedSetKeyValue invokes setKeyValue
+readUnusedSetKeyValue argument key Int32 keyNumber copy
+readUnusedSetKeyValue argument value machine.Address mutex copy
+readUnusedSetKeyValue result unusedSetKeyValue Int32
+readUnusedSetKeyValue ownedBy none
+readUnusedSetKeyValue cleanedBy none
+readUnusedSetKeyValue borrows none
+readUnusedSetKeyValue catch none
+readUnusedSetKeyValue suppresses none
+
+readValue is call
+readValue in mutexTest
+readValue invokes keyValue
+readValue argument key Int32 keyNumber copy
+readValue result value machine.Address
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+doAssertTrueStep7 is call
+doAssertTrueStep7 in mutexTest
+doAssertTrueStep7 invokes machine.equal
+doAssertTrueStep7 argument left machine.Address value copy
+doAssertTrueStep7 argument right machine.Address mutex copy
+doAssertTrueStep7 result doAssertTruePart7 Bool
+doAssertTrueStep7 ownedBy none
+doAssertTrueStep7 cleanedBy none
+doAssertTrueStep7 borrows none
+doAssertTrueStep7 catch none
+doAssertTrueStep7 suppresses none
+
+doAssertTrue7 is call
+doAssertTrue7 in mutexTest
+doAssertTrue7 invokes test.assertTrue
+doAssertTrue7 argument value Bool doAssertTruePart7 copy
+doAssertTrue7 result none
+doAssertTrue7 ownedBy none
+doAssertTrue7 cleanedBy none
+doAssertTrue7 borrows none
+doAssertTrue7 catch none
+doAssertTrue7 suppresses none
+
+readCurrent is call
+readCurrent in mutexTest
+readCurrent invokes currentThread
+readCurrent argument none
+readCurrent result current machine.Address
+readCurrent ownedBy none
+readCurrent cleanedBy none
+readCurrent borrows none
+readCurrent catch none
+readCurrent suppresses none
+
+readSame is call
+readSame in mutexTest
+readSame invokes sameThread
+readSame argument left machine.Address current copy
+readSame argument right machine.Address current copy
+readSame result same Int32
+readSame ownedBy none
+readSame cleanedBy none
+readSame borrows none
+readSame catch none
+readSame suppresses none
+
+doAssertTrueStep8 is call
+doAssertTrueStep8 in mutexTest
+doAssertTrueStep8 invokes compare.equalInt32
+doAssertTrueStep8 argument left Int32 same copy
+doAssertTrueStep8 argument right Int32 int321 copy
+doAssertTrueStep8 result doAssertTruePart8 Bool
+doAssertTrueStep8 ownedBy none
+doAssertTrueStep8 cleanedBy none
+doAssertTrueStep8 borrows none
+doAssertTrueStep8 catch none
+doAssertTrueStep8 suppresses none
+
+doAssertTrue8 is call
+doAssertTrue8 in mutexTest
+doAssertTrue8 invokes test.assertTrue
+doAssertTrue8 argument value Bool doAssertTruePart8 copy
+doAssertTrue8 result none
+doAssertTrue8 ownedBy none
+doAssertTrue8 cleanedBy none
+doAssertTrue8 borrows none
+doAssertTrue8 catch none
+doAssertTrue8 suppresses none
+
+floatControlTest is test
+floatControlTest purpose "The floating-point control reads back what was stored, and a fused multiply-add rounds once"
+floatControlTest verifies floatControl startsAsCreator
+floatControlTest typeParameter none
+floatControlTest input none
+floatControlTest output none
+floatControlTest outputOwnedBy none
+floatControlTest raises none
+floatControlTest effect use machine.memory
+floatControlTest uses memoryAccess
+floatControlTest memoryHeap false
+floatControlTest async false
+floatControlTest maxRecursion none
+floatControlTest label begin loopKind none
+floatControlTest label begin within none
+floatControlTest let real3fb999999999999a Float64 0.1 immutable
+floatControlTest let real4024000000000000 Float64 10.0 immutable
+floatControlTest let realbff0000000000000 Float64 -1.0 immutable
+floatControlTest let uInt644363988038922010624 UInt64 4363988038922010624 immutable
+floatControlTest let real3fe0000000000000 Float64 0.5 immutable
+floatControlTest let real3fe8000000000000 Float64 0.75 immutable
+floatControlTest at begin do readControl
+floatControlTest at begin do doStoreFloatControl
+floatControlTest at begin do readAgain
+floatControlTest at begin do doAssertTrueStep1
+floatControlTest at begin do doAssertTrue
+floatControlTest at begin do readFused
+floatControlTest at begin do readBitsOf
+floatControlTest at begin do doAssertTrueStep2
+floatControlTest at begin do doAssertTrue2
+floatControlTest at begin do findSingle1
+floatControlTest at begin do readFusedSingle
+floatControlTest at begin do doAssertTrueStep3
+floatControlTest at begin do doAssertTrueStep4
+floatControlTest at begin do doAssertTrue3
+floatControlTest at begin return ok none
+
+readControl is call
+readControl in floatControlTest
+readControl invokes floatControl
+readControl argument none
+readControl result control UInt64
+readControl ownedBy none
+readControl cleanedBy none
+readControl borrows none
+readControl catch none
+readControl suppresses none
+
+doStoreFloatControl is call
+doStoreFloatControl in floatControlTest
+doStoreFloatControl invokes machine.storeFloatControl
+doStoreFloatControl argument value UInt64 control copy
+doStoreFloatControl result none
+doStoreFloatControl ownedBy none
+doStoreFloatControl cleanedBy none
+doStoreFloatControl borrows none
+doStoreFloatControl catch none
+doStoreFloatControl suppresses none
+
+readAgain is call
+readAgain in floatControlTest
+readAgain invokes machine.loadFloatControl
+readAgain argument none
+readAgain result again UInt64
+readAgain ownedBy none
+readAgain cleanedBy none
+readAgain borrows none
+readAgain catch none
+readAgain suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in floatControlTest
+doAssertTrueStep1 invokes compare.equalUInt64
+doAssertTrueStep1 argument left UInt64 again copy
+doAssertTrueStep1 argument right UInt64 control copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in floatControlTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readFused is call
+readFused in floatControlTest
+readFused invokes machine.fusedMultiplyAdd
+readFused argument left Float64 real3fb999999999999a copy
+readFused argument right Float64 real4024000000000000 copy
+readFused argument addend Float64 realbff0000000000000 copy
+readFused result fused Float64
+readFused ownedBy none
+readFused cleanedBy none
+readFused borrows none
+readFused catch none
+readFused suppresses none
+
+readBitsOf is call
+readBitsOf in floatControlTest
+readBitsOf invokes convert.float64BitsToUInt64
+readBitsOf argument value Float64 fused copy
+readBitsOf result bitsOf UInt64
+readBitsOf ownedBy none
+readBitsOf cleanedBy none
+readBitsOf borrows none
+readBitsOf catch none
+readBitsOf suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in floatControlTest
+doAssertTrueStep2 invokes compare.equalUInt64
+doAssertTrueStep2 argument left UInt64 bitsOf copy
+doAssertTrueStep2 argument right UInt64 uInt644363988038922010624 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in floatControlTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool doAssertTruePart2 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+findSingle1 is call
+findSingle1 in floatControlTest
+findSingle1 invokes convert.float64ToFloat32
+findSingle1 argument value Float64 real3fe0000000000000 copy
+findSingle1 result single Float32
+findSingle1 ownedBy none
+findSingle1 cleanedBy none
+findSingle1 borrows none
+findSingle1 catch none
+findSingle1 suppresses none
+
+readFusedSingle is call
+readFusedSingle in floatControlTest
+readFusedSingle invokes machine.fusedMultiplyAdd32
+readFusedSingle argument left Float32 single copy
+readFusedSingle argument right Float32 single copy
+readFusedSingle argument addend Float32 single copy
+readFusedSingle result fusedSingle Float32
+readFusedSingle ownedBy none
+readFusedSingle cleanedBy none
+readFusedSingle borrows none
+readFusedSingle catch none
+readFusedSingle suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in floatControlTest
+doAssertTrueStep3 invokes convert.float32ToFloat64
+doAssertTrueStep3 argument value Float32 fusedSingle copy
+doAssertTrueStep3 result doAssertTruePart3 Float64
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrueStep4 is call
+doAssertTrueStep4 in floatControlTest
+doAssertTrueStep4 invokes compare.equalFloat64
+doAssertTrueStep4 argument left Float64 doAssertTruePart3 copy
+doAssertTrueStep4 argument right Float64 real3fe8000000000000 copy
+doAssertTrueStep4 result doAssertTruePart4 Bool
+doAssertTrueStep4 ownedBy none
+doAssertTrueStep4 cleanedBy none
+doAssertTrueStep4 borrows none
+doAssertTrueStep4 catch none
+doAssertTrueStep4 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in floatControlTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart4 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none

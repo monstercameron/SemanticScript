@@ -27,7 +27,8 @@ systemCalls grants use system.calls none
 # kernel gave (argc, argv, envp), then the program's init arrays, then `main(argc, argv, envp)`, then `exit`. The code
 # gcc compiles reads the stack protector's canary at %fs:0x28 on x86_64, so the thread pointer is set to a block of
 # the library's own that points at itself, with a random canary at 0x28; on AArch64 the canary is the data symbol
-# `__stack_chk_guard`, filled from getrandom. machine.state byte 2352 holds the block's address.
+# `__stack_chk_guard`, filled from getrandom, and the thread pointer (tpidr_el0) is set to such a block too, which
+# threads.h reads (D-166). machine.state byte 2352 holds the block's address.
 blockAt is constant
 blockAt purpose "Where the thread block's address is kept, in machine.state"
 blockAt type Int64
@@ -62,8 +63,6 @@ prepareProgram label done within none
 prepareProgram let n1560 Int64 1560 immutable
 prepareProgram let eight Int64 8 immutable
 prepareProgram let zero Int64 0 immutable
-prepareProgram let n256 Int64 256 immutable
-prepareProgram let sixteen Int64 16 immutable
 prepareProgram let n40 Int64 40 immutable
 prepareProgram let n4098 Int64 4098 immutable
 prepareProgram at begin do doInitialStack
@@ -74,16 +73,13 @@ prepareProgram at linux do readOnArm
 prepareProgram at linux branch if onArm goto armGuard else goto intelBlock
 prepareProgram at armGuard do readGuard
 prepareProgram at armGuard do readUnusedGetrandom
+prepareProgram at armGuard do readArmBlock
+prepareProgram at armGuard do doSetThreadPointer
 prepareProgram at armGuard return ok none
-prepareProgram at intelBlock do readSlot
 prepareProgram at intelBlock do readBlock
-prepareProgram at intelBlock do doStoreAddress
-prepareProgram at intelBlock do findSelfAt1
-prepareProgram at intelBlock do doStoreAddress2
 prepareProgram at intelBlock do findCanary1
 prepareProgram at intelBlock do readUnusedGetrandom2
 prepareProgram at intelBlock do readUnusedArchPrctl
-prepareProgram at intelBlock do doStoreAddress3
 prepareProgram at intelBlock return ok none
 prepareProgram at done return ok none
 
@@ -155,63 +151,38 @@ readUnusedGetrandom borrows none
 readUnusedGetrandom catch none
 readUnusedGetrandom suppresses none
 
-readSlot is call
-readSlot in prepareProgram
-readSlot invokes kernel.stateAt
-readSlot argument offset Int64 blockAt copy
-readSlot result slot machine.Address
-readSlot ownedBy none
-readSlot cleanedBy none
-readSlot borrows none
-readSlot catch none
-readSlot suppresses none
+readArmBlock is call
+readArmBlock in prepareProgram
+readArmBlock invokes threadBlock
+readArmBlock argument none
+readArmBlock result armBlock machine.Address
+readArmBlock ownedBy none
+readArmBlock cleanedBy none
+readArmBlock borrows none
+readArmBlock catch none
+readArmBlock suppresses none
+
+doSetThreadPointer is call
+doSetThreadPointer in prepareProgram
+doSetThreadPointer invokes machine.setThreadPointer
+doSetThreadPointer argument block machine.Address armBlock copy
+doSetThreadPointer result none
+doSetThreadPointer ownedBy none
+doSetThreadPointer cleanedBy none
+doSetThreadPointer borrows none
+doSetThreadPointer catch none
+doSetThreadPointer suppresses none
 
 readBlock is call
 readBlock in prepareProgram
-readBlock invokes heap.take
-readBlock argument bytes Int64 n256 copy
+readBlock invokes threadBlock
+readBlock argument none
 readBlock result block machine.Address
 readBlock ownedBy none
 readBlock cleanedBy none
 readBlock borrows none
 readBlock catch none
 readBlock suppresses none
-
-doStoreAddress is call
-doStoreAddress in prepareProgram
-doStoreAddress invokes machine.storeAddress
-doStoreAddress argument address machine.Address block copy
-doStoreAddress argument value machine.Address block copy
-doStoreAddress result none
-doStoreAddress ownedBy none
-doStoreAddress cleanedBy none
-doStoreAddress borrows none
-doStoreAddress catch none
-doStoreAddress suppresses none
-
-findSelfAt1 is call
-findSelfAt1 in prepareProgram
-findSelfAt1 invokes machine.offset
-findSelfAt1 argument address machine.Address block copy
-findSelfAt1 argument bytes Int64 sixteen copy
-findSelfAt1 result selfAt machine.Address
-findSelfAt1 ownedBy none
-findSelfAt1 cleanedBy none
-findSelfAt1 borrows none
-findSelfAt1 catch none
-findSelfAt1 suppresses none
-
-doStoreAddress2 is call
-doStoreAddress2 in prepareProgram
-doStoreAddress2 invokes machine.storeAddress
-doStoreAddress2 argument address machine.Address selfAt copy
-doStoreAddress2 argument value machine.Address block copy
-doStoreAddress2 result none
-doStoreAddress2 ownedBy none
-doStoreAddress2 cleanedBy none
-doStoreAddress2 borrows none
-doStoreAddress2 catch none
-doStoreAddress2 suppresses none
 
 findCanary1 is call
 findCanary1 in prepareProgram
@@ -250,8 +221,93 @@ readUnusedArchPrctl borrows none
 readUnusedArchPrctl catch none
 readUnusedArchPrctl suppresses none
 
+threadBlock is operation
+threadBlock purpose "The first thread's block (D-166): it points at itself (at 0 and 16), with the canary at 0x28, errno's cell of a later thread at 0x40, its record at 0x38, and thread-specific values from 0x80; kept at machine.state 2352"
+threadBlock invariant none
+threadBlock typeParameter none
+threadBlock input none
+threadBlock output machine.Address
+threadBlock outputOwnedBy none
+threadBlock raises none
+threadBlock effect use machine.memory
+threadBlock effect use system.calls
+threadBlock uses memoryAccess
+threadBlock uses systemCalls
+threadBlock memoryHeap false
+threadBlock async false
+threadBlock maxRecursion none
+threadBlock label begin loopKind none
+threadBlock label begin within none
+threadBlock let n640 Int64 640 immutable
+threadBlock let sixteen Int64 16 immutable
+threadBlock at begin do readSlot
+threadBlock at begin do readBlock
+threadBlock at begin do doStoreAddress
+threadBlock at begin do findSelfAt1
+threadBlock at begin do doStoreAddress2
+threadBlock at begin do doStoreAddress3
+threadBlock at begin return ok block
+
+readSlot is call
+readSlot in threadBlock
+readSlot invokes kernel.stateAt
+readSlot argument offset Int64 blockAt copy
+readSlot result slot machine.Address
+readSlot ownedBy none
+readSlot cleanedBy none
+readSlot borrows none
+readSlot catch none
+readSlot suppresses none
+
+readBlock is call
+readBlock in threadBlock
+readBlock invokes heap.take
+readBlock argument bytes Int64 n640 copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+doStoreAddress is call
+doStoreAddress in threadBlock
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address block copy
+doStoreAddress argument value machine.Address block copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+findSelfAt1 is call
+findSelfAt1 in threadBlock
+findSelfAt1 invokes machine.offset
+findSelfAt1 argument address machine.Address block copy
+findSelfAt1 argument bytes Int64 sixteen copy
+findSelfAt1 result selfAt machine.Address
+findSelfAt1 ownedBy none
+findSelfAt1 cleanedBy none
+findSelfAt1 borrows none
+findSelfAt1 catch none
+findSelfAt1 suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in threadBlock
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address selfAt copy
+doStoreAddress2 argument value machine.Address block copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
 doStoreAddress3 is call
-doStoreAddress3 in prepareProgram
+doStoreAddress3 in threadBlock
 doStoreAddress3 invokes machine.storeAddress
 doStoreAddress3 argument address machine.Address slot copy
 doStoreAddress3 argument value machine.Address block copy

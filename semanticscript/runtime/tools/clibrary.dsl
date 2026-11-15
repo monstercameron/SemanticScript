@@ -1,7 +1,7 @@
 module clibrary "The C standard library written in SemanticScript: what ffi.open of c binds, and what a library the loader maps finds for its C imports (D-153)"
   path clibrary
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel memory output heap floats wide
-  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal runHandlers checkFits
+  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal runHandlers checkFits errnoCell
 
 capability memoryAccess "Authority to read and write the memory C callers hand the library" use machine.memory none
 
@@ -133,9 +133,29 @@ op setErrno "Set errno, the cell __errno_location gives"
   effect use machine.memory
   uses memoryAccess
 :begin
-  findCell: cell = kernel.stateAt(errnoAt)
+  cell = errnoCell()
   storeIt: machine.storeInt32(cell, value)
   return
+
+op errnoCell "The running thread's errno (D-166): machine.state's cell for the first thread (and wherever no C program started threads), and 0x40 of its thread block for a thread threads.h started"
+  invariant firstThreadsCell "The first thread's errno is machine.state's cell"
+  output machine.Address
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  firstCell = kernel.stateAt(2352)
+  first = machine.loadAddress(firstCell)
+  nowhere = machine.zero()
+  when first == nowhere shared ownCheck
+:ownCheck
+  pointer = machine.threadPointer()
+  when pointer == first shared own
+:own
+  calc ownCell = pointer + 64
+  return ownCell
+:shared
+  cell = kernel.stateAt(errnoAt)
+  return cell
 
 op lowInt32 "The low 32 bits of a whole number as an Int32, as C converts a long to an int"
   invariant wrapsLow "Keeps the low 32 bits as a signed int"
@@ -2458,7 +2478,7 @@ op errnoLocation "__errno_location: the address of errno, which strtol, strtod, 
   uses memoryAccess
   abi library "__errno_location"
 :begin
-  findCell: cell = kernel.stateAt(errnoAt)
+  cell = errnoCell()
   return cell
 
 op errorText "strerror: the text for an error number, in a block of machine.state the next call replaces; for now every number is `Unknown error N` (D-160: glibc's messages are a known gap)"
@@ -2520,7 +2540,7 @@ op errorMessage "The text strerror gives for errno now"
   effect use machine.memory
   uses memoryAccess
 :begin
-  cell = kernel.stateAt(errnoAt)
+  cell = errnoCell()
   code = machine.loadInt32(cell)
   text = errorText(code)
   return text
@@ -3484,8 +3504,8 @@ op longMatches "Whether strtol (or strtoul) of a text in a base gives a value, r
   readEnd: end = machine.loadAddress(endCell)
   offsetOf: read = machine.difference(end, place)
   endCheck: sameEnd = compare.equalInt64(expectedEnd, read)
-  findErrno: errnoCell = kernel.stateAt(errnoAt)
-  readErrno: errno = machine.loadInt32(errnoCell)
+  findErrno: errnoPlace = kernel.stateAt(errnoAt)
+  readErrno: errno = machine.loadInt32(errnoPlace)
   errnoCheck: sameErrno = compare.equalInt32(expectedErrno, errno)
   firstTwo: valueAndEnd = logic.and(sameValue, sameEnd)
   allThree: matches = logic.and(valueAndEnd, sameErrno)
@@ -3930,6 +3950,7 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   verifies charOf keepsLowByte
   verifies runHandlers runsInReverse
   verifies checkFits passesWhatFits
+  verifies errnoCell firstThreadsCell
   verifies divideWhole dividesTowardZero
   verifies prepare pointsAtStreams
   verifies isSpaceByte spacesLikeC
@@ -3945,8 +3966,8 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   second = byteAt(place, 1)
   test.assertTrue(second == 101)
   setErrno(34)
-  errnoCell = kernel.stateAt(errnoAt)
-  errno = machine.loadInt32(errnoCell)
+  errnoPlace = kernel.stateAt(errnoAt)
+  errno = machine.loadInt32(errnoPlace)
   test.assertTrue(errno == 34)
   setErrno(0)
   low = lowInt32(4294967295)
@@ -3984,6 +4005,9 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   left = machine.loadInt64(quickCell)
   test.assertEqualInt64(0, left)
   checkFits(4, 4)
+  sharedErrno = errnoCell()
+  stateErrno = kernel.stateAt(errnoAt)
+  test.assertTrue(sharedErrno == stateErrno)
   checkFits(0, 0)
   pair = divideWhole(-7, 2)
   quotient = Quotient.quotient(pair)
