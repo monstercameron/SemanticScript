@@ -324,7 +324,9 @@ def test_c_library_table_names_glibc_functions():
         import ctypes.util
         glibc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6")
         libm = ctypes.CDLL(ctypes.util.find_library("m") or "libm.so.6")  # math.h's functions are glibc's libm's
-        assert [n for n in sorted(names) if not hasattr(glibc, n) and not hasattr(libm, n)] == []
+        # glibc links these from libc_nonshared.a into each program, so libc.so.6 does not export them
+        nonshared = {"atexit", "at_quick_exit"}
+        assert [n for n in sorted(names - nonshared) if not hasattr(glibc, n) and not hasattr(libm, n)] == []
 
 
 C_LIBRARY = {

@@ -121,7 +121,7 @@
     },
     "word": {
       "name": "keyword.operator.semanticscript",
-      "match": "(?<![A-Za-z0-9.])(?:borrowedMutable|atProcessExit|concurrency|lendMutable|immutable|readWrite|atReturn|borrowed|security|suppress|connect|console|counted|doWhile|failure|forEach|forever|ifError|library|mutable|refined|copied|ifNext|listen|memory|timing|arena|error|owned|plain|spawn|while|write|bind|copy|data|else|give|goto|into|lend|load|read|trap|any|use|if|ok|c)\\b"
+      "match": "(?<![A-Za-z0-9.])(?:borrowedMutable|atProcessExit|concurrency|lendMutable|immutable|readWrite|atReturn|borrowed|security|suppress|variadic|connect|console|counted|doWhile|failure|forEach|forever|ifError|library|mutable|refined|copied|ifNext|listen|memory|timing|arena|error|owned|plain|spawn|while|write|bind|copy|data|else|give|goto|into|lend|load|read|trap|any|use|if|ok|c)\\b"
     },
     "type": {
       "name": "entity.name.type.semanticscript",
