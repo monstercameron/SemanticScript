@@ -587,6 +587,8 @@ def _cosh(x, y, xn, yn, xi, yi, xf, yf):
 
 def _tanh(x, y, xn, yn, xi, yi, xf, yf):
     if xf:
+        if yi:
+            return (x, "N") if x == 0 else (sg(0.0, math.sin(2 * x)), "N")
         if not yf:
             return ("N", "N")
         if x == 0 and y == 0:

@@ -7492,7 +7492,7 @@ makeYAngleResult catch none
 makeYAngleResult suppresses none
 
 hyperbolicTangentParts is operation
-hyperbolicTangentParts purpose "ctanh(x + iy): Kahan's formula, and for |x| >= 20 the limit +-1 + 4 i sin y cos y e^(-2|x|); Annex G's cases"
+hyperbolicTangentParts purpose "ctanh(x + iy): Kahan's formula, (x finite, y infinite) gives a zero with the sign of sin 2x and a NaN as glibc does (so ctan(inf + iy) is a NaN and a zero), and for |x| >= 20 the limit +-1 + 4 i sin y cos y e^(-2|x|); Annex G's cases"
 hyperbolicTangentParts invariant none
 hyperbolicTangentParts typeParameter none
 hyperbolicTangentParts input x Float64 copied
@@ -7529,6 +7529,14 @@ hyperbolicTangentParts label finiteReal loopKind none
 hyperbolicTangentParts label finiteReal within none
 hyperbolicTangentParts label finiteBad loopKind none
 hyperbolicTangentParts label finiteBad within none
+hyperbolicTangentParts label badInfiniteCase loopKind none
+hyperbolicTangentParts label badInfiniteCase within none
+hyperbolicTangentParts label badZero loopKind none
+hyperbolicTangentParts label badZero within none
+hyperbolicTangentParts label badSigned loopKind none
+hyperbolicTangentParts label badSigned within none
+hyperbolicTangentParts label badBoth loopKind none
+hyperbolicTangentParts label badBoth within none
 hyperbolicTangentParts label finiteImag loopKind none
 hyperbolicTangentParts label finiteImag within none
 hyperbolicTangentParts label saturated loopKind none
@@ -7569,11 +7577,23 @@ hyperbolicTangentParts at infiniteOther do makeInfiniteOtherResult
 hyperbolicTangentParts at infiniteOther return ok infiniteOtherResult
 hyperbolicTangentParts at finiteReal branch if yFinite goto finiteImag else goto finiteBad
 hyperbolicTangentParts at finiteBad do findBadNan1
-hyperbolicTangentParts at finiteBad do makeBadResult
-hyperbolicTangentParts at finiteBad return ok badResult
+hyperbolicTangentParts at finiteBad do findBadInfinite1
+hyperbolicTangentParts at finiteBad branch if badInfinite goto badInfiniteCase else goto badBoth
+hyperbolicTangentParts at badInfiniteCase do findCheck31
+hyperbolicTangentParts at badInfiniteCase branch if check3 goto badZero else goto badSigned
+hyperbolicTangentParts at badZero do makeBadZeroResult
+hyperbolicTangentParts at badZero return ok badZeroResult
+hyperbolicTangentParts at badSigned do findBadSine1
+hyperbolicTangentParts at badSigned do findBadCosine1
+hyperbolicTangentParts at badSigned do findBadProduct1
+hyperbolicTangentParts at badSigned do findBadReal1
+hyperbolicTangentParts at badSigned do makeBadSignedResult
+hyperbolicTangentParts at badSigned return ok badSignedResult
+hyperbolicTangentParts at badBoth do makeBadResult
+hyperbolicTangentParts at badBoth return ok badResult
 hyperbolicTangentParts at finiteImag do findAx1
-hyperbolicTangentParts at finiteImag do findCheck31
-hyperbolicTangentParts at finiteImag branch if check3 goto saturated else goto moderate
+hyperbolicTangentParts at finiteImag do findCheck41
+hyperbolicTangentParts at finiteImag branch if check4 goto saturated else goto moderate
 hyperbolicTangentParts at saturated do findSatCosine1
 hyperbolicTangentParts at saturated do findSatSine1
 hyperbolicTangentParts at saturated do decayStep1
@@ -7810,6 +7830,99 @@ findBadNan1 borrows none
 findBadNan1 catch none
 findBadNan1 suppresses none
 
+findBadInfinite1 is call
+findBadInfinite1 in hyperbolicTangentParts
+findBadInfinite1 invokes isInfiniteOf
+findBadInfinite1 argument x Float64 y copy
+findBadInfinite1 result badInfinite Bool
+findBadInfinite1 ownedBy none
+findBadInfinite1 cleanedBy none
+findBadInfinite1 borrows none
+findBadInfinite1 catch none
+findBadInfinite1 suppresses none
+
+findCheck31 is call
+findCheck31 in hyperbolicTangentParts
+findCheck31 invokes compare.equalFloat64
+findCheck31 argument left Float64 x copy
+findCheck31 argument right Float64 real0000000000000000 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+makeBadZeroResult is call
+makeBadZeroResult in hyperbolicTangentParts
+makeBadZeroResult invokes Complex.new
+makeBadZeroResult argument real Float64 x copy
+makeBadZeroResult argument imag Float64 badNan copy
+makeBadZeroResult result badZeroResult Complex
+makeBadZeroResult ownedBy none
+makeBadZeroResult cleanedBy none
+makeBadZeroResult borrows none
+makeBadZeroResult catch none
+makeBadZeroResult suppresses none
+
+findBadSine1 is call
+findBadSine1 in hyperbolicTangentParts
+findBadSine1 invokes cmathtrig.sineOf
+findBadSine1 argument x Float64 x copy
+findBadSine1 result badSine Float64
+findBadSine1 ownedBy none
+findBadSine1 cleanedBy none
+findBadSine1 borrows none
+findBadSine1 catch none
+findBadSine1 suppresses none
+
+findBadCosine1 is call
+findBadCosine1 in hyperbolicTangentParts
+findBadCosine1 invokes cmathtrig.cosineOf
+findBadCosine1 argument x Float64 x copy
+findBadCosine1 result badCosine Float64
+findBadCosine1 ownedBy none
+findBadCosine1 cleanedBy none
+findBadCosine1 borrows none
+findBadCosine1 catch none
+findBadCosine1 suppresses none
+
+findBadProduct1 is call
+findBadProduct1 in hyperbolicTangentParts
+findBadProduct1 invokes math.multiplyFloat64
+findBadProduct1 argument left Float64 badSine copy
+findBadProduct1 argument right Float64 badCosine copy
+findBadProduct1 result badProduct Float64
+findBadProduct1 ownedBy none
+findBadProduct1 cleanedBy none
+findBadProduct1 borrows none
+findBadProduct1 catch none
+findBadProduct1 suppresses none
+
+findBadReal1 is call
+findBadReal1 in hyperbolicTangentParts
+findBadReal1 invokes signedLike
+findBadReal1 argument magnitude Float64 real0000000000000000 copy
+findBadReal1 argument sign Float64 badProduct copy
+findBadReal1 result badReal Float64
+findBadReal1 ownedBy none
+findBadReal1 cleanedBy none
+findBadReal1 borrows none
+findBadReal1 catch none
+findBadReal1 suppresses none
+
+makeBadSignedResult is call
+makeBadSignedResult in hyperbolicTangentParts
+makeBadSignedResult invokes Complex.new
+makeBadSignedResult argument real Float64 badReal copy
+makeBadSignedResult argument imag Float64 badNan copy
+makeBadSignedResult result badSignedResult Complex
+makeBadSignedResult ownedBy none
+makeBadSignedResult cleanedBy none
+makeBadSignedResult borrows none
+makeBadSignedResult catch none
+makeBadSignedResult suppresses none
+
 makeBadResult is call
 makeBadResult in hyperbolicTangentParts
 makeBadResult invokes Complex.new
@@ -7833,17 +7946,17 @@ findAx1 borrows none
 findAx1 catch none
 findAx1 suppresses none
 
-findCheck31 is call
-findCheck31 in hyperbolicTangentParts
-findCheck31 invokes compare.greaterOrEqualFloat64
-findCheck31 argument left Float64 ax copy
-findCheck31 argument right Float64 real4034000000000000 copy
-findCheck31 result check3 Bool
-findCheck31 ownedBy none
-findCheck31 cleanedBy none
-findCheck31 borrows none
-findCheck31 catch none
-findCheck31 suppresses none
+findCheck41 is call
+findCheck41 in hyperbolicTangentParts
+findCheck41 invokes compare.greaterOrEqualFloat64
+findCheck41 argument left Float64 ax copy
+findCheck41 argument right Float64 real4034000000000000 copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
 
 findSatCosine1 is call
 findSatCosine1 in hyperbolicTangentParts
