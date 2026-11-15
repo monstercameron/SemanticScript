@@ -249,6 +249,11 @@ def _machine() -> dict:
         "runEntry": Sig((), "Int32", effects=_MEM),
         # D-131: the address of the runtime's `refined_task_entry` operation, where a task's fiber starts
         "taskEntry": Sig((), _A, effects=_MEM),
+        # D-147: the address of the runtime's `refined_interrupt_handler` operation, which the operating system calls
+        # when an interrupt arrives (SetConsoleCtrlHandler, rt_sigaction), and on Linux the few instructions a signal
+        # handler returns through (`rt_sigreturn`, the SA_RESTORER trampoline)
+        "interruptHandler": Sig((), _A, effects=_MEM),
+        "signalRestorer": Sig((), _A, effects=_MEM),
         # D-139: stacks of the runtime's own on Linux, where there are no fibers: keep the running stack's place at
         # `saveAt` and resume the one kept at `resume`; or keep it and run `function(argument)` on a fresh stack
         # whose top is `top` (it never returns); or run the program's entry on a fresh stack and give its exit code
@@ -359,7 +364,45 @@ SYSTEM_CALLS.update({
     "deleteFiber": _sys("DeleteFiber", ("fiber:A",)),
     "loadLibraryW": _sys("LoadLibraryW", ("name:A",), "A"),
     "getProcAddress": _sys("GetProcAddress", ("module:A", "name:A"), "A"),
+    # D-147: the interrupt handler (signal) and the events that wake the scheduler, kernel32's own
+    "setConsoleCtrlHandler": _sys("SetConsoleCtrlHandler", ("handler:A", "add:Int32"), "Int32"),
+    "createEventW": _sys("CreateEventW", ("security:A", "manualReset:Int32", "initialState:Int32", "name:A"), "A"),
+    "setEvent": _sys("SetEvent", ("event:A",), "Int32"),
+    "resetEvent": _sys("ResetEvent", ("event:A",), "Int32"),
 })
+
+# D-144: the operating system's interfaces outside kernel32 that the runtime calls where Windows gives no other
+# interface: Winsock (ws2_32.dll) for `net`, and the system's random number generator (bcrypt.dll) for `random`.
+# Neither is a C library. Each function is imported from the DLL named here; every other row is kernel32's.
+SYSTEM_DLLS: dict[str, str] = {}
+
+
+def _dll(dll: str, rows: dict) -> dict:
+    for _name, (symbol, _sig) in rows.items():
+        SYSTEM_DLLS[symbol] = dll
+    return rows
+
+
+SYSTEM_CALLS.update(_dll("ws2_32", {
+    "wsaStartup": _sys("WSAStartup", ("version:Int32", "data:A"), "Int32"),
+    "wsaGetLastError": _sys("WSAGetLastError", (), "Int32"),
+    "socket": _sys("socket", ("family:Int32", "kind:Int32", "protocol:Int32"), "A"),
+    "bind": _sys("bind", ("socket:A", "address:A", "bytes:Int32"), "Int32"),
+    "listen": _sys("listen", ("socket:A", "backlog:Int32"), "Int32"),
+    "accept": _sys("accept", ("socket:A", "address:A", "bytes:A"), "A"),
+    "connect": _sys("connect", ("socket:A", "address:A", "bytes:Int32"), "Int32"),
+    "recv": _sys("recv", ("socket:A", "buffer:A", "bytes:Int32", "flags:Int32"), "Int32"),
+    "send": _sys("send", ("socket:A", "buffer:A", "bytes:Int32", "flags:Int32"), "Int32"),
+    "shutdown": _sys("shutdown", ("socket:A", "how:Int32"), "Int32"),
+    "closesocket": _sys("closesocket", ("socket:A",), "Int32"),
+    "wsaEventSelect": _sys("WSAEventSelect", ("socket:A", "event:A", "events:Int32"), "Int32"),
+    "wsaEnumNetworkEvents": _sys("WSAEnumNetworkEvents", ("socket:A", "event:A", "events:A"), "Int32"),
+    "getaddrinfo": _sys("getaddrinfo", ("node:A", "service:A", "hints:A", "result:A"), "Int32"),
+    "freeaddrinfo": _sys("freeaddrinfo", ("info:A",)),
+}))
+SYSTEM_CALLS.update(_dll("bcrypt", {
+    "bCryptGenRandom": _sys("BCryptGenRandom", ("algorithm:A", "buffer:A", "bytes:Int32", "flags:Int32"), "Int32"),
+}))
 
 
 def _linux(number: int, params: tuple) -> tuple[int, Sig]:
@@ -408,6 +451,30 @@ LINUX_CALLS: dict[str, tuple[int, Sig]] = {
     "readlinkat": _linux(267, ("directory", "path:A", "buffer:A", "bytes")),
     "pipe2": _linux(293, ("fds:A", "flags")),
     "pidfdOpen": _linux(434, ("pid", "flags")),
+    # D-148, D-149: sockets for `net` and its resolver, and the kernel's random bytes for `random`
+    "socket": _linux(41, ("family", "kind", "protocol")),
+    "connect": _linux(42, ("fd", "address:A", "bytes")),
+    "sendto": _linux(44, ("fd", "buffer:A", "bytes", "flags", "address:A", "addressBytes")),
+    "recvfrom": _linux(45, ("fd", "buffer:A", "bytes", "flags", "address:A", "addressBytes:A")),
+    "shutdown": _linux(48, ("fd", "how")),
+    "bind": _linux(49, ("fd", "address:A", "bytes")),
+    "listen": _linux(50, ("fd", "backlog")),
+    "setsockopt": _linux(54, ("fd", "level", "option", "value:A", "bytes")),
+    "getsockopt": _linux(55, ("fd", "level", "option", "value:A", "bytes:A")),
+    "accept4": _linux(288, ("fd", "address:A", "bytes:A", "flags")),
+    "getrandom": _linux(318, ("buffer:A", "bytes", "flags")),
+}
+
+# D-150: the same system calls on AArch64, by the kernel's generic numbers. AArch64 has no `poll`, `fork`, or `dup2`:
+# the backend makes `poll` a `ppoll` (its milliseconds a timespec), `fork` a `clone` of SIGCHLD, and `dup2` a `dup3`.
+AARCH64_NUMBERS: dict[str, int] = {
+    "read": 63, "write": 64, "close": 57, "fstat": 80, "poll": 73, "lseek": 62, "mmap": 222, "munmap": 215,
+    "rtSigaction": 134, "ioctl": 29, "dup2": 24, "nanosleep": 101, "getpid": 172, "fork": 220, "execve": 221,
+    "exit": 93, "wait4": 260, "kill": 129, "fcntl": 25, "flock": 32, "ftruncate": 46, "getcwd": 17,
+    "getdents64": 61, "clockGettime": 113, "exitGroup": 94, "openat": 56, "mkdirat": 34, "newfstatat": 79,
+    "unlinkat": 35, "readlinkat": 78, "pipe2": 59, "pidfdOpen": 434, "socket": 198, "connect": 203, "sendto": 206,
+    "recvfrom": 207, "shutdown": 210, "bind": 200, "listen": 201, "setsockopt": 208, "getsockopt": 209,
+    "accept4": 242, "getrandom": 278,
 }
 
 LIBRARY: dict[str, dict] = {
@@ -420,7 +487,9 @@ LIBRARY: dict[str, dict] = {
         "targets": {**{name: sig for name, (_symbol, sig) in SYSTEM_CALLS.items()},
                     **{name: sig for name, (_number, sig) in LINUX_CALLS.items()},
                     # D-138: whether the program is compiled for Linux, a constant of the target
-                    "linux": Sig((), "Bool", effects=_SYS)},
+                    "linux": Sig((), "Bool", effects=_SYS),
+                    # D-150: whether the program is compiled for AArch64, where some kernel structures differ
+                    "aarch64": Sig((), "Bool", effects=_SYS)},
     },
     "console": {
         "types": {

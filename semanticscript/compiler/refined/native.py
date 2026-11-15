@@ -89,9 +89,15 @@ def find_cc() -> list[str] | None:
 RUNTIME_PROJECT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "runtime"))
 _DECLARE = re.compile(r'^declare [^@\n]*@"?([A-Za-z_][A-Za-z0-9_.]*)"?\(', re.M)
 
-# D-140: what an executable on Linux cannot have: a foreign library is loaded by the C library's dynamic loader,
-# and an executable with no C library has none.
+# D-140, D-145: what an executable on Linux cannot have. `ffi.open("c")` asks for the C library itself, and every
+# library it could load is linked against it; a static process with no C library cannot host glibc, whose own
+# start-up only its dynamic loader (ld.so) performs.
 LINUX_REFUSED = ("ffi.",)
+LINUX_FFI = ("R901 this program needs {names}, which an executable on Linux cannot have (D-145): `ffi` loads the C "
+             "library (`ffi.open(\"c\")`) or libraries linked against it, and a static process with no C library "
+             "cannot host glibc, whose own start-up needs its dynamic loader (ld.so); run it with `refined run`")
+# D-147: a program that reads `signal` has its interrupt handler installed before its entry runs, as the JIT does
+SIGNAL_TARGETS = ("signal.interrupted|", "signal.waitForInterrupt|")
 
 
 def platform(cc: list[str]) -> tuple[str, str | None, str]:
@@ -104,13 +110,17 @@ def platform(cc: list[str]) -> tuple[str, str | None, str]:
         # gcc says `x86_64-w64-mingw32`; LLVM reads that OS as unknown and would emit ELF objects
         return machine, arch + "-w64-windows-gnu", ""
     if "linux" in machine:
+        if arch in ("aarch64", "arm64"):
+            return machine, "aarch64-unknown-linux-gnu", ""  # D-150
         if arch != "x86_64":
-            return machine, None, (f"R901 the runtime in SemanticScript reaches Linux through x86_64 system calls "
-                                   f"(D-138); `{machine}` is another architecture")
+            return machine, None, (f"R901 the runtime in SemanticScript reaches Linux through x86_64 and AArch64 "
+                                   f"system calls (D-138, D-150); `{machine}` is another architecture")
         return machine, "x86_64-unknown-linux-gnu", ""
     if "apple" in machine or "darwin" in machine:
-        return machine, None, (f"R901 standalone executables are built for Windows and Linux; macOS (`{machine}`) "
-                               "has no system layer in the runtime yet (D-141), so run the program with `refined run`")
+        return machine, None, (f"R901 standalone executables are built for Windows and Linux: macOS (`{machine}`) "
+                               "has no executable without a C library, since its kernel interface is private and every "
+                               "macOS executable links libSystem, which is the C library (D-145); run the program "
+                               "with `refined run`")
     return machine, None, f"R901 standalone executables are built for Windows and Linux, not `{machine}`"
 
 
@@ -211,7 +221,7 @@ def _whole_program(runtime_bitcode: bytes, program_ir: str, triple: str) -> byte
     runtime = llvm.parse_bitcode(runtime_bitcode)
     for fn in runtime.functions:
         if not fn.is_declaration and fn.name not in CALLBACKS and fn.name not in _KEPT \
-                and fn.name != "refined_task_entry":
+                and fn.name not in ("refined_task_entry", "refined_signals_start"):
             fn.linkage = llvm.Linkage.internal
     runtime.link_in(llvm.parse_assembly(program_ir))
     for fn in runtime.functions:
@@ -257,7 +267,7 @@ def _link_command(cc: list[str], triple: str, output: str, objects: list[str]) -
     from .codegen import target_os
     if target_os(triple) == "windows":
         return cc + ["-nostdlib", "-nostartfiles", "-Wl,-e,refined_entry", f"-Wl,--stack,{STACK_BYTES}",
-                     "-Wl,--gc-sections", "-s", "-o", output, *objects, "-lkernel32", "-lgcc"]
+                     "-Wl,--gc-sections", "-s", "-o", output, *objects, "-lkernel32", "-lws2_32", "-lbcrypt", "-lgcc"]
     return cc + ["-nostdlib", "-nostartfiles", "-static", "-Wl,-e,_start", "-Wl,--gc-sections", "-Wl,--build-id=none",
                  "-s", "-o", output, *objects, "-lgcc"]
 
@@ -273,16 +283,22 @@ def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
     runtime_bitcode, provided, problem = _ss_runtime_bitcode(triple)
     if runtime_bitcode is None:
         return False, problem
+    from .codegen import target_os
     missing = sorted(needed_runtime(ir_text) - provided)
     missing += sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z0-9.]+)\|', ir_text)) - runtime_host_targets(triple))
+    if missing and all(n.startswith(LINUX_REFUSED) for n in missing) and target_os(triple) == "linux":
+        return False, LINUX_FFI.format(names=", ".join(f"`{n}`" for n in missing))
     if missing:
         return False, ("R901 this program needs " + ", ".join(f"`{n}`" for n in missing) + ", which the runtime "
                        f"in SemanticScript does not provide yet on `{machine}` (docs/runtime-in-semanticscript.md); run "
                        "it with `refined run`")
     mod, _dot, op = entry.partition(".")
     from .codegen import function_name
+    signals = any(t in ir_text for t in SIGNAL_TARGETS)
     program = (_imported(ir_text, triple) + "\n; the program's entry, which the runtime's `refined_entry` runs "
-               "(D-124)\ndefine i32 @refined_program_main() {\nentry:\n"
+               "(D-124)\n" + ("declare void @refined_signals_start()\n" if signals else "") +
+               "define i32 @refined_program_main() {\nentry:\n" +
+               ("  call void @refined_signals_start()\n" if signals else "") +
                f'  %code = call i32 @"{function_name(mod, op)}"()\n  ret i32 %code\n}}\n')
     with tempfile.TemporaryDirectory() as d:
         obj = os.path.join(d, "program.o")

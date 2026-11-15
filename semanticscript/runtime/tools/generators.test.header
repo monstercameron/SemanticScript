@@ -1,0 +1,2 @@
+# Tests of the `generators` module; generated from tools/generators.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.

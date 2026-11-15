@@ -31,6 +31,8 @@ from caselib import allows_rows  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import floattable  # noqa: E402
 import hosttour  # noqa: E402
+import jsoncases  # noqa: E402
+import jsontour  # noqa: E402
 
 RUNTIME = os.path.join(caselib.ROOT, "semanticscript", "runtime")
 EXAMPLES = os.path.join(caselib.ROOT, "docs", "refined-examples")
@@ -83,11 +85,20 @@ def elf_dynamic(path: str) -> list[int]:
     return [t for t in types if t in (2, 3)]
 
 
+# D-144: the operating system's own interfaces an executable may import on Windows, where the system gives no other:
+# kernel32, Winsock for `net`, and bcrypt's random number generator for `random`. Never a C runtime.
+SYSTEM_DLLS = {"kernel32.dll", "ws2_32.dll", "bcrypt.dll"}
+CRT_MARKS = ("msvcr", "msvcp", "ucrt", "vcruntime", "api-ms-win-crt", "libc", "cygwin", "msys-")
+
+
 def assert_no_libc(path: str) -> None:
-    """Bar point 2: Windows, the import table names KERNEL32.dll alone; Linux, no dynamic section or interpreter and
-    nothing of the C library in the file."""
+    """Bar point 2 (D-144): Windows, the import table names KERNEL32.dll and at most the system's own WS2_32.dll and
+    bcrypt.dll besides, never a C runtime DLL; Linux, no dynamic section or interpreter and nothing of the C library
+    in the file."""
     if WINDOWS:
-        assert imported_dlls(path) == ["KERNEL32.dll"]
+        dlls = imported_dlls(path)
+        assert "KERNEL32.dll" in dlls and {d.lower() for d in dlls} <= SYSTEM_DLLS, dlls
+        assert not any(mark in d.lower() for d in dlls for mark in CRT_MARKS), dlls
         return
     assert elf_dynamic(path) == [], elf_dynamic(path)
     with open(path, "rb") as fh:
@@ -182,8 +193,7 @@ def test_linked_without_libc_matches_the_jit(name, tmp_path):
 
 # What the runtime in SemanticScript does not implement (D-137): sockets (Winsock is not kernel32), HTTP requests,
 # JSON, random numbers, and interrupts stay under `refined run`; each of these programs needs one of them.
-REFUSED = {"12-io/network-connect": "net", "19-stdlib/json": "json", "19-stdlib/library-tour": "http",
-           "19-stdlib/random": "random", "19-stdlib/signal": "signal"}
+REFUSED = {"12-io/network-connect": "net", "19-stdlib/signal": "signal"}
 if not WINDOWS:  # D-140: a foreign library needs the C library's dynamic loader
     REFUSED["18-interop/foreign"] = "ffi"
 
@@ -201,7 +211,8 @@ def test_suite_programs_link_or_are_refused(tmp_path):
         exe = os.path.join(project, "program.exe")
         built = _build(project, exe)
         if built.returncode != 0:
-            assert "R901" in built.stdout and "does not provide yet" in built.stdout, (case.name, built.stdout)
+            assert "R901" in built.stdout and ("does not provide yet" in built.stdout or "cannot have (D-145)"
+                                               in built.stdout), (case.name, built.stdout)
             assert f"`{REFUSED.get(case.name, '?')}." in built.stdout, (case.name, built.stdout)
             assert not os.path.exists(exe), case.name
             return "refused:" + case.name
@@ -225,8 +236,8 @@ def test_suite_programs_link_or_are_refused(tmp_path):
     # stage 1 linked 42 of the 76, stage 2 49; stages 3 and 4 every program but the five REFUSED names
     refused = {o.split(":", 1)[1] for o in outcomes if o.startswith("refused:")}
     assert refused == set(REFUSED) & {c.name for c in cases}, refused
-    # 71 on Windows; 70 on Linux, where `18-interop/foreign` is refused too (ffi needs the dynamic loader, D-140)
-    assert outcomes.count("linked") == len(cases) - len(refused) >= (71 if WINDOWS else 70), outcomes.count("linked")
+    # 74 on Windows; 73 on Linux, where `18-interop/foreign` is refused too (ffi needs the dynamic loader, D-140)
+    assert outcomes.count("linked") == len(cases) - len(refused) >= (74 if WINDOWS else 73), outcomes.count("linked")
 
 
 @needs_windows_cc
@@ -234,10 +245,10 @@ def test_program_needing_more_runtime_is_refused(tmp_path):
     """18 Static linking: a program that needs a host target the runtime in SemanticScript does not provide (here
     JSON, D-137) is refused before linking, naming the targets; `--runtime semanticscript`, still accepted (D-141),
     changes nothing."""
-    project = caselib.materialize(CASES["19-stdlib/json"], str(tmp_path / "json"))
+    project = caselib.materialize(CASES["19-stdlib/signal"], str(tmp_path / "signal"))
     exe = os.path.join(project, "program.exe")
     built = _build(project, exe)
-    assert built.returncode != 0 and "R901" in built.stdout and "`json.parse`" in built.stdout, built.stdout
+    assert built.returncode != 0 and "R901" in built.stdout and "`signal.interrupted`" in built.stdout, built.stdout
     assert "does not provide yet" in built.stdout and not os.path.exists(exe)
     compatible = caselib.refined("build", project, "--kind", "executable", "--runtime", "semanticscript", "--output",
                                  exe)
@@ -289,6 +300,30 @@ def test_host_targets_match_the_jit(tmp_path):
     ran, jit = _exe(exe, project), _jit(project)
     assert (ran.returncode, ran.stdout, ran.stderr) == (jit.returncode, jit.stdout, jit.stderr)
     assert ran.returncode == 0 and "[warn] a warning" in ran.stderr and "4000" in ran.stdout.splitlines()
+
+
+@needs_windows_cc
+def test_json_targets_match_the_jit(tmp_path):
+    """19 JSON, 18 Static linking (D-151): a program that runs every json target on each of 1,300 texts (valid
+    documents of every kind; numbers at the edges of Int64 and Float64, large integers, NaN and the infinities;
+    escapes, surrogate pairs and lone surrogates, text that is not UTF-8; nesting far past the limit; duplicate keys;
+    and each random document again broken in one place) prints exactly what `refined run` prints: every parse error
+    and its position, every stringified value, kind, and access and its error, then a document built with every
+    setter whose shared values change through `field`, `item`, and `setValue`. Each text `refined run` traps on (a
+    surrogate surrogateescape cannot write, an integer of more digits than int() reads) traps the same way."""
+    project = str(tmp_path / "jsontour")
+    jsontour.write_project(project)
+    caselib.approve(project)
+    exe = os.path.join(project, "program.exe")
+    built = _build(project, exe)
+    assert built.returncode == 0, built.stdout
+    assert_no_libc(exe)
+    for data in [b"\n".join(jsoncases.lines()) + b"\n"] + [t + b"\n" for t in jsoncases.TRAPPING]:
+        ran = subprocess.run([exe], capture_output=True, cwd=project, input=data, timeout=300)
+        jit = subprocess.run([sys.executable, caselib.COMPILER, "run", project, "--no-cache"], capture_output=True,
+                             cwd=project, input=data, timeout=600)
+        assert (ran.returncode, ran.stdout, ran.stderr) == (jit.returncode, jit.stdout, jit.stderr), data[:200]
+        assert ran.returncode == (0 if len(data) > 20000 else 70), (ran.returncode, data[:80])
 
 
 # ---------------------------------------------------------------- stages 3 and 4: examples, conformance, size
@@ -458,7 +493,7 @@ def test_runtime_host_targets_cover_the_library():
     ours = runtime_host_targets()
     assert ours <= set(host.HANDLERS), ours - set(host.HANDLERS)
     missing = {name.split(".")[0] for name in set(host.HANDLERS) - ours}
-    assert missing == {"net", "http", "json", "random", "signal"}, missing
+    assert missing == {"net", "signal"}, missing
     linux = runtime_host_targets("x86_64-unknown-linux-gnu")
     assert ours - linux == {"ffi.open", "ffi.close", "ffi.Function.bind"}, ours - linux
     with open(os.path.join(RUNTIME, "host.sem"), encoding="utf-8") as fh:
@@ -485,7 +520,7 @@ def test_runtime_project_checks_and_passes_its_tests():
         pytest.skip("the runtime's system targets are Windows functions and x86_64 Linux system calls")
     tested = caselib.refined("test", RUNTIME)
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "60 of 60 tests passed" in tested.stdout
+    assert "64 of 64 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

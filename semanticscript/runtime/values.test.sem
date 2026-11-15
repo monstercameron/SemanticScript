@@ -1,0 +1,857 @@
+# Tests of the `values` module; generated from tools/values.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+valuesTest is test
+valuesTest purpose "Values are held and given back with what they hold; arrays keep their items in order; objects keep their keys in first-put order, their last values, and find them by their bytes"
+valuesTest verifies newValue startsHeld
+valuesTest verifies retain countsHolder
+valuesTest verifies release givesBackLast
+valuesTest verifies appendItem appendsLast
+valuesTest verifies findField findsKey
+valuesTest verifies putField putsKey
+valuesTest verifies decodeAt decodesStrictly
+valuesTest typeParameter none
+valuesTest input none
+valuesTest output none
+valuesTest outputOwnedBy none
+valuesTest raises none
+valuesTest effect use machine.memory
+valuesTest effect use system.calls
+valuesTest uses memoryAccess
+valuesTest uses systemCalls
+valuesTest memoryHeap false
+valuesTest async false
+valuesTest maxRecursion none
+valuesTest label begin loopKind none
+valuesTest label begin within none
+valuesTest label eachItem loopKind while
+valuesTest label eachItem within none
+valuesTest label eachItem maxIterations hundred
+valuesTest label addItem loopKind none
+valuesTest label addItem within eachItem
+valuesTest label checkItems loopKind none
+valuesTest label checkItems within none
+valuesTest let at Int64 0 mutable
+valuesTest let hundred Int64 100 immutable
+valuesTest let keyA String "a" immutable
+valuesTest let keyB String "bb" immutable
+valuesTest let keyAgain String "a" immutable
+valuesTest let mixed String "A\xc3\xa9\xf0\x9f\x98\x80" immutable
+valuesTest let bad String "\xe2\x82A\xed\xa0\x80\xc0\xaf" immutable
+valuesTest let three Int64 3 immutable
+valuesTest let six Int64 6 immutable
+valuesTest let zero Int64 0 immutable
+valuesTest let one Int64 1 immutable
+valuesTest let twentyFour Int64 24 immutable
+valuesTest let n101 Int64 101 immutable
+valuesTest let two Int64 2 immutable
+valuesTest let codeOffset Int64 61440 immutable
+valuesTest let n65 Int64 65 immutable
+valuesTest let n233 Int64 233 immutable
+valuesTest let four Int64 4 immutable
+valuesTest let n128512 Int64 128512 immutable
+valuesTest let minusOne Int64 -1 immutable
+valuesTest at begin do makeArray
+valuesTest at begin do makeShared
+valuesTest at begin do holdShared
+valuesTest at begin do addShared
+valuesTest at begin goto eachItem
+valuesTest at eachItem do itemsDone
+valuesTest at eachItem branch if done goto checkItems else goto addItem
+valuesTest at addItem do makeItem
+valuesTest at addItem do addIt
+valuesTest at addItem do nextItem
+valuesTest at addItem set at after
+valuesTest at addItem goto eachItem
+valuesTest at checkItems do readCount
+valuesTest at checkItems do expectCount
+valuesTest at checkItems do makeObject
+valuesTest at checkItems do findA
+valuesTest at checkItems do findB
+valuesTest at checkItems do findAgain
+valuesTest at checkItems do makeFirst
+valuesTest at checkItems do putA
+valuesTest at checkItems do makeSecond
+valuesTest at checkItems do putB
+valuesTest at checkItems do holdArray
+valuesTest at checkItems do putAgain
+valuesTest at checkItems do readFound
+valuesTest at checkItems do sameCheck
+valuesTest at checkItems do doAssertTrue
+valuesTest at checkItems do readMissing
+valuesTest at checkItems do nowhere
+valuesTest at checkItems do missingCheck
+valuesTest at checkItems do doAssertTrue2
+valuesTest at checkItems do readFields
+valuesTest at checkItems do expectFields
+valuesTest at checkItems do dropObject
+valuesTest at checkItems do expectObject
+valuesTest at checkItems do dropArray
+valuesTest at checkItems do expectArray
+valuesTest at checkItems do dropShared
+valuesTest at checkItems do expectShared
+valuesTest at checkItems do findCode
+valuesTest at checkItems do findMixed
+valuesTest at checkItems do mixedLength
+valuesTest at checkItems do decodeAscii
+valuesTest at checkItems do expectAsciiTaken
+valuesTest at checkItems do readAscii
+valuesTest at checkItems do expectAscii
+valuesTest at checkItems do decodeTwo
+valuesTest at checkItems do expectTwoTaken
+valuesTest at checkItems do readTwo
+valuesTest at checkItems do expectTwo
+valuesTest at checkItems do decodeFour
+valuesTest at checkItems do expectFourTaken
+valuesTest at checkItems do readFour
+valuesTest at checkItems do expectFour
+valuesTest at checkItems do findBad
+valuesTest at checkItems do badLength
+valuesTest at checkItems do decodeCut
+valuesTest at checkItems do expectCutTaken
+valuesTest at checkItems do readCut
+valuesTest at checkItems do expectCut
+valuesTest at checkItems do decodeSurrogate
+valuesTest at checkItems do expectSurrogateTaken
+valuesTest at checkItems do decodeOverlong
+valuesTest at checkItems do expectOverlongTaken
+valuesTest at checkItems do readOverlong
+valuesTest at checkItems do expectOverlong
+valuesTest at checkItems return ok none
+
+makeArray is call
+makeArray in valuesTest
+makeArray invokes newValue
+makeArray argument kind Int64 kindArray copy
+makeArray result array machine.Address
+makeArray ownedBy none
+makeArray cleanedBy none
+makeArray borrows none
+makeArray catch none
+makeArray suppresses none
+
+makeShared is call
+makeShared in valuesTest
+makeShared invokes newValue
+makeShared argument kind Int64 kindText copy
+makeShared result shared machine.Address
+makeShared ownedBy none
+makeShared cleanedBy none
+makeShared borrows none
+makeShared catch none
+makeShared suppresses none
+
+holdShared is call
+holdShared in valuesTest
+holdShared invokes retain
+holdShared argument node machine.Address shared copy
+holdShared result none
+holdShared ownedBy none
+holdShared cleanedBy none
+holdShared borrows none
+holdShared catch none
+holdShared suppresses none
+
+addShared is call
+addShared in valuesTest
+addShared invokes appendItem
+addShared argument array machine.Address array copy
+addShared argument item machine.Address shared copy
+addShared result none
+addShared ownedBy none
+addShared cleanedBy none
+addShared borrows none
+addShared catch none
+addShared suppresses none
+
+itemsDone is call
+itemsDone in valuesTest
+itemsDone invokes compare.greaterOrEqualInt64
+itemsDone argument left Int64 at copy
+itemsDone argument right Int64 hundred copy
+itemsDone result done Bool
+itemsDone ownedBy none
+itemsDone cleanedBy none
+itemsDone borrows none
+itemsDone catch none
+itemsDone suppresses none
+
+makeItem is call
+makeItem in valuesTest
+makeItem invokes newValue
+makeItem argument kind Int64 kindNull copy
+makeItem result item machine.Address
+makeItem ownedBy none
+makeItem cleanedBy none
+makeItem borrows none
+makeItem catch none
+makeItem suppresses none
+
+addIt is call
+addIt in valuesTest
+addIt invokes appendItem
+addIt argument array machine.Address array copy
+addIt argument item machine.Address item copy
+addIt result none
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+nextItem is call
+nextItem in valuesTest
+nextItem invokes math.addInt64
+nextItem argument left Int64 at copy
+nextItem argument right Int64 one copy
+nextItem result after Int64
+nextItem ownedBy none
+nextItem cleanedBy none
+nextItem borrows none
+nextItem catch none
+nextItem suppresses none
+
+readCount is call
+readCount in valuesTest
+readCount invokes word
+readCount argument node machine.Address array copy
+readCount argument offset Int64 twentyFour copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+expectCount is call
+expectCount in valuesTest
+expectCount invokes test.assertEqualInt64
+expectCount argument expected Int64 n101 copy
+expectCount argument actual Int64 count copy
+expectCount result none
+expectCount ownedBy none
+expectCount cleanedBy none
+expectCount borrows none
+expectCount catch none
+expectCount suppresses none
+
+makeObject is call
+makeObject in valuesTest
+makeObject invokes newValue
+makeObject argument kind Int64 kindObject copy
+makeObject result object machine.Address
+makeObject ownedBy none
+makeObject cleanedBy none
+makeObject borrows none
+makeObject catch none
+makeObject suppresses none
+
+findA is call
+findA in valuesTest
+findA invokes machine.addressOfString
+findA argument text String keyA lend
+findA result aAt machine.Address
+findA ownedBy none
+findA cleanedBy none
+findA borrows none
+findA catch none
+findA suppresses none
+
+findB is call
+findB in valuesTest
+findB invokes machine.addressOfString
+findB argument text String keyB lend
+findB result bAt machine.Address
+findB ownedBy none
+findB cleanedBy none
+findB borrows none
+findB catch none
+findB suppresses none
+
+findAgain is call
+findAgain in valuesTest
+findAgain invokes machine.addressOfString
+findAgain argument text String keyAgain lend
+findAgain result againAt machine.Address
+findAgain ownedBy none
+findAgain cleanedBy none
+findAgain borrows none
+findAgain catch none
+findAgain suppresses none
+
+makeFirst is call
+makeFirst in valuesTest
+makeFirst invokes newValue
+makeFirst argument kind Int64 kindNull copy
+makeFirst result first machine.Address
+makeFirst ownedBy none
+makeFirst cleanedBy none
+makeFirst borrows none
+makeFirst catch none
+makeFirst suppresses none
+
+putA is call
+putA in valuesTest
+putA invokes putField
+putA argument object machine.Address object copy
+putA argument key machine.Address aAt copy
+putA argument keyBytes Int64 one copy
+putA argument value machine.Address first copy
+putA result none
+putA ownedBy none
+putA cleanedBy none
+putA borrows none
+putA catch none
+putA suppresses none
+
+makeSecond is call
+makeSecond in valuesTest
+makeSecond invokes newValue
+makeSecond argument kind Int64 kindNull copy
+makeSecond result second machine.Address
+makeSecond ownedBy none
+makeSecond cleanedBy none
+makeSecond borrows none
+makeSecond catch none
+makeSecond suppresses none
+
+putB is call
+putB in valuesTest
+putB invokes putField
+putB argument object machine.Address object copy
+putB argument key machine.Address bAt copy
+putB argument keyBytes Int64 two copy
+putB argument value machine.Address second copy
+putB result none
+putB ownedBy none
+putB cleanedBy none
+putB borrows none
+putB catch none
+putB suppresses none
+
+holdArray is call
+holdArray in valuesTest
+holdArray invokes retain
+holdArray argument node machine.Address array copy
+holdArray result none
+holdArray ownedBy none
+holdArray cleanedBy none
+holdArray borrows none
+holdArray catch none
+holdArray suppresses none
+
+putAgain is call
+putAgain in valuesTest
+putAgain invokes putField
+putAgain argument object machine.Address object copy
+putAgain argument key machine.Address againAt copy
+putAgain argument keyBytes Int64 one copy
+putAgain argument value machine.Address array copy
+putAgain result none
+putAgain ownedBy none
+putAgain cleanedBy none
+putAgain borrows none
+putAgain catch none
+putAgain suppresses none
+
+readFound is call
+readFound in valuesTest
+readFound invokes findField
+readFound argument object machine.Address object copy
+readFound argument key machine.Address againAt copy
+readFound argument keyBytes Int64 one copy
+readFound result found machine.Address
+readFound ownedBy none
+readFound cleanedBy none
+readFound borrows none
+readFound catch none
+readFound suppresses none
+
+sameCheck is call
+sameCheck in valuesTest
+sameCheck invokes machine.equal
+sameCheck argument left machine.Address found copy
+sameCheck argument right machine.Address array copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+doAssertTrue is call
+doAssertTrue in valuesTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool same copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readMissing is call
+readMissing in valuesTest
+readMissing invokes findField
+readMissing argument object machine.Address object copy
+readMissing argument key machine.Address bAt copy
+readMissing argument keyBytes Int64 one copy
+readMissing result missing machine.Address
+readMissing ownedBy none
+readMissing cleanedBy none
+readMissing borrows none
+readMissing catch none
+readMissing suppresses none
+
+nowhere is call
+nowhere in valuesTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+missingCheck is call
+missingCheck in valuesTest
+missingCheck invokes machine.equal
+missingCheck argument left machine.Address missing copy
+missingCheck argument right machine.Address anywhere copy
+missingCheck result isMissing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in valuesTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool isMissing copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+readFields is call
+readFields in valuesTest
+readFields invokes word
+readFields argument node machine.Address object copy
+readFields argument offset Int64 twentyFour copy
+readFields result fields Int64
+readFields ownedBy none
+readFields cleanedBy none
+readFields borrows none
+readFields catch none
+readFields suppresses none
+
+expectFields is call
+expectFields in valuesTest
+expectFields invokes test.assertEqualInt64
+expectFields argument expected Int64 two copy
+expectFields argument actual Int64 fields copy
+expectFields result none
+expectFields ownedBy none
+expectFields cleanedBy none
+expectFields borrows none
+expectFields catch none
+expectFields suppresses none
+
+dropObject is call
+dropObject in valuesTest
+dropObject invokes release
+dropObject argument node machine.Address object copy
+dropObject result objectFreed Int64
+dropObject ownedBy none
+dropObject cleanedBy none
+dropObject borrows none
+dropObject catch none
+dropObject suppresses none
+
+expectObject is call
+expectObject in valuesTest
+expectObject invokes test.assertEqualInt64
+expectObject argument expected Int64 two copy
+expectObject argument actual Int64 objectFreed copy
+expectObject result none
+expectObject ownedBy none
+expectObject cleanedBy none
+expectObject borrows none
+expectObject catch none
+expectObject suppresses none
+
+dropArray is call
+dropArray in valuesTest
+dropArray invokes release
+dropArray argument node machine.Address array copy
+dropArray result arrayFreed Int64
+dropArray ownedBy none
+dropArray cleanedBy none
+dropArray borrows none
+dropArray catch none
+dropArray suppresses none
+
+expectArray is call
+expectArray in valuesTest
+expectArray invokes test.assertEqualInt64
+expectArray argument expected Int64 n101 copy
+expectArray argument actual Int64 arrayFreed copy
+expectArray result none
+expectArray ownedBy none
+expectArray cleanedBy none
+expectArray borrows none
+expectArray catch none
+expectArray suppresses none
+
+dropShared is call
+dropShared in valuesTest
+dropShared invokes release
+dropShared argument node machine.Address shared copy
+dropShared result sharedFreed Int64
+dropShared ownedBy none
+dropShared cleanedBy none
+dropShared borrows none
+dropShared catch none
+dropShared suppresses none
+
+expectShared is call
+expectShared in valuesTest
+expectShared invokes test.assertEqualInt64
+expectShared argument expected Int64 one copy
+expectShared argument actual Int64 sharedFreed copy
+expectShared result none
+expectShared ownedBy none
+expectShared cleanedBy none
+expectShared borrows none
+expectShared catch none
+expectShared suppresses none
+
+findCode is call
+findCode in valuesTest
+findCode invokes kernel.stateAt
+findCode argument offset Int64 codeOffset copy
+findCode result codeAt machine.Address
+findCode ownedBy none
+findCode cleanedBy none
+findCode borrows none
+findCode catch none
+findCode suppresses none
+
+findMixed is call
+findMixed in valuesTest
+findMixed invokes machine.addressOfString
+findMixed argument text String mixed lend
+findMixed result mixedAt machine.Address
+findMixed ownedBy none
+findMixed cleanedBy none
+findMixed borrows none
+findMixed catch none
+findMixed suppresses none
+
+mixedLength is call
+mixedLength in valuesTest
+mixedLength invokes string.byteLength
+mixedLength argument text String mixed lend
+mixedLength result mixedBytes Int64
+mixedLength ownedBy none
+mixedLength cleanedBy none
+mixedLength borrows none
+mixedLength catch none
+mixedLength suppresses none
+
+decodeAscii is call
+decodeAscii in valuesTest
+decodeAscii invokes decodeAt
+decodeAscii argument text machine.Address mixedAt copy
+decodeAscii argument bytes Int64 mixedBytes copy
+decodeAscii argument at Int64 zero copy
+decodeAscii argument out machine.Address codeAt copy
+decodeAscii result asciiTaken Int64
+decodeAscii ownedBy none
+decodeAscii cleanedBy none
+decodeAscii borrows none
+decodeAscii catch none
+decodeAscii suppresses none
+
+expectAsciiTaken is call
+expectAsciiTaken in valuesTest
+expectAsciiTaken invokes test.assertEqualInt64
+expectAsciiTaken argument expected Int64 one copy
+expectAsciiTaken argument actual Int64 asciiTaken copy
+expectAsciiTaken result none
+expectAsciiTaken ownedBy none
+expectAsciiTaken cleanedBy none
+expectAsciiTaken borrows none
+expectAsciiTaken catch none
+expectAsciiTaken suppresses none
+
+readAscii is call
+readAscii in valuesTest
+readAscii invokes machine.loadInt64
+readAscii argument address machine.Address codeAt copy
+readAscii result asciiCode Int64
+readAscii ownedBy none
+readAscii cleanedBy none
+readAscii borrows none
+readAscii catch none
+readAscii suppresses none
+
+expectAscii is call
+expectAscii in valuesTest
+expectAscii invokes test.assertEqualInt64
+expectAscii argument expected Int64 n65 copy
+expectAscii argument actual Int64 asciiCode copy
+expectAscii result none
+expectAscii ownedBy none
+expectAscii cleanedBy none
+expectAscii borrows none
+expectAscii catch none
+expectAscii suppresses none
+
+decodeTwo is call
+decodeTwo in valuesTest
+decodeTwo invokes decodeAt
+decodeTwo argument text machine.Address mixedAt copy
+decodeTwo argument bytes Int64 mixedBytes copy
+decodeTwo argument at Int64 one copy
+decodeTwo argument out machine.Address codeAt copy
+decodeTwo result twoTaken Int64
+decodeTwo ownedBy none
+decodeTwo cleanedBy none
+decodeTwo borrows none
+decodeTwo catch none
+decodeTwo suppresses none
+
+expectTwoTaken is call
+expectTwoTaken in valuesTest
+expectTwoTaken invokes test.assertEqualInt64
+expectTwoTaken argument expected Int64 two copy
+expectTwoTaken argument actual Int64 twoTaken copy
+expectTwoTaken result none
+expectTwoTaken ownedBy none
+expectTwoTaken cleanedBy none
+expectTwoTaken borrows none
+expectTwoTaken catch none
+expectTwoTaken suppresses none
+
+readTwo is call
+readTwo in valuesTest
+readTwo invokes machine.loadInt64
+readTwo argument address machine.Address codeAt copy
+readTwo result twoCode Int64
+readTwo ownedBy none
+readTwo cleanedBy none
+readTwo borrows none
+readTwo catch none
+readTwo suppresses none
+
+expectTwo is call
+expectTwo in valuesTest
+expectTwo invokes test.assertEqualInt64
+expectTwo argument expected Int64 n233 copy
+expectTwo argument actual Int64 twoCode copy
+expectTwo result none
+expectTwo ownedBy none
+expectTwo cleanedBy none
+expectTwo borrows none
+expectTwo catch none
+expectTwo suppresses none
+
+decodeFour is call
+decodeFour in valuesTest
+decodeFour invokes decodeAt
+decodeFour argument text machine.Address mixedAt copy
+decodeFour argument bytes Int64 mixedBytes copy
+decodeFour argument at Int64 three copy
+decodeFour argument out machine.Address codeAt copy
+decodeFour result fourTaken Int64
+decodeFour ownedBy none
+decodeFour cleanedBy none
+decodeFour borrows none
+decodeFour catch none
+decodeFour suppresses none
+
+expectFourTaken is call
+expectFourTaken in valuesTest
+expectFourTaken invokes test.assertEqualInt64
+expectFourTaken argument expected Int64 four copy
+expectFourTaken argument actual Int64 fourTaken copy
+expectFourTaken result none
+expectFourTaken ownedBy none
+expectFourTaken cleanedBy none
+expectFourTaken borrows none
+expectFourTaken catch none
+expectFourTaken suppresses none
+
+readFour is call
+readFour in valuesTest
+readFour invokes machine.loadInt64
+readFour argument address machine.Address codeAt copy
+readFour result fourCode Int64
+readFour ownedBy none
+readFour cleanedBy none
+readFour borrows none
+readFour catch none
+readFour suppresses none
+
+expectFour is call
+expectFour in valuesTest
+expectFour invokes test.assertEqualInt64
+expectFour argument expected Int64 n128512 copy
+expectFour argument actual Int64 fourCode copy
+expectFour result none
+expectFour ownedBy none
+expectFour cleanedBy none
+expectFour borrows none
+expectFour catch none
+expectFour suppresses none
+
+findBad is call
+findBad in valuesTest
+findBad invokes machine.addressOfString
+findBad argument text String bad lend
+findBad result badAt machine.Address
+findBad ownedBy none
+findBad cleanedBy none
+findBad borrows none
+findBad catch none
+findBad suppresses none
+
+badLength is call
+badLength in valuesTest
+badLength invokes string.byteLength
+badLength argument text String bad lend
+badLength result badBytes Int64
+badLength ownedBy none
+badLength cleanedBy none
+badLength borrows none
+badLength catch none
+badLength suppresses none
+
+decodeCut is call
+decodeCut in valuesTest
+decodeCut invokes decodeAt
+decodeCut argument text machine.Address badAt copy
+decodeCut argument bytes Int64 badBytes copy
+decodeCut argument at Int64 zero copy
+decodeCut argument out machine.Address codeAt copy
+decodeCut result cutTaken Int64
+decodeCut ownedBy none
+decodeCut cleanedBy none
+decodeCut borrows none
+decodeCut catch none
+decodeCut suppresses none
+
+expectCutTaken is call
+expectCutTaken in valuesTest
+expectCutTaken invokes test.assertEqualInt64
+expectCutTaken argument expected Int64 two copy
+expectCutTaken argument actual Int64 cutTaken copy
+expectCutTaken result none
+expectCutTaken ownedBy none
+expectCutTaken cleanedBy none
+expectCutTaken borrows none
+expectCutTaken catch none
+expectCutTaken suppresses none
+
+readCut is call
+readCut in valuesTest
+readCut invokes machine.loadInt64
+readCut argument address machine.Address codeAt copy
+readCut result cutCode Int64
+readCut ownedBy none
+readCut cleanedBy none
+readCut borrows none
+readCut catch none
+readCut suppresses none
+
+expectCut is call
+expectCut in valuesTest
+expectCut invokes test.assertEqualInt64
+expectCut argument expected Int64 minusOne copy
+expectCut argument actual Int64 cutCode copy
+expectCut result none
+expectCut ownedBy none
+expectCut cleanedBy none
+expectCut borrows none
+expectCut catch none
+expectCut suppresses none
+
+decodeSurrogate is call
+decodeSurrogate in valuesTest
+decodeSurrogate invokes decodeAt
+decodeSurrogate argument text machine.Address badAt copy
+decodeSurrogate argument bytes Int64 badBytes copy
+decodeSurrogate argument at Int64 three copy
+decodeSurrogate argument out machine.Address codeAt copy
+decodeSurrogate result surrogateTaken Int64
+decodeSurrogate ownedBy none
+decodeSurrogate cleanedBy none
+decodeSurrogate borrows none
+decodeSurrogate catch none
+decodeSurrogate suppresses none
+
+expectSurrogateTaken is call
+expectSurrogateTaken in valuesTest
+expectSurrogateTaken invokes test.assertEqualInt64
+expectSurrogateTaken argument expected Int64 one copy
+expectSurrogateTaken argument actual Int64 surrogateTaken copy
+expectSurrogateTaken result none
+expectSurrogateTaken ownedBy none
+expectSurrogateTaken cleanedBy none
+expectSurrogateTaken borrows none
+expectSurrogateTaken catch none
+expectSurrogateTaken suppresses none
+
+decodeOverlong is call
+decodeOverlong in valuesTest
+decodeOverlong invokes decodeAt
+decodeOverlong argument text machine.Address badAt copy
+decodeOverlong argument bytes Int64 badBytes copy
+decodeOverlong argument at Int64 six copy
+decodeOverlong argument out machine.Address codeAt copy
+decodeOverlong result overlongTaken Int64
+decodeOverlong ownedBy none
+decodeOverlong cleanedBy none
+decodeOverlong borrows none
+decodeOverlong catch none
+decodeOverlong suppresses none
+
+expectOverlongTaken is call
+expectOverlongTaken in valuesTest
+expectOverlongTaken invokes test.assertEqualInt64
+expectOverlongTaken argument expected Int64 one copy
+expectOverlongTaken argument actual Int64 overlongTaken copy
+expectOverlongTaken result none
+expectOverlongTaken ownedBy none
+expectOverlongTaken cleanedBy none
+expectOverlongTaken borrows none
+expectOverlongTaken catch none
+expectOverlongTaken suppresses none
+
+readOverlong is call
+readOverlong in valuesTest
+readOverlong invokes machine.loadInt64
+readOverlong argument address machine.Address codeAt copy
+readOverlong result overlongCode Int64
+readOverlong ownedBy none
+readOverlong cleanedBy none
+readOverlong borrows none
+readOverlong catch none
+readOverlong suppresses none
+
+expectOverlong is call
+expectOverlong in valuesTest
+expectOverlong invokes test.assertEqualInt64
+expectOverlong argument expected Int64 minusOne copy
+expectOverlong argument actual Int64 overlongCode copy
+expectOverlong result none
+expectOverlong ownedBy none
+expectOverlong cleanedBy none
+expectOverlong borrows none
+expectOverlong catch none
+expectOverlong suppresses none

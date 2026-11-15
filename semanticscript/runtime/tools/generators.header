@@ -1,0 +1,4 @@
+# Random numbers for a standalone executable: the operating system's secure source (BCryptGenRandom,
+# getrandom) and seeded generators that give exactly what Python's random.Random gives.
+#
+# This module is generated from tools/generators.dsl by tools/build.py.

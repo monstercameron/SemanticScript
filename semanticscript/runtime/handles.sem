@@ -19,6 +19,7 @@ handles imports standard.test
 handles imports frames
 handles imports heap
 handles imports tables
+handles imports values
 handles exports newHandle
 handles exports objectOf
 handles exports kindOf
@@ -115,6 +116,26 @@ kindLibrary is constant
 kindLibrary purpose "The kind of a foreign library"
 kindLibrary type Int64
 kindLibrary value 10
+
+kindJson is constant
+kindJson purpose "The kind of a JSON value (values)"
+kindJson type Int64
+kindJson value 11
+
+kindResponse is constant
+kindResponse purpose "The kind of an HTTP response: a heap block, at 0 its status, 8 its body (a heap block), 16 how many bytes"
+kindResponse type Int64
+kindResponse value 12
+
+kindListener is constant
+kindListener purpose "The kind of a TCP listener: a heap block of the sockets module's"
+kindListener type Int64
+kindListener value 13
+
+kindConnection is constant
+kindConnection purpose "The kind of a TCP connection: a heap block of the sockets module's"
+kindConnection type Int64
+kindConnection value 14
 
 endProcess is operation
 endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
@@ -537,6 +558,22 @@ failStale label libraryCheck loopKind none
 failStale label libraryCheck within none
 failStale label staleLibrary loopKind none
 failStale label staleLibrary within none
+failStale label jsonCheck loopKind none
+failStale label jsonCheck within none
+failStale label staleJson loopKind none
+failStale label staleJson within none
+failStale label responseCheck loopKind none
+failStale label responseCheck within none
+failStale label staleResponse loopKind none
+failStale label staleResponse within none
+failStale label listenerCheck loopKind none
+failStale label listenerCheck within none
+failStale label staleListener loopKind none
+failStale label staleListener within none
+failStale label connectionCheck loopKind none
+failStale label connectionCheck within none
+failStale label staleConnection loopKind none
+failStale label staleConnection within none
 failStale label staleOther loopKind none
 failStale label staleOther within none
 failStale let one Int64 1 immutable
@@ -552,6 +589,10 @@ failStale let channelText String "a Channel handle was used after it was closed 
 failStale let secretText String "a Secret handle was used after it was closed or its region was released" immutable
 failStale let generatorText String "a Generator handle was used after it was closed or its region was released" immutable
 failStale let libraryText String "a Library handle was used after it was closed or its region was released" immutable
+failStale let jsonText String "a Json handle was used after it was closed or its region was released" immutable
+failStale let responseText String "a Response handle was used after it was closed or its region was released" immutable
+failStale let listenerText String "a Listener handle was used after it was closed or its region was released" immutable
+failStale let connectionText String "a Connection handle was used after it was closed or its region was released" immutable
 failStale let otherText String "a  handle was used after it was closed or its region was released" immutable
 failStale at begin do fileCheck
 failStale at begin branch if isFile goto staleFile else goto listingCheck
@@ -590,9 +631,25 @@ failStale at generatorCheck branch if isGenerator goto staleGenerator else goto 
 failStale at staleGenerator do failGenerator
 failStale at staleGenerator return ok none
 failStale at libraryCheck do checkLibrary
-failStale at libraryCheck branch if isLibrary goto staleLibrary else goto staleOther
+failStale at libraryCheck branch if isLibrary goto staleLibrary else goto jsonCheck
 failStale at staleLibrary do failLibrary
 failStale at staleLibrary return ok none
+failStale at jsonCheck do checkJson
+failStale at jsonCheck branch if isJson goto staleJson else goto responseCheck
+failStale at staleJson do failJson
+failStale at staleJson return ok none
+failStale at responseCheck do checkResponse
+failStale at responseCheck branch if isResponse goto staleResponse else goto listenerCheck
+failStale at staleResponse do failResponse
+failStale at staleResponse return ok none
+failStale at listenerCheck do checkListener
+failStale at listenerCheck branch if isListener goto staleListener else goto connectionCheck
+failStale at staleListener do failListener
+failStale at staleListener return ok none
+failStale at connectionCheck do checkConnection
+failStale at connectionCheck branch if isConnection goto staleConnection else goto staleOther
+failStale at staleConnection do failConnection
+failStale at staleConnection return ok none
 failStale at staleOther do failOther
 failStale at staleOther return ok none
 
@@ -825,6 +882,98 @@ failLibrary cleanedBy none
 failLibrary borrows none
 failLibrary catch none
 failLibrary suppresses none
+
+checkJson is call
+checkJson in failStale
+checkJson invokes compare.equalInt64
+checkJson argument left Int64 kind copy
+checkJson argument right Int64 kindJson copy
+checkJson result isJson Bool
+checkJson ownedBy none
+checkJson cleanedBy none
+checkJson borrows none
+checkJson catch none
+checkJson suppresses none
+
+failJson is call
+failJson in failStale
+failJson invokes failText
+failJson argument text String jsonText lend
+failJson result none
+failJson ownedBy none
+failJson cleanedBy none
+failJson borrows none
+failJson catch none
+failJson suppresses none
+
+checkResponse is call
+checkResponse in failStale
+checkResponse invokes compare.equalInt64
+checkResponse argument left Int64 kind copy
+checkResponse argument right Int64 kindResponse copy
+checkResponse result isResponse Bool
+checkResponse ownedBy none
+checkResponse cleanedBy none
+checkResponse borrows none
+checkResponse catch none
+checkResponse suppresses none
+
+failResponse is call
+failResponse in failStale
+failResponse invokes failText
+failResponse argument text String responseText lend
+failResponse result none
+failResponse ownedBy none
+failResponse cleanedBy none
+failResponse borrows none
+failResponse catch none
+failResponse suppresses none
+
+checkListener is call
+checkListener in failStale
+checkListener invokes compare.equalInt64
+checkListener argument left Int64 kind copy
+checkListener argument right Int64 kindListener copy
+checkListener result isListener Bool
+checkListener ownedBy none
+checkListener cleanedBy none
+checkListener borrows none
+checkListener catch none
+checkListener suppresses none
+
+failListener is call
+failListener in failStale
+failListener invokes failText
+failListener argument text String listenerText lend
+failListener result none
+failListener ownedBy none
+failListener cleanedBy none
+failListener borrows none
+failListener catch none
+failListener suppresses none
+
+checkConnection is call
+checkConnection in failStale
+checkConnection invokes compare.equalInt64
+checkConnection argument left Int64 kind copy
+checkConnection argument right Int64 kindConnection copy
+checkConnection result isConnection Bool
+checkConnection ownedBy none
+checkConnection cleanedBy none
+checkConnection borrows none
+checkConnection catch none
+checkConnection suppresses none
+
+failConnection is call
+failConnection in failStale
+failConnection invokes failText
+failConnection argument text String connectionText lend
+failConnection result none
+failConnection ownedBy none
+failConnection cleanedBy none
+failConnection borrows none
+failConnection catch none
+failConnection suppresses none
 
 failOther is call
 failOther in failStale
@@ -2673,6 +2822,14 @@ drop label generatorCheck loopKind none
 drop label generatorCheck within none
 drop label giveGenerator loopKind none
 drop label giveGenerator within none
+drop label jsonCheck loopKind none
+drop label jsonCheck within none
+drop label giveJson loopKind none
+drop label giveJson within none
+drop label responseCheck loopKind none
+drop label responseCheck within none
+drop label giveResponse loopKind none
+drop label giveResponse within none
 drop label close loopKind none
 drop label close within none
 drop label done loopKind none
@@ -2725,9 +2882,24 @@ drop at giveSecret do giveSecretBytes
 drop at giveSecret do giveSecretObject
 drop at giveSecret goto close
 drop at generatorCheck do checkGenerator
-drop at generatorCheck branch if isGenerator goto giveGenerator else goto close
+drop at generatorCheck do checkListener
+drop at generatorCheck do checkConnection
+drop at generatorCheck do socketCheck
+drop at generatorCheck do plainCheck
+drop at generatorCheck branch if isPlain goto giveGenerator else goto jsonCheck
 drop at giveGenerator do giveGeneratorObject
 drop at giveGenerator goto close
+drop at jsonCheck do checkJson
+drop at jsonCheck branch if isJson goto giveJson else goto responseCheck
+drop at giveJson do releaseJson
+drop at giveJson goto close
+drop at responseCheck do checkResponse
+drop at responseCheck branch if isResponse goto giveResponse else goto close
+drop at giveResponse do findBody
+drop at giveResponse do readBody
+drop at giveResponse do giveBody
+drop at giveResponse do giveResponseObject
+drop at giveResponse goto close
 drop at close do clearKind
 drop at close do nowhere
 drop at close do clearObject
@@ -3078,6 +3250,54 @@ checkGenerator borrows none
 checkGenerator catch none
 checkGenerator suppresses none
 
+checkListener is call
+checkListener in drop
+checkListener invokes compare.equalInt64
+checkListener argument left Int64 kind copy
+checkListener argument right Int64 kindListener copy
+checkListener result isListener Bool
+checkListener ownedBy none
+checkListener cleanedBy none
+checkListener borrows none
+checkListener catch none
+checkListener suppresses none
+
+checkConnection is call
+checkConnection in drop
+checkConnection invokes compare.equalInt64
+checkConnection argument left Int64 kind copy
+checkConnection argument right Int64 kindConnection copy
+checkConnection result isConnection Bool
+checkConnection ownedBy none
+checkConnection cleanedBy none
+checkConnection borrows none
+checkConnection catch none
+checkConnection suppresses none
+
+socketCheck is call
+socketCheck in drop
+socketCheck invokes logic.or
+socketCheck argument left Bool isListener copy
+socketCheck argument right Bool isConnection copy
+socketCheck result isSocket Bool
+socketCheck ownedBy none
+socketCheck cleanedBy none
+socketCheck borrows none
+socketCheck catch none
+socketCheck suppresses none
+
+plainCheck is call
+plainCheck in drop
+plainCheck invokes logic.or
+plainCheck argument left Bool isGenerator copy
+plainCheck argument right Bool isSocket copy
+plainCheck result isPlain Bool
+plainCheck ownedBy none
+plainCheck cleanedBy none
+plainCheck borrows none
+plainCheck catch none
+plainCheck suppresses none
+
 giveGeneratorObject is call
 giveGeneratorObject in drop
 giveGeneratorObject invokes heap.give
@@ -3088,6 +3308,86 @@ giveGeneratorObject cleanedBy none
 giveGeneratorObject borrows none
 giveGeneratorObject catch none
 giveGeneratorObject suppresses none
+
+checkJson is call
+checkJson in drop
+checkJson invokes compare.equalInt64
+checkJson argument left Int64 kind copy
+checkJson argument right Int64 kindJson copy
+checkJson result isJson Bool
+checkJson ownedBy none
+checkJson cleanedBy none
+checkJson borrows none
+checkJson catch none
+checkJson suppresses none
+
+releaseJson is call
+releaseJson in drop
+releaseJson invokes values.release
+releaseJson argument node machine.Address object copy
+releaseJson result freed Int64
+releaseJson ownedBy none
+releaseJson cleanedBy none
+releaseJson borrows none
+releaseJson catch none
+releaseJson suppresses none
+
+checkResponse is call
+checkResponse in drop
+checkResponse invokes compare.equalInt64
+checkResponse argument left Int64 kind copy
+checkResponse argument right Int64 kindResponse copy
+checkResponse result isResponse Bool
+checkResponse ownedBy none
+checkResponse cleanedBy none
+checkResponse borrows none
+checkResponse catch none
+checkResponse suppresses none
+
+findBody is call
+findBody in drop
+findBody invokes machine.offset
+findBody argument address machine.Address object copy
+findBody argument bytes Int64 eight copy
+findBody result bodySlot machine.Address
+findBody ownedBy none
+findBody cleanedBy none
+findBody borrows none
+findBody catch none
+findBody suppresses none
+
+readBody is call
+readBody in drop
+readBody invokes machine.loadAddress
+readBody argument address machine.Address bodySlot copy
+readBody result body machine.Address
+readBody ownedBy none
+readBody cleanedBy none
+readBody borrows none
+readBody catch none
+readBody suppresses none
+
+giveBody is call
+giveBody in drop
+giveBody invokes heap.give
+giveBody argument block machine.Address body copy
+giveBody result none
+giveBody ownedBy none
+giveBody cleanedBy none
+giveBody borrows none
+giveBody catch none
+giveBody suppresses none
+
+giveResponseObject is call
+giveResponseObject in drop
+giveResponseObject invokes heap.give
+giveResponseObject argument block machine.Address object copy
+giveResponseObject result none
+giveResponseObject ownedBy none
+giveResponseObject cleanedBy none
+giveResponseObject borrows none
+giveResponseObject catch none
+giveResponseObject suppresses none
 
 clearKind is call
 clearKind in drop

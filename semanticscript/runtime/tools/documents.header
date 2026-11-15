@@ -1,0 +1,4 @@
+# JSON for a standalone executable: the json targets, reading text as Python's json.loads reads it (its errors
+# and positions included) and writing values as json.dumps writes them, as `refined run` does.
+#
+# This module is generated from tools/documents.dsl by tools/build.py.

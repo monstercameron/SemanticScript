@@ -141,8 +141,8 @@ with no C library; on Linux use `-nostdlib -nostartfiles -static
 cd docs/refined-examples/stage0
 python ../../../semanticscript/compiler/refined build . --kind executable --output stage0
 python ../../../semanticscript/compiler/refined build ../../../semanticscript/runtime --kind runtime --output runtime.o
-./stage0 . build/stage0b gcc runtime.o -nostdlib -nostartfiles -Wl,-e,refined_entry -lkernel32 -lgcc
-./build/stage0b . build/stage0c gcc runtime.o -nostdlib -nostartfiles -Wl,-e,refined_entry -lkernel32 -lgcc
+./stage0 . build/stage0b gcc runtime.o -nostdlib -nostartfiles -Wl,-e,refined_entry -lkernel32 -lws2_32 -lbcrypt -lgcc
+./build/stage0b . build/stage0c gcc runtime.o -nostdlib -nostartfiles -Wl,-e,refined_entry -lkernel32 -lws2_32 -lbcrypt -lgcc
 ```
 
 `build/stage0c.c` is byte-identical to `build/stage0b.c`: the fixed point

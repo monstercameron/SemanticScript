@@ -1,0 +1,2766 @@
+# JSON values for a standalone executable: nodes shared by the handles and containers that hold them,
+# counted, and given back with what they hold when the last one lets go, as Python objects are under `refined run`.
+#
+# This module is generated from tools/values.dsl by tools/build.py.
+
+values is module
+values purpose "JSON values as the json targets keep them: nodes shared by the handles and containers that hold them, counted, and given back when the last one lets go"
+values path values
+values imports standard.machine
+values imports standard.math
+values imports standard.compare
+values imports standard.convert
+values imports standard.bits
+values imports standard.logic
+values imports standard.string
+values imports standard.test
+values imports kernel
+values imports heap
+values imports tables
+values exports newValue
+values exports retain
+values exports release
+values exports appendItem
+values exports putField
+values exports findField
+values exports decodeAt
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep JSON values in memory"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to take memory for JSON values from the process heap and give it back"
+systemCalls grants use system.calls none
+
+# As under `refined run`, where a json.Value is a Python object: an array or object is shared, so a value read
+# from it with `field` or `item`, or stored in another with `setValue`, is the same value, and a change to it is
+# seen through every handle and container that holds it. A value is a heap block of nodeBytes, counted: every
+# handle and every container that holds it is one reference, and the last to let go gives it back with what it
+# holds (handles.drop, as a handle is closed or its region released). At 0 how many hold it, 8 its kind (1 null, 2
+# a boolean, 3 a whole number that fits an Int64, 4 a larger whole number kept as its decimal text, 5 a Float64,
+# 6 text, 7 an array, 8 an object), 16 its value (0 or 1, the number, the float's bits, or the address of a heap
+# block of its bytes or of its items), 24 its bytes or how many items, 32 how many items the block holds, from 40
+# an object's table (tables): text keys (a heap copy of the bytes) in the order first put, each with its value;
+# at 128 whether `json.stringify` is writing the value (to find a value that holds itself).
+# Text is kept as Python's str is, in UTF-8 that may hold surrogates (the bytes that were not UTF-8 are U+DC80 to
+# U+DCFF, as surrogateescape reads them), so equal keys are equal strings.
+# machine.state bytes 1056 to 1071 belong to this module: a key's two slots while it is looked up.
+nodeBytes is constant
+nodeBytes purpose "The bytes of a JSON value"
+nodeBytes type Int64
+nodeBytes value 136
+
+keySlotsAt is constant
+keySlotsAt purpose "Where a key's two slots are put while it is looked up, in machine.state"
+keySlotsAt type Int64
+keySlotsAt value 1056
+
+kindNull is constant
+kindNull purpose "A null value's kind"
+kindNull type Int64
+kindNull value 1
+
+kindBig is constant
+kindBig purpose "The kind of a whole number too large for an Int64, kept as its decimal text"
+kindBig type Int64
+kindBig value 4
+
+kindText is constant
+kindText purpose "A text value's kind"
+kindText type Int64
+kindText value 6
+
+kindArray is constant
+kindArray purpose "An array's kind"
+kindArray type Int64
+kindArray value 7
+
+kindObject is constant
+kindObject purpose "An object's kind"
+kindObject type Int64
+kindObject value 8
+
+word is operation
+word purpose "A whole number of a value at an offset"
+word invariant none
+word typeParameter none
+word input node machine.Address copied
+word input offset Int64 copied
+word output Int64
+word outputOwnedBy none
+word raises none
+word effect use machine.memory
+word uses memoryAccess
+word memoryHeap false
+word async false
+word maxRecursion none
+word label begin loopKind none
+word label begin within none
+word let none
+word at begin do findPart
+word at begin do readField
+word at begin return ok value
+
+findPart is call
+findPart in word
+findPart invokes machine.offset
+findPart argument address machine.Address node copy
+findPart argument bytes Int64 offset copy
+findPart result at machine.Address
+findPart ownedBy none
+findPart cleanedBy none
+findPart borrows none
+findPart catch none
+findPart suppresses none
+
+readField is call
+readField in word
+readField invokes machine.loadInt64
+readField argument address machine.Address at copy
+readField result value Int64
+readField ownedBy none
+readField cleanedBy none
+readField borrows none
+readField catch none
+readField suppresses none
+
+setWord is operation
+setWord purpose "Store a whole number of a value at an offset"
+setWord invariant none
+setWord typeParameter none
+setWord input node machine.Address copied
+setWord input offset Int64 copied
+setWord input value Int64 copied
+setWord output none
+setWord outputOwnedBy none
+setWord raises none
+setWord effect use machine.memory
+setWord uses memoryAccess
+setWord memoryHeap false
+setWord async false
+setWord maxRecursion none
+setWord label begin loopKind none
+setWord label begin within none
+setWord let none
+setWord at begin do findPart
+setWord at begin do storePart
+setWord at begin return ok none
+
+findPart is call
+findPart in setWord
+findPart invokes machine.offset
+findPart argument address machine.Address node copy
+findPart argument bytes Int64 offset copy
+findPart result at machine.Address
+findPart ownedBy none
+findPart cleanedBy none
+findPart borrows none
+findPart catch none
+findPart suppresses none
+
+storePart is call
+storePart in setWord
+storePart invokes machine.storeInt64
+storePart argument address machine.Address at copy
+storePart argument value Int64 value copy
+storePart result none
+storePart ownedBy none
+storePart cleanedBy none
+storePart borrows none
+storePart catch none
+storePart suppresses none
+
+newValue is operation
+newValue purpose "A new value of a kind, held once: an object starts with an empty table of text keys"
+newValue invariant startsHeld "\"A new value is held once and has its kind, no bytes, and no items\""
+newValue typeParameter none
+newValue input kind Int64 copied
+newValue output machine.Address
+newValue outputOwnedBy none
+newValue raises none
+newValue effect use machine.memory
+newValue effect use system.calls
+newValue uses memoryAccess
+newValue uses systemCalls
+newValue memoryHeap false
+newValue async false
+newValue maxRecursion none
+newValue label begin loopKind none
+newValue label begin within none
+newValue label prepareTable loopKind none
+newValue label prepareTable within none
+newValue label done loopKind none
+newValue label done within none
+newValue let zero Int64 0 immutable
+newValue let one Int64 1 immutable
+newValue let eight Int64 8 immutable
+newValue let forty Int64 40 immutable
+newValue let two Int64 2 immutable
+newValue at begin do takeNode
+newValue at begin do storeRefs
+newValue at begin do storeKind
+newValue at begin do objectCheck
+newValue at begin branch if isObject goto prepareTable else goto done
+newValue at prepareTable do findTable
+newValue at prepareTable do prepareIt
+newValue at prepareTable return ok node
+newValue at done return ok node
+
+takeNode is call
+takeNode in newValue
+takeNode invokes heap.take
+takeNode argument bytes Int64 nodeBytes copy
+takeNode result node machine.Address
+takeNode ownedBy none
+takeNode cleanedBy none
+takeNode borrows none
+takeNode catch none
+takeNode suppresses none
+
+storeRefs is call
+storeRefs in newValue
+storeRefs invokes setWord
+storeRefs argument node machine.Address node copy
+storeRefs argument offset Int64 zero copy
+storeRefs argument value Int64 one copy
+storeRefs result none
+storeRefs ownedBy none
+storeRefs cleanedBy none
+storeRefs borrows none
+storeRefs catch none
+storeRefs suppresses none
+
+storeKind is call
+storeKind in newValue
+storeKind invokes setWord
+storeKind argument node machine.Address node copy
+storeKind argument offset Int64 eight copy
+storeKind argument value Int64 kind copy
+storeKind result none
+storeKind ownedBy none
+storeKind cleanedBy none
+storeKind borrows none
+storeKind catch none
+storeKind suppresses none
+
+objectCheck is call
+objectCheck in newValue
+objectCheck invokes compare.equalInt64
+objectCheck argument left Int64 kind copy
+objectCheck argument right Int64 kindObject copy
+objectCheck result isObject Bool
+objectCheck ownedBy none
+objectCheck cleanedBy none
+objectCheck borrows none
+objectCheck catch none
+objectCheck suppresses none
+
+findTable is call
+findTable in newValue
+findTable invokes machine.offset
+findTable argument address machine.Address node copy
+findTable argument bytes Int64 forty copy
+findTable result table machine.Address
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch none
+findTable suppresses none
+
+prepareIt is call
+prepareIt in newValue
+prepareIt invokes tables.prepare
+prepareIt argument table machine.Address table copy
+prepareIt argument text Int64 one copy
+prepareIt argument keySlots Int64 two copy
+prepareIt argument valueSlots Int64 one copy
+prepareIt result none
+prepareIt ownedBy none
+prepareIt cleanedBy none
+prepareIt borrows none
+prepareIt catch none
+prepareIt suppresses none
+
+retain is operation
+retain purpose "Hold a value once more"
+retain invariant countsHolder "\"The value is held one more time\""
+retain typeParameter none
+retain input node machine.Address copied
+retain output none
+retain outputOwnedBy none
+retain raises none
+retain effect use machine.memory
+retain uses memoryAccess
+retain memoryHeap false
+retain async false
+retain maxRecursion none
+retain label begin loopKind none
+retain label begin within none
+retain let zero Int64 0 immutable
+retain let one Int64 1 immutable
+retain at begin do readRefs
+retain at begin do moreRefs
+retain at begin do storeRefs
+retain at begin return ok none
+
+readRefs is call
+readRefs in retain
+readRefs invokes word
+readRefs argument node machine.Address node copy
+readRefs argument offset Int64 zero copy
+readRefs result refs Int64
+readRefs ownedBy none
+readRefs cleanedBy none
+readRefs borrows none
+readRefs catch none
+readRefs suppresses none
+
+moreRefs is call
+moreRefs in retain
+moreRefs invokes math.addInt64
+moreRefs argument left Int64 refs copy
+moreRefs argument right Int64 one copy
+moreRefs result more Int64
+moreRefs ownedBy none
+moreRefs cleanedBy none
+moreRefs borrows none
+moreRefs catch none
+moreRefs suppresses none
+
+storeRefs is call
+storeRefs in retain
+storeRefs invokes setWord
+storeRefs argument node machine.Address node copy
+storeRefs argument offset Int64 zero copy
+storeRefs argument value Int64 more copy
+storeRefs result none
+storeRefs ownedBy none
+storeRefs cleanedBy none
+storeRefs borrows none
+storeRefs catch none
+storeRefs suppresses none
+
+push is operation
+push purpose "Push a value on a list of values to let go of: a heap block, at 0 how many, 8 how many it holds, then the values; gives the list, grown when full"
+push invariant none
+push typeParameter none
+push input list machine.Address copied
+push input node machine.Address copied
+push output machine.Address
+push outputOwnedBy none
+push raises none
+push effect use machine.memory
+push effect use system.calls
+push uses memoryAccess
+push uses systemCalls
+push memoryHeap false
+push async false
+push maxRecursion none
+push label begin loopKind none
+push label begin within none
+push label grow loopKind none
+push label grow within none
+push label store loopKind none
+push label store within none
+push let grown machine.Address unset mutable
+push let zero Int64 0 immutable
+push let eight Int64 8 immutable
+push let two Int64 2 immutable
+push let one Int64 1 immutable
+push at begin set grown list
+push at begin do readCount
+push at begin do readCapacity
+push at begin do fullCheck
+push at begin branch if full goto grow else goto store
+push at grow do twice
+push at grow do slotsOf
+push at grow do bytesOf
+push at grow do resizeIt
+push at grow set grown resized
+push at grow do storeCapacity
+push at grow goto store
+push at store do slotOf
+push at store do offsetOf
+push at store do findSlot
+push at store do storeNode
+push at store do moreCount
+push at store do storeCount
+push at store return ok grown
+
+readCount is call
+readCount in push
+readCount invokes word
+readCount argument node machine.Address list copy
+readCount argument offset Int64 zero copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readCapacity is call
+readCapacity in push
+readCapacity invokes word
+readCapacity argument node machine.Address list copy
+readCapacity argument offset Int64 eight copy
+readCapacity result capacity Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+fullCheck is call
+fullCheck in push
+fullCheck invokes compare.greaterOrEqualInt64
+fullCheck argument left Int64 count copy
+fullCheck argument right Int64 capacity copy
+fullCheck result full Bool
+fullCheck ownedBy none
+fullCheck cleanedBy none
+fullCheck borrows none
+fullCheck catch none
+fullCheck suppresses none
+
+twice is call
+twice in push
+twice invokes math.multiplyInt64
+twice argument left Int64 capacity copy
+twice argument right Int64 two copy
+twice result doubled Int64
+twice ownedBy none
+twice cleanedBy none
+twice borrows none
+twice catch none
+twice suppresses none
+
+slotsOf is call
+slotsOf in push
+slotsOf invokes math.addInt64
+slotsOf argument left Int64 doubled copy
+slotsOf argument right Int64 two copy
+slotsOf result slots Int64
+slotsOf ownedBy none
+slotsOf cleanedBy none
+slotsOf borrows none
+slotsOf catch none
+slotsOf suppresses none
+
+bytesOf is call
+bytesOf in push
+bytesOf invokes math.multiplyInt64
+bytesOf argument left Int64 slots copy
+bytesOf argument right Int64 eight copy
+bytesOf result bytes Int64
+bytesOf ownedBy none
+bytesOf cleanedBy none
+bytesOf borrows none
+bytesOf catch none
+bytesOf suppresses none
+
+resizeIt is call
+resizeIt in push
+resizeIt invokes heap.resize
+resizeIt argument block machine.Address list copy
+resizeIt argument bytes Int64 bytes copy
+resizeIt result resized machine.Address
+resizeIt ownedBy none
+resizeIt cleanedBy none
+resizeIt borrows none
+resizeIt catch none
+resizeIt suppresses none
+
+storeCapacity is call
+storeCapacity in push
+storeCapacity invokes setWord
+storeCapacity argument node machine.Address resized copy
+storeCapacity argument offset Int64 eight copy
+storeCapacity argument value Int64 doubled copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+slotOf is call
+slotOf in push
+slotOf invokes math.addInt64
+slotOf argument left Int64 count copy
+slotOf argument right Int64 two copy
+slotOf result slot Int64
+slotOf ownedBy none
+slotOf cleanedBy none
+slotOf borrows none
+slotOf catch none
+slotOf suppresses none
+
+offsetOf is call
+offsetOf in push
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 slot copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findSlot is call
+findSlot in push
+findSlot invokes machine.offset
+findSlot argument address machine.Address grown copy
+findSlot argument bytes Int64 offset copy
+findSlot result at machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeNode is call
+storeNode in push
+storeNode invokes machine.storeAddress
+storeNode argument address machine.Address at copy
+storeNode argument value machine.Address node copy
+storeNode result none
+storeNode ownedBy none
+storeNode cleanedBy none
+storeNode borrows none
+storeNode catch none
+storeNode suppresses none
+
+moreCount is call
+moreCount in push
+moreCount invokes math.addInt64
+moreCount argument left Int64 count copy
+moreCount argument right Int64 one copy
+moreCount result after Int64
+moreCount ownedBy none
+moreCount cleanedBy none
+moreCount borrows none
+moreCount catch none
+moreCount suppresses none
+
+storeCount is call
+storeCount in push
+storeCount invokes setWord
+storeCount argument node machine.Address grown copy
+storeCount argument offset Int64 zero copy
+storeCount argument value Int64 after copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+release is operation
+release purpose "Let go of a value once; when nothing holds it any more give it back, with its bytes, and let go of each value it holds, in turn; gives how many values were given back"
+release invariant givesBackLast "\"A value held n times is given back by the n-th release, with every value only it held; the others stay\""
+release typeParameter none
+release input node machine.Address copied
+release output Int64
+release outputOwnedBy none
+release raises none
+release effect use machine.memory
+release effect use system.calls
+release uses memoryAccess
+release uses systemCalls
+release memoryHeap false
+release async false
+release maxRecursion none
+release label begin loopKind none
+release label begin within none
+release label eachValue loopKind while
+release label eachValue within none
+release label eachValue maxIterations forever
+release label popOne loopKind none
+release label popOne within eachValue
+release label giveBack loopKind none
+release label giveBack within eachValue
+release label giveBytes loopKind none
+release label giveBytes within eachValue
+release label arrayCheck loopKind none
+release label arrayCheck within eachValue
+release label startItems loopKind none
+release label startItems within eachValue
+release label eachItem loopKind while
+release label eachItem within eachValue
+release label eachItem maxIterations itemCount
+release label pushItem loopKind none
+release label pushItem within eachItem
+release label giveItems loopKind none
+release label giveItems within eachValue
+release label objectCheck loopKind none
+release label objectCheck within eachValue
+release label startRows loopKind none
+release label startRows within eachValue
+release label eachRow loopKind while
+release label eachRow within eachValue
+release label eachRow maxIterations rowCount
+release label pushRow loopKind none
+release label pushRow within eachRow
+release label giveTable loopKind none
+release label giveTable within eachValue
+release label giveNode loopKind none
+release label giveNode within eachValue
+release label finish loopKind none
+release label finish within none
+release let list machine.Address unset mutable
+release let freed Int64 0 mutable
+release let at Int64 0 mutable
+release let forever Int64 9223372036854775807 immutable
+release let listBytes Int64 144 immutable
+release let eight Int64 8 immutable
+release let sixteen Int64 16 immutable
+release let zero Int64 0 immutable
+release let one Int64 1 immutable
+release let two Int64 2 immutable
+release let twentyFour Int64 24 immutable
+release let forty Int64 40 immutable
+release let thirtyTwo Int64 32 immutable
+release at begin do takeList
+release at begin do storeCapacity
+release at begin set list first
+release at begin do pushFirst
+release at begin set list started
+release at begin goto eachValue
+release at eachValue do readCount
+release at eachValue do emptyCheck
+release at eachValue branch if empty goto finish else goto popOne
+release at popOne do lessCount
+release at popOne do storeCount
+release at popOne do slotOf
+release at popOne do offsetOf
+release at popOne do findSlot
+release at popOne do readNode
+release at popOne do readRefs
+release at popOne do lessRefs
+release at popOne do storeRefs
+release at popOne do heldCheck
+release at popOne branch if held goto eachValue else goto giveBack
+release at giveBack do moreFreed
+release at giveBack set freed freedAfter
+release at giveBack do readKind
+release at giveBack do bigCheck
+release at giveBack do textCheck
+release at giveBack do bytesCheck
+release at giveBack branch if hasBytes goto giveBytes else goto arrayCheck
+release at giveBytes do readBytes
+release at giveBytes do bytesAddress
+release at giveBytes do giveBytesBlock
+release at giveBytes goto giveNode
+release at arrayCheck do checkArray
+release at arrayCheck branch if isArray goto startItems else goto objectCheck
+release at startItems set at zero
+release at startItems do readItemCount
+release at startItems do readItems
+release at startItems do itemsAddress
+release at startItems goto eachItem
+release at eachItem do itemsDone
+release at eachItem branch if allItems goto giveItems else goto pushItem
+release at pushItem do itemOffset
+release at pushItem do findItem
+release at pushItem do readItem
+release at pushItem do pushIt
+release at pushItem set list pushedItem
+release at pushItem do nextItem
+release at pushItem set at afterItem
+release at pushItem goto eachItem
+release at giveItems do giveItemsBlock
+release at giveItems goto giveNode
+release at objectCheck do checkObject
+release at objectCheck branch if isObject goto startRows else goto giveNode
+release at startRows set at zero
+release at startRows do findTable
+release at startRows do readRows
+release at startRows goto eachRow
+release at eachRow do rowsDone
+release at eachRow branch if allRows goto giveTable else goto pushRow
+release at pushRow do findRow
+release at pushRow do findKey
+release at pushRow do readKey
+release at pushRow do giveKey
+release at pushRow do findChild
+release at pushRow do readChild
+release at pushRow do pushChild
+release at pushRow set list pushedChild
+release at pushRow do nextRow
+release at pushRow set at afterRow
+release at pushRow goto eachRow
+release at giveTable do releaseTable
+release at giveTable goto giveNode
+release at giveNode do giveIt
+release at giveNode goto eachValue
+release at finish do giveList
+release at finish return ok freed
+
+takeList is call
+takeList in release
+takeList invokes heap.take
+takeList argument bytes Int64 listBytes copy
+takeList result first machine.Address
+takeList ownedBy none
+takeList cleanedBy none
+takeList borrows none
+takeList catch none
+takeList suppresses none
+
+storeCapacity is call
+storeCapacity in release
+storeCapacity invokes setWord
+storeCapacity argument node machine.Address first copy
+storeCapacity argument offset Int64 eight copy
+storeCapacity argument value Int64 sixteen copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+pushFirst is call
+pushFirst in release
+pushFirst invokes push
+pushFirst argument list machine.Address first copy
+pushFirst argument node machine.Address node copy
+pushFirst result started machine.Address
+pushFirst ownedBy none
+pushFirst cleanedBy none
+pushFirst borrows none
+pushFirst catch none
+pushFirst suppresses none
+
+readCount is call
+readCount in release
+readCount invokes word
+readCount argument node machine.Address list copy
+readCount argument offset Int64 zero copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+emptyCheck is call
+emptyCheck in release
+emptyCheck invokes compare.equalInt64
+emptyCheck argument left Int64 count copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+lessCount is call
+lessCount in release
+lessCount invokes math.subtractInt64
+lessCount argument left Int64 count copy
+lessCount argument right Int64 one copy
+lessCount result last Int64
+lessCount ownedBy none
+lessCount cleanedBy none
+lessCount borrows none
+lessCount catch none
+lessCount suppresses none
+
+storeCount is call
+storeCount in release
+storeCount invokes setWord
+storeCount argument node machine.Address list copy
+storeCount argument offset Int64 zero copy
+storeCount argument value Int64 last copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+slotOf is call
+slotOf in release
+slotOf invokes math.addInt64
+slotOf argument left Int64 last copy
+slotOf argument right Int64 two copy
+slotOf result slot Int64
+slotOf ownedBy none
+slotOf cleanedBy none
+slotOf borrows none
+slotOf catch none
+slotOf suppresses none
+
+offsetOf is call
+offsetOf in release
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 slot copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findSlot is call
+findSlot in release
+findSlot invokes machine.offset
+findSlot argument address machine.Address list copy
+findSlot argument bytes Int64 offset copy
+findSlot result slotAt machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readNode is call
+readNode in release
+readNode invokes machine.loadAddress
+readNode argument address machine.Address slotAt copy
+readNode result current machine.Address
+readNode ownedBy none
+readNode cleanedBy none
+readNode borrows none
+readNode catch none
+readNode suppresses none
+
+readRefs is call
+readRefs in release
+readRefs invokes word
+readRefs argument node machine.Address current copy
+readRefs argument offset Int64 zero copy
+readRefs result refs Int64
+readRefs ownedBy none
+readRefs cleanedBy none
+readRefs borrows none
+readRefs catch none
+readRefs suppresses none
+
+lessRefs is call
+lessRefs in release
+lessRefs invokes math.subtractInt64
+lessRefs argument left Int64 refs copy
+lessRefs argument right Int64 one copy
+lessRefs result fewer Int64
+lessRefs ownedBy none
+lessRefs cleanedBy none
+lessRefs borrows none
+lessRefs catch none
+lessRefs suppresses none
+
+storeRefs is call
+storeRefs in release
+storeRefs invokes setWord
+storeRefs argument node machine.Address current copy
+storeRefs argument offset Int64 zero copy
+storeRefs argument value Int64 fewer copy
+storeRefs result none
+storeRefs ownedBy none
+storeRefs cleanedBy none
+storeRefs borrows none
+storeRefs catch none
+storeRefs suppresses none
+
+heldCheck is call
+heldCheck in release
+heldCheck invokes compare.greaterThanInt64
+heldCheck argument left Int64 fewer copy
+heldCheck argument right Int64 zero copy
+heldCheck result held Bool
+heldCheck ownedBy none
+heldCheck cleanedBy none
+heldCheck borrows none
+heldCheck catch none
+heldCheck suppresses none
+
+moreFreed is call
+moreFreed in release
+moreFreed invokes math.addInt64
+moreFreed argument left Int64 freed copy
+moreFreed argument right Int64 one copy
+moreFreed result freedAfter Int64
+moreFreed ownedBy none
+moreFreed cleanedBy none
+moreFreed borrows none
+moreFreed catch none
+moreFreed suppresses none
+
+readKind is call
+readKind in release
+readKind invokes word
+readKind argument node machine.Address current copy
+readKind argument offset Int64 eight copy
+readKind result kind Int64
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+bigCheck is call
+bigCheck in release
+bigCheck invokes compare.equalInt64
+bigCheck argument left Int64 kind copy
+bigCheck argument right Int64 kindBig copy
+bigCheck result isBig Bool
+bigCheck ownedBy none
+bigCheck cleanedBy none
+bigCheck borrows none
+bigCheck catch none
+bigCheck suppresses none
+
+textCheck is call
+textCheck in release
+textCheck invokes compare.equalInt64
+textCheck argument left Int64 kind copy
+textCheck argument right Int64 kindText copy
+textCheck result isText Bool
+textCheck ownedBy none
+textCheck cleanedBy none
+textCheck borrows none
+textCheck catch none
+textCheck suppresses none
+
+bytesCheck is call
+bytesCheck in release
+bytesCheck invokes logic.or
+bytesCheck argument left Bool isBig copy
+bytesCheck argument right Bool isText copy
+bytesCheck result hasBytes Bool
+bytesCheck ownedBy none
+bytesCheck cleanedBy none
+bytesCheck borrows none
+bytesCheck catch none
+bytesCheck suppresses none
+
+readBytes is call
+readBytes in release
+readBytes invokes word
+readBytes argument node machine.Address current copy
+readBytes argument offset Int64 sixteen copy
+readBytes result bytesAt Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+bytesAddress is call
+bytesAddress in release
+bytesAddress invokes machine.fromInt64
+bytesAddress argument value Int64 bytesAt copy
+bytesAddress result bytesBlock machine.Address
+bytesAddress ownedBy none
+bytesAddress cleanedBy none
+bytesAddress borrows none
+bytesAddress catch none
+bytesAddress suppresses none
+
+giveBytesBlock is call
+giveBytesBlock in release
+giveBytesBlock invokes heap.give
+giveBytesBlock argument block machine.Address bytesBlock copy
+giveBytesBlock result none
+giveBytesBlock ownedBy none
+giveBytesBlock cleanedBy none
+giveBytesBlock borrows none
+giveBytesBlock catch none
+giveBytesBlock suppresses none
+
+checkArray is call
+checkArray in release
+checkArray invokes compare.equalInt64
+checkArray argument left Int64 kind copy
+checkArray argument right Int64 kindArray copy
+checkArray result isArray Bool
+checkArray ownedBy none
+checkArray cleanedBy none
+checkArray borrows none
+checkArray catch none
+checkArray suppresses none
+
+readItemCount is call
+readItemCount in release
+readItemCount invokes word
+readItemCount argument node machine.Address current copy
+readItemCount argument offset Int64 twentyFour copy
+readItemCount result itemCount Int64
+readItemCount ownedBy none
+readItemCount cleanedBy none
+readItemCount borrows none
+readItemCount catch none
+readItemCount suppresses none
+
+readItems is call
+readItems in release
+readItems invokes word
+readItems argument node machine.Address current copy
+readItems argument offset Int64 sixteen copy
+readItems result itemsAt Int64
+readItems ownedBy none
+readItems cleanedBy none
+readItems borrows none
+readItems catch none
+readItems suppresses none
+
+itemsAddress is call
+itemsAddress in release
+itemsAddress invokes machine.fromInt64
+itemsAddress argument value Int64 itemsAt copy
+itemsAddress result items machine.Address
+itemsAddress ownedBy none
+itemsAddress cleanedBy none
+itemsAddress borrows none
+itemsAddress catch none
+itemsAddress suppresses none
+
+itemsDone is call
+itemsDone in release
+itemsDone invokes compare.greaterOrEqualInt64
+itemsDone argument left Int64 at copy
+itemsDone argument right Int64 itemCount copy
+itemsDone result allItems Bool
+itemsDone ownedBy none
+itemsDone cleanedBy none
+itemsDone borrows none
+itemsDone catch none
+itemsDone suppresses none
+
+itemOffset is call
+itemOffset in release
+itemOffset invokes math.multiplyInt64
+itemOffset argument left Int64 at copy
+itemOffset argument right Int64 eight copy
+itemOffset result itemPlace Int64
+itemOffset ownedBy none
+itemOffset cleanedBy none
+itemOffset borrows none
+itemOffset catch none
+itemOffset suppresses none
+
+findItem is call
+findItem in release
+findItem invokes machine.offset
+findItem argument address machine.Address items copy
+findItem argument bytes Int64 itemPlace copy
+findItem result itemSlot machine.Address
+findItem ownedBy none
+findItem cleanedBy none
+findItem borrows none
+findItem catch none
+findItem suppresses none
+
+readItem is call
+readItem in release
+readItem invokes machine.loadAddress
+readItem argument address machine.Address itemSlot copy
+readItem result item machine.Address
+readItem ownedBy none
+readItem cleanedBy none
+readItem borrows none
+readItem catch none
+readItem suppresses none
+
+pushIt is call
+pushIt in release
+pushIt invokes push
+pushIt argument list machine.Address list copy
+pushIt argument node machine.Address item copy
+pushIt result pushedItem machine.Address
+pushIt ownedBy none
+pushIt cleanedBy none
+pushIt borrows none
+pushIt catch none
+pushIt suppresses none
+
+nextItem is call
+nextItem in release
+nextItem invokes math.addInt64
+nextItem argument left Int64 at copy
+nextItem argument right Int64 one copy
+nextItem result afterItem Int64
+nextItem ownedBy none
+nextItem cleanedBy none
+nextItem borrows none
+nextItem catch none
+nextItem suppresses none
+
+giveItemsBlock is call
+giveItemsBlock in release
+giveItemsBlock invokes heap.give
+giveItemsBlock argument block machine.Address items copy
+giveItemsBlock result none
+giveItemsBlock ownedBy none
+giveItemsBlock cleanedBy none
+giveItemsBlock borrows none
+giveItemsBlock catch none
+giveItemsBlock suppresses none
+
+checkObject is call
+checkObject in release
+checkObject invokes compare.equalInt64
+checkObject argument left Int64 kind copy
+checkObject argument right Int64 kindObject copy
+checkObject result isObject Bool
+checkObject ownedBy none
+checkObject cleanedBy none
+checkObject borrows none
+checkObject catch none
+checkObject suppresses none
+
+findTable is call
+findTable in release
+findTable invokes machine.offset
+findTable argument address machine.Address current copy
+findTable argument bytes Int64 forty copy
+findTable result table machine.Address
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch none
+findTable suppresses none
+
+readRows is call
+readRows in release
+readRows invokes word
+readRows argument node machine.Address table copy
+readRows argument offset Int64 forty copy
+readRows result rowCount Int64
+readRows ownedBy none
+readRows cleanedBy none
+readRows borrows none
+readRows catch none
+readRows suppresses none
+
+rowsDone is call
+rowsDone in release
+rowsDone invokes compare.greaterOrEqualInt64
+rowsDone argument left Int64 at copy
+rowsDone argument right Int64 rowCount copy
+rowsDone result allRows Bool
+rowsDone ownedBy none
+rowsDone cleanedBy none
+rowsDone borrows none
+rowsDone catch none
+rowsDone suppresses none
+
+findRow is call
+findRow in release
+findRow invokes tables.rowAddress
+findRow argument table machine.Address table copy
+findRow argument row Int64 at copy
+findRow result row machine.Address
+findRow ownedBy none
+findRow cleanedBy none
+findRow borrows none
+findRow catch none
+findRow suppresses none
+
+findKey is call
+findKey in release
+findKey invokes machine.offset
+findKey argument address machine.Address row copy
+findKey argument bytes Int64 sixteen copy
+findKey result keySlot machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+readKey is call
+readKey in release
+readKey invokes machine.loadAddress
+readKey argument address machine.Address keySlot copy
+readKey result key machine.Address
+readKey ownedBy none
+readKey cleanedBy none
+readKey borrows none
+readKey catch none
+readKey suppresses none
+
+giveKey is call
+giveKey in release
+giveKey invokes heap.give
+giveKey argument block machine.Address key copy
+giveKey result none
+giveKey ownedBy none
+giveKey cleanedBy none
+giveKey borrows none
+giveKey catch none
+giveKey suppresses none
+
+findChild is call
+findChild in release
+findChild invokes machine.offset
+findChild argument address machine.Address row copy
+findChild argument bytes Int64 thirtyTwo copy
+findChild result childSlot machine.Address
+findChild ownedBy none
+findChild cleanedBy none
+findChild borrows none
+findChild catch none
+findChild suppresses none
+
+readChild is call
+readChild in release
+readChild invokes machine.loadAddress
+readChild argument address machine.Address childSlot copy
+readChild result child machine.Address
+readChild ownedBy none
+readChild cleanedBy none
+readChild borrows none
+readChild catch none
+readChild suppresses none
+
+pushChild is call
+pushChild in release
+pushChild invokes push
+pushChild argument list machine.Address list copy
+pushChild argument node machine.Address child copy
+pushChild result pushedChild machine.Address
+pushChild ownedBy none
+pushChild cleanedBy none
+pushChild borrows none
+pushChild catch none
+pushChild suppresses none
+
+nextRow is call
+nextRow in release
+nextRow invokes math.addInt64
+nextRow argument left Int64 at copy
+nextRow argument right Int64 one copy
+nextRow result afterRow Int64
+nextRow ownedBy none
+nextRow cleanedBy none
+nextRow borrows none
+nextRow catch none
+nextRow suppresses none
+
+releaseTable is call
+releaseTable in release
+releaseTable invokes tables.release
+releaseTable argument table machine.Address table copy
+releaseTable result none
+releaseTable ownedBy none
+releaseTable cleanedBy none
+releaseTable borrows none
+releaseTable catch none
+releaseTable suppresses none
+
+giveIt is call
+giveIt in release
+giveIt invokes heap.give
+giveIt argument block machine.Address current copy
+giveIt result none
+giveIt ownedBy none
+giveIt cleanedBy none
+giveIt borrows none
+giveIt catch none
+giveIt suppresses none
+
+giveList is call
+giveList in release
+giveList invokes heap.give
+giveList argument block machine.Address list copy
+giveList result none
+giveList ownedBy none
+giveList cleanedBy none
+giveList borrows none
+giveList catch none
+giveList suppresses none
+
+appendItem is operation
+appendItem purpose "Add a value to the end of an array, which takes over the caller's hold on it; the items' block doubles (from 8) when full"
+appendItem invariant appendsLast "\"The array holds one item more, the value last\""
+appendItem typeParameter none
+appendItem input array machine.Address copied
+appendItem input item machine.Address copied
+appendItem output none
+appendItem outputOwnedBy none
+appendItem raises none
+appendItem effect use machine.memory
+appendItem effect use system.calls
+appendItem uses memoryAccess
+appendItem uses systemCalls
+appendItem memoryHeap false
+appendItem async false
+appendItem maxRecursion none
+appendItem label begin loopKind none
+appendItem label begin within none
+appendItem label grow loopKind none
+appendItem label grow within none
+appendItem label store loopKind none
+appendItem label store within none
+appendItem let twentyFour Int64 24 immutable
+appendItem let thirtyTwo Int64 32 immutable
+appendItem let sixteen Int64 16 immutable
+appendItem let two Int64 2 immutable
+appendItem let eight Int64 8 immutable
+appendItem let one Int64 1 immutable
+appendItem at begin do readCount
+appendItem at begin do readCapacity
+appendItem at begin do readItems
+appendItem at begin do fullCheck
+appendItem at begin branch if full goto grow else goto store
+appendItem at grow do twice
+appendItem at grow do more
+appendItem at grow do bytesOf
+appendItem at grow do itemsAddress
+appendItem at grow do resizeIt
+appendItem at grow do newAt
+appendItem at grow do storeItems
+appendItem at grow do storeCapacity
+appendItem at grow goto store
+appendItem at store do readNow
+appendItem at store do nowAddress
+appendItem at store do offsetOf
+appendItem at store do findSlot
+appendItem at store do storeItem
+appendItem at store do moreCount
+appendItem at store do storeCount
+appendItem at store return ok none
+
+readCount is call
+readCount in appendItem
+readCount invokes word
+readCount argument node machine.Address array copy
+readCount argument offset Int64 twentyFour copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readCapacity is call
+readCapacity in appendItem
+readCapacity invokes word
+readCapacity argument node machine.Address array copy
+readCapacity argument offset Int64 thirtyTwo copy
+readCapacity result capacity Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+readItems is call
+readItems in appendItem
+readItems invokes word
+readItems argument node machine.Address array copy
+readItems argument offset Int64 sixteen copy
+readItems result itemsAt Int64
+readItems ownedBy none
+readItems cleanedBy none
+readItems borrows none
+readItems catch none
+readItems suppresses none
+
+fullCheck is call
+fullCheck in appendItem
+fullCheck invokes compare.greaterOrEqualInt64
+fullCheck argument left Int64 count copy
+fullCheck argument right Int64 capacity copy
+fullCheck result full Bool
+fullCheck ownedBy none
+fullCheck cleanedBy none
+fullCheck borrows none
+fullCheck catch none
+fullCheck suppresses none
+
+twice is call
+twice in appendItem
+twice invokes math.multiplyInt64
+twice argument left Int64 capacity copy
+twice argument right Int64 two copy
+twice result doubled Int64
+twice ownedBy none
+twice cleanedBy none
+twice borrows none
+twice catch none
+twice suppresses none
+
+more is call
+more in appendItem
+more invokes math.addInt64
+more argument left Int64 doubled copy
+more argument right Int64 eight copy
+more result grown Int64
+more ownedBy none
+more cleanedBy none
+more borrows none
+more catch none
+more suppresses none
+
+bytesOf is call
+bytesOf in appendItem
+bytesOf invokes math.multiplyInt64
+bytesOf argument left Int64 grown copy
+bytesOf argument right Int64 eight copy
+bytesOf result bytes Int64
+bytesOf ownedBy none
+bytesOf cleanedBy none
+bytesOf borrows none
+bytesOf catch none
+bytesOf suppresses none
+
+itemsAddress is call
+itemsAddress in appendItem
+itemsAddress invokes machine.fromInt64
+itemsAddress argument value Int64 itemsAt copy
+itemsAddress result oldItems machine.Address
+itemsAddress ownedBy none
+itemsAddress cleanedBy none
+itemsAddress borrows none
+itemsAddress catch none
+itemsAddress suppresses none
+
+resizeIt is call
+resizeIt in appendItem
+resizeIt invokes heap.resize
+resizeIt argument block machine.Address oldItems copy
+resizeIt argument bytes Int64 bytes copy
+resizeIt result resized machine.Address
+resizeIt ownedBy none
+resizeIt cleanedBy none
+resizeIt borrows none
+resizeIt catch none
+resizeIt suppresses none
+
+newAt is call
+newAt in appendItem
+newAt invokes machine.toInt64
+newAt argument address machine.Address resized copy
+newAt result resizedAt Int64
+newAt ownedBy none
+newAt cleanedBy none
+newAt borrows none
+newAt catch none
+newAt suppresses none
+
+storeItems is call
+storeItems in appendItem
+storeItems invokes setWord
+storeItems argument node machine.Address array copy
+storeItems argument offset Int64 sixteen copy
+storeItems argument value Int64 resizedAt copy
+storeItems result none
+storeItems ownedBy none
+storeItems cleanedBy none
+storeItems borrows none
+storeItems catch none
+storeItems suppresses none
+
+storeCapacity is call
+storeCapacity in appendItem
+storeCapacity invokes setWord
+storeCapacity argument node machine.Address array copy
+storeCapacity argument offset Int64 thirtyTwo copy
+storeCapacity argument value Int64 grown copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+readNow is call
+readNow in appendItem
+readNow invokes word
+readNow argument node machine.Address array copy
+readNow argument offset Int64 sixteen copy
+readNow result nowAt Int64
+readNow ownedBy none
+readNow cleanedBy none
+readNow borrows none
+readNow catch none
+readNow suppresses none
+
+nowAddress is call
+nowAddress in appendItem
+nowAddress invokes machine.fromInt64
+nowAddress argument value Int64 nowAt copy
+nowAddress result items machine.Address
+nowAddress ownedBy none
+nowAddress cleanedBy none
+nowAddress borrows none
+nowAddress catch none
+nowAddress suppresses none
+
+offsetOf is call
+offsetOf in appendItem
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 count copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findSlot is call
+findSlot in appendItem
+findSlot invokes machine.offset
+findSlot argument address machine.Address items copy
+findSlot argument bytes Int64 offset copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeItem is call
+storeItem in appendItem
+storeItem invokes machine.storeAddress
+storeItem argument address machine.Address slot copy
+storeItem argument value machine.Address item copy
+storeItem result none
+storeItem ownedBy none
+storeItem cleanedBy none
+storeItem borrows none
+storeItem catch none
+storeItem suppresses none
+
+moreCount is call
+moreCount in appendItem
+moreCount invokes math.addInt64
+moreCount argument left Int64 count copy
+moreCount argument right Int64 one copy
+moreCount result after Int64
+moreCount ownedBy none
+moreCount cleanedBy none
+moreCount borrows none
+moreCount catch none
+moreCount suppresses none
+
+storeCount is call
+storeCount in appendItem
+storeCount invokes setWord
+storeCount argument node machine.Address array copy
+storeCount argument offset Int64 twentyFour copy
+storeCount argument value Int64 after copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+keySlots is operation
+keySlots purpose "Put a key's address and length in the two slots a table reads it from, and give their address"
+keySlots invariant none
+keySlots typeParameter none
+keySlots input key machine.Address copied
+keySlots input keyBytes Int64 copied
+keySlots output machine.Address
+keySlots outputOwnedBy none
+keySlots raises none
+keySlots effect use machine.memory
+keySlots uses memoryAccess
+keySlots memoryHeap false
+keySlots async false
+keySlots maxRecursion none
+keySlots label begin loopKind none
+keySlots label begin within none
+keySlots let eight Int64 8 immutable
+keySlots at begin do findState
+keySlots at begin do findSlots
+keySlots at begin do storeKey
+keySlots at begin do findLength
+keySlots at begin do storeLength
+keySlots at begin return ok slots
+
+findState is call
+findState in keySlots
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findSlots is call
+findSlots in keySlots
+findSlots invokes machine.offset
+findSlots argument address machine.Address state copy
+findSlots argument bytes Int64 keySlotsAt copy
+findSlots result slots machine.Address
+findSlots ownedBy none
+findSlots cleanedBy none
+findSlots borrows none
+findSlots catch none
+findSlots suppresses none
+
+storeKey is call
+storeKey in keySlots
+storeKey invokes machine.storeAddress
+storeKey argument address machine.Address slots copy
+storeKey argument value machine.Address key copy
+storeKey result none
+storeKey ownedBy none
+storeKey cleanedBy none
+storeKey borrows none
+storeKey catch none
+storeKey suppresses none
+
+findLength is call
+findLength in keySlots
+findLength invokes machine.offset
+findLength argument address machine.Address slots copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in keySlots
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 keyBytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+findField is operation
+findField purpose "The value of an object's key (the bytes of a range), or the address 0 when it has none"
+findField invariant findsKey "\"Gives the value last put with the key's bytes, or the address 0\""
+findField typeParameter none
+findField input object machine.Address copied
+findField input key machine.Address copied
+findField input keyBytes Int64 copied
+findField output machine.Address
+findField outputOwnedBy none
+findField raises none
+findField effect use machine.memory
+findField uses memoryAccess
+findField memoryHeap false
+findField async false
+findField maxRecursion none
+findField label begin loopKind none
+findField label begin within none
+findField label giveNone loopKind none
+findField label giveNone within none
+findField label readValue loopKind none
+findField label readValue within none
+findField let forty Int64 40 immutable
+findField let zero Int64 0 immutable
+findField let thirtyTwo Int64 32 immutable
+findField at begin do findTable
+findField at begin do slotsOf
+findField at begin do hashIt
+findField at begin do findIt
+findField at begin do missingCheck
+findField at begin branch if missing goto giveNone else goto readValue
+findField at giveNone do nowhere
+findField at giveNone return ok anywhere
+findField at readValue do findRow
+findField at readValue do findChild
+findField at readValue do readChild
+findField at readValue return ok child
+
+findTable is call
+findTable in findField
+findTable invokes machine.offset
+findTable argument address machine.Address object copy
+findTable argument bytes Int64 forty copy
+findTable result table machine.Address
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch none
+findTable suppresses none
+
+slotsOf is call
+slotsOf in findField
+slotsOf invokes keySlots
+slotsOf argument key machine.Address key copy
+slotsOf argument keyBytes Int64 keyBytes copy
+slotsOf result slots machine.Address
+slotsOf ownedBy none
+slotsOf cleanedBy none
+slotsOf borrows none
+slotsOf catch none
+slotsOf suppresses none
+
+hashIt is call
+hashIt in findField
+hashIt invokes tables.hashKey
+hashIt argument table machine.Address table copy
+hashIt argument key machine.Address slots copy
+hashIt result hash UInt64
+hashIt ownedBy none
+hashIt cleanedBy none
+hashIt borrows none
+hashIt catch none
+hashIt suppresses none
+
+findIt is call
+findIt in findField
+findIt invokes tables.find
+findIt argument table machine.Address table copy
+findIt argument key machine.Address slots copy
+findIt argument hash UInt64 hash copy
+findIt result row Int64
+findIt ownedBy none
+findIt cleanedBy none
+findIt borrows none
+findIt catch none
+findIt suppresses none
+
+missingCheck is call
+missingCheck in findField
+missingCheck invokes compare.lessThanInt64
+missingCheck argument left Int64 row copy
+missingCheck argument right Int64 zero copy
+missingCheck result missing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+nowhere is call
+nowhere in findField
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+findRow is call
+findRow in findField
+findRow invokes tables.rowAddress
+findRow argument table machine.Address table copy
+findRow argument row Int64 row copy
+findRow result rowAt machine.Address
+findRow ownedBy none
+findRow cleanedBy none
+findRow borrows none
+findRow catch none
+findRow suppresses none
+
+findChild is call
+findChild in findField
+findChild invokes machine.offset
+findChild argument address machine.Address rowAt copy
+findChild argument bytes Int64 thirtyTwo copy
+findChild result childSlot machine.Address
+findChild ownedBy none
+findChild cleanedBy none
+findChild borrows none
+findChild catch none
+findChild suppresses none
+
+readChild is call
+readChild in findField
+readChild invokes machine.loadAddress
+readChild argument address machine.Address childSlot copy
+readChild result child machine.Address
+readChild ownedBy none
+readChild cleanedBy none
+readChild borrows none
+readChild catch none
+readChild suppresses none
+
+putField is operation
+putField purpose "Set an object's key to a value, which takes over the caller's hold on it: a new key goes last, with a copy of its bytes; a key it has keeps its place and lets go of its old value"
+putField invariant putsKey "\"The key's value is the new one, a new key last in order and a key put before in its first place\""
+putField typeParameter none
+putField input object machine.Address copied
+putField input key machine.Address copied
+putField input keyBytes Int64 copied
+putField input value machine.Address copied
+putField output none
+putField outputOwnedBy none
+putField raises none
+putField effect use machine.memory
+putField effect use system.calls
+putField uses memoryAccess
+putField uses systemCalls
+putField memoryHeap false
+putField async false
+putField maxRecursion none
+putField label begin loopKind none
+putField label begin within none
+putField label replace loopKind none
+putField label replace within none
+putField label insertKey loopKind none
+putField label insertKey within none
+putField let forty Int64 40 immutable
+putField let zero Int64 0 immutable
+putField let thirtyTwo Int64 32 immutable
+putField let one Int64 1 immutable
+putField let twentyFour Int64 24 immutable
+putField at begin do findTable
+putField at begin do slotsOf
+putField at begin do hashIt
+putField at begin do findIt
+putField at begin do missingCheck
+putField at begin branch if missing goto insertKey else goto replace
+putField at replace do findRow
+putField at replace do findChild
+putField at replace do readChild
+putField at replace do storeChild
+putField at replace do letGo
+putField at replace return ok none
+putField at insertKey do sizeOf
+putField at insertKey do takeCopy
+putField at insertKey do copyIn
+putField at insertKey do copySlots
+putField at insertKey do insertIt
+putField at insertKey do findNewChild
+putField at insertKey do storeNew
+putField at insertKey do findCount
+putField at insertKey do readCount
+putField at insertKey do moreCount
+putField at insertKey do storeCount
+putField at insertKey return ok none
+
+findTable is call
+findTable in putField
+findTable invokes machine.offset
+findTable argument address machine.Address object copy
+findTable argument bytes Int64 forty copy
+findTable result table machine.Address
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch none
+findTable suppresses none
+
+slotsOf is call
+slotsOf in putField
+slotsOf invokes keySlots
+slotsOf argument key machine.Address key copy
+slotsOf argument keyBytes Int64 keyBytes copy
+slotsOf result slots machine.Address
+slotsOf ownedBy none
+slotsOf cleanedBy none
+slotsOf borrows none
+slotsOf catch none
+slotsOf suppresses none
+
+hashIt is call
+hashIt in putField
+hashIt invokes tables.hashKey
+hashIt argument table machine.Address table copy
+hashIt argument key machine.Address slots copy
+hashIt result hash UInt64
+hashIt ownedBy none
+hashIt cleanedBy none
+hashIt borrows none
+hashIt catch none
+hashIt suppresses none
+
+findIt is call
+findIt in putField
+findIt invokes tables.find
+findIt argument table machine.Address table copy
+findIt argument key machine.Address slots copy
+findIt argument hash UInt64 hash copy
+findIt result row Int64
+findIt ownedBy none
+findIt cleanedBy none
+findIt borrows none
+findIt catch none
+findIt suppresses none
+
+missingCheck is call
+missingCheck in putField
+missingCheck invokes compare.lessThanInt64
+missingCheck argument left Int64 row copy
+missingCheck argument right Int64 zero copy
+missingCheck result missing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+findRow is call
+findRow in putField
+findRow invokes tables.rowAddress
+findRow argument table machine.Address table copy
+findRow argument row Int64 row copy
+findRow result rowAt machine.Address
+findRow ownedBy none
+findRow cleanedBy none
+findRow borrows none
+findRow catch none
+findRow suppresses none
+
+findChild is call
+findChild in putField
+findChild invokes machine.offset
+findChild argument address machine.Address rowAt copy
+findChild argument bytes Int64 thirtyTwo copy
+findChild result childSlot machine.Address
+findChild ownedBy none
+findChild cleanedBy none
+findChild borrows none
+findChild catch none
+findChild suppresses none
+
+readChild is call
+readChild in putField
+readChild invokes machine.loadAddress
+readChild argument address machine.Address childSlot copy
+readChild result old machine.Address
+readChild ownedBy none
+readChild cleanedBy none
+readChild borrows none
+readChild catch none
+readChild suppresses none
+
+storeChild is call
+storeChild in putField
+storeChild invokes machine.storeAddress
+storeChild argument address machine.Address childSlot copy
+storeChild argument value machine.Address value copy
+storeChild result none
+storeChild ownedBy none
+storeChild cleanedBy none
+storeChild borrows none
+storeChild catch none
+storeChild suppresses none
+
+letGo is call
+letGo in putField
+letGo invokes release
+letGo argument node machine.Address old copy
+letGo result freed Int64
+letGo ownedBy none
+letGo cleanedBy none
+letGo borrows none
+letGo catch none
+letGo suppresses none
+
+sizeOf is call
+sizeOf in putField
+sizeOf invokes math.addInt64
+sizeOf argument left Int64 keyBytes copy
+sizeOf argument right Int64 one copy
+sizeOf result copyBytes Int64
+sizeOf ownedBy none
+sizeOf cleanedBy none
+sizeOf borrows none
+sizeOf catch none
+sizeOf suppresses none
+
+takeCopy is call
+takeCopy in putField
+takeCopy invokes heap.take
+takeCopy argument bytes Int64 copyBytes copy
+takeCopy result copy machine.Address
+takeCopy ownedBy none
+takeCopy cleanedBy none
+takeCopy borrows none
+takeCopy catch none
+takeCopy suppresses none
+
+copyIn is call
+copyIn in putField
+copyIn invokes machine.copy
+copyIn argument target machine.Address copy copy
+copyIn argument source machine.Address key copy
+copyIn argument bytes Int64 keyBytes copy
+copyIn result none
+copyIn ownedBy none
+copyIn cleanedBy none
+copyIn borrows none
+copyIn catch none
+copyIn suppresses none
+
+copySlots is call
+copySlots in putField
+copySlots invokes keySlots
+copySlots argument key machine.Address copy copy
+copySlots argument keyBytes Int64 keyBytes copy
+copySlots result copied machine.Address
+copySlots ownedBy none
+copySlots cleanedBy none
+copySlots borrows none
+copySlots catch none
+copySlots suppresses none
+
+insertIt is call
+insertIt in putField
+insertIt invokes tables.insert
+insertIt argument table machine.Address table copy
+insertIt argument key machine.Address copied copy
+insertIt argument hash UInt64 hash copy
+insertIt result newRow machine.Address
+insertIt ownedBy none
+insertIt cleanedBy none
+insertIt borrows none
+insertIt catch none
+insertIt suppresses none
+
+findNewChild is call
+findNewChild in putField
+findNewChild invokes machine.offset
+findNewChild argument address machine.Address newRow copy
+findNewChild argument bytes Int64 thirtyTwo copy
+findNewChild result newSlot machine.Address
+findNewChild ownedBy none
+findNewChild cleanedBy none
+findNewChild borrows none
+findNewChild catch none
+findNewChild suppresses none
+
+storeNew is call
+storeNew in putField
+storeNew invokes machine.storeAddress
+storeNew argument address machine.Address newSlot copy
+storeNew argument value machine.Address value copy
+storeNew result none
+storeNew ownedBy none
+storeNew cleanedBy none
+storeNew borrows none
+storeNew catch none
+storeNew suppresses none
+
+findCount is call
+findCount in putField
+findCount invokes machine.offset
+findCount argument address machine.Address object copy
+findCount argument bytes Int64 twentyFour copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readCount is call
+readCount in putField
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countSlot copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+moreCount is call
+moreCount in putField
+moreCount invokes math.addInt64
+moreCount argument left Int64 count copy
+moreCount argument right Int64 one copy
+moreCount result after Int64
+moreCount ownedBy none
+moreCount cleanedBy none
+moreCount borrows none
+moreCount catch none
+moreCount suppresses none
+
+storeCount is call
+storeCount in putField
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address countSlot copy
+storeCount argument value Int64 after copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+# ---------------------------------------------------------------- UTF-8
+continuation is operation
+continuation purpose "Whether the byte at a position of a range is a continuation byte within bounds (low to high, inclusive)"
+continuation invariant none
+continuation typeParameter none
+continuation input text machine.Address copied
+continuation input bytes Int64 copied
+continuation input at Int64 copied
+continuation input low Int64 copied
+continuation input high Int64 copied
+continuation output Bool
+continuation outputOwnedBy none
+continuation raises none
+continuation effect use machine.memory
+continuation uses memoryAccess
+continuation memoryHeap false
+continuation async false
+continuation maxRecursion none
+continuation label begin loopKind none
+continuation label begin within none
+continuation label outside loopKind none
+continuation label outside within none
+continuation label readIt loopKind none
+continuation label readIt within none
+continuation let no Bool false immutable
+continuation at begin do insideCheck
+continuation at begin branch if inside goto readIt else goto outside
+continuation at outside return ok no
+continuation at readIt do findByte
+continuation at readIt do readByte
+continuation at readIt do widen
+continuation at readIt do lowCheck
+continuation at readIt do highCheck
+continuation at readIt do bothCheck
+continuation at readIt return ok within
+
+insideCheck is call
+insideCheck in continuation
+insideCheck invokes compare.lessThanInt64
+insideCheck argument left Int64 at copy
+insideCheck argument right Int64 bytes copy
+insideCheck result inside Bool
+insideCheck ownedBy none
+insideCheck cleanedBy none
+insideCheck borrows none
+insideCheck catch none
+insideCheck suppresses none
+
+findByte is call
+findByte in continuation
+findByte invokes machine.offset
+findByte argument address machine.Address text copy
+findByte argument bytes Int64 at copy
+findByte result place machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+readByte is call
+readByte in continuation
+readByte invokes machine.loadByte
+readByte argument address machine.Address place copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+widen is call
+widen in continuation
+widen invokes convert.byteToInt64
+widen argument value Byte byte copy
+widen result value Int64
+widen ownedBy none
+widen cleanedBy none
+widen borrows none
+widen catch none
+widen suppresses none
+
+lowCheck is call
+lowCheck in continuation
+lowCheck invokes compare.greaterOrEqualInt64
+lowCheck argument left Int64 value copy
+lowCheck argument right Int64 low copy
+lowCheck result aboveLow Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+highCheck is call
+highCheck in continuation
+highCheck invokes compare.lessOrEqualInt64
+highCheck argument left Int64 value copy
+highCheck argument right Int64 high copy
+highCheck result belowHigh Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+bothCheck is call
+bothCheck in continuation
+bothCheck invokes logic.and
+bothCheck argument left Bool aboveLow copy
+bothCheck argument right Bool belowHigh copy
+bothCheck result within Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+decodeAt is operation
+decodeAt purpose "Read the character UTF-8 encodes at a position as Python's strict decoder reads it: store its code point (or -1 when the bytes there are not UTF-8) and give how many bytes it took (for bytes that are not UTF-8, the longest start of a valid sequence, at least 1)"
+decodeAt invariant decodesStrictly "\"Valid sequences give their code point and length; overlong forms, surrogates, code points past U+10FFFF, and cut sequences give -1 and the bytes of the valid start\""
+decodeAt typeParameter none
+decodeAt input text machine.Address copied
+decodeAt input bytes Int64 copied
+decodeAt input at Int64 copied
+decodeAt input out machine.Address copied
+decodeAt output Int64
+decodeAt outputOwnedBy none
+decodeAt raises none
+decodeAt effect use machine.memory
+decodeAt uses memoryAccess
+decodeAt memoryHeap false
+decodeAt async false
+decodeAt maxRecursion none
+decodeAt label begin loopKind none
+decodeAt label begin within none
+decodeAt label giveAscii loopKind none
+decodeAt label giveAscii within none
+decodeAt label twoCheck loopKind none
+decodeAt label twoCheck within none
+decodeAt label startTwo loopKind none
+decodeAt label startTwo within none
+decodeAt label threeCheck loopKind none
+decodeAt label threeCheck within none
+decodeAt label startThree loopKind none
+decodeAt label startThree within none
+decodeAt label lowE0 loopKind none
+decodeAt label lowE0 within none
+decodeAt label edCheck loopKind none
+decodeAt label edCheck within none
+decodeAt label highEd loopKind none
+decodeAt label highEd within none
+decodeAt label fourCheck loopKind none
+decodeAt label fourCheck within none
+decodeAt label startFour loopKind none
+decodeAt label startFour within none
+decodeAt label lowF0 loopKind none
+decodeAt label lowF0 within none
+decodeAt label f4Check loopKind none
+decodeAt label f4Check within none
+decodeAt label highF4 loopKind none
+decodeAt label highF4 within none
+decodeAt label eachMore loopKind while
+decodeAt label eachMore within none
+decodeAt label eachMore maxIterations 4
+decodeAt label readMore loopKind none
+decodeAt label readMore within eachMore
+decodeAt label addMore loopKind none
+decodeAt label addMore within eachMore
+decodeAt label give loopKind none
+decodeAt label give within none
+decodeAt label bad loopKind none
+decodeAt label bad within none
+decodeAt let need Int64 0 mutable
+decodeAt let low Int64 128 mutable
+decodeAt let high Int64 191 mutable
+decodeAt let value Int64 0 mutable
+decodeAt let taken Int64 1 mutable
+decodeAt let invalid Int64 -1 immutable
+decodeAt let one Int64 1 immutable
+decodeAt let n160 Int64 160 immutable
+decodeAt let n159 Int64 159 immutable
+decodeAt let twoMore Int64 2 immutable
+decodeAt let threeMore Int64 3 immutable
+decodeAt let n144 Int64 144 immutable
+decodeAt let n143 Int64 143 immutable
+decodeAt let n191 Int64 191 immutable
+decodeAt let n128 Int64 128 immutable
+decodeAt let n194 Int64 194 immutable
+decodeAt let n223 Int64 223 immutable
+decodeAt let n31 Int64 31 immutable
+decodeAt let n224 Int64 224 immutable
+decodeAt let n239 Int64 239 immutable
+decodeAt let n15 Int64 15 immutable
+decodeAt let n237 Int64 237 immutable
+decodeAt let n240 Int64 240 immutable
+decodeAt let n244 Int64 244 immutable
+decodeAt let n7 Int64 7 immutable
+decodeAt let zero Int64 0 immutable
+decodeAt let n63 Int64 63 immutable
+decodeAt let sixBits Int64 6 immutable
+decodeAt at begin do findByte
+decodeAt at begin do readByte
+decodeAt at begin do widen
+decodeAt at begin do asciiCheck
+decodeAt at begin branch if ascii goto giveAscii else goto twoCheck
+decodeAt at giveAscii do storeAscii
+decodeAt at giveAscii return ok one
+decodeAt at twoCheck do lowTwo
+decodeAt at twoCheck do highTwo
+decodeAt at twoCheck do isTwo
+decodeAt at twoCheck branch if two goto startTwo else goto threeCheck
+decodeAt at startTwo set need one
+decodeAt at startTwo do maskTwo
+decodeAt at startTwo set value bitsTwo
+decodeAt at startTwo goto eachMore
+decodeAt at threeCheck do lowThree
+decodeAt at threeCheck do highThree
+decodeAt at threeCheck do isThree
+decodeAt at threeCheck branch if three goto startThree else goto fourCheck
+decodeAt at startThree set need twoMore
+decodeAt at startThree do maskThree
+decodeAt at startThree set value bitsThree
+decodeAt at startThree do e0Check
+decodeAt at startThree branch if isE0 goto lowE0 else goto edCheck
+decodeAt at lowE0 set low n160
+decodeAt at lowE0 goto eachMore
+decodeAt at edCheck do checkEd
+decodeAt at edCheck branch if isEd goto highEd else goto eachMore
+decodeAt at highEd set high n159
+decodeAt at highEd goto eachMore
+decodeAt at fourCheck do lowFour
+decodeAt at fourCheck do highFour
+decodeAt at fourCheck do isFour
+decodeAt at fourCheck branch if four goto startFour else goto bad
+decodeAt at startFour set need threeMore
+decodeAt at startFour do maskFour
+decodeAt at startFour set value bitsFour
+decodeAt at startFour do f0Check
+decodeAt at startFour branch if isF0 goto lowF0 else goto f4Check
+decodeAt at lowF0 set low n144
+decodeAt at lowF0 goto eachMore
+decodeAt at f4Check do checkF4
+decodeAt at f4Check branch if isF4 goto highF4 else goto eachMore
+decodeAt at highF4 set high n143
+decodeAt at highF4 goto eachMore
+decodeAt at eachMore do doneCheck
+decodeAt at eachMore branch if done goto give else goto readMore
+decodeAt at readMore do nextAt
+decodeAt at readMore do validCheck
+decodeAt at readMore branch if valid goto addMore else goto bad
+decodeAt at addMore do findNext
+decodeAt at addMore do readNext
+decodeAt at addMore do widenNext
+decodeAt at addMore do lowBits
+decodeAt at addMore do shiftValue
+decodeAt at addMore do joinValue
+decodeAt at addMore set value joined
+decodeAt at addMore do moreTaken
+decodeAt at addMore set taken afterTaken
+decodeAt at addMore do lessNeed
+decodeAt at addMore set need afterNeed
+decodeAt at addMore set low n128
+decodeAt at addMore set high n191
+decodeAt at addMore goto eachMore
+decodeAt at give do storeValue
+decodeAt at give return ok taken
+decodeAt at bad do storeBad
+decodeAt at bad return ok taken
+
+findByte is call
+findByte in decodeAt
+findByte invokes machine.offset
+findByte argument address machine.Address text copy
+findByte argument bytes Int64 at copy
+findByte result place machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+readByte is call
+readByte in decodeAt
+readByte invokes machine.loadByte
+readByte argument address machine.Address place copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+widen is call
+widen in decodeAt
+widen invokes convert.byteToInt64
+widen argument value Byte byte copy
+widen result first Int64
+widen ownedBy none
+widen cleanedBy none
+widen borrows none
+widen catch none
+widen suppresses none
+
+asciiCheck is call
+asciiCheck in decodeAt
+asciiCheck invokes compare.lessThanInt64
+asciiCheck argument left Int64 first copy
+asciiCheck argument right Int64 n128 copy
+asciiCheck result ascii Bool
+asciiCheck ownedBy none
+asciiCheck cleanedBy none
+asciiCheck borrows none
+asciiCheck catch none
+asciiCheck suppresses none
+
+storeAscii is call
+storeAscii in decodeAt
+storeAscii invokes machine.storeInt64
+storeAscii argument address machine.Address out copy
+storeAscii argument value Int64 first copy
+storeAscii result none
+storeAscii ownedBy none
+storeAscii cleanedBy none
+storeAscii borrows none
+storeAscii catch none
+storeAscii suppresses none
+
+lowTwo is call
+lowTwo in decodeAt
+lowTwo invokes compare.greaterOrEqualInt64
+lowTwo argument left Int64 first copy
+lowTwo argument right Int64 n194 copy
+lowTwo result atLeastTwo Bool
+lowTwo ownedBy none
+lowTwo cleanedBy none
+lowTwo borrows none
+lowTwo catch none
+lowTwo suppresses none
+
+highTwo is call
+highTwo in decodeAt
+highTwo invokes compare.lessOrEqualInt64
+highTwo argument left Int64 first copy
+highTwo argument right Int64 n223 copy
+highTwo result atMostTwo Bool
+highTwo ownedBy none
+highTwo cleanedBy none
+highTwo borrows none
+highTwo catch none
+highTwo suppresses none
+
+isTwo is call
+isTwo in decodeAt
+isTwo invokes logic.and
+isTwo argument left Bool atLeastTwo copy
+isTwo argument right Bool atMostTwo copy
+isTwo result two Bool
+isTwo ownedBy none
+isTwo cleanedBy none
+isTwo borrows none
+isTwo catch none
+isTwo suppresses none
+
+maskTwo is call
+maskTwo in decodeAt
+maskTwo invokes bits.andInt64
+maskTwo argument left Int64 first copy
+maskTwo argument right Int64 n31 copy
+maskTwo result bitsTwo Int64
+maskTwo ownedBy none
+maskTwo cleanedBy none
+maskTwo borrows none
+maskTwo catch none
+maskTwo suppresses none
+
+lowThree is call
+lowThree in decodeAt
+lowThree invokes compare.greaterOrEqualInt64
+lowThree argument left Int64 first copy
+lowThree argument right Int64 n224 copy
+lowThree result atLeastThree Bool
+lowThree ownedBy none
+lowThree cleanedBy none
+lowThree borrows none
+lowThree catch none
+lowThree suppresses none
+
+highThree is call
+highThree in decodeAt
+highThree invokes compare.lessOrEqualInt64
+highThree argument left Int64 first copy
+highThree argument right Int64 n239 copy
+highThree result atMostThree Bool
+highThree ownedBy none
+highThree cleanedBy none
+highThree borrows none
+highThree catch none
+highThree suppresses none
+
+isThree is call
+isThree in decodeAt
+isThree invokes logic.and
+isThree argument left Bool atLeastThree copy
+isThree argument right Bool atMostThree copy
+isThree result three Bool
+isThree ownedBy none
+isThree cleanedBy none
+isThree borrows none
+isThree catch none
+isThree suppresses none
+
+maskThree is call
+maskThree in decodeAt
+maskThree invokes bits.andInt64
+maskThree argument left Int64 first copy
+maskThree argument right Int64 n15 copy
+maskThree result bitsThree Int64
+maskThree ownedBy none
+maskThree cleanedBy none
+maskThree borrows none
+maskThree catch none
+maskThree suppresses none
+
+e0Check is call
+e0Check in decodeAt
+e0Check invokes compare.equalInt64
+e0Check argument left Int64 first copy
+e0Check argument right Int64 n224 copy
+e0Check result isE0 Bool
+e0Check ownedBy none
+e0Check cleanedBy none
+e0Check borrows none
+e0Check catch none
+e0Check suppresses none
+
+checkEd is call
+checkEd in decodeAt
+checkEd invokes compare.equalInt64
+checkEd argument left Int64 first copy
+checkEd argument right Int64 n237 copy
+checkEd result isEd Bool
+checkEd ownedBy none
+checkEd cleanedBy none
+checkEd borrows none
+checkEd catch none
+checkEd suppresses none
+
+lowFour is call
+lowFour in decodeAt
+lowFour invokes compare.greaterOrEqualInt64
+lowFour argument left Int64 first copy
+lowFour argument right Int64 n240 copy
+lowFour result atLeastFour Bool
+lowFour ownedBy none
+lowFour cleanedBy none
+lowFour borrows none
+lowFour catch none
+lowFour suppresses none
+
+highFour is call
+highFour in decodeAt
+highFour invokes compare.lessOrEqualInt64
+highFour argument left Int64 first copy
+highFour argument right Int64 n244 copy
+highFour result atMostFour Bool
+highFour ownedBy none
+highFour cleanedBy none
+highFour borrows none
+highFour catch none
+highFour suppresses none
+
+isFour is call
+isFour in decodeAt
+isFour invokes logic.and
+isFour argument left Bool atLeastFour copy
+isFour argument right Bool atMostFour copy
+isFour result four Bool
+isFour ownedBy none
+isFour cleanedBy none
+isFour borrows none
+isFour catch none
+isFour suppresses none
+
+maskFour is call
+maskFour in decodeAt
+maskFour invokes bits.andInt64
+maskFour argument left Int64 first copy
+maskFour argument right Int64 n7 copy
+maskFour result bitsFour Int64
+maskFour ownedBy none
+maskFour cleanedBy none
+maskFour borrows none
+maskFour catch none
+maskFour suppresses none
+
+f0Check is call
+f0Check in decodeAt
+f0Check invokes compare.equalInt64
+f0Check argument left Int64 first copy
+f0Check argument right Int64 n240 copy
+f0Check result isF0 Bool
+f0Check ownedBy none
+f0Check cleanedBy none
+f0Check borrows none
+f0Check catch none
+f0Check suppresses none
+
+checkF4 is call
+checkF4 in decodeAt
+checkF4 invokes compare.equalInt64
+checkF4 argument left Int64 first copy
+checkF4 argument right Int64 n244 copy
+checkF4 result isF4 Bool
+checkF4 ownedBy none
+checkF4 cleanedBy none
+checkF4 borrows none
+checkF4 catch none
+checkF4 suppresses none
+
+doneCheck is call
+doneCheck in decodeAt
+doneCheck invokes compare.equalInt64
+doneCheck argument left Int64 need copy
+doneCheck argument right Int64 zero copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+nextAt is call
+nextAt in decodeAt
+nextAt invokes math.addInt64
+nextAt argument left Int64 at copy
+nextAt argument right Int64 taken copy
+nextAt result position Int64
+nextAt ownedBy none
+nextAt cleanedBy none
+nextAt borrows none
+nextAt catch none
+nextAt suppresses none
+
+validCheck is call
+validCheck in decodeAt
+validCheck invokes continuation
+validCheck argument text machine.Address text copy
+validCheck argument bytes Int64 bytes copy
+validCheck argument at Int64 position copy
+validCheck argument low Int64 low copy
+validCheck argument high Int64 high copy
+validCheck result valid Bool
+validCheck ownedBy none
+validCheck cleanedBy none
+validCheck borrows none
+validCheck catch none
+validCheck suppresses none
+
+findNext is call
+findNext in decodeAt
+findNext invokes machine.offset
+findNext argument address machine.Address text copy
+findNext argument bytes Int64 position copy
+findNext result nextPlace machine.Address
+findNext ownedBy none
+findNext cleanedBy none
+findNext borrows none
+findNext catch none
+findNext suppresses none
+
+readNext is call
+readNext in decodeAt
+readNext invokes machine.loadByte
+readNext argument address machine.Address nextPlace copy
+readNext result nextByte Byte
+readNext ownedBy none
+readNext cleanedBy none
+readNext borrows none
+readNext catch none
+readNext suppresses none
+
+widenNext is call
+widenNext in decodeAt
+widenNext invokes convert.byteToInt64
+widenNext argument value Byte nextByte copy
+widenNext result next Int64
+widenNext ownedBy none
+widenNext cleanedBy none
+widenNext borrows none
+widenNext catch none
+widenNext suppresses none
+
+lowBits is call
+lowBits in decodeAt
+lowBits invokes bits.andInt64
+lowBits argument left Int64 next copy
+lowBits argument right Int64 n63 copy
+lowBits result six Int64
+lowBits ownedBy none
+lowBits cleanedBy none
+lowBits borrows none
+lowBits catch none
+lowBits suppresses none
+
+shiftValue is call
+shiftValue in decodeAt
+shiftValue invokes bits.shiftLeftInt64
+shiftValue argument value Int64 value copy
+shiftValue argument amount Int64 sixBits copy
+shiftValue result shifted Int64
+shiftValue ownedBy none
+shiftValue cleanedBy none
+shiftValue borrows none
+shiftValue catch none
+shiftValue suppresses none
+
+joinValue is call
+joinValue in decodeAt
+joinValue invokes bits.orInt64
+joinValue argument left Int64 shifted copy
+joinValue argument right Int64 six copy
+joinValue result joined Int64
+joinValue ownedBy none
+joinValue cleanedBy none
+joinValue borrows none
+joinValue catch none
+joinValue suppresses none
+
+moreTaken is call
+moreTaken in decodeAt
+moreTaken invokes math.addInt64
+moreTaken argument left Int64 taken copy
+moreTaken argument right Int64 one copy
+moreTaken result afterTaken Int64
+moreTaken ownedBy none
+moreTaken cleanedBy none
+moreTaken borrows none
+moreTaken catch none
+moreTaken suppresses none
+
+lessNeed is call
+lessNeed in decodeAt
+lessNeed invokes math.subtractInt64
+lessNeed argument left Int64 need copy
+lessNeed argument right Int64 one copy
+lessNeed result afterNeed Int64
+lessNeed ownedBy none
+lessNeed cleanedBy none
+lessNeed borrows none
+lessNeed catch none
+lessNeed suppresses none
+
+storeValue is call
+storeValue in decodeAt
+storeValue invokes machine.storeInt64
+storeValue argument address machine.Address out copy
+storeValue argument value Int64 value copy
+storeValue result none
+storeValue ownedBy none
+storeValue cleanedBy none
+storeValue borrows none
+storeValue catch none
+storeValue suppresses none
+
+storeBad is call
+storeBad in decodeAt
+storeBad invokes machine.storeInt64
+storeBad argument address machine.Address out copy
+storeBad argument value Int64 invalid copy
+storeBad result none
+storeBad ownedBy none
+storeBad cleanedBy none
+storeBad borrows none
+storeBad catch none
+storeBad suppresses none

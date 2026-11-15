@@ -80,6 +80,7 @@ layout, which was wrong for values like `100.0`; D-129 corrects both.)
 | 3 | Files, identity and claims, directories, processes and pipes, environment, arguments, time | Done |
 | 4 | Tasks, groups, channels, test assertions | Done |
 | 5 | Linux through system calls; switch every executable to the new runtime; delete `native_runtime.c`; stage0 links it | Done |
+| 6 | The rest of the library: random, http, json, signal, net; AArch64 Linux | In progress |
 
 ## Stage 1 (done)
 
@@ -282,3 +283,36 @@ The runtime in SemanticScript is the only runtime of standalone executables, on 
 4. **`native_runtime.c` is deleted**, and stage0's emitted C links the runtime object built from SemanticScript:
    tests/test_stage0.py, test_bootstrap.py, and test_selfhost_suite.py link with it, and stage0b compiles every
    sample to C byte-identical to stage0's.
+
+## Stage 6: the rest of the library (in progress)
+
+The five modules stage 4 left to `refined run` move into the runtime (D-144 onward), each exactly as `refined run`
+behaves, and the Linux system layer gains AArch64.
+
+| Module | Provides | State |
+| --- | --- | --- |
+| `generators` | `random`: CPython's Mersenne Twister for seeded generators, the system's secure source (BCryptGenRandom, getrandom) for `int64Between` (D-146) | Done |
+| `requests` | `http`: requests read and responses written as host.py does (D-152) | Done |
+| `values`, `documents` | `json`: shared, counted values; CPython's scanner (errors and positions) and encoder (D-151) | Done |
+| `interrupts` | `signal`: SetConsoleCtrlHandler, rt_sigaction for SIGINT (D-147) | |
+| `sockets` | `net`: IPv4 TCP through Winsock and socket system calls, a resolver for Linux (D-148, D-149) | |
+| AArch64 Linux | `svc #0`, the generic system call numbers (D-150) | |
+
+### What "no C library" means (D-144)
+
+No C library or C runtime of any kind: no msvcrt, ucrt, vcruntime, glibc, or musl, no CRT start files, and on Linux
+no dynamic loader. What an executable links besides the program and the runtime is the operating system's own
+interface where the system gives no other: on Windows `KERNEL32.dll`, `WS2_32.dll` (Winsock, the only interface to
+Windows's TCP/IP stack), and `bcrypt.dll` (the system's random number generator); on Linux the system calls. A DLL
+is in the import table only when the program reaches one of its functions. `assert_no_libc` checks every
+executable the tests build: Windows imports are KERNEL32.dll and a subset of {WS2_32.dll, bcrypt.dll}, never a CRT
+DLL; Linux executables are static, with no PT_DYNAMIC or PT_INTERP and no trace of the C library.
+
+### Platform limits (D-145)
+
+- **`ffi` on Linux** stays refused (R901). `ffi.open("c")` asks for the C library itself, and every library
+  `ffi.open` could load is linked against it. A static process with no C library cannot host glibc: glibc's own
+  start-up (thread-local storage, the dynamic loader's link map, `__libc_start_main`) is performed only by its
+  dynamic loader, `ld.so`, so loading it would mean shipping the loader and the C library, which the bar rules out.
+- **macOS** stays refused (R901). Apple's kernel interface is private and changes between releases, and every macOS
+  executable must link libSystem, which is the C library: there is no macOS executable without a C library to build.

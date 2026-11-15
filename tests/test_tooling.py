@@ -387,7 +387,8 @@ def test_standalone_executables_match_the_jit(tmp_path):
         exe = os.path.join(project, "program.exe")
         built = caselib.refined("build", project, "--kind", "executable", "--output", exe)
         if "R901" in built.stdout + built.stderr:
-            assert built.returncode != 0 and "does not provide yet" in built.stdout + built.stderr, case.name
+            assert built.returncode != 0 and ("does not provide yet" in built.stdout + built.stderr
+                                              or "cannot have (D-145)" in built.stdout), case.name
             assert not os.path.exists(exe), case.name
             return "host_only"
         assert built.returncode == 0, (case.name, built.stdout)

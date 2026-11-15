@@ -2646,6 +2646,75 @@ built from SemanticScript. Decided by delegation:
   until it waits (D-133), a captured child's pipes are pumped between tasks with no helper thread (D-136), and
   channels, secrets, crypto, and (on Windows) foreign libraries work in executables.
 
+## The runtime in SemanticScript, the rest of the library (2026-11-15)
+
+The five modules stage 4 left to `refined run` (D-137) moved into `semanticscript/runtime`: `random`, `http`,
+`json`, `signal`, and `net`, and the Linux system layer gained AArch64. Decided by delegation:
+
+- **D-144** "No C library" means no C library or C runtime of any kind: no msvcrt, ucrt, vcruntime, glibc, or musl,
+  no CRT start files, and on Linux no dynamic loader. What an executable may link besides the program and the runtime
+  in SemanticScript is the operating system's own interface, and only where the system gives no other: on Windows
+  `KERNEL32.dll`, `WS2_32.dll` (Winsock, the only interface Windows gives to its TCP/IP stack), and `bcrypt.dll`
+  (the system's random number generator, `BCryptGenRandom`, which Python's `os.urandom` also calls); on Linux the
+  system calls themselves. Their rows are `SYSTEM_CALLS`, each named in `SYSTEM_DLLS` with its DLL when it is not
+  kernel32's, and executables and stage0 link `-lkernel32 -lws2_32 -lbcrypt`; a DLL only appears in the import table
+  when the program reaches one of its functions (`hello` still imports KERNEL32.dll alone). `assert_no_libc` holds
+  every executable the tests build to it: on Windows the import table names KERNEL32.dll and a subset of
+  {WS2_32.dll, bcrypt.dll}, never a CRT DLL; on Linux the file is static, with no PT_DYNAMIC or PT_INTERP and no
+  trace of the C library.
+- **D-145** Two platform limits follow from the bar, and stay. `ffi` on Linux is refused (R901): `ffi.open("c")`
+  asks for the C library itself, and every library `ffi.open` could load is linked against it; a static process
+  with no C library cannot host glibc, whose own start-up (thread-local storage, the dynamic loader's link map,
+  `__libc_start_main`'s initialisation) only `ld.so` performs, so loading it would mean shipping the dynamic loader
+  and the C library, which is what the bar rules out. macOS is refused (R901): Apple's kernel interface is private
+  and changes between releases, and every macOS executable must link libSystem, which is the C library; there is
+  no macOS executable without a C library to build. Both are stated in the R901 messages and in
+  docs/runtime-in-semanticscript.md.
+- **D-146** `random` is the module `generators`. `random.int64Between` reads the operating system's secure source as
+  `secrets.randbelow` does, a fresh draw of the range's bit length until one falls inside it: `BCryptGenRandom` with
+  `BCRYPT_USE_SYSTEM_PREFERRED_RNG` on Windows (bcrypt.dll, D-144), the `getrandom` system call on Linux; a source
+  that fails traps. A seeded generator is CPython's Mersenne Twister exactly: `init_genrand(19650218)` and
+  `init_by_array` of the seed's magnitude in 32-bit words, least significant first (one word for 0), as
+  `random.Random(seed)` seeds from an `int`; `random.nextInt64(low, high)` is `randint(low, high)`, which takes
+  `getrandbits(k)` of the width's bit length (one 32-bit word shifted down for 32 bits or fewer, words least
+  significant first above that, the last shifted down) until it falls below the width, so a generator gives the
+  same numbers as under `refined run` for every seed and range, the full range of Int64 included. A generator is a
+  heap block of its 624 words and the next word's place, a `Generator` handle owned by its region.
+- **D-151** `json` is two modules: `values`, below `handles`, which keeps JSON values as `refined run` keeps Python
+  objects (an array or object is shared, so what `field` and `item` give and what `setValue` stores is the same
+  value, and a change shows through every handle and container that holds it; each value is counted, and the last
+  handle or container to let go gives it back with what only it held, as a handle is closed or its region released),
+  and `documents`, the targets. `json.parse` reads the text as `json.loads(text.decode("utf-8", "surrogateescape"))`
+  reads it, CPython's C scanner step by step: the bytes that are not UTF-8 become U+DC80 to U+DCFF, positions count
+  code points, NaN, Infinity, and -Infinity are numbers, a leading U+FEFF is invalidAt 0, a lone surrogate escape is
+  kept (Python's `str` may hold one; the runtime keeps text in UTF-8 that may hold surrogates, so equal keys are
+  equal strings), duplicate keys keep their first place and their last value, and every error is invalidAt at the
+  position the scanner reports. Nesting deeper than 2,994 arrays and objects is tooDeep: the C recursion limit of
+  CPython 3.12, where `refined run`'s scanner reaches it (CPython 3.11 counts Python frames instead and stops
+  earlier; the executable keeps one number). `json.stringify` is `json.dumps(value, separators=(",", ":"),
+  ensure_ascii=False)` encoded with surrogateescape: keys in order, text escaped as the C encoder escapes it, floats
+  as repr writes them with `NaN`, `Infinity`, and `-Infinity`. Where `refined run` raises a Python exception inside a
+  target it traps with ``` `<target>` failed inside the runtime: <repr of the exception>```, and the executable traps
+  with the same message: an integer of more than 4,300 digits (`ValueError`, int()'s limit), a surrogate
+  surrogateescape cannot write (`UnicodeEncodeError` with the text's repr and the run's positions), a value that holds
+  itself (`ValueError('Circular reference detected')`), and nesting past the limit while writing (`RecursionError`).
+  Names and text given to `field`, `setText`, `appendText`, and the setters are read with `decode("utf-8",
+  "replace")`, one U+FFFD for each maximal part that is not UTF-8, as host.py reads them. tests/jsontour.py runs
+  every target on 1,300 texts (tests/jsoncases.py) and the executable prints exactly what `refined run` prints.
+- **D-152** `http` is the module `requests`, pure text as host.py handles it: the head ends at the first `\r\n\r\n`
+  (else `\n\n`, else the whole text); its lines split at `\n`, a `\r` before one dropped; the request line is exactly
+  three parts split at single spaces, a method of HttpMethod's names in any case of ASCII, a path that starts with
+  `/`, a version that starts with `HTTP/`; every other line is `name: value`, the name trimmed of ASCII white space
+  and lower-cased with each byte that is not ASCII standing for U+FFFD (as `decode("ascii", "replace")` reads it), the
+  value trimmed and copied into the region, path first and then the values in order (so `arena.remaining` agrees
+  even when a later line is malformed). The headers are kept by the address of the request's path, as host.py keeps
+  them in a dict by that pointer, so `http.header` finds them for the record the parse gave and its copies; a name is
+  looked up lower-cased as `str.lower` lower-cases it (ASCII letters, and the Kelvin sign, which becomes `k`), the
+  last header of a name winning. `http.response` keeps a status and a copy of the body as a `Response` handle of its
+  region; `serializeResponse` writes `HTTP/1.1 <status> <reason>` (OK, Created, No Content, Bad Request, Not Found,
+  Method Not Allowed, Internal Server Error, else `Status`), then `Content-Type: text/plain; charset=utf-8`,
+  `Content-Length`, `Connection: close`, a blank line, and the body.
+
 ## Data structures for self-hosting (2026-11-14)
 
 A compiler written in the language needs tokens and AST nodes (records and
@@ -3147,6 +3216,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-126 to D-130 | The runtime in SemanticScript, stage 2: host dispatch by target number, Float64 bit conversions, the process heap, floating-point text as `refined run` writes it (C runtime fixed), host objects and R901 for host targets (by delegation) |
 | 2026-11-14 | D-131 to D-137 | The runtime in SemanticScript, stages 3 and 4: `machine.taskEntry`, kernel32 rows for files, processes, time, and fibers, tasks on fibers with deadlock detection and cancellation, test callbacks, one-module executables, channels, secrets, crypto, foreign libraries (by delegation) |
 | 2026-11-14 | D-138 to D-143 | The runtime in SemanticScript, stage 5: Linux through raw system calls (`LINUX_CALLS`, `system.linux`), the runtime's own stacks and heap on Linux, `ffi` refused there, the only runtime (macOS refused), stage0's C linking the runtime object, `native_runtime.c` deleted (by delegation) |
+| 2026-11-15 | D-144 to D-146, D-151, D-152 | The runtime in SemanticScript, the rest of the library: "no C library" worded (OS interfaces ws2_32 and bcrypt allowed, never a CRT), the platform limits (ffi on Linux, macOS), `random` (CPython's Mersenne Twister, the system's secure source), `json` (CPython's scanner and encoder, shared counted values), `http` (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

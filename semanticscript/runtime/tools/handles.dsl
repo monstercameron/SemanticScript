@@ -1,6 +1,6 @@
 module handles "Handles: the small numbers a program holds for the host's objects, the region that owns each, and what is given back when an object is closed or its region released"
   path handles
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test frames heap tables
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.logic standard.test frames heap tables values
   exports newHandle objectOf kindOf regionOf drop dropRegion addName nameAt nameCount
 
 capability memoryAccess "Authority to keep the table of handles and each region's list of them in memory" use machine.memory none
@@ -46,6 +46,14 @@ constant kindSecret "The kind of a secret" Int64 8
 constant kindGenerator "The kind of a random number generator" Int64 9
 
 constant kindLibrary "The kind of a foreign library" Int64 10
+
+constant kindJson "The kind of a JSON value (values)" Int64 11
+
+constant kindResponse "The kind of an HTTP response: a heap block, at 0 its status, 8 its body (a heap block), 16 how many bytes" Int64 12
+
+constant kindListener "The kind of a TCP listener: a heap block of the sockets module's" Int64 13
+
+constant kindConnection "The kind of a TCP connection: a heap block of the sockets module's" Int64 14
 
 op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
   input code Int32 copied
@@ -176,9 +184,33 @@ op failStale "Trap because a handle of a kind was used after it was closed or it
   return
 :libraryCheck
   checkLibrary: isLibrary = compare.equalInt64(kind, kindLibrary)
-  if isLibrary staleLibrary staleOther
+  if isLibrary staleLibrary jsonCheck
 :staleLibrary
   failLibrary: failText(libraryText="a Library handle was used after it was closed or its region was released")
+  return
+:jsonCheck
+  checkJson: isJson = compare.equalInt64(kind, kindJson)
+  if isJson staleJson responseCheck
+:staleJson
+  failJson: failText(jsonText="a Json handle was used after it was closed or its region was released")
+  return
+:responseCheck
+  checkResponse: isResponse = compare.equalInt64(kind, kindResponse)
+  if isResponse staleResponse listenerCheck
+:staleResponse
+  failResponse: failText(responseText="a Response handle was used after it was closed or its region was released")
+  return
+:listenerCheck
+  checkListener: isListener = compare.equalInt64(kind, kindListener)
+  if isListener staleListener connectionCheck
+:staleListener
+  failListener: failText(listenerText="a Listener handle was used after it was closed or its region was released")
+  return
+:connectionCheck
+  checkConnection: isConnection = compare.equalInt64(kind, kindConnection)
+  if isConnection staleConnection staleOther
+:staleConnection
+  failConnection: failText(connectionText="a Connection handle was used after it was closed or its region was released")
   return
 :staleOther
   failOther: failText(otherText="a  handle was used after it was closed or its region was released")
@@ -541,9 +573,28 @@ op drop "Give back the object a handle names and mark the handle closed; a close
   goto close
 :generatorCheck
   checkGenerator: isGenerator = compare.equalInt64(kind, kindGenerator)
-  if isGenerator giveGenerator close
+  checkListener: isListener = compare.equalInt64(kind, kindListener)
+  checkConnection: isConnection = compare.equalInt64(kind, kindConnection)
+  socketCheck: isSocket = logic.or(isListener, isConnection)
+  plainCheck: isPlain = logic.or(isGenerator, isSocket)
+  if isPlain giveGenerator jsonCheck
 :giveGenerator
   giveGeneratorObject: heap.give(object)
+  goto close
+:jsonCheck
+  checkJson: isJson = compare.equalInt64(kind, kindJson)
+  if isJson giveJson responseCheck
+:giveJson
+  releaseJson: freed = values.release(object)
+  goto close
+:responseCheck
+  checkResponse: isResponse = compare.equalInt64(kind, kindResponse)
+  if isResponse giveResponse close
+:giveResponse
+  findBody: bodySlot = machine.offset(object, eight)
+  readBody: body = machine.loadAddress(bodySlot)
+  giveBody: heap.give(body)
+  giveResponseObject: heap.give(object)
   goto close
 :close
   clearKind: machine.storeInt64(entry, zero)

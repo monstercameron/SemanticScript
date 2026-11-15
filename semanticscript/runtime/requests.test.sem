@@ -1,0 +1,1683 @@
+# Tests of the `requests` module; generated from tools/requests.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests build a shape and a call's slots in the last 4 KiB of machine.state: the shape from byte 61440, the
+# arguments from 61952, the results from 62016, the payload at 62080.
+setShape is operation
+setShape purpose "Make the tests' shape from the slot counts of up to three parameters (0 for none)"
+setShape invariant none
+setShape typeParameter none
+setShape input first Int64 copied
+setShape input second Int64 copied
+setShape input third Int64 copied
+setShape output none
+setShape outputOwnedBy none
+setShape raises none
+setShape effect use machine.memory
+setShape uses memoryAccess
+setShape memoryHeap false
+setShape async false
+setShape maxRecursion none
+setShape label begin loopKind none
+setShape label begin within none
+setShape let shapeAt Int64 61440 immutable
+setShape let forty Int64 40 immutable
+setShape let twoThirtyTwo Int64 232 immutable
+setShape let zero Int64 0 immutable
+setShape let eight Int64 8 immutable
+setShape let sixteen Int64 16 immutable
+setShape let twentyFour Int64 24 immutable
+setShape let three Int64 3 immutable
+setShape at begin do findShape
+setShape at begin do findCounts
+setShape at begin do findStarts
+setShape at begin do storeFirst
+setShape at begin do storeFirstStart
+setShape at begin do findSecond
+setShape at begin do storeSecond
+setShape at begin do findSecondStart
+setShape at begin do storeSecondStart
+setShape at begin do findThird
+setShape at begin do storeThird
+setShape at begin do findThirdStart
+setShape at begin do thirdAt
+setShape at begin do storeThirdStart
+setShape at begin do findParams
+setShape at begin do storeParams
+setShape at begin return ok none
+
+findShape is call
+findShape in setShape
+findShape invokes kernel.stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findCounts is call
+findCounts in setShape
+findCounts invokes machine.offset
+findCounts argument address machine.Address shape copy
+findCounts argument bytes Int64 forty copy
+findCounts result counts machine.Address
+findCounts ownedBy none
+findCounts cleanedBy none
+findCounts borrows none
+findCounts catch none
+findCounts suppresses none
+
+findStarts is call
+findStarts in setShape
+findStarts invokes machine.offset
+findStarts argument address machine.Address shape copy
+findStarts argument bytes Int64 twoThirtyTwo copy
+findStarts result starts machine.Address
+findStarts ownedBy none
+findStarts cleanedBy none
+findStarts borrows none
+findStarts catch none
+findStarts suppresses none
+
+storeFirst is call
+storeFirst in setShape
+storeFirst invokes machine.storeInt64
+storeFirst argument address machine.Address counts copy
+storeFirst argument value Int64 first copy
+storeFirst result none
+storeFirst ownedBy none
+storeFirst cleanedBy none
+storeFirst borrows none
+storeFirst catch none
+storeFirst suppresses none
+
+storeFirstStart is call
+storeFirstStart in setShape
+storeFirstStart invokes machine.storeInt64
+storeFirstStart argument address machine.Address starts copy
+storeFirstStart argument value Int64 zero copy
+storeFirstStart result none
+storeFirstStart ownedBy none
+storeFirstStart cleanedBy none
+storeFirstStart borrows none
+storeFirstStart catch none
+storeFirstStart suppresses none
+
+findSecond is call
+findSecond in setShape
+findSecond invokes machine.offset
+findSecond argument address machine.Address counts copy
+findSecond argument bytes Int64 eight copy
+findSecond result secondCount machine.Address
+findSecond ownedBy none
+findSecond cleanedBy none
+findSecond borrows none
+findSecond catch none
+findSecond suppresses none
+
+storeSecond is call
+storeSecond in setShape
+storeSecond invokes machine.storeInt64
+storeSecond argument address machine.Address secondCount copy
+storeSecond argument value Int64 second copy
+storeSecond result none
+storeSecond ownedBy none
+storeSecond cleanedBy none
+storeSecond borrows none
+storeSecond catch none
+storeSecond suppresses none
+
+findSecondStart is call
+findSecondStart in setShape
+findSecondStart invokes machine.offset
+findSecondStart argument address machine.Address starts copy
+findSecondStart argument bytes Int64 eight copy
+findSecondStart result secondStart machine.Address
+findSecondStart ownedBy none
+findSecondStart cleanedBy none
+findSecondStart borrows none
+findSecondStart catch none
+findSecondStart suppresses none
+
+storeSecondStart is call
+storeSecondStart in setShape
+storeSecondStart invokes machine.storeInt64
+storeSecondStart argument address machine.Address secondStart copy
+storeSecondStart argument value Int64 first copy
+storeSecondStart result none
+storeSecondStart ownedBy none
+storeSecondStart cleanedBy none
+storeSecondStart borrows none
+storeSecondStart catch none
+storeSecondStart suppresses none
+
+findThird is call
+findThird in setShape
+findThird invokes machine.offset
+findThird argument address machine.Address counts copy
+findThird argument bytes Int64 sixteen copy
+findThird result thirdCount machine.Address
+findThird ownedBy none
+findThird cleanedBy none
+findThird borrows none
+findThird catch none
+findThird suppresses none
+
+storeThird is call
+storeThird in setShape
+storeThird invokes machine.storeInt64
+storeThird argument address machine.Address thirdCount copy
+storeThird argument value Int64 third copy
+storeThird result none
+storeThird ownedBy none
+storeThird cleanedBy none
+storeThird borrows none
+storeThird catch none
+storeThird suppresses none
+
+findThirdStart is call
+findThirdStart in setShape
+findThirdStart invokes machine.offset
+findThirdStart argument address machine.Address starts copy
+findThirdStart argument bytes Int64 sixteen copy
+findThirdStart result thirdStart machine.Address
+findThirdStart ownedBy none
+findThirdStart cleanedBy none
+findThirdStart borrows none
+findThirdStart catch none
+findThirdStart suppresses none
+
+thirdAt is call
+thirdAt in setShape
+thirdAt invokes math.addInt64
+thirdAt argument left Int64 first copy
+thirdAt argument right Int64 second copy
+thirdAt result third0 Int64
+thirdAt ownedBy none
+thirdAt cleanedBy none
+thirdAt borrows none
+thirdAt catch none
+thirdAt suppresses none
+
+storeThirdStart is call
+storeThirdStart in setShape
+storeThirdStart invokes machine.storeInt64
+storeThirdStart argument address machine.Address thirdStart copy
+storeThirdStart argument value Int64 third0 copy
+storeThirdStart result none
+storeThirdStart ownedBy none
+storeThirdStart cleanedBy none
+storeThirdStart borrows none
+storeThirdStart catch none
+storeThirdStart suppresses none
+
+findParams is call
+findParams in setShape
+findParams invokes machine.offset
+findParams argument address machine.Address shape copy
+findParams argument bytes Int64 twentyFour copy
+findParams result paramsAt machine.Address
+findParams ownedBy none
+findParams cleanedBy none
+findParams borrows none
+findParams catch none
+findParams suppresses none
+
+storeParams is call
+storeParams in setShape
+storeParams invokes machine.storeInt64
+storeParams argument address machine.Address paramsAt copy
+storeParams argument value Int64 three copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+argAt is operation
+argAt purpose "The address of an argument slot of the tests' call"
+argAt invariant none
+argAt typeParameter none
+argAt input slot Int64 copied
+argAt output machine.Address
+argAt outputOwnedBy none
+argAt raises none
+argAt effect use machine.memory
+argAt uses memoryAccess
+argAt memoryHeap false
+argAt async false
+argAt maxRecursion none
+argAt label begin loopKind none
+argAt label begin within none
+argAt let eight Int64 8 immutable
+argAt let argsOffset Int64 61952 immutable
+argAt at begin do offsetOf
+argAt at begin do withBase
+argAt at begin do findSlot
+argAt at begin return ok address
+
+offsetOf is call
+offsetOf in argAt
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 slot copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+withBase is call
+withBase in argAt
+withBase invokes math.addInt64
+withBase argument left Int64 offset copy
+withBase argument right Int64 argsOffset copy
+withBase result place Int64
+withBase ownedBy none
+withBase cleanedBy none
+withBase borrows none
+withBase catch none
+withBase suppresses none
+
+findSlot is call
+findSlot in argAt
+findSlot invokes kernel.stateAt
+findSlot argument offset Int64 place copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+setText is operation
+setText purpose "Set two argument slots of the tests' call to a text's address and length"
+setText invariant none
+setText typeParameter none
+setText input slot Int64 copied
+setText input text String borrowed
+setText output none
+setText outputOwnedBy none
+setText raises none
+setText effect use machine.memory
+setText uses memoryAccess
+setText memoryHeap false
+setText async false
+setText maxRecursion none
+setText label begin loopKind none
+setText label begin within none
+setText let eight Int64 8 immutable
+setText at begin do findText
+setText at begin do textLength
+setText at begin do findSlot
+setText at begin do storeAddress
+setText at begin do findLength
+setText at begin do storeLength
+setText at begin return ok none
+
+findText is call
+findText in setText
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in setText
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+findSlot is call
+findSlot in setText
+findSlot invokes argAt
+findSlot argument slot Int64 slot copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeAddress is call
+storeAddress in setText
+storeAddress invokes machine.storeAddress
+storeAddress argument address machine.Address address copy
+storeAddress argument value machine.Address textAt copy
+storeAddress result none
+storeAddress ownedBy none
+storeAddress cleanedBy none
+storeAddress borrows none
+storeAddress catch none
+storeAddress suppresses none
+
+findLength is call
+findLength in setText
+findLength invokes machine.offset
+findLength argument address machine.Address address copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in setText
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 bytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+call is operation
+call purpose "Call an http target with the tests' slots and give its status"
+call invariant none
+call typeParameter none
+call input which Int64 copied
+call output Int64
+call outputOwnedBy none
+call raises none
+call effect use machine.memory
+call effect use system.calls
+call uses memoryAccess
+call uses systemCalls
+call memoryHeap false
+call async false
+call maxRecursion none
+call label begin loopKind none
+call label begin within none
+call let shapeAt Int64 61440 immutable
+call let argsOffset Int64 61952 immutable
+call let resultsOffset Int64 62016 immutable
+call let payloadOffset Int64 62080 immutable
+call at begin do findShape
+call at begin do findArgs
+call at begin do findResults
+call at begin do findPayload
+call at begin do callIt
+call at begin do widen
+call at begin return ok wide
+
+findShape is call
+findShape in call
+findShape invokes kernel.stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findArgs is call
+findArgs in call
+findArgs invokes kernel.stateAt
+findArgs argument offset Int64 argsOffset copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in call
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in call
+findPayload invokes kernel.stateAt
+findPayload argument offset Int64 payloadOffset copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+callIt is call
+callIt in call
+callIt invokes httpCall
+callIt argument which Int64 which copy
+callIt argument shape machine.Address shape copy
+callIt argument args machine.Address args copy
+callIt argument results machine.Address results copy
+callIt argument payload machine.Address payload copy
+callIt result status Int32
+callIt ownedBy none
+callIt cleanedBy none
+callIt borrows none
+callIt catch none
+callIt suppresses none
+
+widen is call
+widen in call
+widen invokes convert.int32ToInt64
+widen argument value Int32 status copy
+widen result wide Int64
+widen ownedBy none
+widen cleanedBy none
+widen borrows none
+widen catch none
+widen suppresses none
+
+expectResultText is operation
+expectResultText purpose "Compare the text in the result slots, from a slot on, with what is expected"
+expectResultText invariant none
+expectResultText typeParameter none
+expectResultText input slot Int64 copied
+expectResultText input wanted String borrowed
+expectResultText output none
+expectResultText outputOwnedBy none
+expectResultText raises none
+expectResultText effect use machine.memory
+expectResultText uses memoryAccess
+expectResultText memoryHeap false
+expectResultText async false
+expectResultText maxRecursion none
+expectResultText label begin loopKind none
+expectResultText label begin within none
+expectResultText let eight Int64 8 immutable
+expectResultText let resultsOffset Int64 62016 immutable
+expectResultText let one Int64 1 immutable
+expectResultText at begin do offsetOf
+expectResultText at begin do withBase
+expectResultText at begin do findSlot
+expectResultText at begin do readText
+expectResultText at begin do findLength
+expectResultText at begin do readLength
+expectResultText at begin do findWanted
+expectResultText at begin do wantedLength
+expectResultText at begin do compareLength
+expectResultText at begin do compareText
+expectResultText at begin do sameWide
+expectResultText at begin do compareIt
+expectResultText at begin return ok none
+
+offsetOf is call
+offsetOf in expectResultText
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 slot copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+withBase is call
+withBase in expectResultText
+withBase invokes math.addInt64
+withBase argument left Int64 offset copy
+withBase argument right Int64 resultsOffset copy
+withBase result place Int64
+withBase ownedBy none
+withBase cleanedBy none
+withBase borrows none
+withBase catch none
+withBase suppresses none
+
+findSlot is call
+findSlot in expectResultText
+findSlot invokes kernel.stateAt
+findSlot argument offset Int64 place copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readText is call
+readText in expectResultText
+readText invokes machine.loadAddress
+readText argument address machine.Address address copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+findLength is call
+findLength in expectResultText
+findLength invokes machine.offset
+findLength argument address machine.Address address copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in expectResultText
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+findWanted is call
+findWanted in expectResultText
+findWanted invokes machine.addressOfString
+findWanted argument text String wanted lend
+findWanted result wantedAt machine.Address
+findWanted ownedBy none
+findWanted cleanedBy none
+findWanted borrows none
+findWanted catch none
+findWanted suppresses none
+
+wantedLength is call
+wantedLength in expectResultText
+wantedLength invokes string.byteLength
+wantedLength argument text String wanted lend
+wantedLength result wantedBytes Int64
+wantedLength ownedBy none
+wantedLength cleanedBy none
+wantedLength borrows none
+wantedLength catch none
+wantedLength suppresses none
+
+compareLength is call
+compareLength in expectResultText
+compareLength invokes test.assertEqualInt64
+compareLength argument expected Int64 wantedBytes copy
+compareLength argument actual Int64 length copy
+compareLength result none
+compareLength ownedBy none
+compareLength cleanedBy none
+compareLength borrows none
+compareLength catch none
+compareLength suppresses none
+
+compareText is call
+compareText in expectResultText
+compareText invokes memory.bytesEqual
+compareText argument left machine.Address text copy
+compareText argument leftBytes Int64 length copy
+compareText argument right machine.Address wantedAt copy
+compareText argument rightBytes Int64 wantedBytes copy
+compareText result same Int32
+compareText ownedBy none
+compareText cleanedBy none
+compareText borrows none
+compareText catch none
+compareText suppresses none
+
+sameWide is call
+sameWide in expectResultText
+sameWide invokes convert.int32ToInt64
+sameWide argument value Int32 same copy
+sameWide result sameValue Int64
+sameWide ownedBy none
+sameWide cleanedBy none
+sameWide borrows none
+sameWide catch none
+sameWide suppresses none
+
+compareIt is call
+compareIt in expectResultText
+compareIt invokes test.assertEqualInt64
+compareIt argument expected Int64 one copy
+compareIt argument actual Int64 sameValue copy
+compareIt result none
+compareIt ownedBy none
+compareIt cleanedBy none
+compareIt borrows none
+compareIt catch none
+compareIt suppresses none
+
+expectHeader is operation
+expectHeader purpose "Look a header of the parsed request up and compare its value"
+expectHeader invariant none
+expectHeader typeParameter none
+expectHeader input name String borrowed
+expectHeader input wanted String borrowed
+expectHeader output none
+expectHeader outputOwnedBy none
+expectHeader raises none
+expectHeader effect use machine.memory
+expectHeader effect use system.calls
+expectHeader uses memoryAccess
+expectHeader uses systemCalls
+expectHeader memoryHeap false
+expectHeader async false
+expectHeader maxRecursion none
+expectHeader label begin loopKind none
+expectHeader label begin within none
+expectHeader let four Int64 4 immutable
+expectHeader let two Int64 2 immutable
+expectHeader let zero Int64 0 immutable
+expectHeader let resultsOffset Int64 62016 immutable
+expectHeader let thirtyTwo Int64 32 immutable
+expectHeader at begin do shapeIt
+expectHeader at begin do findRequest
+expectHeader at begin do findResults
+expectHeader at begin do copyRequest
+expectHeader at begin do setName
+expectHeader at begin do callIt
+expectHeader at begin do expectFound
+expectHeader at begin do expectIt
+expectHeader at begin do copyBack
+expectHeader at begin return ok none
+
+shapeIt is call
+shapeIt in expectHeader
+shapeIt invokes setShape
+shapeIt argument first Int64 four copy
+shapeIt argument second Int64 two copy
+shapeIt argument third Int64 zero copy
+shapeIt result none
+shapeIt ownedBy none
+shapeIt cleanedBy none
+shapeIt borrows none
+shapeIt catch none
+shapeIt suppresses none
+
+findRequest is call
+findRequest in expectHeader
+findRequest invokes argAt
+findRequest argument slot Int64 zero copy
+findRequest result request machine.Address
+findRequest ownedBy none
+findRequest cleanedBy none
+findRequest borrows none
+findRequest catch none
+findRequest suppresses none
+
+findResults is call
+findResults in expectHeader
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+copyRequest is call
+copyRequest in expectHeader
+copyRequest invokes machine.copy
+copyRequest argument target machine.Address request copy
+copyRequest argument source machine.Address results copy
+copyRequest argument bytes Int64 thirtyTwo copy
+copyRequest result none
+copyRequest ownedBy none
+copyRequest cleanedBy none
+copyRequest borrows none
+copyRequest catch none
+copyRequest suppresses none
+
+setName is call
+setName in expectHeader
+setName invokes setText
+setName argument slot Int64 four copy
+setName argument text String name lend
+setName result none
+setName ownedBy none
+setName cleanedBy none
+setName borrows none
+setName catch none
+setName suppresses none
+
+callIt is call
+callIt in expectHeader
+callIt invokes call
+callIt argument which Int64 two copy
+callIt result status Int64
+callIt ownedBy none
+callIt cleanedBy none
+callIt borrows none
+callIt catch none
+callIt suppresses none
+
+expectFound is call
+expectFound in expectHeader
+expectFound invokes test.assertEqualInt64
+expectFound argument expected Int64 zero copy
+expectFound argument actual Int64 status copy
+expectFound result none
+expectFound ownedBy none
+expectFound cleanedBy none
+expectFound borrows none
+expectFound catch none
+expectFound suppresses none
+
+expectIt is call
+expectIt in expectHeader
+expectIt invokes expectResultText
+expectIt argument slot Int64 zero copy
+expectIt argument wanted String wanted lend
+expectIt result none
+expectIt ownedBy none
+expectIt cleanedBy none
+expectIt borrows none
+expectIt catch none
+expectIt suppresses none
+
+copyBack is call
+copyBack in expectHeader
+copyBack invokes machine.copy
+copyBack argument target machine.Address results copy
+copyBack argument source machine.Address request copy
+copyBack argument bytes Int64 thirtyTwo copy
+copyBack result none
+copyBack ownedBy none
+copyBack cleanedBy none
+copyBack borrows none
+copyBack catch none
+copyBack suppresses none
+
+httpTest is test
+httpTest purpose "A request's method, path, and headers are read as host.py reads them; malformed requests are malformed; a response is written with its status line, headers, and body"
+httpTest verifies httpCall runsHttp
+httpTest typeParameter none
+httpTest input none
+httpTest output none
+httpTest outputOwnedBy none
+httpTest raises none
+httpTest effect use machine.memory
+httpTest effect use system.calls
+httpTest uses memoryAccess
+httpTest uses systemCalls
+httpTest memoryHeap false
+httpTest async false
+httpTest maxRecursion none
+httpTest label begin loopKind none
+httpTest label begin within none
+httpTest let label String "http test" immutable
+httpTest let request String "pOsT /items?x=1 HTTP/1.1\x0d\nHost: example.com \x0d\nX-Count:\t3\x0d\nx-count: 4\x0d\nWeird\xff: yes\x0d\nKind: k1\x0d\n\x0d\nbody" immutable
+httpTest let bare String "GET / HTTP/1.0" immutable
+httpTest let lines String "DELETE /a HTTP/2\nA: 1\n\nrest" immutable
+httpTest let capacity Int64 65536 immutable
+httpTest let two Int64 2 immutable
+httpTest let one Int64 1 immutable
+httpTest let zero Int64 0 immutable
+httpTest let resultsOffset Int64 62016 immutable
+httpTest let pathText String "/items?x=1" immutable
+httpTest let hostName String "HOST" immutable
+httpTest let hostValue String "example.com" immutable
+httpTest let countName String "X-Count" immutable
+httpTest let countValue String "4" immutable
+httpTest let weirdName String "weird\xef\xbf\xbd" immutable
+httpTest let yesValue String "yes" immutable
+httpTest let kelvinName String "\xe2\x84\xaaIND" immutable
+httpTest let kindValue String "k1" immutable
+httpTest let four Int64 4 immutable
+httpTest let missingName String "Accept" immutable
+httpTest let shapeAt Int64 61440 immutable
+httpTest let argsOffset Int64 61952 immutable
+httpTest let payloadOffset Int64 62080 immutable
+httpTest let badText String "GET  / HTTP/1.1" immutable
+httpTest let noColonText String "GET / HTTP/1.1\x0d\nNoColon\x0d\n\x0d\n" immutable
+httpTest let unknownText String "FETCH / HTTP/1.1" immutable
+httpTest let n404 Int64 404 immutable
+httpTest let bodyText String "gone" immutable
+httpTest let three Int64 3 immutable
+httpTest let wholeText String "HTTP/1.1 404 Not Found\x0d\nContent-Type: text/plain; charset=utf-8\x0d\nContent-Length: 4\x0d\nConnection: close\x0d\n\x0d\ngone" immutable
+httpTest at begin do findLabel
+httpTest at begin do labelLength
+httpTest at begin do make
+httpTest at begin do shapeParse
+httpTest at begin do setRequest
+httpTest at begin do findRegionSlot
+httpTest at begin do setRegion
+httpTest at begin do parseIt
+httpTest at begin do expectParsed
+httpTest at begin do findResults
+httpTest at begin do readMethod
+httpTest at begin do expectMethod
+httpTest at begin do expectPath
+httpTest at begin do host
+httpTest at begin do count
+httpTest at begin do weird
+httpTest at begin do kelvin
+httpTest at begin do shapeMissing
+httpTest at begin do setMissing
+httpTest at begin do findShape
+httpTest at begin do findArgs
+httpTest at begin do findPayload
+httpTest at begin do missingIt
+httpTest at begin do widenMissing
+httpTest at begin do doAssertEqualInt64
+httpTest at begin do shapeBare
+httpTest at begin do setBare
+httpTest at begin do setBareRegion
+httpTest at begin do bareIt
+httpTest at begin do doAssertEqualInt642
+httpTest at begin do setLines
+httpTest at begin do setLinesRegion
+httpTest at begin do linesIt
+httpTest at begin do doAssertEqualInt643
+httpTest at begin do readDelete
+httpTest at begin do doAssertEqualInt644
+httpTest at begin do setBad
+httpTest at begin do setBadRegion
+httpTest at begin do badIt
+httpTest at begin do doAssertEqualInt645
+httpTest at begin do setNoColon
+httpTest at begin do setNoColonRegion
+httpTest at begin do noColonIt
+httpTest at begin do doAssertEqualInt646
+httpTest at begin do setUnknown
+httpTest at begin do setUnknownRegion
+httpTest at begin do unknownIt
+httpTest at begin do doAssertEqualInt647
+httpTest at begin do shapeResponse
+httpTest at begin do findStatus
+httpTest at begin do storeStatus
+httpTest at begin do setBody
+httpTest at begin do findResponseRegion
+httpTest at begin do setResponseRegion
+httpTest at begin do responseIt
+httpTest at begin do doAssertEqualInt648
+httpTest at begin do readHandle
+httpTest at begin do shapeSerialize
+httpTest at begin do storeHandle
+httpTest at begin do findSerializeRegion
+httpTest at begin do setSerializeRegion
+httpTest at begin do serializeIt
+httpTest at begin do doAssertEqualInt649
+httpTest at begin do expectSerialized
+httpTest at begin do free
+httpTest at begin return ok none
+
+findLabel is call
+findLabel in httpTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in httpTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in httpTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+shapeParse is call
+shapeParse in httpTest
+shapeParse invokes setShape
+shapeParse argument first Int64 two copy
+shapeParse argument second Int64 one copy
+shapeParse argument third Int64 zero copy
+shapeParse result none
+shapeParse ownedBy none
+shapeParse cleanedBy none
+shapeParse borrows none
+shapeParse catch none
+shapeParse suppresses none
+
+setRequest is call
+setRequest in httpTest
+setRequest invokes setText
+setRequest argument slot Int64 zero copy
+setRequest argument text String request lend
+setRequest result none
+setRequest ownedBy none
+setRequest cleanedBy none
+setRequest borrows none
+setRequest catch none
+setRequest suppresses none
+
+findRegionSlot is call
+findRegionSlot in httpTest
+findRegionSlot invokes argAt
+findRegionSlot argument slot Int64 two copy
+findRegionSlot result regionSlot machine.Address
+findRegionSlot ownedBy none
+findRegionSlot cleanedBy none
+findRegionSlot borrows none
+findRegionSlot catch none
+findRegionSlot suppresses none
+
+setRegion is call
+setRegion in httpTest
+setRegion invokes machine.storeAddress
+setRegion argument address machine.Address regionSlot copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+parseIt is call
+parseIt in httpTest
+parseIt invokes call
+parseIt argument which Int64 one copy
+parseIt result parsed Int64
+parseIt ownedBy none
+parseIt cleanedBy none
+parseIt borrows none
+parseIt catch none
+parseIt suppresses none
+
+expectParsed is call
+expectParsed in httpTest
+expectParsed invokes test.assertEqualInt64
+expectParsed argument expected Int64 zero copy
+expectParsed argument actual Int64 parsed copy
+expectParsed result none
+expectParsed ownedBy none
+expectParsed cleanedBy none
+expectParsed borrows none
+expectParsed catch none
+expectParsed suppresses none
+
+findResults is call
+findResults in httpTest
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+readMethod is call
+readMethod in httpTest
+readMethod invokes machine.loadInt64
+readMethod argument address machine.Address results copy
+readMethod result method Int64
+readMethod ownedBy none
+readMethod cleanedBy none
+readMethod borrows none
+readMethod catch none
+readMethod suppresses none
+
+expectMethod is call
+expectMethod in httpTest
+expectMethod invokes test.assertEqualInt64
+expectMethod argument expected Int64 two copy
+expectMethod argument actual Int64 method copy
+expectMethod result none
+expectMethod ownedBy none
+expectMethod cleanedBy none
+expectMethod borrows none
+expectMethod catch none
+expectMethod suppresses none
+
+expectPath is call
+expectPath in httpTest
+expectPath invokes expectResultText
+expectPath argument slot Int64 two copy
+expectPath argument wanted String pathText lend
+expectPath result none
+expectPath ownedBy none
+expectPath cleanedBy none
+expectPath borrows none
+expectPath catch none
+expectPath suppresses none
+
+host is call
+host in httpTest
+host invokes expectHeader
+host argument name String hostName lend
+host argument wanted String hostValue lend
+host result none
+host ownedBy none
+host cleanedBy none
+host borrows none
+host catch none
+host suppresses none
+
+count is call
+count in httpTest
+count invokes expectHeader
+count argument name String countName lend
+count argument wanted String countValue lend
+count result none
+count ownedBy none
+count cleanedBy none
+count borrows none
+count catch none
+count suppresses none
+
+weird is call
+weird in httpTest
+weird invokes expectHeader
+weird argument name String weirdName lend
+weird argument wanted String yesValue lend
+weird result none
+weird ownedBy none
+weird cleanedBy none
+weird borrows none
+weird catch none
+weird suppresses none
+
+kelvin is call
+kelvin in httpTest
+kelvin invokes expectHeader
+kelvin argument name String kelvinName lend
+kelvin argument wanted String kindValue lend
+kelvin result none
+kelvin ownedBy none
+kelvin cleanedBy none
+kelvin borrows none
+kelvin catch none
+kelvin suppresses none
+
+shapeMissing is call
+shapeMissing in httpTest
+shapeMissing invokes setShape
+shapeMissing argument first Int64 four copy
+shapeMissing argument second Int64 two copy
+shapeMissing argument third Int64 zero copy
+shapeMissing result none
+shapeMissing ownedBy none
+shapeMissing cleanedBy none
+shapeMissing borrows none
+shapeMissing catch none
+shapeMissing suppresses none
+
+setMissing is call
+setMissing in httpTest
+setMissing invokes setText
+setMissing argument slot Int64 four copy
+setMissing argument text String missingName lend
+setMissing result none
+setMissing ownedBy none
+setMissing cleanedBy none
+setMissing borrows none
+setMissing catch none
+setMissing suppresses none
+
+findShape is call
+findShape in httpTest
+findShape invokes kernel.stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findArgs is call
+findArgs in httpTest
+findArgs invokes kernel.stateAt
+findArgs argument offset Int64 argsOffset copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findPayload is call
+findPayload in httpTest
+findPayload invokes kernel.stateAt
+findPayload argument offset Int64 payloadOffset copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+missingIt is call
+missingIt in httpTest
+missingIt invokes httpCall
+missingIt argument which Int64 two copy
+missingIt argument shape machine.Address shape copy
+missingIt argument args machine.Address args copy
+missingIt argument results machine.Address results copy
+missingIt argument payload machine.Address payload copy
+missingIt result missing Int32
+missingIt ownedBy none
+missingIt cleanedBy none
+missingIt borrows none
+missingIt catch none
+missingIt suppresses none
+
+widenMissing is call
+widenMissing in httpTest
+widenMissing invokes convert.int32ToInt64
+widenMissing argument value Int32 missing copy
+widenMissing result missingValue Int64
+widenMissing ownedBy none
+widenMissing cleanedBy none
+widenMissing borrows none
+widenMissing catch none
+widenMissing suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in httpTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 one copy
+doAssertEqualInt64 argument actual Int64 missingValue copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+shapeBare is call
+shapeBare in httpTest
+shapeBare invokes setShape
+shapeBare argument first Int64 two copy
+shapeBare argument second Int64 one copy
+shapeBare argument third Int64 zero copy
+shapeBare result none
+shapeBare ownedBy none
+shapeBare cleanedBy none
+shapeBare borrows none
+shapeBare catch none
+shapeBare suppresses none
+
+setBare is call
+setBare in httpTest
+setBare invokes setText
+setBare argument slot Int64 zero copy
+setBare argument text String bare lend
+setBare result none
+setBare ownedBy none
+setBare cleanedBy none
+setBare borrows none
+setBare catch none
+setBare suppresses none
+
+setBareRegion is call
+setBareRegion in httpTest
+setBareRegion invokes machine.storeAddress
+setBareRegion argument address machine.Address regionSlot copy
+setBareRegion argument value machine.Address region copy
+setBareRegion result none
+setBareRegion ownedBy none
+setBareRegion cleanedBy none
+setBareRegion borrows none
+setBareRegion catch none
+setBareRegion suppresses none
+
+bareIt is call
+bareIt in httpTest
+bareIt invokes call
+bareIt argument which Int64 one copy
+bareIt result bareStatus Int64
+bareIt ownedBy none
+bareIt cleanedBy none
+bareIt borrows none
+bareIt catch none
+bareIt suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in httpTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 zero copy
+doAssertEqualInt642 argument actual Int64 bareStatus copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+setLines is call
+setLines in httpTest
+setLines invokes setText
+setLines argument slot Int64 zero copy
+setLines argument text String lines lend
+setLines result none
+setLines ownedBy none
+setLines cleanedBy none
+setLines borrows none
+setLines catch none
+setLines suppresses none
+
+setLinesRegion is call
+setLinesRegion in httpTest
+setLinesRegion invokes machine.storeAddress
+setLinesRegion argument address machine.Address regionSlot copy
+setLinesRegion argument value machine.Address region copy
+setLinesRegion result none
+setLinesRegion ownedBy none
+setLinesRegion cleanedBy none
+setLinesRegion borrows none
+setLinesRegion catch none
+setLinesRegion suppresses none
+
+linesIt is call
+linesIt in httpTest
+linesIt invokes call
+linesIt argument which Int64 one copy
+linesIt result linesStatus Int64
+linesIt ownedBy none
+linesIt cleanedBy none
+linesIt borrows none
+linesIt catch none
+linesIt suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in httpTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 zero copy
+doAssertEqualInt643 argument actual Int64 linesStatus copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+readDelete is call
+readDelete in httpTest
+readDelete invokes machine.loadInt64
+readDelete argument address machine.Address results copy
+readDelete result deleteMethod Int64
+readDelete ownedBy none
+readDelete cleanedBy none
+readDelete borrows none
+readDelete catch none
+readDelete suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in httpTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 four copy
+doAssertEqualInt644 argument actual Int64 deleteMethod copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+setBad is call
+setBad in httpTest
+setBad invokes setText
+setBad argument slot Int64 zero copy
+setBad argument text String badText lend
+setBad result none
+setBad ownedBy none
+setBad cleanedBy none
+setBad borrows none
+setBad catch none
+setBad suppresses none
+
+setBadRegion is call
+setBadRegion in httpTest
+setBadRegion invokes machine.storeAddress
+setBadRegion argument address machine.Address regionSlot copy
+setBadRegion argument value machine.Address region copy
+setBadRegion result none
+setBadRegion ownedBy none
+setBadRegion cleanedBy none
+setBadRegion borrows none
+setBadRegion catch none
+setBadRegion suppresses none
+
+badIt is call
+badIt in httpTest
+badIt invokes call
+badIt argument which Int64 one copy
+badIt result badStatus Int64
+badIt ownedBy none
+badIt cleanedBy none
+badIt borrows none
+badIt catch none
+badIt suppresses none
+
+doAssertEqualInt645 is call
+doAssertEqualInt645 in httpTest
+doAssertEqualInt645 invokes test.assertEqualInt64
+doAssertEqualInt645 argument expected Int64 one copy
+doAssertEqualInt645 argument actual Int64 badStatus copy
+doAssertEqualInt645 result none
+doAssertEqualInt645 ownedBy none
+doAssertEqualInt645 cleanedBy none
+doAssertEqualInt645 borrows none
+doAssertEqualInt645 catch none
+doAssertEqualInt645 suppresses none
+
+setNoColon is call
+setNoColon in httpTest
+setNoColon invokes setText
+setNoColon argument slot Int64 zero copy
+setNoColon argument text String noColonText lend
+setNoColon result none
+setNoColon ownedBy none
+setNoColon cleanedBy none
+setNoColon borrows none
+setNoColon catch none
+setNoColon suppresses none
+
+setNoColonRegion is call
+setNoColonRegion in httpTest
+setNoColonRegion invokes machine.storeAddress
+setNoColonRegion argument address machine.Address regionSlot copy
+setNoColonRegion argument value machine.Address region copy
+setNoColonRegion result none
+setNoColonRegion ownedBy none
+setNoColonRegion cleanedBy none
+setNoColonRegion borrows none
+setNoColonRegion catch none
+setNoColonRegion suppresses none
+
+noColonIt is call
+noColonIt in httpTest
+noColonIt invokes call
+noColonIt argument which Int64 one copy
+noColonIt result noColonStatus Int64
+noColonIt ownedBy none
+noColonIt cleanedBy none
+noColonIt borrows none
+noColonIt catch none
+noColonIt suppresses none
+
+doAssertEqualInt646 is call
+doAssertEqualInt646 in httpTest
+doAssertEqualInt646 invokes test.assertEqualInt64
+doAssertEqualInt646 argument expected Int64 one copy
+doAssertEqualInt646 argument actual Int64 noColonStatus copy
+doAssertEqualInt646 result none
+doAssertEqualInt646 ownedBy none
+doAssertEqualInt646 cleanedBy none
+doAssertEqualInt646 borrows none
+doAssertEqualInt646 catch none
+doAssertEqualInt646 suppresses none
+
+setUnknown is call
+setUnknown in httpTest
+setUnknown invokes setText
+setUnknown argument slot Int64 zero copy
+setUnknown argument text String unknownText lend
+setUnknown result none
+setUnknown ownedBy none
+setUnknown cleanedBy none
+setUnknown borrows none
+setUnknown catch none
+setUnknown suppresses none
+
+setUnknownRegion is call
+setUnknownRegion in httpTest
+setUnknownRegion invokes machine.storeAddress
+setUnknownRegion argument address machine.Address regionSlot copy
+setUnknownRegion argument value machine.Address region copy
+setUnknownRegion result none
+setUnknownRegion ownedBy none
+setUnknownRegion cleanedBy none
+setUnknownRegion borrows none
+setUnknownRegion catch none
+setUnknownRegion suppresses none
+
+unknownIt is call
+unknownIt in httpTest
+unknownIt invokes call
+unknownIt argument which Int64 one copy
+unknownIt result unknownStatus Int64
+unknownIt ownedBy none
+unknownIt cleanedBy none
+unknownIt borrows none
+unknownIt catch none
+unknownIt suppresses none
+
+doAssertEqualInt647 is call
+doAssertEqualInt647 in httpTest
+doAssertEqualInt647 invokes test.assertEqualInt64
+doAssertEqualInt647 argument expected Int64 one copy
+doAssertEqualInt647 argument actual Int64 unknownStatus copy
+doAssertEqualInt647 result none
+doAssertEqualInt647 ownedBy none
+doAssertEqualInt647 cleanedBy none
+doAssertEqualInt647 borrows none
+doAssertEqualInt647 catch none
+doAssertEqualInt647 suppresses none
+
+shapeResponse is call
+shapeResponse in httpTest
+shapeResponse invokes setShape
+shapeResponse argument first Int64 one copy
+shapeResponse argument second Int64 two copy
+shapeResponse argument third Int64 one copy
+shapeResponse result none
+shapeResponse ownedBy none
+shapeResponse cleanedBy none
+shapeResponse borrows none
+shapeResponse catch none
+shapeResponse suppresses none
+
+findStatus is call
+findStatus in httpTest
+findStatus invokes argAt
+findStatus argument slot Int64 zero copy
+findStatus result statusSlot machine.Address
+findStatus ownedBy none
+findStatus cleanedBy none
+findStatus borrows none
+findStatus catch none
+findStatus suppresses none
+
+storeStatus is call
+storeStatus in httpTest
+storeStatus invokes machine.storeInt64
+storeStatus argument address machine.Address statusSlot copy
+storeStatus argument value Int64 n404 copy
+storeStatus result none
+storeStatus ownedBy none
+storeStatus cleanedBy none
+storeStatus borrows none
+storeStatus catch none
+storeStatus suppresses none
+
+setBody is call
+setBody in httpTest
+setBody invokes setText
+setBody argument slot Int64 one copy
+setBody argument text String bodyText lend
+setBody result none
+setBody ownedBy none
+setBody cleanedBy none
+setBody borrows none
+setBody catch none
+setBody suppresses none
+
+findResponseRegion is call
+findResponseRegion in httpTest
+findResponseRegion invokes argAt
+findResponseRegion argument slot Int64 three copy
+findResponseRegion result responseRegionSlot machine.Address
+findResponseRegion ownedBy none
+findResponseRegion cleanedBy none
+findResponseRegion borrows none
+findResponseRegion catch none
+findResponseRegion suppresses none
+
+setResponseRegion is call
+setResponseRegion in httpTest
+setResponseRegion invokes machine.storeAddress
+setResponseRegion argument address machine.Address responseRegionSlot copy
+setResponseRegion argument value machine.Address region copy
+setResponseRegion result none
+setResponseRegion ownedBy none
+setResponseRegion cleanedBy none
+setResponseRegion borrows none
+setResponseRegion catch none
+setResponseRegion suppresses none
+
+responseIt is call
+responseIt in httpTest
+responseIt invokes call
+responseIt argument which Int64 three copy
+responseIt result responseStatus Int64
+responseIt ownedBy none
+responseIt cleanedBy none
+responseIt borrows none
+responseIt catch none
+responseIt suppresses none
+
+doAssertEqualInt648 is call
+doAssertEqualInt648 in httpTest
+doAssertEqualInt648 invokes test.assertEqualInt64
+doAssertEqualInt648 argument expected Int64 zero copy
+doAssertEqualInt648 argument actual Int64 responseStatus copy
+doAssertEqualInt648 result none
+doAssertEqualInt648 ownedBy none
+doAssertEqualInt648 cleanedBy none
+doAssertEqualInt648 borrows none
+doAssertEqualInt648 catch none
+doAssertEqualInt648 suppresses none
+
+readHandle is call
+readHandle in httpTest
+readHandle invokes machine.loadInt64
+readHandle argument address machine.Address results copy
+readHandle result handle Int64
+readHandle ownedBy none
+readHandle cleanedBy none
+readHandle borrows none
+readHandle catch none
+readHandle suppresses none
+
+shapeSerialize is call
+shapeSerialize in httpTest
+shapeSerialize invokes setShape
+shapeSerialize argument first Int64 one copy
+shapeSerialize argument second Int64 one copy
+shapeSerialize argument third Int64 zero copy
+shapeSerialize result none
+shapeSerialize ownedBy none
+shapeSerialize cleanedBy none
+shapeSerialize borrows none
+shapeSerialize catch none
+shapeSerialize suppresses none
+
+storeHandle is call
+storeHandle in httpTest
+storeHandle invokes machine.storeInt64
+storeHandle argument address machine.Address statusSlot copy
+storeHandle argument value Int64 handle copy
+storeHandle result none
+storeHandle ownedBy none
+storeHandle cleanedBy none
+storeHandle borrows none
+storeHandle catch none
+storeHandle suppresses none
+
+findSerializeRegion is call
+findSerializeRegion in httpTest
+findSerializeRegion invokes argAt
+findSerializeRegion argument slot Int64 one copy
+findSerializeRegion result serializeRegionSlot machine.Address
+findSerializeRegion ownedBy none
+findSerializeRegion cleanedBy none
+findSerializeRegion borrows none
+findSerializeRegion catch none
+findSerializeRegion suppresses none
+
+setSerializeRegion is call
+setSerializeRegion in httpTest
+setSerializeRegion invokes machine.storeAddress
+setSerializeRegion argument address machine.Address serializeRegionSlot copy
+setSerializeRegion argument value machine.Address region copy
+setSerializeRegion result none
+setSerializeRegion ownedBy none
+setSerializeRegion cleanedBy none
+setSerializeRegion borrows none
+setSerializeRegion catch none
+setSerializeRegion suppresses none
+
+serializeIt is call
+serializeIt in httpTest
+serializeIt invokes call
+serializeIt argument which Int64 four copy
+serializeIt result serializeStatus Int64
+serializeIt ownedBy none
+serializeIt cleanedBy none
+serializeIt borrows none
+serializeIt catch none
+serializeIt suppresses none
+
+doAssertEqualInt649 is call
+doAssertEqualInt649 in httpTest
+doAssertEqualInt649 invokes test.assertEqualInt64
+doAssertEqualInt649 argument expected Int64 zero copy
+doAssertEqualInt649 argument actual Int64 serializeStatus copy
+doAssertEqualInt649 result none
+doAssertEqualInt649 ownedBy none
+doAssertEqualInt649 cleanedBy none
+doAssertEqualInt649 borrows none
+doAssertEqualInt649 catch none
+doAssertEqualInt649 suppresses none
+
+expectSerialized is call
+expectSerialized in httpTest
+expectSerialized invokes expectResultText
+expectSerialized argument slot Int64 zero copy
+expectSerialized argument wanted String wholeText lend
+expectSerialized result none
+expectSerialized ownedBy none
+expectSerialized cleanedBy none
+expectSerialized borrows none
+expectSerialized catch none
+expectSerialized suppresses none
+
+free is call
+free in httpTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none

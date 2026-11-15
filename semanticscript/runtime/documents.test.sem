@@ -1,0 +1,1963 @@
+# Tests of the `documents` module; generated from tools/documents.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests build a shape and a call's slots in the last 4 KiB of machine.state: the shape from byte 61440, the
+# arguments from 61952, the results from 62016, the payload at 62080.
+setShape is operation
+setShape purpose "Make the tests' shape from the slot counts of up to three parameters (0 for none)"
+setShape invariant none
+setShape typeParameter none
+setShape input first Int64 copied
+setShape input second Int64 copied
+setShape input third Int64 copied
+setShape output none
+setShape outputOwnedBy none
+setShape raises none
+setShape effect use machine.memory
+setShape uses memoryAccess
+setShape memoryHeap false
+setShape async false
+setShape maxRecursion none
+setShape label begin loopKind none
+setShape label begin within none
+setShape let shapeAt Int64 61440 immutable
+setShape let forty Int64 40 immutable
+setShape let twoThirtyTwo Int64 232 immutable
+setShape let zero Int64 0 immutable
+setShape let eight Int64 8 immutable
+setShape let sixteen Int64 16 immutable
+setShape let twentyFour Int64 24 immutable
+setShape let three Int64 3 immutable
+setShape at begin do findShape
+setShape at begin do findCounts
+setShape at begin do findStarts
+setShape at begin do storeFirst
+setShape at begin do storeFirstStart
+setShape at begin do findSecond
+setShape at begin do storeSecond
+setShape at begin do findSecondStart
+setShape at begin do storeSecondStart
+setShape at begin do findThird
+setShape at begin do storeThird
+setShape at begin do findThirdStart
+setShape at begin do thirdAt
+setShape at begin do storeThirdStart
+setShape at begin do findParams
+setShape at begin do storeParams
+setShape at begin return ok none
+
+findShape is call
+findShape in setShape
+findShape invokes kernel.stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findCounts is call
+findCounts in setShape
+findCounts invokes machine.offset
+findCounts argument address machine.Address shape copy
+findCounts argument bytes Int64 forty copy
+findCounts result counts machine.Address
+findCounts ownedBy none
+findCounts cleanedBy none
+findCounts borrows none
+findCounts catch none
+findCounts suppresses none
+
+findStarts is call
+findStarts in setShape
+findStarts invokes machine.offset
+findStarts argument address machine.Address shape copy
+findStarts argument bytes Int64 twoThirtyTwo copy
+findStarts result starts machine.Address
+findStarts ownedBy none
+findStarts cleanedBy none
+findStarts borrows none
+findStarts catch none
+findStarts suppresses none
+
+storeFirst is call
+storeFirst in setShape
+storeFirst invokes machine.storeInt64
+storeFirst argument address machine.Address counts copy
+storeFirst argument value Int64 first copy
+storeFirst result none
+storeFirst ownedBy none
+storeFirst cleanedBy none
+storeFirst borrows none
+storeFirst catch none
+storeFirst suppresses none
+
+storeFirstStart is call
+storeFirstStart in setShape
+storeFirstStart invokes machine.storeInt64
+storeFirstStart argument address machine.Address starts copy
+storeFirstStart argument value Int64 zero copy
+storeFirstStart result none
+storeFirstStart ownedBy none
+storeFirstStart cleanedBy none
+storeFirstStart borrows none
+storeFirstStart catch none
+storeFirstStart suppresses none
+
+findSecond is call
+findSecond in setShape
+findSecond invokes machine.offset
+findSecond argument address machine.Address counts copy
+findSecond argument bytes Int64 eight copy
+findSecond result secondCount machine.Address
+findSecond ownedBy none
+findSecond cleanedBy none
+findSecond borrows none
+findSecond catch none
+findSecond suppresses none
+
+storeSecond is call
+storeSecond in setShape
+storeSecond invokes machine.storeInt64
+storeSecond argument address machine.Address secondCount copy
+storeSecond argument value Int64 second copy
+storeSecond result none
+storeSecond ownedBy none
+storeSecond cleanedBy none
+storeSecond borrows none
+storeSecond catch none
+storeSecond suppresses none
+
+findSecondStart is call
+findSecondStart in setShape
+findSecondStart invokes machine.offset
+findSecondStart argument address machine.Address starts copy
+findSecondStart argument bytes Int64 eight copy
+findSecondStart result secondStart machine.Address
+findSecondStart ownedBy none
+findSecondStart cleanedBy none
+findSecondStart borrows none
+findSecondStart catch none
+findSecondStart suppresses none
+
+storeSecondStart is call
+storeSecondStart in setShape
+storeSecondStart invokes machine.storeInt64
+storeSecondStart argument address machine.Address secondStart copy
+storeSecondStart argument value Int64 first copy
+storeSecondStart result none
+storeSecondStart ownedBy none
+storeSecondStart cleanedBy none
+storeSecondStart borrows none
+storeSecondStart catch none
+storeSecondStart suppresses none
+
+findThird is call
+findThird in setShape
+findThird invokes machine.offset
+findThird argument address machine.Address counts copy
+findThird argument bytes Int64 sixteen copy
+findThird result thirdCount machine.Address
+findThird ownedBy none
+findThird cleanedBy none
+findThird borrows none
+findThird catch none
+findThird suppresses none
+
+storeThird is call
+storeThird in setShape
+storeThird invokes machine.storeInt64
+storeThird argument address machine.Address thirdCount copy
+storeThird argument value Int64 third copy
+storeThird result none
+storeThird ownedBy none
+storeThird cleanedBy none
+storeThird borrows none
+storeThird catch none
+storeThird suppresses none
+
+findThirdStart is call
+findThirdStart in setShape
+findThirdStart invokes machine.offset
+findThirdStart argument address machine.Address starts copy
+findThirdStart argument bytes Int64 sixteen copy
+findThirdStart result thirdStart machine.Address
+findThirdStart ownedBy none
+findThirdStart cleanedBy none
+findThirdStart borrows none
+findThirdStart catch none
+findThirdStart suppresses none
+
+thirdAt is call
+thirdAt in setShape
+thirdAt invokes math.addInt64
+thirdAt argument left Int64 first copy
+thirdAt argument right Int64 second copy
+thirdAt result third0 Int64
+thirdAt ownedBy none
+thirdAt cleanedBy none
+thirdAt borrows none
+thirdAt catch none
+thirdAt suppresses none
+
+storeThirdStart is call
+storeThirdStart in setShape
+storeThirdStart invokes machine.storeInt64
+storeThirdStart argument address machine.Address thirdStart copy
+storeThirdStart argument value Int64 third0 copy
+storeThirdStart result none
+storeThirdStart ownedBy none
+storeThirdStart cleanedBy none
+storeThirdStart borrows none
+storeThirdStart catch none
+storeThirdStart suppresses none
+
+findParams is call
+findParams in setShape
+findParams invokes machine.offset
+findParams argument address machine.Address shape copy
+findParams argument bytes Int64 twentyFour copy
+findParams result paramsAt machine.Address
+findParams ownedBy none
+findParams cleanedBy none
+findParams borrows none
+findParams catch none
+findParams suppresses none
+
+storeParams is call
+storeParams in setShape
+storeParams invokes machine.storeInt64
+storeParams argument address machine.Address paramsAt copy
+storeParams argument value Int64 three copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+argAt is operation
+argAt purpose "The address of an argument slot of the tests' call"
+argAt invariant none
+argAt typeParameter none
+argAt input slot Int64 copied
+argAt output machine.Address
+argAt outputOwnedBy none
+argAt raises none
+argAt effect use machine.memory
+argAt uses memoryAccess
+argAt memoryHeap false
+argAt async false
+argAt maxRecursion none
+argAt label begin loopKind none
+argAt label begin within none
+argAt let eight Int64 8 immutable
+argAt let argsOffset Int64 61952 immutable
+argAt at begin do offsetOf
+argAt at begin do withBase
+argAt at begin do findSlot
+argAt at begin return ok address
+
+offsetOf is call
+offsetOf in argAt
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 slot copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+withBase is call
+withBase in argAt
+withBase invokes math.addInt64
+withBase argument left Int64 offset copy
+withBase argument right Int64 argsOffset copy
+withBase result place Int64
+withBase ownedBy none
+withBase cleanedBy none
+withBase borrows none
+withBase catch none
+withBase suppresses none
+
+findSlot is call
+findSlot in argAt
+findSlot invokes kernel.stateAt
+findSlot argument offset Int64 place copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+setNumberArg is operation
+setNumberArg purpose "Set an argument slot of the tests' call to a number"
+setNumberArg invariant none
+setNumberArg typeParameter none
+setNumberArg input slot Int64 copied
+setNumberArg input value Int64 copied
+setNumberArg output none
+setNumberArg outputOwnedBy none
+setNumberArg raises none
+setNumberArg effect use machine.memory
+setNumberArg uses memoryAccess
+setNumberArg memoryHeap false
+setNumberArg async false
+setNumberArg maxRecursion none
+setNumberArg label begin loopKind none
+setNumberArg label begin within none
+setNumberArg let none
+setNumberArg at begin do findSlot
+setNumberArg at begin do storeIt
+setNumberArg at begin return ok none
+
+findSlot is call
+findSlot in setNumberArg
+findSlot invokes argAt
+findSlot argument slot Int64 slot copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeIt is call
+storeIt in setNumberArg
+storeIt invokes machine.storeInt64
+storeIt argument address machine.Address address copy
+storeIt argument value Int64 value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+setAddressArg is operation
+setAddressArg purpose "Set an argument slot of the tests' call to an address"
+setAddressArg invariant none
+setAddressArg typeParameter none
+setAddressArg input slot Int64 copied
+setAddressArg input value machine.Address copied
+setAddressArg output none
+setAddressArg outputOwnedBy none
+setAddressArg raises none
+setAddressArg effect use machine.memory
+setAddressArg uses memoryAccess
+setAddressArg memoryHeap false
+setAddressArg async false
+setAddressArg maxRecursion none
+setAddressArg label begin loopKind none
+setAddressArg label begin within none
+setAddressArg let none
+setAddressArg at begin do findSlot
+setAddressArg at begin do storeIt
+setAddressArg at begin return ok none
+
+findSlot is call
+findSlot in setAddressArg
+findSlot invokes argAt
+findSlot argument slot Int64 slot copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeIt is call
+storeIt in setAddressArg
+storeIt invokes machine.storeAddress
+storeIt argument address machine.Address address copy
+storeIt argument value machine.Address value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+setTextArg is operation
+setTextArg purpose "Set two argument slots of the tests' call to a text's address and length"
+setTextArg invariant none
+setTextArg typeParameter none
+setTextArg input slot Int64 copied
+setTextArg input text String borrowed
+setTextArg output none
+setTextArg outputOwnedBy none
+setTextArg raises none
+setTextArg effect use machine.memory
+setTextArg uses memoryAccess
+setTextArg memoryHeap false
+setTextArg async false
+setTextArg maxRecursion none
+setTextArg label begin loopKind none
+setTextArg label begin within none
+setTextArg let eight Int64 8 immutable
+setTextArg at begin do findText
+setTextArg at begin do textLength
+setTextArg at begin do findSlot
+setTextArg at begin do storeAddress
+setTextArg at begin do findLength
+setTextArg at begin do storeLength
+setTextArg at begin return ok none
+
+findText is call
+findText in setTextArg
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in setTextArg
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+findSlot is call
+findSlot in setTextArg
+findSlot invokes argAt
+findSlot argument slot Int64 slot copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeAddress is call
+storeAddress in setTextArg
+storeAddress invokes machine.storeAddress
+storeAddress argument address machine.Address address copy
+storeAddress argument value machine.Address textAt copy
+storeAddress result none
+storeAddress ownedBy none
+storeAddress cleanedBy none
+storeAddress borrows none
+storeAddress catch none
+storeAddress suppresses none
+
+findLength is call
+findLength in setTextArg
+findLength invokes machine.offset
+findLength argument address machine.Address address copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in setTextArg
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 bytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+callJson is operation
+callJson purpose "Call a json target with the tests' slots and give its status"
+callJson invariant none
+callJson typeParameter none
+callJson input which Int64 copied
+callJson output Int64
+callJson outputOwnedBy none
+callJson raises none
+callJson effect use machine.memory
+callJson effect use system.calls
+callJson uses memoryAccess
+callJson uses systemCalls
+callJson memoryHeap false
+callJson async false
+callJson maxRecursion none
+callJson label begin loopKind none
+callJson label begin within none
+callJson let shapeAt Int64 61440 immutable
+callJson let argsOffset Int64 61952 immutable
+callJson let resultsOffset Int64 62016 immutable
+callJson let payloadOffset Int64 62080 immutable
+callJson at begin do findShape
+callJson at begin do findArgs
+callJson at begin do findResults
+callJson at begin do findPayload
+callJson at begin do callIt
+callJson at begin do widen
+callJson at begin return ok wide1
+
+findShape is call
+findShape in callJson
+findShape invokes kernel.stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findArgs is call
+findArgs in callJson
+findArgs invokes kernel.stateAt
+findArgs argument offset Int64 argsOffset copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in callJson
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in callJson
+findPayload invokes kernel.stateAt
+findPayload argument offset Int64 payloadOffset copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+callIt is call
+callIt in callJson
+callIt invokes jsonCall
+callIt argument which Int64 which copy
+callIt argument shape machine.Address shape copy
+callIt argument args machine.Address args copy
+callIt argument results machine.Address results copy
+callIt argument payload machine.Address payload copy
+callIt result status Int32
+callIt ownedBy none
+callIt cleanedBy none
+callIt borrows none
+callIt catch none
+callIt suppresses none
+
+widen is call
+widen in callJson
+widen invokes convert.int32ToInt64
+widen argument value Int32 status copy
+widen result wide1 Int64
+widen ownedBy none
+widen cleanedBy none
+widen borrows none
+widen catch none
+widen suppresses none
+
+resultSlot is operation
+resultSlot purpose "A result slot of the tests' call"
+resultSlot invariant none
+resultSlot typeParameter none
+resultSlot input slot Int64 copied
+resultSlot output Int64
+resultSlot outputOwnedBy none
+resultSlot raises none
+resultSlot effect use machine.memory
+resultSlot uses memoryAccess
+resultSlot memoryHeap false
+resultSlot async false
+resultSlot maxRecursion none
+resultSlot label begin loopKind none
+resultSlot label begin within none
+resultSlot let eight Int64 8 immutable
+resultSlot let resultsOffset Int64 62016 immutable
+resultSlot at begin do offsetOf
+resultSlot at begin do withBase
+resultSlot at begin do findSlot
+resultSlot at begin do readIt
+resultSlot at begin return ok value
+
+offsetOf is call
+offsetOf in resultSlot
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 slot copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+withBase is call
+withBase in resultSlot
+withBase invokes math.addInt64
+withBase argument left Int64 offset copy
+withBase argument right Int64 resultsOffset copy
+withBase result place Int64
+withBase ownedBy none
+withBase cleanedBy none
+withBase borrows none
+withBase catch none
+withBase suppresses none
+
+findSlot is call
+findSlot in resultSlot
+findSlot invokes kernel.stateAt
+findSlot argument offset Int64 place copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readIt is call
+readIt in resultSlot
+readIt invokes machine.loadInt64
+readIt argument address machine.Address address copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+payloadValue is operation
+payloadValue purpose "The payload of the tests' call"
+payloadValue invariant none
+payloadValue typeParameter none
+payloadValue input none
+payloadValue output Int64
+payloadValue outputOwnedBy none
+payloadValue raises none
+payloadValue effect use machine.memory
+payloadValue uses memoryAccess
+payloadValue memoryHeap false
+payloadValue async false
+payloadValue maxRecursion none
+payloadValue label begin loopKind none
+payloadValue label begin within none
+payloadValue let payloadOffset Int64 62080 immutable
+payloadValue at begin do findPayload
+payloadValue at begin do readIt
+payloadValue at begin return ok value
+
+findPayload is call
+findPayload in payloadValue
+findPayload invokes kernel.stateAt
+findPayload argument offset Int64 payloadOffset copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+readIt is call
+readIt in payloadValue
+readIt invokes machine.loadInt64
+readIt argument address machine.Address payload copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+expectResultText is operation
+expectResultText purpose "Compare the text in the first two result slots with what is expected"
+expectResultText invariant none
+expectResultText typeParameter none
+expectResultText input wanted String borrowed
+expectResultText output none
+expectResultText outputOwnedBy none
+expectResultText raises none
+expectResultText effect use machine.memory
+expectResultText uses memoryAccess
+expectResultText memoryHeap false
+expectResultText async false
+expectResultText maxRecursion none
+expectResultText label begin loopKind none
+expectResultText label begin within none
+expectResultText let resultsOffset Int64 62016 immutable
+expectResultText let eight Int64 8 immutable
+expectResultText let one Int64 1 immutable
+expectResultText at begin do findResults
+expectResultText at begin do readText
+expectResultText at begin do findLength
+expectResultText at begin do readLength
+expectResultText at begin do findWanted
+expectResultText at begin do wantedLength
+expectResultText at begin do compareLength
+expectResultText at begin do compareText
+expectResultText at begin do sameWide
+expectResultText at begin do compareIt
+expectResultText at begin return ok none
+
+findResults is call
+findResults in expectResultText
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+readText is call
+readText in expectResultText
+readText invokes machine.loadAddress
+readText argument address machine.Address results copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+findLength is call
+findLength in expectResultText
+findLength invokes machine.offset
+findLength argument address machine.Address results copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in expectResultText
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+findWanted is call
+findWanted in expectResultText
+findWanted invokes machine.addressOfString
+findWanted argument text String wanted lend
+findWanted result wantedAt machine.Address
+findWanted ownedBy none
+findWanted cleanedBy none
+findWanted borrows none
+findWanted catch none
+findWanted suppresses none
+
+wantedLength is call
+wantedLength in expectResultText
+wantedLength invokes string.byteLength
+wantedLength argument text String wanted lend
+wantedLength result wantedBytes Int64
+wantedLength ownedBy none
+wantedLength cleanedBy none
+wantedLength borrows none
+wantedLength catch none
+wantedLength suppresses none
+
+compareLength is call
+compareLength in expectResultText
+compareLength invokes test.assertEqualInt64
+compareLength argument expected Int64 wantedBytes copy
+compareLength argument actual Int64 length copy
+compareLength result none
+compareLength ownedBy none
+compareLength cleanedBy none
+compareLength borrows none
+compareLength catch none
+compareLength suppresses none
+
+compareText is call
+compareText in expectResultText
+compareText invokes memory.bytesEqual
+compareText argument left machine.Address text copy
+compareText argument leftBytes Int64 length copy
+compareText argument right machine.Address wantedAt copy
+compareText argument rightBytes Int64 wantedBytes copy
+compareText result same Int32
+compareText ownedBy none
+compareText cleanedBy none
+compareText borrows none
+compareText catch none
+compareText suppresses none
+
+sameWide is call
+sameWide in expectResultText
+sameWide invokes convert.int32ToInt64
+sameWide argument value Int32 same copy
+sameWide result sameValue Int64
+sameWide ownedBy none
+sameWide cleanedBy none
+sameWide borrows none
+sameWide catch none
+sameWide suppresses none
+
+compareIt is call
+compareIt in expectResultText
+compareIt invokes test.assertEqualInt64
+compareIt argument expected Int64 one copy
+compareIt argument actual Int64 sameValue copy
+compareIt result none
+compareIt ownedBy none
+compareIt cleanedBy none
+compareIt borrows none
+compareIt catch none
+compareIt suppresses none
+
+parseInto is operation
+parseInto purpose "Parse a text into a region and give the status; the handle is the first result slot"
+parseInto invariant none
+parseInto typeParameter none
+parseInto input text String borrowed
+parseInto input region machine.Address copied
+parseInto output Int64
+parseInto outputOwnedBy none
+parseInto raises none
+parseInto effect use machine.memory
+parseInto effect use system.calls
+parseInto uses memoryAccess
+parseInto uses systemCalls
+parseInto memoryHeap false
+parseInto async false
+parseInto maxRecursion none
+parseInto label begin loopKind none
+parseInto label begin within none
+parseInto let two Int64 2 immutable
+parseInto let one Int64 1 immutable
+parseInto let zero Int64 0 immutable
+parseInto at begin do shapeIt
+parseInto at begin do putTheText
+parseInto at begin do setRegion
+parseInto at begin do callIt
+parseInto at begin return ok status
+
+shapeIt is call
+shapeIt in parseInto
+shapeIt invokes setShape
+shapeIt argument first Int64 two copy
+shapeIt argument second Int64 one copy
+shapeIt argument third Int64 zero copy
+shapeIt result none
+shapeIt ownedBy none
+shapeIt cleanedBy none
+shapeIt borrows none
+shapeIt catch none
+shapeIt suppresses none
+
+putTheText is call
+putTheText in parseInto
+putTheText invokes setTextArg
+putTheText argument slot Int64 zero copy
+putTheText argument text String text lend
+putTheText result none
+putTheText ownedBy none
+putTheText cleanedBy none
+putTheText borrows none
+putTheText catch none
+putTheText suppresses none
+
+setRegion is call
+setRegion in parseInto
+setRegion invokes setAddressArg
+setRegion argument slot Int64 two copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+callIt is call
+callIt in parseInto
+callIt invokes callJson
+callIt argument which Int64 one copy
+callIt result status Int64
+callIt ownedBy none
+callIt cleanedBy none
+callIt borrows none
+callIt catch none
+callIt suppresses none
+
+expectRound is operation
+expectRound purpose "Parse a text and compare what stringify writes for it with what is expected"
+expectRound invariant none
+expectRound typeParameter none
+expectRound input text String borrowed
+expectRound input wanted String borrowed
+expectRound input region machine.Address copied
+expectRound output none
+expectRound outputOwnedBy none
+expectRound raises none
+expectRound effect use machine.memory
+expectRound effect use system.calls
+expectRound uses memoryAccess
+expectRound uses systemCalls
+expectRound memoryHeap false
+expectRound async false
+expectRound maxRecursion none
+expectRound label begin loopKind none
+expectRound label begin within none
+expectRound let zero Int64 0 immutable
+expectRound let one Int64 1 immutable
+expectRound let seventeen Int64 17 immutable
+expectRound at begin do parseIt
+expectRound at begin do doAssertEqualInt64
+expectRound at begin do readHandle
+expectRound at begin do shapeIt
+expectRound at begin do setHandle
+expectRound at begin do setRegion
+expectRound at begin do writeIt
+expectRound at begin do doAssertEqualInt642
+expectRound at begin do expectIt
+expectRound at begin return ok none
+
+parseIt is call
+parseIt in expectRound
+parseIt invokes parseInto
+parseIt argument text String text lend
+parseIt argument region machine.Address region copy
+parseIt result status Int64
+parseIt ownedBy none
+parseIt cleanedBy none
+parseIt borrows none
+parseIt catch none
+parseIt suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in expectRound
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 zero copy
+doAssertEqualInt64 argument actual Int64 status copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readHandle is call
+readHandle in expectRound
+readHandle invokes resultSlot
+readHandle argument slot Int64 zero copy
+readHandle result handle Int64
+readHandle ownedBy none
+readHandle cleanedBy none
+readHandle borrows none
+readHandle catch none
+readHandle suppresses none
+
+shapeIt is call
+shapeIt in expectRound
+shapeIt invokes setShape
+shapeIt argument first Int64 one copy
+shapeIt argument second Int64 one copy
+shapeIt argument third Int64 zero copy
+shapeIt result none
+shapeIt ownedBy none
+shapeIt cleanedBy none
+shapeIt borrows none
+shapeIt catch none
+shapeIt suppresses none
+
+setHandle is call
+setHandle in expectRound
+setHandle invokes setNumberArg
+setHandle argument slot Int64 zero copy
+setHandle argument value Int64 handle copy
+setHandle result none
+setHandle ownedBy none
+setHandle cleanedBy none
+setHandle borrows none
+setHandle catch none
+setHandle suppresses none
+
+setRegion is call
+setRegion in expectRound
+setRegion invokes setAddressArg
+setRegion argument slot Int64 one copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+writeIt is call
+writeIt in expectRound
+writeIt invokes callJson
+writeIt argument which Int64 seventeen copy
+writeIt result written Int64
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch none
+writeIt suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in expectRound
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 zero copy
+doAssertEqualInt642 argument actual Int64 written copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+expectIt is call
+expectIt in expectRound
+expectIt invokes expectResultText
+expectIt argument wanted String wanted lend
+expectIt result none
+expectIt ownedBy none
+expectIt cleanedBy none
+expectIt borrows none
+expectIt catch none
+expectIt suppresses none
+
+expectInvalid is operation
+expectInvalid purpose "Parse a text and compare the position of its error with what is expected"
+expectInvalid invariant none
+expectInvalid typeParameter none
+expectInvalid input text String borrowed
+expectInvalid input wanted Int64 copied
+expectInvalid input region machine.Address copied
+expectInvalid output none
+expectInvalid outputOwnedBy none
+expectInvalid raises none
+expectInvalid effect use machine.memory
+expectInvalid effect use system.calls
+expectInvalid uses memoryAccess
+expectInvalid uses systemCalls
+expectInvalid memoryHeap false
+expectInvalid async false
+expectInvalid maxRecursion none
+expectInvalid label begin loopKind none
+expectInvalid label begin within none
+expectInvalid let one Int64 1 immutable
+expectInvalid at begin do parseIt
+expectInvalid at begin do doAssertEqualInt64
+expectInvalid at begin do readPosition
+expectInvalid at begin do doAssertEqualInt642
+expectInvalid at begin return ok none
+
+parseIt is call
+parseIt in expectInvalid
+parseIt invokes parseInto
+parseIt argument text String text lend
+parseIt argument region machine.Address region copy
+parseIt result status Int64
+parseIt ownedBy none
+parseIt cleanedBy none
+parseIt borrows none
+parseIt catch none
+parseIt suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in expectInvalid
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 one copy
+doAssertEqualInt64 argument actual Int64 status copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readPosition is call
+readPosition in expectInvalid
+readPosition invokes payloadValue
+readPosition argument none
+readPosition result position Int64
+readPosition ownedBy none
+readPosition cleanedBy none
+readPosition borrows none
+readPosition catch none
+readPosition suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in expectInvalid
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 wanted copy
+doAssertEqualInt642 argument actual Int64 position copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+jsonTest is test
+jsonTest purpose "Texts read as json.loads reads them, with its errors and positions, and values written as json.dumps writes them; values are shared, set, appended, and read by kind"
+jsonTest verifies jsonCall runsJson
+jsonTest typeParameter none
+jsonTest input none
+jsonTest output none
+jsonTest outputOwnedBy none
+jsonTest raises none
+jsonTest effect use machine.memory
+jsonTest effect use system.calls
+jsonTest uses memoryAccess
+jsonTest uses systemCalls
+jsonTest memoryHeap false
+jsonTest async false
+jsonTest maxRecursion none
+jsonTest label begin loopKind none
+jsonTest label begin within none
+jsonTest let label String "json test" immutable
+jsonTest let capacity Int64 1048576 immutable
+jsonTest let text1 String " {\"b\": [1, 2.50, -0.0, 1e400, true, null, \"x\\u00e9\\ud83d\\ude00\"], \"a\": {}, \"b\": -12} " immutable
+jsonTest let want1 String "{\"b\":-12,\"a\":{}}" immutable
+jsonTest let text2 String "[NaN, Infinity, -Infinity, 123456789012345678901234567890, 1E2, 0.1]" immutable
+jsonTest let want2 String "[NaN,Infinity,-Infinity,123456789012345678901234567890,100.0,0.1]" immutable
+jsonTest let text3 String "\"tab\\t q\\\" s\\/ ctl\\u0001 \\udcffx\"" immutable
+jsonTest let want3 String "\"tab\\t q\\\" s/ ctl\\u0001 \xffx\"" immutable
+jsonTest let text4 String "\"\xff\xc3\"" immutable
+jsonTest let want4 String "\"\xff\xc3\"" immutable
+jsonTest let bad1Text String "[1, 2" immutable
+jsonTest let five Int64 5 immutable
+jsonTest let bad2Text String "{\"a\" 1}" immutable
+jsonTest let bad3Text String "[1,]" immutable
+jsonTest let three Int64 3 immutable
+jsonTest let bad4Text String "\"abc" immutable
+jsonTest let zero Int64 0 immutable
+jsonTest let bad5Text String "\"\\x\"" immutable
+jsonTest let one Int64 1 immutable
+jsonTest let bad6Text String "\"\\u12\"" immutable
+jsonTest let two Int64 2 immutable
+jsonTest let bad7Text String "1 2" immutable
+jsonTest let bad8Text String "\xc3\xa9x" immutable
+jsonTest let bad9Text String "[\xff, 1]" immutable
+jsonTest let bad10Text String "-" immutable
+jsonTest let bad11Text String "1.e5" immutable
+jsonTest let shapeAt Int64 61440 immutable
+jsonTest let argsOffset Int64 61952 immutable
+jsonTest let resultsOffset Int64 62016 immutable
+jsonTest let payloadOffset Int64 62080 immutable
+jsonTest let listText String "[5, \"two\", [3]]" immutable
+jsonTest let seven Int64 7 immutable
+jsonTest let n42 Int64 42 immutable
+jsonTest let fifteen Int64 15 immutable
+jsonTest let seventeen Int64 17 immutable
+jsonTest let sharedText String "[5,\"two\",[3,42]]" immutable
+jsonTest let six Int64 6 immutable
+jsonTest at begin do findLabel
+jsonTest at begin do labelLength
+jsonTest at begin do make
+jsonTest at begin do round1
+jsonTest at begin do round2
+jsonTest at begin do round3
+jsonTest at begin do round4
+jsonTest at begin do bad1
+jsonTest at begin do bad2
+jsonTest at begin do bad3
+jsonTest at begin do bad4
+jsonTest at begin do bad5
+jsonTest at begin do bad6
+jsonTest at begin do bad7
+jsonTest at begin do bad8
+jsonTest at begin do bad9
+jsonTest at begin do bad10
+jsonTest at begin do bad11
+jsonTest at begin do findShape
+jsonTest at begin do findArgs
+jsonTest at begin do findResults
+jsonTest at begin do findPayload
+jsonTest at begin do parseList
+jsonTest at begin do doAssertEqualInt64
+jsonTest at begin do readList
+jsonTest at begin do shapeItem
+jsonTest at begin do setList
+jsonTest at begin do setIndex
+jsonTest at begin do setItemRegion
+jsonTest at begin do itemIt
+jsonTest at begin do widenItem
+jsonTest at begin do doAssertEqualInt642
+jsonTest at begin do readInner
+jsonTest at begin do shapeAppend
+jsonTest at begin do setInner
+jsonTest at begin do setNumber
+jsonTest at begin do appendIt
+jsonTest at begin do doAssertEqualInt643
+jsonTest at begin do shapeWrite
+jsonTest at begin do setWritten
+jsonTest at begin do setWriteRegion
+jsonTest at begin do writeIt
+jsonTest at begin do doAssertEqualInt644
+jsonTest at begin do expectShared
+jsonTest at begin do setPast
+jsonTest at begin do shapePast
+jsonTest at begin do setPastList
+jsonTest at begin do setPastIndex
+jsonTest at begin do setPastRegion
+jsonTest at begin do pastIt
+jsonTest at begin do doAssertEqualInt645
+jsonTest at begin do readPast
+jsonTest at begin do doAssertEqualInt646
+jsonTest at begin do shapeLength
+jsonTest at begin do setLength
+jsonTest at begin do lengthIt
+jsonTest at begin do doAssertEqualInt647
+jsonTest at begin do readLength
+jsonTest at begin do doAssertEqualInt648
+jsonTest at begin do free
+jsonTest at begin return ok none
+
+findLabel is call
+findLabel in jsonTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in jsonTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in jsonTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+round1 is call
+round1 in jsonTest
+round1 invokes expectRound
+round1 argument text String text1 lend
+round1 argument wanted String want1 lend
+round1 argument region machine.Address region copy
+round1 result none
+round1 ownedBy none
+round1 cleanedBy none
+round1 borrows none
+round1 catch none
+round1 suppresses none
+
+round2 is call
+round2 in jsonTest
+round2 invokes expectRound
+round2 argument text String text2 lend
+round2 argument wanted String want2 lend
+round2 argument region machine.Address region copy
+round2 result none
+round2 ownedBy none
+round2 cleanedBy none
+round2 borrows none
+round2 catch none
+round2 suppresses none
+
+round3 is call
+round3 in jsonTest
+round3 invokes expectRound
+round3 argument text String text3 lend
+round3 argument wanted String want3 lend
+round3 argument region machine.Address region copy
+round3 result none
+round3 ownedBy none
+round3 cleanedBy none
+round3 borrows none
+round3 catch none
+round3 suppresses none
+
+round4 is call
+round4 in jsonTest
+round4 invokes expectRound
+round4 argument text String text4 lend
+round4 argument wanted String want4 lend
+round4 argument region machine.Address region copy
+round4 result none
+round4 ownedBy none
+round4 cleanedBy none
+round4 borrows none
+round4 catch none
+round4 suppresses none
+
+bad1 is call
+bad1 in jsonTest
+bad1 invokes expectInvalid
+bad1 argument text String bad1Text lend
+bad1 argument wanted Int64 five copy
+bad1 argument region machine.Address region copy
+bad1 result none
+bad1 ownedBy none
+bad1 cleanedBy none
+bad1 borrows none
+bad1 catch none
+bad1 suppresses none
+
+bad2 is call
+bad2 in jsonTest
+bad2 invokes expectInvalid
+bad2 argument text String bad2Text lend
+bad2 argument wanted Int64 five copy
+bad2 argument region machine.Address region copy
+bad2 result none
+bad2 ownedBy none
+bad2 cleanedBy none
+bad2 borrows none
+bad2 catch none
+bad2 suppresses none
+
+bad3 is call
+bad3 in jsonTest
+bad3 invokes expectInvalid
+bad3 argument text String bad3Text lend
+bad3 argument wanted Int64 three copy
+bad3 argument region machine.Address region copy
+bad3 result none
+bad3 ownedBy none
+bad3 cleanedBy none
+bad3 borrows none
+bad3 catch none
+bad3 suppresses none
+
+bad4 is call
+bad4 in jsonTest
+bad4 invokes expectInvalid
+bad4 argument text String bad4Text lend
+bad4 argument wanted Int64 zero copy
+bad4 argument region machine.Address region copy
+bad4 result none
+bad4 ownedBy none
+bad4 cleanedBy none
+bad4 borrows none
+bad4 catch none
+bad4 suppresses none
+
+bad5 is call
+bad5 in jsonTest
+bad5 invokes expectInvalid
+bad5 argument text String bad5Text lend
+bad5 argument wanted Int64 one copy
+bad5 argument region machine.Address region copy
+bad5 result none
+bad5 ownedBy none
+bad5 cleanedBy none
+bad5 borrows none
+bad5 catch none
+bad5 suppresses none
+
+bad6 is call
+bad6 in jsonTest
+bad6 invokes expectInvalid
+bad6 argument text String bad6Text lend
+bad6 argument wanted Int64 two copy
+bad6 argument region machine.Address region copy
+bad6 result none
+bad6 ownedBy none
+bad6 cleanedBy none
+bad6 borrows none
+bad6 catch none
+bad6 suppresses none
+
+bad7 is call
+bad7 in jsonTest
+bad7 invokes expectInvalid
+bad7 argument text String bad7Text lend
+bad7 argument wanted Int64 two copy
+bad7 argument region machine.Address region copy
+bad7 result none
+bad7 ownedBy none
+bad7 cleanedBy none
+bad7 borrows none
+bad7 catch none
+bad7 suppresses none
+
+bad8 is call
+bad8 in jsonTest
+bad8 invokes expectInvalid
+bad8 argument text String bad8Text lend
+bad8 argument wanted Int64 zero copy
+bad8 argument region machine.Address region copy
+bad8 result none
+bad8 ownedBy none
+bad8 cleanedBy none
+bad8 borrows none
+bad8 catch none
+bad8 suppresses none
+
+bad9 is call
+bad9 in jsonTest
+bad9 invokes expectInvalid
+bad9 argument text String bad9Text lend
+bad9 argument wanted Int64 one copy
+bad9 argument region machine.Address region copy
+bad9 result none
+bad9 ownedBy none
+bad9 cleanedBy none
+bad9 borrows none
+bad9 catch none
+bad9 suppresses none
+
+bad10 is call
+bad10 in jsonTest
+bad10 invokes expectInvalid
+bad10 argument text String bad10Text lend
+bad10 argument wanted Int64 zero copy
+bad10 argument region machine.Address region copy
+bad10 result none
+bad10 ownedBy none
+bad10 cleanedBy none
+bad10 borrows none
+bad10 catch none
+bad10 suppresses none
+
+bad11 is call
+bad11 in jsonTest
+bad11 invokes expectInvalid
+bad11 argument text String bad11Text lend
+bad11 argument wanted Int64 one copy
+bad11 argument region machine.Address region copy
+bad11 result none
+bad11 ownedBy none
+bad11 cleanedBy none
+bad11 borrows none
+bad11 catch none
+bad11 suppresses none
+
+findShape is call
+findShape in jsonTest
+findShape invokes kernel.stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findArgs is call
+findArgs in jsonTest
+findArgs invokes kernel.stateAt
+findArgs argument offset Int64 argsOffset copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in jsonTest
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in jsonTest
+findPayload invokes kernel.stateAt
+findPayload argument offset Int64 payloadOffset copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+parseList is call
+parseList in jsonTest
+parseList invokes parseInto
+parseList argument text String listText lend
+parseList argument region machine.Address region copy
+parseList result listStatus Int64
+parseList ownedBy none
+parseList cleanedBy none
+parseList borrows none
+parseList catch none
+parseList suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in jsonTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 zero copy
+doAssertEqualInt64 argument actual Int64 listStatus copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readList is call
+readList in jsonTest
+readList invokes resultSlot
+readList argument slot Int64 zero copy
+readList result list Int64
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+shapeItem is call
+shapeItem in jsonTest
+shapeItem invokes setShape
+shapeItem argument first Int64 one copy
+shapeItem argument second Int64 one copy
+shapeItem argument third Int64 one copy
+shapeItem result none
+shapeItem ownedBy none
+shapeItem cleanedBy none
+shapeItem borrows none
+shapeItem catch none
+shapeItem suppresses none
+
+setList is call
+setList in jsonTest
+setList invokes setNumberArg
+setList argument slot Int64 zero copy
+setList argument value Int64 list copy
+setList result none
+setList ownedBy none
+setList cleanedBy none
+setList borrows none
+setList catch none
+setList suppresses none
+
+setIndex is call
+setIndex in jsonTest
+setIndex invokes setNumberArg
+setIndex argument slot Int64 one copy
+setIndex argument value Int64 two copy
+setIndex result none
+setIndex ownedBy none
+setIndex cleanedBy none
+setIndex borrows none
+setIndex catch none
+setIndex suppresses none
+
+setItemRegion is call
+setItemRegion in jsonTest
+setItemRegion invokes setAddressArg
+setItemRegion argument slot Int64 two copy
+setItemRegion argument value machine.Address region copy
+setItemRegion result none
+setItemRegion ownedBy none
+setItemRegion cleanedBy none
+setItemRegion borrows none
+setItemRegion catch none
+setItemRegion suppresses none
+
+itemIt is call
+itemIt in jsonTest
+itemIt invokes jsonCall
+itemIt argument which Int64 seven copy
+itemIt argument shape machine.Address shape copy
+itemIt argument args machine.Address args copy
+itemIt argument results machine.Address results copy
+itemIt argument payload machine.Address payload copy
+itemIt result itemStatus Int32
+itemIt ownedBy none
+itemIt cleanedBy none
+itemIt borrows none
+itemIt catch none
+itemIt suppresses none
+
+widenItem is call
+widenItem in jsonTest
+widenItem invokes convert.int32ToInt64
+widenItem argument value Int32 itemStatus copy
+widenItem result itemValue Int64
+widenItem ownedBy none
+widenItem cleanedBy none
+widenItem borrows none
+widenItem catch none
+widenItem suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in jsonTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 zero copy
+doAssertEqualInt642 argument actual Int64 itemValue copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+readInner is call
+readInner in jsonTest
+readInner invokes resultSlot
+readInner argument slot Int64 zero copy
+readInner result inner Int64
+readInner ownedBy none
+readInner cleanedBy none
+readInner borrows none
+readInner catch none
+readInner suppresses none
+
+shapeAppend is call
+shapeAppend in jsonTest
+shapeAppend invokes setShape
+shapeAppend argument first Int64 one copy
+shapeAppend argument second Int64 one copy
+shapeAppend argument third Int64 zero copy
+shapeAppend result none
+shapeAppend ownedBy none
+shapeAppend cleanedBy none
+shapeAppend borrows none
+shapeAppend catch none
+shapeAppend suppresses none
+
+setInner is call
+setInner in jsonTest
+setInner invokes setNumberArg
+setInner argument slot Int64 zero copy
+setInner argument value Int64 inner copy
+setInner result none
+setInner ownedBy none
+setInner cleanedBy none
+setInner borrows none
+setInner catch none
+setInner suppresses none
+
+setNumber is call
+setNumber in jsonTest
+setNumber invokes setNumberArg
+setNumber argument slot Int64 one copy
+setNumber argument value Int64 n42 copy
+setNumber result none
+setNumber ownedBy none
+setNumber cleanedBy none
+setNumber borrows none
+setNumber catch none
+setNumber suppresses none
+
+appendIt is call
+appendIt in jsonTest
+appendIt invokes callJson
+appendIt argument which Int64 fifteen copy
+appendIt result appended Int64
+appendIt ownedBy none
+appendIt cleanedBy none
+appendIt borrows none
+appendIt catch none
+appendIt suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in jsonTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 zero copy
+doAssertEqualInt643 argument actual Int64 appended copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+shapeWrite is call
+shapeWrite in jsonTest
+shapeWrite invokes setShape
+shapeWrite argument first Int64 one copy
+shapeWrite argument second Int64 one copy
+shapeWrite argument third Int64 zero copy
+shapeWrite result none
+shapeWrite ownedBy none
+shapeWrite cleanedBy none
+shapeWrite borrows none
+shapeWrite catch none
+shapeWrite suppresses none
+
+setWritten is call
+setWritten in jsonTest
+setWritten invokes setNumberArg
+setWritten argument slot Int64 zero copy
+setWritten argument value Int64 list copy
+setWritten result none
+setWritten ownedBy none
+setWritten cleanedBy none
+setWritten borrows none
+setWritten catch none
+setWritten suppresses none
+
+setWriteRegion is call
+setWriteRegion in jsonTest
+setWriteRegion invokes setAddressArg
+setWriteRegion argument slot Int64 one copy
+setWriteRegion argument value machine.Address region copy
+setWriteRegion result none
+setWriteRegion ownedBy none
+setWriteRegion cleanedBy none
+setWriteRegion borrows none
+setWriteRegion catch none
+setWriteRegion suppresses none
+
+writeIt is call
+writeIt in jsonTest
+writeIt invokes callJson
+writeIt argument which Int64 seventeen copy
+writeIt result written Int64
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch none
+writeIt suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in jsonTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 zero copy
+doAssertEqualInt644 argument actual Int64 written copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+expectShared is call
+expectShared in jsonTest
+expectShared invokes expectResultText
+expectShared argument wanted String sharedText lend
+expectShared result none
+expectShared ownedBy none
+expectShared cleanedBy none
+expectShared borrows none
+expectShared catch none
+expectShared suppresses none
+
+setPast is call
+setPast in jsonTest
+setPast invokes setNumberArg
+setPast argument slot Int64 one copy
+setPast argument value Int64 three copy
+setPast result none
+setPast ownedBy none
+setPast cleanedBy none
+setPast borrows none
+setPast catch none
+setPast suppresses none
+
+shapePast is call
+shapePast in jsonTest
+shapePast invokes setShape
+shapePast argument first Int64 one copy
+shapePast argument second Int64 one copy
+shapePast argument third Int64 one copy
+shapePast result none
+shapePast ownedBy none
+shapePast cleanedBy none
+shapePast borrows none
+shapePast catch none
+shapePast suppresses none
+
+setPastList is call
+setPastList in jsonTest
+setPastList invokes setNumberArg
+setPastList argument slot Int64 zero copy
+setPastList argument value Int64 list copy
+setPastList result none
+setPastList ownedBy none
+setPastList cleanedBy none
+setPastList borrows none
+setPastList catch none
+setPastList suppresses none
+
+setPastIndex is call
+setPastIndex in jsonTest
+setPastIndex invokes setNumberArg
+setPastIndex argument slot Int64 one copy
+setPastIndex argument value Int64 three copy
+setPastIndex result none
+setPastIndex ownedBy none
+setPastIndex cleanedBy none
+setPastIndex borrows none
+setPastIndex catch none
+setPastIndex suppresses none
+
+setPastRegion is call
+setPastRegion in jsonTest
+setPastRegion invokes setAddressArg
+setPastRegion argument slot Int64 two copy
+setPastRegion argument value machine.Address region copy
+setPastRegion result none
+setPastRegion ownedBy none
+setPastRegion cleanedBy none
+setPastRegion borrows none
+setPastRegion catch none
+setPastRegion suppresses none
+
+pastIt is call
+pastIt in jsonTest
+pastIt invokes callJson
+pastIt argument which Int64 seven copy
+pastIt result pastStatus Int64
+pastIt ownedBy none
+pastIt cleanedBy none
+pastIt borrows none
+pastIt catch none
+pastIt suppresses none
+
+doAssertEqualInt645 is call
+doAssertEqualInt645 in jsonTest
+doAssertEqualInt645 invokes test.assertEqualInt64
+doAssertEqualInt645 argument expected Int64 three copy
+doAssertEqualInt645 argument actual Int64 pastStatus copy
+doAssertEqualInt645 result none
+doAssertEqualInt645 ownedBy none
+doAssertEqualInt645 cleanedBy none
+doAssertEqualInt645 borrows none
+doAssertEqualInt645 catch none
+doAssertEqualInt645 suppresses none
+
+readPast is call
+readPast in jsonTest
+readPast invokes payloadValue
+readPast argument none
+readPast result pastIndex Int64
+readPast ownedBy none
+readPast cleanedBy none
+readPast borrows none
+readPast catch none
+readPast suppresses none
+
+doAssertEqualInt646 is call
+doAssertEqualInt646 in jsonTest
+doAssertEqualInt646 invokes test.assertEqualInt64
+doAssertEqualInt646 argument expected Int64 three copy
+doAssertEqualInt646 argument actual Int64 pastIndex copy
+doAssertEqualInt646 result none
+doAssertEqualInt646 ownedBy none
+doAssertEqualInt646 cleanedBy none
+doAssertEqualInt646 borrows none
+doAssertEqualInt646 catch none
+doAssertEqualInt646 suppresses none
+
+shapeLength is call
+shapeLength in jsonTest
+shapeLength invokes setShape
+shapeLength argument first Int64 one copy
+shapeLength argument second Int64 zero copy
+shapeLength argument third Int64 zero copy
+shapeLength result none
+shapeLength ownedBy none
+shapeLength cleanedBy none
+shapeLength borrows none
+shapeLength catch none
+shapeLength suppresses none
+
+setLength is call
+setLength in jsonTest
+setLength invokes setNumberArg
+setLength argument slot Int64 zero copy
+setLength argument value Int64 list copy
+setLength result none
+setLength ownedBy none
+setLength cleanedBy none
+setLength borrows none
+setLength catch none
+setLength suppresses none
+
+lengthIt is call
+lengthIt in jsonTest
+lengthIt invokes callJson
+lengthIt argument which Int64 six copy
+lengthIt result lengthStatus Int64
+lengthIt ownedBy none
+lengthIt cleanedBy none
+lengthIt borrows none
+lengthIt catch none
+lengthIt suppresses none
+
+doAssertEqualInt647 is call
+doAssertEqualInt647 in jsonTest
+doAssertEqualInt647 invokes test.assertEqualInt64
+doAssertEqualInt647 argument expected Int64 zero copy
+doAssertEqualInt647 argument actual Int64 lengthStatus copy
+doAssertEqualInt647 result none
+doAssertEqualInt647 ownedBy none
+doAssertEqualInt647 cleanedBy none
+doAssertEqualInt647 borrows none
+doAssertEqualInt647 catch none
+doAssertEqualInt647 suppresses none
+
+readLength is call
+readLength in jsonTest
+readLength invokes resultSlot
+readLength argument slot Int64 zero copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+doAssertEqualInt648 is call
+doAssertEqualInt648 in jsonTest
+doAssertEqualInt648 invokes test.assertEqualInt64
+doAssertEqualInt648 argument expected Int64 three copy
+doAssertEqualInt648 argument actual Int64 length copy
+doAssertEqualInt648 result none
+doAssertEqualInt648 ownedBy none
+doAssertEqualInt648 cleanedBy none
+doAssertEqualInt648 borrows none
+doAssertEqualInt648 catch none
+doAssertEqualInt648 suppresses none
+
+free is call
+free in jsonTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none

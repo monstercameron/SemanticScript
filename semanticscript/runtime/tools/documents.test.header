@@ -1,0 +1,2 @@
+# Tests of the `documents` module; generated from tools/documents.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.

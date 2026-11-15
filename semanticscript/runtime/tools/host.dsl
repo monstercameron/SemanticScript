@@ -1,6 +1,6 @@
 module host "The host library of a standalone executable: refined_host and its targets (byte buffers, maps, sets, string.fromBytes, log lines)"
   path host
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.list standard.test memory numbers output frames heap tables handles regions slots tasks files processes hashes
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.list standard.test memory numbers output frames heap tables handles regions slots tasks files processes hashes generators requests documents
   exports hostCall utf8InvalidAt
 
 capability memoryAccess "Authority to read a host call's slots and keep the host's objects and call shapes in memory" use machine.memory none
@@ -124,6 +124,30 @@ table hostTargets "The host targets this runtime implements, numbered from 1" Ho
   row ffiBind name="ffi.Function.bind" scoped=1
   row ffiClose name="ffi.close" scoped=-1
   row ffiOpen name="ffi.open" scoped=0
+  row randomInt64Between name="random.int64Between" scoped=-1
+  row randomNewGenerator name="random.newGenerator" scoped=-1
+  row randomNextInt64 name="random.nextInt64" scoped=-1
+  row httpParseRequest name="http.parseRequest" scoped=-1
+  row httpHeader name="http.header" scoped=-1
+  row httpResponse name="http.response" scoped=-1
+  row httpSerializeResponse name="http.serializeResponse" scoped=-1
+  row jsonParse name="json.parse" scoped=-1
+  row jsonKind name="json.kind" scoped=-1
+  row jsonAsInt64 name="json.asInt64" scoped=-1
+  row jsonAsBool name="json.asBool" scoped=-1
+  row jsonAsText name="json.asText" scoped=-1
+  row jsonLength name="json.length" scoped=-1
+  row jsonItem name="json.item" scoped=-1
+  row jsonField name="json.field" scoped=-1
+  row jsonNewObject name="json.newObject" scoped=-1
+  row jsonNewArray name="json.newArray" scoped=-1
+  row jsonSetInt64 name="json.setInt64" scoped=-1
+  row jsonSetText name="json.setText" scoped=-1
+  row jsonSetBool name="json.setBool" scoped=-1
+  row jsonSetValue name="json.setValue" scoped=-1
+  row jsonAppendInt64 name="json.appendInt64" scoped=-1
+  row jsonAppendText name="json.appendText" scoped=-1
+  row jsonStringify name="json.stringify" scoped=-1
 
 op endProcess "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
   input code Int32 copied
@@ -1834,10 +1858,47 @@ op dispatchMore "Run a host target of stage 3 and 4 by its number (26 on): 0, or
   return ok
 :check72
   is72: t72 = compare.equalInt64(number, n72=72)
-  if t72 do72 unknown
+  if t72 do72 rest
 :do72
   run72: status72 = processes.ffiOpen(shape, args, results, payload)
   return status72
+:rest
+  runRest: restStatus = dispatchRest(number, shape, args, results, payload)
+  return restStatus
+
+op dispatchRest "Run a host target of the modules that came last by its number (73 on): random (73 to 75), http (76 to 79), json (80 to 96); 0, or an error's variant number with its payload stored"
+  input number Int64 copied
+  input shape machine.Address copied
+  input args machine.Address copied
+  input results machine.Address copied
+  input payload machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let ok Int32 0
+:begin
+  randomCheck: isRandom = compare.lessOrEqualInt64(number, n75=75)
+  if isRandom runRandom httpCheck
+:runRandom
+  randomPlace: randomWhich = math.subtractInt64(number, n72=72)
+  randomIt: randomStatus = generators.randomCall(randomWhich, shape, args, results, payload)
+  return randomStatus
+:httpCheck
+  checkHttp: isHttp = compare.lessOrEqualInt64(number, n79=79)
+  if isHttp runHttp jsonCheck
+:runHttp
+  httpPlace: httpWhich = math.subtractInt64(number, n75)
+  httpIt: httpStatus = requests.httpCall(httpWhich, shape, args, results, payload)
+  return httpStatus
+:jsonCheck
+  checkJson: isJson = compare.lessOrEqualInt64(number, n96=96)
+  if isJson runJson unknown
+:runJson
+  jsonPlace: jsonWhich = math.subtractInt64(number, n79)
+  jsonIt: jsonStatus = documents.jsonCall(jsonWhich, shape, args, results, payload)
+  return jsonStatus
 :unknown
   failUnknown: failText(unknownText="a host call named a target this runtime does not number")
   return ok

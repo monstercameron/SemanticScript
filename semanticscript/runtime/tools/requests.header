@@ -1,0 +1,4 @@
+# HTTP requests and responses as text for a standalone executable: the http targets, reading a request and
+# writing a response exactly as host.py does under `refined run`.
+#
+# This module is generated from tools/requests.dsl by tools/build.py.

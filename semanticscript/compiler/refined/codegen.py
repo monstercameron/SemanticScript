@@ -224,6 +224,41 @@ _X86_64_START = [
     "  callq refined_entry",
     "  ud2",
 ]
+_AARCH64_START = [
+    ".text",
+    ".p2align 4",
+    ".globl _start",
+    ".type _start,@function",
+    "_start:",
+    "  mov x29, xzr",
+    "  mov x30, xzr",
+    "  mov x0, sp",
+    "  and x9, x0, #-16",
+    "  mov sp, x9",
+    "  bl refined_entry",
+    "  brk #0",
+]
+# D-147: what a Linux signal handler returns through (SA_RESTORER): the rt_sigreturn system call
+_X86_64_RESTORER = [
+    ".text",
+    ".p2align 4",
+    ".globl refined_signal_restorer",
+    ".type refined_signal_restorer,@function",
+    "refined_signal_restorer:",
+    "  movq $15, %rax",
+    "  syscall",
+    "  ud2",
+]
+_AARCH64_RESTORER = [
+    ".text",
+    ".p2align 4",
+    ".globl refined_signal_restorer",
+    ".type refined_signal_restorer,@function",
+    "refined_signal_restorer:",
+    "  mov x8, #139",
+    "  svc #0",
+    "  brk #0",
+]
 
 
 class _Callbacks:
@@ -334,14 +369,27 @@ class Backend:
         while self.pending:
             m, info, fn, sub = self.pending.pop()
             OpGen(self, m, info, fn, sub).emit()
-        if self.options.get("runtime_object") and "refined_entry" in self.abi and self.linux_x86_64():
-            self.module.asm_parts["start"] = _X86_64_START  # D-139: the process entry calls refined_entry
+        if self.options.get("runtime_object") and "refined_entry" in self.abi and self.linux_arch():
+            # D-139: the process entry calls refined_entry
+            self.module.asm_parts["start"] = _AARCH64_START if self.linux_arch() == "aarch64" else _X86_64_START
         return self.module
 
     # ------------------------------------------------------------ the operating system (D-122, D-138, D-139)
 
+    def linux_arch(self) -> str:
+        """`x86_64` or `aarch64` for Linux on an architecture the runtime has system calls for (D-138, D-150), else
+        empty."""
+        if self.os != "linux":
+            return ""
+        arch = self.module.triple.split("-")[0]
+        if arch == "x86_64":
+            return "x86_64"
+        if arch in ("aarch64", "arm64"):
+            return "aarch64"
+        return ""
+
     def linux_x86_64(self) -> bool:
-        return self.os == "linux" and self.module.triple.startswith("x86_64")
+        return self.linux_arch() == "x86_64"
 
     def off_target(self, b: ir.IRBuilder, out: Optional[ir.Type]):
         """A `system` target of another operating system than the module's: it is never reached (the runtime
@@ -350,15 +398,38 @@ class Backend:
         b.call(trap, [])
         return ir.Constant(out, ir.Undefined) if out is not None else None
 
-    def linux_syscall(self, b: ir.IRBuilder, number: int, values: list):
+    def linux_syscall(self, b: ir.IRBuilder, number: int, values: list, name: str = ""):
         """D-138: a raw Linux system call, the x86_64 `syscall` instruction: the number in rax, the arguments in
-        rdi, rsi, rdx, r10, r8, r9, the result (a negative errno for a failure) in rax."""
-        if not self.linux_x86_64():
+        rdi, rsi, rdx, r10, r8, r9, the result (a negative errno for a failure) in rax. D-150: on AArch64 `svc #0`,
+        the number (the generic table's, AARCH64_NUMBERS) in x8, the arguments in x0 to x5, the result in x0; `poll`,
+        `fork`, and `dup2`, which AArch64 does not have, become `ppoll`, `clone`, and `dup3`."""
+        arch = self.linux_arch()
+        if arch == "x86_64":
+            regs = ["rdi", "rsi", "rdx", "r10", "r8", "r9"][:len(values)]
+            constraint = ",".join(["={rax}", "{rax}"] + [f"{{{r}}}" for r in regs] + ["~{rcx}", "~{r11}", "~{memory}"])
+            fty = ir.FunctionType(I64, [I64] * (len(values) + 1))
+            return b.asm(fty, "syscall", constraint, [I64(number)] + values, side_effect=True)
+        if arch != "aarch64":
             return self.off_target(b, I64)
-        regs = ["rdi", "rsi", "rdx", "r10", "r8", "r9"][:len(values)]
-        constraint = ",".join(["={rax}", "{rax}"] + [f"{{{r}}}" for r in regs] + ["~{rcx}", "~{r11}", "~{memory}"])
+        from .library import AARCH64_NUMBERS
+        number = AARCH64_NUMBERS[name]
+        if name == "poll":  # ppoll(fds, count, timeout or NULL, NULL, 8): milliseconds as a timespec
+            spec = b.alloca(ir.ArrayType(I64, 2), name="pollspec")
+            ms = values[2]
+            secs, rest = b.sdiv(ms, I64(1000)), b.srem(ms, I64(1000))
+            b.store(secs, b.gep(spec, [I32(0), I32(0)]))
+            b.store(b.mul(rest, I64(1000000)), b.gep(spec, [I32(0), I32(1)]))
+            negative = b.icmp_signed("<", ms, I64(0))
+            where = b.select(negative, I64(0), b.ptrtoint(spec, I64))
+            values = [values[0], values[1], where, I64(0), I64(8)]
+        elif name == "fork":  # clone(SIGCHLD, 0, 0, 0, 0)
+            values = [I64(17), I64(0), I64(0), I64(0), I64(0)]
+        elif name == "dup2":  # dup3(fd, target, 0)
+            values = [values[0], values[1], I64(0)]
+        regs = ["x0", "x1", "x2", "x3", "x4", "x5"][:len(values)]
+        constraint = ",".join(["={x0}", "{x8}"] + [f"{{{r}}}" for r in regs] + ["~{memory}"])
         fty = ir.FunctionType(I64, [I64] * (len(values) + 1))
-        return b.asm(fty, "syscall", constraint, [I64(number)] + values, side_effect=True)
+        return b.asm(fty, "svc #0", constraint, [I64(number)] + values, side_effect=True)
 
     def stack_routine(self, name: str, ftype: ir.FunctionType) -> Optional[ir.Function]:
         """D-139: one of the routines that switch stacks, written in the module's assembly for its architecture;
@@ -1268,9 +1339,11 @@ class OpGen:
             number, sig = LINUX_CALLS[name]
             values = [b.ptrtoint(args[p.name], I64) if p.type == "machine.Address" else args[p.name]
                       for p in sig.inputs]
-            return self.be.linux_syscall(b, number, values), None, None
+            return self.be.linux_syscall(b, number, values, name), None, None
         if mod == "system" and name == "linux":
             return I1(1 if self.be.os == "linux" else 0), None, None
+        if mod == "system" and name == "aarch64":
+            return I1(1 if self.be.module.triple.split("-")[0] in ("aarch64", "arm64") else 0), None, None
 
         def trap_if(cond, message: str) -> None:
             with b.if_then(cond, likely=False):
@@ -1687,6 +1760,20 @@ class OpGen:
                 return None, None, None
             b.call(fn, [args[p] for p in params])
             return None, None, None
+        if name == "interruptHandler":
+            # D-147: only the runtime has it, and only for the operation the system calls on an interrupt
+            if "refined_interrupt_handler" not in self.be.abi:
+                self.unsupported(line, "`machine.interruptHandler` in a program with no `abi c "
+                                       "\"refined_interrupt_handler\"` operation")
+            mod, op = self.be.abi["refined_interrupt_handler"]
+            return b.bitcast(self.be.function_for(mod, op, None, 0), PTR), None, None
+        if name == "signalRestorer":
+            arch = self.be.linux_arch()
+            if not arch:
+                return ir.Constant(PTR, None), None, None
+            self.be.module.asm_parts["restorer"] = _AARCH64_RESTORER if arch == "aarch64" else _X86_64_RESTORER
+            fn = self.be.module.globals.get("refined_signal_restorer") or                 ir.Function(self.be.module, ir.FunctionType(ir.VoidType(), []), name="refined_signal_restorer")
+            return b.bitcast(fn, PTR), None, None
         if name == "taskEntry":
             # D-131: only the runtime has it, and only for the operation a task's fiber starts in
             if "refined_task_entry" not in self.be.abi:

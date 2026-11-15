@@ -1,0 +1,3461 @@
+# Random numbers for a standalone executable: the operating system's secure source (BCryptGenRandom,
+# getrandom) and seeded generators that give exactly what Python's random.Random gives.
+#
+# This module is generated from tools/generators.dsl by tools/build.py.
+
+generators is module
+generators purpose "Random numbers: the operating system's secure source, and seeded generators that give exactly what Python's random.Random gives"
+generators path generators
+generators imports standard.machine
+generators imports standard.system
+generators imports standard.string
+generators imports standard.math
+generators imports standard.compare
+generators imports standard.convert
+generators imports standard.bits
+generators imports standard.test
+generators imports kernel
+generators imports frames
+generators imports heap
+generators imports handles
+generators imports regions
+generators imports slots
+generators exports randomCall
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep a generator's state in memory and read a host call's slots"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to read random bytes from the operating system and take memory for a generator"
+systemCalls grants use system.calls none
+
+# `random.int64Between` reads the system's secure source as Python's `secrets.randbelow` does: Windows's
+# BCryptGenRandom with the system's preferred generator (bcrypt.dll, D-146), Linux's getrandom. A seeded generator
+# is CPython's Mersenne Twister (MT19937): `init_genrand(19650218)`, then `init_by_array` with the seed's magnitude
+# in 32-bit words, least significant first, as `random.Random(seed)` seeds it; `random.nextInt64` is
+# `randint(low, high)`, which takes `getrandbits(k)` of the range's bit length until a number falls inside it.
+# A generator is a heap block of generatorBytes: its 624 words at 0 (one per 8 bytes) and the next word's place at
+# 4992. machine.state bytes 1024 to 1047 belong to this module: 1024 the seed's words, 1040 random bytes as they are read.
+generatorBytes is constant
+generatorBytes purpose "The bytes of a generator: 624 words and the next word's place"
+generatorBytes type Int64
+generatorBytes value 5000
+
+keyAt is constant
+keyAt purpose "Where the seed's words are put, in machine.state"
+keyAt type Int64
+keyAt value 1024
+
+kindGenerator is constant
+kindGenerator purpose "The kind of a random number generator's handle"
+kindGenerator type Int64
+kindGenerator value 9
+
+wordMask is constant
+wordMask purpose "The 32 low bits of a whole number"
+wordMask type Int64
+wordMask value 4294967295
+
+emptyRange is constant
+emptyRange purpose "random.RangeError.emptyRange, numbered from 1"
+emptyRange type Int32
+emptyRange value 1
+
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do osCheck
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do widenCode
+endProcess at linuxExit do callExit
+endProcess at linuxExit return ok none
+endProcess at windowsExit do callExitProcess
+endProcess at windowsExit return ok none
+
+osCheck is call
+osCheck in endProcess
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+widenCode is call
+widenCode in endProcess
+widenCode invokes convert.int32ToInt64
+widenCode argument value Int32 code copy
+widenCode result wideCode Int64
+widenCode ownedBy none
+widenCode cleanedBy none
+widenCode borrows none
+widenCode catch none
+widenCode suppresses none
+
+callExit is call
+callExit in endProcess
+callExit invokes system.exitGroup
+callExit argument code Int64 wideCode copy
+callExit result exitResult Int64
+callExit ownedBy none
+callExit cleanedBy none
+callExit borrows none
+callExit catch none
+callExit suppresses none
+
+callExitProcess is call
+callExitProcess in endProcess
+callExitProcess invokes system.exitProcess
+callExitProcess argument code Int32 code copy
+callExitProcess result none
+callExitProcess ownedBy none
+callExitProcess cleanedBy none
+callExitProcess borrows none
+callExitProcess catch none
+callExitProcess suppresses none
+
+failText is operation
+failText purpose "Report a trap with a message and end the process with exit code 70"
+failText invariant none
+failText typeParameter none
+failText input text String borrowed
+failText output none
+failText outputOwnedBy none
+failText raises none
+failText effect use machine.memory
+failText effect use system.calls
+failText uses memoryAccess
+failText uses systemCalls
+failText memoryHeap false
+failText async false
+failText maxRecursion none
+failText label begin loopKind none
+failText label begin within none
+failText let trapCode Int32 70 immutable
+failText at begin do findText
+failText at begin do textLength
+failText at begin do writeReport
+failText at begin do exit
+failText at begin return ok none
+
+findText is call
+findText in failText
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in failText
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+writeReport is call
+writeReport in failText
+writeReport invokes frames.report
+writeReport argument text machine.Address textAt copy
+writeReport argument bytes Int64 bytes copy
+writeReport result status Int32
+writeReport ownedBy none
+writeReport cleanedBy none
+writeReport borrows none
+writeReport catch none
+writeReport suppresses none
+
+exit is call
+exit in failText
+exit invokes endProcess
+exit argument code Int32 trapCode copy
+exit result none
+exit ownedBy none
+exit cleanedBy none
+exit borrows none
+exit catch none
+exit suppresses none
+
+# ---------------------------------------------------------------- the system's secure source
+secureBytes is operation
+secureBytes purpose "Fill memory with bytes from the operating system's secure random source; a source that fails traps"
+secureBytes invariant none
+secureBytes typeParameter none
+secureBytes input target machine.Address copied
+secureBytes input bytes Int64 copied
+secureBytes output none
+secureBytes outputOwnedBy none
+secureBytes raises none
+secureBytes effect use machine.memory
+secureBytes effect use system.calls
+secureBytes uses memoryAccess
+secureBytes uses systemCalls
+secureBytes memoryHeap false
+secureBytes async false
+secureBytes maxRecursion none
+secureBytes label begin loopKind none
+secureBytes label begin within none
+secureBytes label windowsRead loopKind none
+secureBytes label windowsRead within none
+secureBytes label eachRead loopKind while
+secureBytes label eachRead within none
+secureBytes label eachRead maxIterations forever
+secureBytes label readSome loopKind none
+secureBytes label readSome within eachRead
+secureBytes label interruptedCheck loopKind none
+secureBytes label interruptedCheck within eachRead
+secureBytes label count loopKind none
+secureBytes label count within eachRead
+secureBytes label fail loopKind none
+secureBytes label fail within none
+secureBytes label done loopKind none
+secureBytes label done within none
+secureBytes let filled Int64 0 mutable
+secureBytes let forever Int64 9223372036854775807 immutable
+secureBytes let systemPreferred Int32 2 immutable
+secureBytes let zero32 Int32 0 immutable
+secureBytes let noFlags Int64 0 immutable
+secureBytes let eintr Int64 4 immutable
+secureBytes let failedText String "the operating system's random number generator failed" immutable
+secureBytes at begin do osCheck
+secureBytes at begin branch if onLinux goto eachRead else goto windowsRead
+secureBytes at windowsRead do nowhere
+secureBytes at windowsRead do narrowBytes
+secureBytes at windowsRead do generate
+secureBytes at windowsRead do failedCheck
+secureBytes at windowsRead branch if refused goto fail else goto done
+secureBytes at eachRead do allCheck
+secureBytes at eachRead branch if all goto done else goto readSome
+secureBytes at readSome do findPlace
+secureBytes at readSome do leftOf
+secureBytes at readSome do readIt
+secureBytes at readSome do failedRead
+secureBytes at readSome branch if refusedLinux goto interruptedCheck else goto count
+secureBytes at interruptedCheck do errnoOf
+secureBytes at interruptedCheck do againCheck
+secureBytes at interruptedCheck branch if again goto eachRead else goto fail
+secureBytes at count do moreDone
+secureBytes at count set filled after
+secureBytes at count goto eachRead
+secureBytes at fail do failIt
+secureBytes at fail return ok none
+secureBytes at done return ok none
+
+osCheck is call
+osCheck in secureBytes
+osCheck invokes system.linux
+osCheck argument none
+osCheck result onLinux Bool
+osCheck ownedBy none
+osCheck cleanedBy none
+osCheck borrows none
+osCheck catch none
+osCheck suppresses none
+
+nowhere is call
+nowhere in secureBytes
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+narrowBytes is call
+narrowBytes in secureBytes
+narrowBytes invokes convert.int64ToInt32
+narrowBytes argument value Int64 bytes copy
+narrowBytes result bytes32 Int32
+narrowBytes ownedBy none
+narrowBytes cleanedBy none
+narrowBytes borrows none
+narrowBytes catch none
+narrowBytes suppresses none
+
+generate is call
+generate in secureBytes
+generate invokes system.bCryptGenRandom
+generate argument algorithm machine.Address anywhere copy
+generate argument buffer machine.Address target copy
+generate argument bytes Int32 bytes32 copy
+generate argument flags Int32 systemPreferred copy
+generate result status Int32
+generate ownedBy none
+generate cleanedBy none
+generate borrows none
+generate catch none
+generate suppresses none
+
+failedCheck is call
+failedCheck in secureBytes
+failedCheck invokes compare.notEqualInt32
+failedCheck argument left Int32 status copy
+failedCheck argument right Int32 zero32 copy
+failedCheck result refused Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+allCheck is call
+allCheck in secureBytes
+allCheck invokes compare.greaterOrEqualInt64
+allCheck argument left Int64 filled copy
+allCheck argument right Int64 bytes copy
+allCheck result all Bool
+allCheck ownedBy none
+allCheck cleanedBy none
+allCheck borrows none
+allCheck catch none
+allCheck suppresses none
+
+findPlace is call
+findPlace in secureBytes
+findPlace invokes machine.offset
+findPlace argument address machine.Address target copy
+findPlace argument bytes Int64 filled copy
+findPlace result place machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+leftOf is call
+leftOf in secureBytes
+leftOf invokes math.subtractInt64
+leftOf argument left Int64 bytes copy
+leftOf argument right Int64 filled copy
+leftOf result left Int64
+leftOf ownedBy none
+leftOf cleanedBy none
+leftOf borrows none
+leftOf catch none
+leftOf suppresses none
+
+readIt is call
+readIt in secureBytes
+readIt invokes system.getrandom
+readIt argument buffer machine.Address place copy
+readIt argument bytes Int64 left copy
+readIt argument flags Int64 noFlags copy
+readIt result got Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+failedRead is call
+failedRead in secureBytes
+failedRead invokes kernel.failed
+failedRead argument result Int64 got copy
+failedRead result refusedLinux Bool
+failedRead ownedBy none
+failedRead cleanedBy none
+failedRead borrows none
+failedRead catch none
+failedRead suppresses none
+
+errnoOf is call
+errnoOf in secureBytes
+errnoOf invokes kernel.errnoOf
+errnoOf argument result Int64 got copy
+errnoOf result errno Int64
+errnoOf ownedBy none
+errnoOf cleanedBy none
+errnoOf borrows none
+errnoOf catch none
+errnoOf suppresses none
+
+againCheck is call
+againCheck in secureBytes
+againCheck invokes compare.equalInt64
+againCheck argument left Int64 errno copy
+againCheck argument right Int64 eintr copy
+againCheck result again Bool
+againCheck ownedBy none
+againCheck cleanedBy none
+againCheck borrows none
+againCheck catch none
+againCheck suppresses none
+
+moreDone is call
+moreDone in secureBytes
+moreDone invokes math.addInt64
+moreDone argument left Int64 filled copy
+moreDone argument right Int64 got copy
+moreDone result after Int64
+moreDone ownedBy none
+moreDone cleanedBy none
+moreDone borrows none
+moreDone catch none
+moreDone suppresses none
+
+failIt is call
+failIt in secureBytes
+failIt invokes failText
+failIt argument text String failedText lend
+failIt result none
+failIt ownedBy none
+failIt cleanedBy none
+failIt borrows none
+failIt catch none
+failIt suppresses none
+
+secureWord is operation
+secureWord purpose "64 bits from the operating system's secure random source"
+secureWord invariant none
+secureWord typeParameter none
+secureWord input none
+secureWord output UInt64
+secureWord outputOwnedBy none
+secureWord raises none
+secureWord effect use machine.memory
+secureWord effect use system.calls
+secureWord uses memoryAccess
+secureWord uses systemCalls
+secureWord memoryHeap false
+secureWord async false
+secureWord maxRecursion none
+secureWord label begin loopKind none
+secureWord label begin within none
+secureWord let randomAt Int64 1040 immutable
+secureWord let eight Int64 8 immutable
+secureWord at begin do findPlace
+secureWord at begin do fillIt
+secureWord at begin do readIt
+secureWord at begin return ok value
+
+findPlace is call
+findPlace in secureWord
+findPlace invokes kernel.stateAt
+findPlace argument offset Int64 randomAt copy
+findPlace result place machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+fillIt is call
+fillIt in secureWord
+fillIt invokes secureBytes
+fillIt argument target machine.Address place copy
+fillIt argument bytes Int64 eight copy
+fillIt result none
+fillIt ownedBy none
+fillIt cleanedBy none
+fillIt borrows none
+fillIt catch none
+fillIt suppresses none
+
+readIt is call
+readIt in secureWord
+readIt invokes machine.loadUInt64
+readIt argument address machine.Address place copy
+readIt result value UInt64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+bitLength is operation
+bitLength purpose "How many bits a whole number needs: 0 for 0"
+bitLength invariant none
+bitLength typeParameter none
+bitLength input value UInt64 copied
+bitLength output Int64
+bitLength outputOwnedBy none
+bitLength raises none
+bitLength effect none
+bitLength uses none
+bitLength memoryHeap false
+bitLength async false
+bitLength maxRecursion none
+bitLength label begin loopKind none
+bitLength label begin within none
+bitLength label eachBit loopKind while
+bitLength label eachBit within none
+bitLength label eachBit maxIterations 65
+bitLength label shift loopKind none
+bitLength label shift within eachBit
+bitLength label finish loopKind none
+bitLength label finish within none
+bitLength let left UInt64 0 mutable
+bitLength let count Int64 0 mutable
+bitLength let noBits UInt64 0 immutable
+bitLength let one Int64 1 immutable
+bitLength at begin set left value
+bitLength at begin goto eachBit
+bitLength at eachBit do zeroCheck
+bitLength at eachBit branch if empty goto finish else goto shift
+bitLength at shift do shiftIt
+bitLength at shift set left shifted
+bitLength at shift do countIt
+bitLength at shift set count more
+bitLength at shift goto eachBit
+bitLength at finish return ok count
+
+zeroCheck is call
+zeroCheck in bitLength
+zeroCheck invokes compare.equalUInt64
+zeroCheck argument left UInt64 left copy
+zeroCheck argument right UInt64 noBits copy
+zeroCheck result empty Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+shiftIt is call
+shiftIt in bitLength
+shiftIt invokes bits.shiftRightUInt64
+shiftIt argument value UInt64 left copy
+shiftIt argument amount Int64 one copy
+shiftIt result shifted UInt64
+shiftIt ownedBy none
+shiftIt cleanedBy none
+shiftIt borrows none
+shiftIt catch none
+shiftIt suppresses none
+
+countIt is call
+countIt in bitLength
+countIt invokes math.addInt64
+countIt argument left Int64 count copy
+countIt argument right Int64 one copy
+countIt result more Int64
+countIt ownedBy none
+countIt cleanedBy none
+countIt borrows none
+countIt catch none
+countIt suppresses none
+
+lowMask is operation
+lowMask purpose "The whole number whose k low bits are ones, for k from 1 to 64"
+lowMask invariant none
+lowMask typeParameter none
+lowMask input k Int64 copied
+lowMask output UInt64
+lowMask outputOwnedBy none
+lowMask raises none
+lowMask effect none
+lowMask uses none
+lowMask memoryHeap false
+lowMask async false
+lowMask maxRecursion none
+lowMask label begin loopKind none
+lowMask label begin within none
+lowMask label giveOnes loopKind none
+lowMask label giveOnes within none
+lowMask label shiftIt loopKind none
+lowMask label shiftIt within none
+lowMask let ones UInt64 18446744073709551615 immutable
+lowMask let sixtyFour Int64 64 immutable
+lowMask at begin do fullCheck
+lowMask at begin branch if full goto giveOnes else goto shiftIt
+lowMask at giveOnes return ok ones
+lowMask at shiftIt do dropOf
+lowMask at shiftIt do shifted
+lowMask at shiftIt return ok mask
+
+fullCheck is call
+fullCheck in lowMask
+fullCheck invokes compare.greaterOrEqualInt64
+fullCheck argument left Int64 k copy
+fullCheck argument right Int64 sixtyFour copy
+fullCheck result full Bool
+fullCheck ownedBy none
+fullCheck cleanedBy none
+fullCheck borrows none
+fullCheck catch none
+fullCheck suppresses none
+
+dropOf is call
+dropOf in lowMask
+dropOf invokes math.subtractInt64
+dropOf argument left Int64 sixtyFour copy
+dropOf argument right Int64 k copy
+dropOf result drop Int64
+dropOf ownedBy none
+dropOf cleanedBy none
+dropOf borrows none
+dropOf catch none
+dropOf suppresses none
+
+shifted is call
+shifted in lowMask
+shifted invokes bits.shiftRightUInt64
+shifted argument value UInt64 ones copy
+shifted argument amount Int64 drop copy
+shifted result mask UInt64
+shifted ownedBy none
+shifted cleanedBy none
+shifted borrows none
+shifted catch none
+shifted suppresses none
+
+widthOf is operation
+widthOf purpose "How many whole numbers lie from low to high (low not above high), 0 standing for all 2^64"
+widthOf invariant none
+widthOf typeParameter none
+widthOf input low Int64 copied
+widthOf input high Int64 copied
+widthOf output UInt64
+widthOf outputOwnedBy none
+widthOf raises none
+widthOf effect none
+widthOf uses none
+widthOf memoryHeap false
+widthOf async false
+widthOf maxRecursion none
+widthOf label begin loopKind none
+widthOf label begin within none
+widthOf let oneWide UInt64 1 immutable
+widthOf at begin do lowBits
+widthOf at begin do highBits
+widthOf at begin do span
+widthOf at begin do count
+widthOf at begin return ok width
+
+lowBits is call
+lowBits in widthOf
+lowBits invokes convert.int64BitsToUInt64
+lowBits argument value Int64 low copy
+lowBits result lowWide UInt64
+lowBits ownedBy none
+lowBits cleanedBy none
+lowBits borrows none
+lowBits catch none
+lowBits suppresses none
+
+highBits is call
+highBits in widthOf
+highBits invokes convert.int64BitsToUInt64
+highBits argument value Int64 high copy
+highBits result highWide UInt64
+highBits ownedBy none
+highBits cleanedBy none
+highBits borrows none
+highBits catch none
+highBits suppresses none
+
+span is call
+span in widthOf
+span invokes math.wrappingSubtractUInt64
+span argument left UInt64 highWide copy
+span argument right UInt64 lowWide copy
+span result difference UInt64
+span ownedBy none
+span cleanedBy none
+span borrows none
+span catch none
+span suppresses none
+
+count is call
+count in widthOf
+count invokes math.wrappingAddUInt64
+count argument left UInt64 difference copy
+count argument right UInt64 oneWide copy
+count result width UInt64
+count ownedBy none
+count cleanedBy none
+count borrows none
+count catch none
+count suppresses none
+
+offsetFrom is operation
+offsetFrom purpose "low plus an offset below the range's width, as a whole number"
+offsetFrom invariant none
+offsetFrom typeParameter none
+offsetFrom input low Int64 copied
+offsetFrom input offset UInt64 copied
+offsetFrom output Int64
+offsetFrom outputOwnedBy none
+offsetFrom raises none
+offsetFrom effect none
+offsetFrom uses none
+offsetFrom memoryHeap false
+offsetFrom async false
+offsetFrom maxRecursion none
+offsetFrom label begin loopKind none
+offsetFrom label begin within none
+offsetFrom let none
+offsetFrom at begin do lowBits
+offsetFrom at begin do addIt
+offsetFrom at begin do backIt
+offsetFrom at begin return ok value
+
+lowBits is call
+lowBits in offsetFrom
+lowBits invokes convert.int64BitsToUInt64
+lowBits argument value Int64 low copy
+lowBits result lowWide UInt64
+lowBits ownedBy none
+lowBits cleanedBy none
+lowBits borrows none
+lowBits catch none
+lowBits suppresses none
+
+addIt is call
+addIt in offsetFrom
+addIt invokes math.wrappingAddUInt64
+addIt argument left UInt64 lowWide copy
+addIt argument right UInt64 offset copy
+addIt result sum UInt64
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+backIt is call
+backIt in offsetFrom
+backIt invokes convert.uint64BitsToInt64
+backIt argument value UInt64 sum copy
+backIt result value Int64
+backIt ownedBy none
+backIt cleanedBy none
+backIt borrows none
+backIt catch none
+backIt suppresses none
+
+secureBelow is operation
+secureBelow purpose "A number below a width (0 for all 2^64) from the secure source, every one equally likely: as secrets.randbelow, its bits taken until one falls inside"
+secureBelow invariant none
+secureBelow typeParameter none
+secureBelow input width UInt64 copied
+secureBelow output UInt64
+secureBelow outputOwnedBy none
+secureBelow raises none
+secureBelow effect use machine.memory
+secureBelow effect use system.calls
+secureBelow uses memoryAccess
+secureBelow uses systemCalls
+secureBelow memoryHeap false
+secureBelow async false
+secureBelow maxRecursion none
+secureBelow label begin loopKind none
+secureBelow label begin within none
+secureBelow label anyWord loopKind none
+secureBelow label anyWord within none
+secureBelow label sized loopKind none
+secureBelow label sized within none
+secureBelow label eachTry loopKind while
+secureBelow label eachTry within none
+secureBelow label eachTry maxIterations forever
+secureBelow label give loopKind none
+secureBelow label give within none
+secureBelow let forever Int64 9223372036854775807 immutable
+secureBelow let noBits UInt64 0 immutable
+secureBelow at begin do fullCheck
+secureBelow at begin branch if full goto anyWord else goto sized
+secureBelow at anyWord do readAny
+secureBelow at anyWord return ok value
+secureBelow at sized do lengthOf
+secureBelow at sized do maskOf
+secureBelow at sized goto eachTry
+secureBelow at eachTry do readWord
+secureBelow at eachTry do keepBits
+secureBelow at eachTry do insideCheck
+secureBelow at eachTry branch if inside goto give else goto eachTry
+secureBelow at give return ok candidate
+
+fullCheck is call
+fullCheck in secureBelow
+fullCheck invokes compare.equalUInt64
+fullCheck argument left UInt64 width copy
+fullCheck argument right UInt64 noBits copy
+fullCheck result full Bool
+fullCheck ownedBy none
+fullCheck cleanedBy none
+fullCheck borrows none
+fullCheck catch none
+fullCheck suppresses none
+
+readAny is call
+readAny in secureBelow
+readAny invokes secureWord
+readAny argument none
+readAny result value UInt64
+readAny ownedBy none
+readAny cleanedBy none
+readAny borrows none
+readAny catch none
+readAny suppresses none
+
+lengthOf is call
+lengthOf in secureBelow
+lengthOf invokes bitLength
+lengthOf argument value UInt64 width copy
+lengthOf result k Int64
+lengthOf ownedBy none
+lengthOf cleanedBy none
+lengthOf borrows none
+lengthOf catch none
+lengthOf suppresses none
+
+maskOf is call
+maskOf in secureBelow
+maskOf invokes lowMask
+maskOf argument k Int64 k copy
+maskOf result mask UInt64
+maskOf ownedBy none
+maskOf cleanedBy none
+maskOf borrows none
+maskOf catch none
+maskOf suppresses none
+
+readWord is call
+readWord in secureBelow
+readWord invokes secureWord
+readWord argument none
+readWord result raw UInt64
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+keepBits is call
+keepBits in secureBelow
+keepBits invokes bits.andUInt64
+keepBits argument left UInt64 raw copy
+keepBits argument right UInt64 mask copy
+keepBits result candidate UInt64
+keepBits ownedBy none
+keepBits cleanedBy none
+keepBits borrows none
+keepBits catch none
+keepBits suppresses none
+
+insideCheck is call
+insideCheck in secureBelow
+insideCheck invokes compare.lessThanUInt64
+insideCheck argument left UInt64 candidate copy
+insideCheck argument right UInt64 width copy
+insideCheck result inside Bool
+insideCheck ownedBy none
+insideCheck cleanedBy none
+insideCheck borrows none
+insideCheck catch none
+insideCheck suppresses none
+
+# ---------------------------------------------------------------- the Mersenne Twister, as CPython has it
+word is operation
+word purpose "A word of a generator by its place"
+word invariant none
+word typeParameter none
+word input state machine.Address copied
+word input place Int64 copied
+word output Int64
+word outputOwnedBy none
+word raises none
+word effect use machine.memory
+word uses memoryAccess
+word memoryHeap false
+word async false
+word maxRecursion none
+word label begin loopKind none
+word label begin within none
+word let eight Int64 8 immutable
+word at begin do offsetOf
+word at begin do findWord
+word at begin do readWord
+word at begin return ok value
+
+offsetOf is call
+offsetOf in word
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 place copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findWord is call
+findWord in word
+findWord invokes machine.offset
+findWord argument address machine.Address state copy
+findWord argument bytes Int64 offset copy
+findWord result at machine.Address
+findWord ownedBy none
+findWord cleanedBy none
+findWord borrows none
+findWord catch none
+findWord suppresses none
+
+readWord is call
+readWord in word
+readWord invokes machine.loadInt64
+readWord argument address machine.Address at copy
+readWord result value Int64
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+setWord is operation
+setWord purpose "Store a word of a generator by its place"
+setWord invariant none
+setWord typeParameter none
+setWord input state machine.Address copied
+setWord input place Int64 copied
+setWord input value Int64 copied
+setWord output none
+setWord outputOwnedBy none
+setWord raises none
+setWord effect use machine.memory
+setWord uses memoryAccess
+setWord memoryHeap false
+setWord async false
+setWord maxRecursion none
+setWord label begin loopKind none
+setWord label begin within none
+setWord let eight Int64 8 immutable
+setWord at begin do offsetOf
+setWord at begin do findWord
+setWord at begin do storeWord
+setWord at begin return ok none
+
+offsetOf is call
+offsetOf in setWord
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 place copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+findWord is call
+findWord in setWord
+findWord invokes machine.offset
+findWord argument address machine.Address state copy
+findWord argument bytes Int64 offset copy
+findWord result at machine.Address
+findWord ownedBy none
+findWord cleanedBy none
+findWord borrows none
+findWord catch none
+findWord suppresses none
+
+storeWord is call
+storeWord in setWord
+storeWord invokes machine.storeInt64
+storeWord argument address machine.Address at copy
+storeWord argument value Int64 value copy
+storeWord result none
+storeWord ownedBy none
+storeWord cleanedBy none
+storeWord borrows none
+storeWord catch none
+storeWord suppresses none
+
+scramble is operation
+scramble purpose "A word mixed with the bits above its 30th: w ^ (w >> 30)"
+scramble invariant none
+scramble typeParameter none
+scramble input value Int64 copied
+scramble output Int64
+scramble outputOwnedBy none
+scramble raises none
+scramble effect none
+scramble uses none
+scramble memoryHeap false
+scramble async false
+scramble maxRecursion none
+scramble label begin loopKind none
+scramble label begin within none
+scramble let thirty Int64 30 immutable
+scramble at begin do shiftIt
+scramble at begin do mixIt
+scramble at begin return ok mixed
+
+shiftIt is call
+shiftIt in scramble
+shiftIt invokes bits.shiftRightInt64
+shiftIt argument value Int64 value copy
+shiftIt argument amount Int64 thirty copy
+shiftIt result high Int64
+shiftIt ownedBy none
+shiftIt cleanedBy none
+shiftIt borrows none
+shiftIt catch none
+shiftIt suppresses none
+
+mixIt is call
+mixIt in scramble
+mixIt invokes bits.xorInt64
+mixIt argument left Int64 value copy
+mixIt argument right Int64 high copy
+mixIt result mixed Int64
+mixIt ownedBy none
+mixIt cleanedBy none
+mixIt borrows none
+mixIt catch none
+mixIt suppresses none
+
+seedState is operation
+seedState purpose "Seed a generator as CPython's init_genrand(19650218) and init_by_array seed it, from up to two 32-bit key words in machine.state"
+seedState invariant none
+seedState typeParameter none
+seedState input state machine.Address copied
+seedState input keyLength Int64 copied
+seedState output none
+seedState outputOwnedBy none
+seedState raises none
+seedState effect use machine.memory
+seedState uses memoryAccess
+seedState memoryHeap false
+seedState async false
+seedState maxRecursion none
+seedState label begin loopKind none
+seedState label begin within none
+seedState label eachInit loopKind while
+seedState label eachInit within none
+seedState label eachInit maxIterations n624
+seedState label initWord loopKind none
+seedState label initWord within eachInit
+seedState label mixKey loopKind none
+seedState label mixKey within none
+seedState label eachKey loopKind while
+seedState label eachKey within none
+seedState label eachKey maxIterations n624
+seedState label keyWord loopKind none
+seedState label keyWord within eachKey
+seedState label wrapKeyI loopKind none
+seedState label wrapKeyI within eachKey
+seedState label wrapJCheck loopKind none
+seedState label wrapJCheck within eachKey
+seedState label resetJ loopKind none
+seedState label resetJ within eachKey
+seedState label mixRest loopKind none
+seedState label mixRest within none
+seedState label eachRest loopKind while
+seedState label eachRest within none
+seedState label eachRest maxIterations n624
+seedState label restWord loopKind none
+seedState label restWord within eachRest
+seedState label wrapRestI loopKind none
+seedState label wrapRestI within eachRest
+seedState label finish loopKind none
+seedState label finish within none
+seedState let i Int64 1 mutable
+seedState let j Int64 0 mutable
+seedState let k Int64 0 mutable
+seedState let n624 Int64 624 immutable
+seedState let zero Int64 0 immutable
+seedState let start Int64 19650218 immutable
+seedState let one Int64 1 immutable
+seedState let initFactor Int64 1812433253 immutable
+seedState let keyFactor Int64 1664525 immutable
+seedState let eight Int64 8 immutable
+seedState let n623 Int64 623 immutable
+seedState let restFactor Int64 1566083941 immutable
+seedState let top Int64 2147483648 immutable
+seedState at begin do storeFirst
+seedState at begin goto eachInit
+seedState at eachInit do initDone
+seedState at eachInit branch if initFinished goto mixKey else goto initWord
+seedState at initWord do beforeOf
+seedState at initWord do readBefore
+seedState at initWord do scrambleIt
+seedState at initWord do multiplyIt
+seedState at initWord do addPlace
+seedState at initWord do maskIt
+seedState at initWord do storeInit
+seedState at initWord do nextInit
+seedState at initWord set i afterInit
+seedState at initWord goto eachInit
+seedState at mixKey set i one
+seedState at mixKey set j zero
+seedState at mixKey set k zero
+seedState at mixKey do findKey
+seedState at mixKey goto eachKey
+seedState at eachKey do keyDone
+seedState at eachKey branch if keyFinished goto mixRest else goto keyWord
+seedState at keyWord do beforeKey
+seedState at keyWord do readPrevious
+seedState at keyWord do scrambleKey
+seedState at keyWord do multiplyKey
+seedState at keyWord do readOwn
+seedState at keyWord do mixOwn
+seedState at keyWord do keyOffset
+seedState at keyWord do findKeyWord
+seedState at keyWord do readKeyWord
+seedState at keyWord do addKeyWord
+seedState at keyWord do addJ
+seedState at keyWord do maskKey
+seedState at keyWord do storeKey
+seedState at keyWord do nextI
+seedState at keyWord set i afterI
+seedState at keyWord do nextJ
+seedState at keyWord set j afterJ
+seedState at keyWord do nextK
+seedState at keyWord set k afterK
+seedState at keyWord do wrapICheck
+seedState at keyWord branch if wrapI goto wrapKeyI else goto wrapJCheck
+seedState at wrapKeyI do readLast
+seedState at wrapKeyI do storeLast
+seedState at wrapKeyI set i one
+seedState at wrapKeyI goto wrapJCheck
+seedState at wrapJCheck do checkJ
+seedState at wrapJCheck branch if wrapJ goto resetJ else goto eachKey
+seedState at resetJ set j zero
+seedState at resetJ goto eachKey
+seedState at mixRest set k zero
+seedState at mixRest goto eachRest
+seedState at eachRest do restDone
+seedState at eachRest branch if restFinished goto finish else goto restWord
+seedState at restWord do beforeRest
+seedState at restWord do readRestPrevious
+seedState at restWord do scrambleRest
+seedState at restWord do multiplyRest
+seedState at restWord do readRestOwn
+seedState at restWord do mixRestOwn
+seedState at restWord do takeI
+seedState at restWord do maskRest
+seedState at restWord do storeRest
+seedState at restWord do nextRestI
+seedState at restWord set i afterRestI
+seedState at restWord do nextRestK
+seedState at restWord set k afterRestK
+seedState at restWord do wrapRestCheck
+seedState at restWord branch if wrapRest goto wrapRestI else goto eachRest
+seedState at wrapRestI do readRestLast
+seedState at wrapRestI do storeRestLast
+seedState at wrapRestI set i one
+seedState at wrapRestI goto eachRest
+seedState at finish do storeTop
+seedState at finish do storePlace
+seedState at finish return ok none
+
+storeFirst is call
+storeFirst in seedState
+storeFirst invokes setWord
+storeFirst argument state machine.Address state copy
+storeFirst argument place Int64 zero copy
+storeFirst argument value Int64 start copy
+storeFirst result none
+storeFirst ownedBy none
+storeFirst cleanedBy none
+storeFirst borrows none
+storeFirst catch none
+storeFirst suppresses none
+
+initDone is call
+initDone in seedState
+initDone invokes compare.greaterOrEqualInt64
+initDone argument left Int64 i copy
+initDone argument right Int64 n624 copy
+initDone result initFinished Bool
+initDone ownedBy none
+initDone cleanedBy none
+initDone borrows none
+initDone catch none
+initDone suppresses none
+
+beforeOf is call
+beforeOf in seedState
+beforeOf invokes math.subtractInt64
+beforeOf argument left Int64 i copy
+beforeOf argument right Int64 one copy
+beforeOf result before Int64
+beforeOf ownedBy none
+beforeOf cleanedBy none
+beforeOf borrows none
+beforeOf catch none
+beforeOf suppresses none
+
+readBefore is call
+readBefore in seedState
+readBefore invokes word
+readBefore argument state machine.Address state copy
+readBefore argument place Int64 before copy
+readBefore result previous Int64
+readBefore ownedBy none
+readBefore cleanedBy none
+readBefore borrows none
+readBefore catch none
+readBefore suppresses none
+
+scrambleIt is call
+scrambleIt in seedState
+scrambleIt invokes scramble
+scrambleIt argument value Int64 previous copy
+scrambleIt result scrambled Int64
+scrambleIt ownedBy none
+scrambleIt cleanedBy none
+scrambleIt borrows none
+scrambleIt catch none
+scrambleIt suppresses none
+
+multiplyIt is call
+multiplyIt in seedState
+multiplyIt invokes math.multiplyInt64
+multiplyIt argument left Int64 scrambled copy
+multiplyIt argument right Int64 initFactor copy
+multiplyIt result product Int64
+multiplyIt ownedBy none
+multiplyIt cleanedBy none
+multiplyIt borrows none
+multiplyIt catch none
+multiplyIt suppresses none
+
+addPlace is call
+addPlace in seedState
+addPlace invokes math.addInt64
+addPlace argument left Int64 product copy
+addPlace argument right Int64 i copy
+addPlace result summed Int64
+addPlace ownedBy none
+addPlace cleanedBy none
+addPlace borrows none
+addPlace catch none
+addPlace suppresses none
+
+maskIt is call
+maskIt in seedState
+maskIt invokes bits.andInt64
+maskIt argument left Int64 summed copy
+maskIt argument right Int64 wordMask copy
+maskIt result initValue Int64
+maskIt ownedBy none
+maskIt cleanedBy none
+maskIt borrows none
+maskIt catch none
+maskIt suppresses none
+
+storeInit is call
+storeInit in seedState
+storeInit invokes setWord
+storeInit argument state machine.Address state copy
+storeInit argument place Int64 i copy
+storeInit argument value Int64 initValue copy
+storeInit result none
+storeInit ownedBy none
+storeInit cleanedBy none
+storeInit borrows none
+storeInit catch none
+storeInit suppresses none
+
+nextInit is call
+nextInit in seedState
+nextInit invokes math.addInt64
+nextInit argument left Int64 i copy
+nextInit argument right Int64 one copy
+nextInit result afterInit Int64
+nextInit ownedBy none
+nextInit cleanedBy none
+nextInit borrows none
+nextInit catch none
+nextInit suppresses none
+
+findKey is call
+findKey in seedState
+findKey invokes kernel.stateAt
+findKey argument offset Int64 keyAt copy
+findKey result key machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+keyDone is call
+keyDone in seedState
+keyDone invokes compare.greaterOrEqualInt64
+keyDone argument left Int64 k copy
+keyDone argument right Int64 n624 copy
+keyDone result keyFinished Bool
+keyDone ownedBy none
+keyDone cleanedBy none
+keyDone borrows none
+keyDone catch none
+keyDone suppresses none
+
+beforeKey is call
+beforeKey in seedState
+beforeKey invokes math.subtractInt64
+beforeKey argument left Int64 i copy
+beforeKey argument right Int64 one copy
+beforeKey result keyBefore Int64
+beforeKey ownedBy none
+beforeKey cleanedBy none
+beforeKey borrows none
+beforeKey catch none
+beforeKey suppresses none
+
+readPrevious is call
+readPrevious in seedState
+readPrevious invokes word
+readPrevious argument state machine.Address state copy
+readPrevious argument place Int64 keyBefore copy
+readPrevious result previousKey Int64
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+scrambleKey is call
+scrambleKey in seedState
+scrambleKey invokes scramble
+scrambleKey argument value Int64 previousKey copy
+scrambleKey result scrambledKey Int64
+scrambleKey ownedBy none
+scrambleKey cleanedBy none
+scrambleKey borrows none
+scrambleKey catch none
+scrambleKey suppresses none
+
+multiplyKey is call
+multiplyKey in seedState
+multiplyKey invokes math.multiplyInt64
+multiplyKey argument left Int64 scrambledKey copy
+multiplyKey argument right Int64 keyFactor copy
+multiplyKey result keyProduct Int64
+multiplyKey ownedBy none
+multiplyKey cleanedBy none
+multiplyKey borrows none
+multiplyKey catch none
+multiplyKey suppresses none
+
+readOwn is call
+readOwn in seedState
+readOwn invokes word
+readOwn argument state machine.Address state copy
+readOwn argument place Int64 i copy
+readOwn result own Int64
+readOwn ownedBy none
+readOwn cleanedBy none
+readOwn borrows none
+readOwn catch none
+readOwn suppresses none
+
+mixOwn is call
+mixOwn in seedState
+mixOwn invokes bits.xorInt64
+mixOwn argument left Int64 own copy
+mixOwn argument right Int64 keyProduct copy
+mixOwn result mixedKey Int64
+mixOwn ownedBy none
+mixOwn cleanedBy none
+mixOwn borrows none
+mixOwn catch none
+mixOwn suppresses none
+
+keyOffset is call
+keyOffset in seedState
+keyOffset invokes math.multiplyInt64
+keyOffset argument left Int64 j copy
+keyOffset argument right Int64 eight copy
+keyOffset result keyPlace Int64
+keyOffset ownedBy none
+keyOffset cleanedBy none
+keyOffset borrows none
+keyOffset catch none
+keyOffset suppresses none
+
+findKeyWord is call
+findKeyWord in seedState
+findKeyWord invokes machine.offset
+findKeyWord argument address machine.Address key copy
+findKeyWord argument bytes Int64 keyPlace copy
+findKeyWord result keyWordAt machine.Address
+findKeyWord ownedBy none
+findKeyWord cleanedBy none
+findKeyWord borrows none
+findKeyWord catch none
+findKeyWord suppresses none
+
+readKeyWord is call
+readKeyWord in seedState
+readKeyWord invokes machine.loadInt64
+readKeyWord argument address machine.Address keyWordAt copy
+readKeyWord result keyValue Int64
+readKeyWord ownedBy none
+readKeyWord cleanedBy none
+readKeyWord borrows none
+readKeyWord catch none
+readKeyWord suppresses none
+
+addKeyWord is call
+addKeyWord in seedState
+addKeyWord invokes math.addInt64
+addKeyWord argument left Int64 mixedKey copy
+addKeyWord argument right Int64 keyValue copy
+addKeyWord result withKey Int64
+addKeyWord ownedBy none
+addKeyWord cleanedBy none
+addKeyWord borrows none
+addKeyWord catch none
+addKeyWord suppresses none
+
+addJ is call
+addJ in seedState
+addJ invokes math.addInt64
+addJ argument left Int64 withKey copy
+addJ argument right Int64 j copy
+addJ result withJ Int64
+addJ ownedBy none
+addJ cleanedBy none
+addJ borrows none
+addJ catch none
+addJ suppresses none
+
+maskKey is call
+maskKey in seedState
+maskKey invokes bits.andInt64
+maskKey argument left Int64 withJ copy
+maskKey argument right Int64 wordMask copy
+maskKey result keyResult Int64
+maskKey ownedBy none
+maskKey cleanedBy none
+maskKey borrows none
+maskKey catch none
+maskKey suppresses none
+
+storeKey is call
+storeKey in seedState
+storeKey invokes setWord
+storeKey argument state machine.Address state copy
+storeKey argument place Int64 i copy
+storeKey argument value Int64 keyResult copy
+storeKey result none
+storeKey ownedBy none
+storeKey cleanedBy none
+storeKey borrows none
+storeKey catch none
+storeKey suppresses none
+
+nextI is call
+nextI in seedState
+nextI invokes math.addInt64
+nextI argument left Int64 i copy
+nextI argument right Int64 one copy
+nextI result afterI Int64
+nextI ownedBy none
+nextI cleanedBy none
+nextI borrows none
+nextI catch none
+nextI suppresses none
+
+nextJ is call
+nextJ in seedState
+nextJ invokes math.addInt64
+nextJ argument left Int64 j copy
+nextJ argument right Int64 one copy
+nextJ result afterJ Int64
+nextJ ownedBy none
+nextJ cleanedBy none
+nextJ borrows none
+nextJ catch none
+nextJ suppresses none
+
+nextK is call
+nextK in seedState
+nextK invokes math.addInt64
+nextK argument left Int64 k copy
+nextK argument right Int64 one copy
+nextK result afterK Int64
+nextK ownedBy none
+nextK cleanedBy none
+nextK borrows none
+nextK catch none
+nextK suppresses none
+
+wrapICheck is call
+wrapICheck in seedState
+wrapICheck invokes compare.greaterOrEqualInt64
+wrapICheck argument left Int64 i copy
+wrapICheck argument right Int64 n624 copy
+wrapICheck result wrapI Bool
+wrapICheck ownedBy none
+wrapICheck cleanedBy none
+wrapICheck borrows none
+wrapICheck catch none
+wrapICheck suppresses none
+
+readLast is call
+readLast in seedState
+readLast invokes word
+readLast argument state machine.Address state copy
+readLast argument place Int64 n623 copy
+readLast result lastWord Int64
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch none
+readLast suppresses none
+
+storeLast is call
+storeLast in seedState
+storeLast invokes setWord
+storeLast argument state machine.Address state copy
+storeLast argument place Int64 zero copy
+storeLast argument value Int64 lastWord copy
+storeLast result none
+storeLast ownedBy none
+storeLast cleanedBy none
+storeLast borrows none
+storeLast catch none
+storeLast suppresses none
+
+checkJ is call
+checkJ in seedState
+checkJ invokes compare.greaterOrEqualInt64
+checkJ argument left Int64 j copy
+checkJ argument right Int64 keyLength copy
+checkJ result wrapJ Bool
+checkJ ownedBy none
+checkJ cleanedBy none
+checkJ borrows none
+checkJ catch none
+checkJ suppresses none
+
+restDone is call
+restDone in seedState
+restDone invokes compare.greaterOrEqualInt64
+restDone argument left Int64 k copy
+restDone argument right Int64 n623 copy
+restDone result restFinished Bool
+restDone ownedBy none
+restDone cleanedBy none
+restDone borrows none
+restDone catch none
+restDone suppresses none
+
+beforeRest is call
+beforeRest in seedState
+beforeRest invokes math.subtractInt64
+beforeRest argument left Int64 i copy
+beforeRest argument right Int64 one copy
+beforeRest result restBefore Int64
+beforeRest ownedBy none
+beforeRest cleanedBy none
+beforeRest borrows none
+beforeRest catch none
+beforeRest suppresses none
+
+readRestPrevious is call
+readRestPrevious in seedState
+readRestPrevious invokes word
+readRestPrevious argument state machine.Address state copy
+readRestPrevious argument place Int64 restBefore copy
+readRestPrevious result previousRest Int64
+readRestPrevious ownedBy none
+readRestPrevious cleanedBy none
+readRestPrevious borrows none
+readRestPrevious catch none
+readRestPrevious suppresses none
+
+scrambleRest is call
+scrambleRest in seedState
+scrambleRest invokes scramble
+scrambleRest argument value Int64 previousRest copy
+scrambleRest result scrambledRest Int64
+scrambleRest ownedBy none
+scrambleRest cleanedBy none
+scrambleRest borrows none
+scrambleRest catch none
+scrambleRest suppresses none
+
+multiplyRest is call
+multiplyRest in seedState
+multiplyRest invokes math.multiplyInt64
+multiplyRest argument left Int64 scrambledRest copy
+multiplyRest argument right Int64 restFactor copy
+multiplyRest result restProduct Int64
+multiplyRest ownedBy none
+multiplyRest cleanedBy none
+multiplyRest borrows none
+multiplyRest catch none
+multiplyRest suppresses none
+
+readRestOwn is call
+readRestOwn in seedState
+readRestOwn invokes word
+readRestOwn argument state machine.Address state copy
+readRestOwn argument place Int64 i copy
+readRestOwn result restOwn Int64
+readRestOwn ownedBy none
+readRestOwn cleanedBy none
+readRestOwn borrows none
+readRestOwn catch none
+readRestOwn suppresses none
+
+mixRestOwn is call
+mixRestOwn in seedState
+mixRestOwn invokes bits.xorInt64
+mixRestOwn argument left Int64 restOwn copy
+mixRestOwn argument right Int64 restProduct copy
+mixRestOwn result mixedRest Int64
+mixRestOwn ownedBy none
+mixRestOwn cleanedBy none
+mixRestOwn borrows none
+mixRestOwn catch none
+mixRestOwn suppresses none
+
+takeI is call
+takeI in seedState
+takeI invokes math.subtractInt64
+takeI argument left Int64 mixedRest copy
+takeI argument right Int64 i copy
+takeI result lessI Int64
+takeI ownedBy none
+takeI cleanedBy none
+takeI borrows none
+takeI catch none
+takeI suppresses none
+
+maskRest is call
+maskRest in seedState
+maskRest invokes bits.andInt64
+maskRest argument left Int64 lessI copy
+maskRest argument right Int64 wordMask copy
+maskRest result restResult Int64
+maskRest ownedBy none
+maskRest cleanedBy none
+maskRest borrows none
+maskRest catch none
+maskRest suppresses none
+
+storeRest is call
+storeRest in seedState
+storeRest invokes setWord
+storeRest argument state machine.Address state copy
+storeRest argument place Int64 i copy
+storeRest argument value Int64 restResult copy
+storeRest result none
+storeRest ownedBy none
+storeRest cleanedBy none
+storeRest borrows none
+storeRest catch none
+storeRest suppresses none
+
+nextRestI is call
+nextRestI in seedState
+nextRestI invokes math.addInt64
+nextRestI argument left Int64 i copy
+nextRestI argument right Int64 one copy
+nextRestI result afterRestI Int64
+nextRestI ownedBy none
+nextRestI cleanedBy none
+nextRestI borrows none
+nextRestI catch none
+nextRestI suppresses none
+
+nextRestK is call
+nextRestK in seedState
+nextRestK invokes math.addInt64
+nextRestK argument left Int64 k copy
+nextRestK argument right Int64 one copy
+nextRestK result afterRestK Int64
+nextRestK ownedBy none
+nextRestK cleanedBy none
+nextRestK borrows none
+nextRestK catch none
+nextRestK suppresses none
+
+wrapRestCheck is call
+wrapRestCheck in seedState
+wrapRestCheck invokes compare.greaterOrEqualInt64
+wrapRestCheck argument left Int64 i copy
+wrapRestCheck argument right Int64 n624 copy
+wrapRestCheck result wrapRest Bool
+wrapRestCheck ownedBy none
+wrapRestCheck cleanedBy none
+wrapRestCheck borrows none
+wrapRestCheck catch none
+wrapRestCheck suppresses none
+
+readRestLast is call
+readRestLast in seedState
+readRestLast invokes word
+readRestLast argument state machine.Address state copy
+readRestLast argument place Int64 n623 copy
+readRestLast result restLast Int64
+readRestLast ownedBy none
+readRestLast cleanedBy none
+readRestLast borrows none
+readRestLast catch none
+readRestLast suppresses none
+
+storeRestLast is call
+storeRestLast in seedState
+storeRestLast invokes setWord
+storeRestLast argument state machine.Address state copy
+storeRestLast argument place Int64 zero copy
+storeRestLast argument value Int64 restLast copy
+storeRestLast result none
+storeRestLast ownedBy none
+storeRestLast cleanedBy none
+storeRestLast borrows none
+storeRestLast catch none
+storeRestLast suppresses none
+
+storeTop is call
+storeTop in seedState
+storeTop invokes setWord
+storeTop argument state machine.Address state copy
+storeTop argument place Int64 zero copy
+storeTop argument value Int64 top copy
+storeTop result none
+storeTop ownedBy none
+storeTop cleanedBy none
+storeTop borrows none
+storeTop catch none
+storeTop suppresses none
+
+storePlace is call
+storePlace in seedState
+storePlace invokes setWord
+storePlace argument state machine.Address state copy
+storePlace argument place Int64 n624 copy
+storePlace argument value Int64 n624 copy
+storePlace result none
+storePlace ownedBy none
+storePlace cleanedBy none
+storePlace borrows none
+storePlace catch none
+storePlace suppresses none
+
+mix is operation
+mix purpose "One step of the twist: word `at` from its own upper bit, the next word's lower bits, and a word further on"
+mix invariant none
+mix typeParameter none
+mix input state machine.Address copied
+mix input at Int64 copied
+mix input next Int64 copied
+mix input far Int64 copied
+mix output none
+mix outputOwnedBy none
+mix raises none
+mix effect use machine.memory
+mix uses memoryAccess
+mix memoryHeap false
+mix async false
+mix maxRecursion none
+mix label begin loopKind none
+mix label begin within none
+mix label withMatrix loopKind none
+mix label withMatrix within none
+mix label store loopKind none
+mix label store within none
+mix let matrix Int64 2567483615 immutable
+mix let noBit Int64 0 immutable
+mix let upperMask Int64 2147483648 immutable
+mix let lowerMask Int64 2147483647 immutable
+mix let one Int64 1 immutable
+mix at begin do readAt
+mix at begin do upperOf
+mix at begin do readNext
+mix at begin do lowerOf
+mix at begin do joinIt
+mix at begin do readFar
+mix at begin do halfOf
+mix at begin do mixHalf
+mix at begin do oddOf
+mix at begin do oddCheck
+mix at begin branch if isOdd goto withMatrix else goto store
+mix at withMatrix do mixMatrix
+mix at withMatrix do storeTwisted
+mix at withMatrix return ok none
+mix at store do storeMixed
+mix at store return ok none
+
+readAt is call
+readAt in mix
+readAt invokes word
+readAt argument state machine.Address state copy
+readAt argument place Int64 at copy
+readAt result own Int64
+readAt ownedBy none
+readAt cleanedBy none
+readAt borrows none
+readAt catch none
+readAt suppresses none
+
+upperOf is call
+upperOf in mix
+upperOf invokes bits.andInt64
+upperOf argument left Int64 own copy
+upperOf argument right Int64 upperMask copy
+upperOf result upper Int64
+upperOf ownedBy none
+upperOf cleanedBy none
+upperOf borrows none
+upperOf catch none
+upperOf suppresses none
+
+readNext is call
+readNext in mix
+readNext invokes word
+readNext argument state machine.Address state copy
+readNext argument place Int64 next copy
+readNext result following Int64
+readNext ownedBy none
+readNext cleanedBy none
+readNext borrows none
+readNext catch none
+readNext suppresses none
+
+lowerOf is call
+lowerOf in mix
+lowerOf invokes bits.andInt64
+lowerOf argument left Int64 following copy
+lowerOf argument right Int64 lowerMask copy
+lowerOf result lower Int64
+lowerOf ownedBy none
+lowerOf cleanedBy none
+lowerOf borrows none
+lowerOf catch none
+lowerOf suppresses none
+
+joinIt is call
+joinIt in mix
+joinIt invokes bits.orInt64
+joinIt argument left Int64 upper copy
+joinIt argument right Int64 lower copy
+joinIt result y Int64
+joinIt ownedBy none
+joinIt cleanedBy none
+joinIt borrows none
+joinIt catch none
+joinIt suppresses none
+
+readFar is call
+readFar in mix
+readFar invokes word
+readFar argument state machine.Address state copy
+readFar argument place Int64 far copy
+readFar result further Int64
+readFar ownedBy none
+readFar cleanedBy none
+readFar borrows none
+readFar catch none
+readFar suppresses none
+
+halfOf is call
+halfOf in mix
+halfOf invokes bits.shiftRightInt64
+halfOf argument value Int64 y copy
+halfOf argument amount Int64 one copy
+halfOf result half Int64
+halfOf ownedBy none
+halfOf cleanedBy none
+halfOf borrows none
+halfOf catch none
+halfOf suppresses none
+
+mixHalf is call
+mixHalf in mix
+mixHalf invokes bits.xorInt64
+mixHalf argument left Int64 further copy
+mixHalf argument right Int64 half copy
+mixHalf result mixed Int64
+mixHalf ownedBy none
+mixHalf cleanedBy none
+mixHalf borrows none
+mixHalf catch none
+mixHalf suppresses none
+
+oddOf is call
+oddOf in mix
+oddOf invokes bits.andInt64
+oddOf argument left Int64 y copy
+oddOf argument right Int64 one copy
+oddOf result odd Int64
+oddOf ownedBy none
+oddOf cleanedBy none
+oddOf borrows none
+oddOf catch none
+oddOf suppresses none
+
+oddCheck is call
+oddCheck in mix
+oddCheck invokes compare.notEqualInt64
+oddCheck argument left Int64 odd copy
+oddCheck argument right Int64 noBit copy
+oddCheck result isOdd Bool
+oddCheck ownedBy none
+oddCheck cleanedBy none
+oddCheck borrows none
+oddCheck catch none
+oddCheck suppresses none
+
+mixMatrix is call
+mixMatrix in mix
+mixMatrix invokes bits.xorInt64
+mixMatrix argument left Int64 mixed copy
+mixMatrix argument right Int64 matrix copy
+mixMatrix result twisted Int64
+mixMatrix ownedBy none
+mixMatrix cleanedBy none
+mixMatrix borrows none
+mixMatrix catch none
+mixMatrix suppresses none
+
+storeTwisted is call
+storeTwisted in mix
+storeTwisted invokes setWord
+storeTwisted argument state machine.Address state copy
+storeTwisted argument place Int64 at copy
+storeTwisted argument value Int64 twisted copy
+storeTwisted result none
+storeTwisted ownedBy none
+storeTwisted cleanedBy none
+storeTwisted borrows none
+storeTwisted catch none
+storeTwisted suppresses none
+
+storeMixed is call
+storeMixed in mix
+storeMixed invokes setWord
+storeMixed argument state machine.Address state copy
+storeMixed argument place Int64 at copy
+storeMixed argument value Int64 mixed copy
+storeMixed result none
+storeMixed ownedBy none
+storeMixed cleanedBy none
+storeMixed borrows none
+storeMixed catch none
+storeMixed suppresses none
+
+nextWord is operation
+nextWord purpose "The generator's next 32-bit word, as CPython's genrand_uint32 gives it: the 624 words twisted when all were used, then tempered"
+nextWord invariant none
+nextWord typeParameter none
+nextWord input state machine.Address copied
+nextWord output Int64
+nextWord outputOwnedBy none
+nextWord raises none
+nextWord effect use machine.memory
+nextWord uses memoryAccess
+nextWord memoryHeap false
+nextWord async false
+nextWord maxRecursion none
+nextWord label begin loopKind none
+nextWord label begin within none
+nextWord label twist loopKind none
+nextWord label twist within none
+nextWord label eachFirst loopKind while
+nextWord label eachFirst within none
+nextWord label eachFirst maxIterations n624
+nextWord label mixFirst loopKind none
+nextWord label mixFirst within eachFirst
+nextWord label eachSecond loopKind while
+nextWord label eachSecond within none
+nextWord label eachSecond maxIterations n624
+nextWord label mixSecond loopKind none
+nextWord label mixSecond within eachSecond
+nextWord label mixLast loopKind none
+nextWord label mixLast within none
+nextWord label temper loopKind none
+nextWord label temper within none
+nextWord let kk Int64 0 mutable
+nextWord let n624 Int64 624 immutable
+nextWord let zero Int64 0 immutable
+nextWord let n227 Int64 227 immutable
+nextWord let one Int64 1 immutable
+nextWord let n397 Int64 397 immutable
+nextWord let n623 Int64 623 immutable
+nextWord let n396 Int64 396 immutable
+nextWord let eleven Int64 11 immutable
+nextWord let seven Int64 7 immutable
+nextWord let temperB Int64 2636928640 immutable
+nextWord let fifteen Int64 15 immutable
+nextWord let temperC Int64 4022730752 immutable
+nextWord let eighteen Int64 18 immutable
+nextWord at begin do readPlace
+nextWord at begin do fullCheck
+nextWord at begin branch if used goto twist else goto temper
+nextWord at twist set kk zero
+nextWord at twist goto eachFirst
+nextWord at eachFirst do firstDone
+nextWord at eachFirst branch if firstFinished goto eachSecond else goto mixFirst
+nextWord at mixFirst do nextFirst
+nextWord at mixFirst do farFirst
+nextWord at mixFirst do mixIt
+nextWord at mixFirst set kk afterFirst
+nextWord at mixFirst goto eachFirst
+nextWord at eachSecond do secondDone
+nextWord at eachSecond branch if secondFinished goto mixLast else goto mixSecond
+nextWord at mixSecond do nextSecond
+nextWord at mixSecond do farSecond
+nextWord at mixSecond do mixAgain
+nextWord at mixSecond set kk afterSecond
+nextWord at mixSecond goto eachSecond
+nextWord at mixLast do mixEnd
+nextWord at mixLast do resetPlace
+nextWord at mixLast goto temper
+nextWord at temper do readNow
+nextWord at temper do readWord
+nextWord at temper do advance
+nextWord at temper do storePlace
+nextWord at temper do shift11
+nextWord at temper do temper1
+nextWord at temper do shift7
+nextWord at temper do mask7
+nextWord at temper do temper2
+nextWord at temper do shift15
+nextWord at temper do mask15
+nextWord at temper do temper3
+nextWord at temper do shift18
+nextWord at temper do temper4
+nextWord at temper return ok y4
+
+readPlace is call
+readPlace in nextWord
+readPlace invokes word
+readPlace argument state machine.Address state copy
+readPlace argument place Int64 n624 copy
+readPlace result place Int64
+readPlace ownedBy none
+readPlace cleanedBy none
+readPlace borrows none
+readPlace catch none
+readPlace suppresses none
+
+fullCheck is call
+fullCheck in nextWord
+fullCheck invokes compare.greaterOrEqualInt64
+fullCheck argument left Int64 place copy
+fullCheck argument right Int64 n624 copy
+fullCheck result used Bool
+fullCheck ownedBy none
+fullCheck cleanedBy none
+fullCheck borrows none
+fullCheck catch none
+fullCheck suppresses none
+
+firstDone is call
+firstDone in nextWord
+firstDone invokes compare.greaterOrEqualInt64
+firstDone argument left Int64 kk copy
+firstDone argument right Int64 n227 copy
+firstDone result firstFinished Bool
+firstDone ownedBy none
+firstDone cleanedBy none
+firstDone borrows none
+firstDone catch none
+firstDone suppresses none
+
+nextFirst is call
+nextFirst in nextWord
+nextFirst invokes math.addInt64
+nextFirst argument left Int64 kk copy
+nextFirst argument right Int64 one copy
+nextFirst result afterFirst Int64
+nextFirst ownedBy none
+nextFirst cleanedBy none
+nextFirst borrows none
+nextFirst catch none
+nextFirst suppresses none
+
+farFirst is call
+farFirst in nextWord
+farFirst invokes math.addInt64
+farFirst argument left Int64 kk copy
+farFirst argument right Int64 n397 copy
+farFirst result furtherFirst Int64
+farFirst ownedBy none
+farFirst cleanedBy none
+farFirst borrows none
+farFirst catch none
+farFirst suppresses none
+
+mixIt is call
+mixIt in nextWord
+mixIt invokes mix
+mixIt argument state machine.Address state copy
+mixIt argument at Int64 kk copy
+mixIt argument next Int64 afterFirst copy
+mixIt argument far Int64 furtherFirst copy
+mixIt result none
+mixIt ownedBy none
+mixIt cleanedBy none
+mixIt borrows none
+mixIt catch none
+mixIt suppresses none
+
+secondDone is call
+secondDone in nextWord
+secondDone invokes compare.greaterOrEqualInt64
+secondDone argument left Int64 kk copy
+secondDone argument right Int64 n623 copy
+secondDone result secondFinished Bool
+secondDone ownedBy none
+secondDone cleanedBy none
+secondDone borrows none
+secondDone catch none
+secondDone suppresses none
+
+nextSecond is call
+nextSecond in nextWord
+nextSecond invokes math.addInt64
+nextSecond argument left Int64 kk copy
+nextSecond argument right Int64 one copy
+nextSecond result afterSecond Int64
+nextSecond ownedBy none
+nextSecond cleanedBy none
+nextSecond borrows none
+nextSecond catch none
+nextSecond suppresses none
+
+farSecond is call
+farSecond in nextWord
+farSecond invokes math.subtractInt64
+farSecond argument left Int64 kk copy
+farSecond argument right Int64 n227 copy
+farSecond result furtherSecond Int64
+farSecond ownedBy none
+farSecond cleanedBy none
+farSecond borrows none
+farSecond catch none
+farSecond suppresses none
+
+mixAgain is call
+mixAgain in nextWord
+mixAgain invokes mix
+mixAgain argument state machine.Address state copy
+mixAgain argument at Int64 kk copy
+mixAgain argument next Int64 afterSecond copy
+mixAgain argument far Int64 furtherSecond copy
+mixAgain result none
+mixAgain ownedBy none
+mixAgain cleanedBy none
+mixAgain borrows none
+mixAgain catch none
+mixAgain suppresses none
+
+mixEnd is call
+mixEnd in nextWord
+mixEnd invokes mix
+mixEnd argument state machine.Address state copy
+mixEnd argument at Int64 n623 copy
+mixEnd argument next Int64 zero copy
+mixEnd argument far Int64 n396 copy
+mixEnd result none
+mixEnd ownedBy none
+mixEnd cleanedBy none
+mixEnd borrows none
+mixEnd catch none
+mixEnd suppresses none
+
+resetPlace is call
+resetPlace in nextWord
+resetPlace invokes setWord
+resetPlace argument state machine.Address state copy
+resetPlace argument place Int64 n624 copy
+resetPlace argument value Int64 zero copy
+resetPlace result none
+resetPlace ownedBy none
+resetPlace cleanedBy none
+resetPlace borrows none
+resetPlace catch none
+resetPlace suppresses none
+
+readNow is call
+readNow in nextWord
+readNow invokes word
+readNow argument state machine.Address state copy
+readNow argument place Int64 n624 copy
+readNow result at Int64
+readNow ownedBy none
+readNow cleanedBy none
+readNow borrows none
+readNow catch none
+readNow suppresses none
+
+readWord is call
+readWord in nextWord
+readWord invokes word
+readWord argument state machine.Address state copy
+readWord argument place Int64 at copy
+readWord result y0 Int64
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+advance is call
+advance in nextWord
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 one copy
+advance result afterAt Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+storePlace is call
+storePlace in nextWord
+storePlace invokes setWord
+storePlace argument state machine.Address state copy
+storePlace argument place Int64 n624 copy
+storePlace argument value Int64 afterAt copy
+storePlace result none
+storePlace ownedBy none
+storePlace cleanedBy none
+storePlace borrows none
+storePlace catch none
+storePlace suppresses none
+
+shift11 is call
+shift11 in nextWord
+shift11 invokes bits.shiftRightInt64
+shift11 argument value Int64 y0 copy
+shift11 argument amount Int64 eleven copy
+shift11 result s11 Int64
+shift11 ownedBy none
+shift11 cleanedBy none
+shift11 borrows none
+shift11 catch none
+shift11 suppresses none
+
+temper1 is call
+temper1 in nextWord
+temper1 invokes bits.xorInt64
+temper1 argument left Int64 y0 copy
+temper1 argument right Int64 s11 copy
+temper1 result y1 Int64
+temper1 ownedBy none
+temper1 cleanedBy none
+temper1 borrows none
+temper1 catch none
+temper1 suppresses none
+
+shift7 is call
+shift7 in nextWord
+shift7 invokes bits.shiftLeftInt64
+shift7 argument value Int64 y1 copy
+shift7 argument amount Int64 seven copy
+shift7 result s7 Int64
+shift7 ownedBy none
+shift7 cleanedBy none
+shift7 borrows none
+shift7 catch none
+shift7 suppresses none
+
+mask7 is call
+mask7 in nextWord
+mask7 invokes bits.andInt64
+mask7 argument left Int64 s7 copy
+mask7 argument right Int64 temperB copy
+mask7 result m7 Int64
+mask7 ownedBy none
+mask7 cleanedBy none
+mask7 borrows none
+mask7 catch none
+mask7 suppresses none
+
+temper2 is call
+temper2 in nextWord
+temper2 invokes bits.xorInt64
+temper2 argument left Int64 y1 copy
+temper2 argument right Int64 m7 copy
+temper2 result y2 Int64
+temper2 ownedBy none
+temper2 cleanedBy none
+temper2 borrows none
+temper2 catch none
+temper2 suppresses none
+
+shift15 is call
+shift15 in nextWord
+shift15 invokes bits.shiftLeftInt64
+shift15 argument value Int64 y2 copy
+shift15 argument amount Int64 fifteen copy
+shift15 result s15 Int64
+shift15 ownedBy none
+shift15 cleanedBy none
+shift15 borrows none
+shift15 catch none
+shift15 suppresses none
+
+mask15 is call
+mask15 in nextWord
+mask15 invokes bits.andInt64
+mask15 argument left Int64 s15 copy
+mask15 argument right Int64 temperC copy
+mask15 result m15 Int64
+mask15 ownedBy none
+mask15 cleanedBy none
+mask15 borrows none
+mask15 catch none
+mask15 suppresses none
+
+temper3 is call
+temper3 in nextWord
+temper3 invokes bits.xorInt64
+temper3 argument left Int64 y2 copy
+temper3 argument right Int64 m15 copy
+temper3 result y3 Int64
+temper3 ownedBy none
+temper3 cleanedBy none
+temper3 borrows none
+temper3 catch none
+temper3 suppresses none
+
+shift18 is call
+shift18 in nextWord
+shift18 invokes bits.shiftRightInt64
+shift18 argument value Int64 y3 copy
+shift18 argument amount Int64 eighteen copy
+shift18 result s18 Int64
+shift18 ownedBy none
+shift18 cleanedBy none
+shift18 borrows none
+shift18 catch none
+shift18 suppresses none
+
+temper4 is call
+temper4 in nextWord
+temper4 invokes bits.xorInt64
+temper4 argument left Int64 y3 copy
+temper4 argument right Int64 s18 copy
+temper4 result y4 Int64
+temper4 ownedBy none
+temper4 cleanedBy none
+temper4 borrows none
+temper4 catch none
+temper4 suppresses none
+
+wideWord is operation
+wideWord purpose "The generator's next word as a UInt64"
+wideWord invariant none
+wideWord typeParameter none
+wideWord input state machine.Address copied
+wideWord output UInt64
+wideWord outputOwnedBy none
+wideWord raises none
+wideWord effect use machine.memory
+wideWord uses memoryAccess
+wideWord memoryHeap false
+wideWord async false
+wideWord maxRecursion none
+wideWord label begin loopKind none
+wideWord label begin within none
+wideWord let none
+wideWord at begin do readIt
+wideWord at begin do widen
+wideWord at begin return ok wide
+
+readIt is call
+readIt in wideWord
+readIt invokes nextWord
+readIt argument state machine.Address state copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+widen is call
+widen in wideWord
+widen invokes convert.int64BitsToUInt64
+widen argument value Int64 value copy
+widen result wide UInt64
+widen ownedBy none
+widen cleanedBy none
+widen borrows none
+widen catch none
+widen suppresses none
+
+randomBits is operation
+randomBits purpose "CPython's getrandbits(k) for k from 1 to 64: one word shifted down for 32 bits or fewer, else two words, the first the low half and the second shifted down"
+randomBits invariant none
+randomBits typeParameter none
+randomBits input state machine.Address copied
+randomBits input k Int64 copied
+randomBits output UInt64
+randomBits outputOwnedBy none
+randomBits raises none
+randomBits effect use machine.memory
+randomBits uses memoryAccess
+randomBits memoryHeap false
+randomBits async false
+randomBits maxRecursion none
+randomBits label begin loopKind none
+randomBits label begin within none
+randomBits label oneWord loopKind none
+randomBits label oneWord within none
+randomBits label twoWords loopKind none
+randomBits label twoWords within none
+randomBits let thirtyTwo Int64 32 immutable
+randomBits let sixtyFour Int64 64 immutable
+randomBits at begin do smallCheck
+randomBits at begin branch if small goto oneWord else goto twoWords
+randomBits at oneWord do readOne
+randomBits at oneWord do dropOf
+randomBits at oneWord do shiftOne
+randomBits at oneWord return ok shifted
+randomBits at twoWords do readLow
+randomBits at twoWords do readHigh
+randomBits at twoWords do highDropOf
+randomBits at twoWords do shiftHigh
+randomBits at twoWords do moveHigh
+randomBits at twoWords do joinIt
+randomBits at twoWords return ok joined
+
+smallCheck is call
+smallCheck in randomBits
+smallCheck invokes compare.lessOrEqualInt64
+smallCheck argument left Int64 k copy
+smallCheck argument right Int64 thirtyTwo copy
+smallCheck result small Bool
+smallCheck ownedBy none
+smallCheck cleanedBy none
+smallCheck borrows none
+smallCheck catch none
+smallCheck suppresses none
+
+readOne is call
+readOne in randomBits
+readOne invokes wideWord
+readOne argument state machine.Address state copy
+readOne result single UInt64
+readOne ownedBy none
+readOne cleanedBy none
+readOne borrows none
+readOne catch none
+readOne suppresses none
+
+dropOf is call
+dropOf in randomBits
+dropOf invokes math.subtractInt64
+dropOf argument left Int64 thirtyTwo copy
+dropOf argument right Int64 k copy
+dropOf result drop Int64
+dropOf ownedBy none
+dropOf cleanedBy none
+dropOf borrows none
+dropOf catch none
+dropOf suppresses none
+
+shiftOne is call
+shiftOne in randomBits
+shiftOne invokes bits.shiftRightUInt64
+shiftOne argument value UInt64 single copy
+shiftOne argument amount Int64 drop copy
+shiftOne result shifted UInt64
+shiftOne ownedBy none
+shiftOne cleanedBy none
+shiftOne borrows none
+shiftOne catch none
+shiftOne suppresses none
+
+readLow is call
+readLow in randomBits
+readLow invokes wideWord
+readLow argument state machine.Address state copy
+readLow result low UInt64
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+readHigh is call
+readHigh in randomBits
+readHigh invokes wideWord
+readHigh argument state machine.Address state copy
+readHigh result high UInt64
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+highDropOf is call
+highDropOf in randomBits
+highDropOf invokes math.subtractInt64
+highDropOf argument left Int64 sixtyFour copy
+highDropOf argument right Int64 k copy
+highDropOf result highDrop Int64
+highDropOf ownedBy none
+highDropOf cleanedBy none
+highDropOf borrows none
+highDropOf catch none
+highDropOf suppresses none
+
+shiftHigh is call
+shiftHigh in randomBits
+shiftHigh invokes bits.shiftRightUInt64
+shiftHigh argument value UInt64 high copy
+shiftHigh argument amount Int64 highDrop copy
+shiftHigh result highShifted UInt64
+shiftHigh ownedBy none
+shiftHigh cleanedBy none
+shiftHigh borrows none
+shiftHigh catch none
+shiftHigh suppresses none
+
+moveHigh is call
+moveHigh in randomBits
+moveHigh invokes bits.shiftLeftUInt64
+moveHigh argument value UInt64 highShifted copy
+moveHigh argument amount Int64 thirtyTwo copy
+moveHigh result highPart UInt64
+moveHigh ownedBy none
+moveHigh cleanedBy none
+moveHigh borrows none
+moveHigh catch none
+moveHigh suppresses none
+
+joinIt is call
+joinIt in randomBits
+joinIt invokes bits.orUInt64
+joinIt argument left UInt64 highPart copy
+joinIt argument right UInt64 low copy
+joinIt result joined UInt64
+joinIt ownedBy none
+joinIt cleanedBy none
+joinIt borrows none
+joinIt catch none
+joinIt suppresses none
+
+generatorBelow is operation
+generatorBelow purpose "A number below a width (0 for all 2^64) from a generator, as CPython's _randbelow_with_getrandbits takes it: getrandbits of the width's bit length until a number falls below it"
+generatorBelow invariant none
+generatorBelow typeParameter none
+generatorBelow input state machine.Address copied
+generatorBelow input width UInt64 copied
+generatorBelow output UInt64
+generatorBelow outputOwnedBy none
+generatorBelow raises none
+generatorBelow effect use machine.memory
+generatorBelow uses memoryAccess
+generatorBelow memoryHeap false
+generatorBelow async false
+generatorBelow maxRecursion none
+generatorBelow label begin loopKind none
+generatorBelow label begin within none
+generatorBelow label eachFull loopKind while
+generatorBelow label eachFull within none
+generatorBelow label eachFull maxIterations forever
+generatorBelow label giveFull loopKind none
+generatorBelow label giveFull within none
+generatorBelow label sized loopKind none
+generatorBelow label sized within none
+generatorBelow label eachTry loopKind while
+generatorBelow label eachTry within none
+generatorBelow label eachTry maxIterations forever
+generatorBelow label give loopKind none
+generatorBelow label give within none
+generatorBelow let forever Int64 9223372036854775807 immutable
+generatorBelow let noBits UInt64 0 immutable
+generatorBelow let thirtyOne Int64 31 immutable
+generatorBelow let thirtyTwo Int64 32 immutable
+generatorBelow at begin do fullCheck
+generatorBelow at begin branch if full goto eachFull else goto sized
+generatorBelow at eachFull do readLow
+generatorBelow at eachFull do readHigh
+generatorBelow at eachFull do readTop
+generatorBelow at eachFull do topBit
+generatorBelow at eachFull do insideCheck
+generatorBelow at eachFull branch if inside goto giveFull else goto eachFull
+generatorBelow at giveFull do moveHigh
+generatorBelow at giveFull do joinIt
+generatorBelow at giveFull return ok joined
+generatorBelow at sized do lengthOf
+generatorBelow at sized goto eachTry
+generatorBelow at eachTry do readBits
+generatorBelow at eachTry do belowCheck
+generatorBelow at eachTry branch if below goto give else goto eachTry
+generatorBelow at give return ok candidate
+
+fullCheck is call
+fullCheck in generatorBelow
+fullCheck invokes compare.equalUInt64
+fullCheck argument left UInt64 width copy
+fullCheck argument right UInt64 noBits copy
+fullCheck result full Bool
+fullCheck ownedBy none
+fullCheck cleanedBy none
+fullCheck borrows none
+fullCheck catch none
+fullCheck suppresses none
+
+readLow is call
+readLow in generatorBelow
+readLow invokes wideWord
+readLow argument state machine.Address state copy
+readLow result low UInt64
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+readHigh is call
+readHigh in generatorBelow
+readHigh invokes wideWord
+readHigh argument state machine.Address state copy
+readHigh result high UInt64
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+readTop is call
+readTop in generatorBelow
+readTop invokes wideWord
+readTop argument state machine.Address state copy
+readTop result top UInt64
+readTop ownedBy none
+readTop cleanedBy none
+readTop borrows none
+readTop catch none
+readTop suppresses none
+
+topBit is call
+topBit in generatorBelow
+topBit invokes bits.shiftRightUInt64
+topBit argument value UInt64 top copy
+topBit argument amount Int64 thirtyOne copy
+topBit result topShifted UInt64
+topBit ownedBy none
+topBit cleanedBy none
+topBit borrows none
+topBit catch none
+topBit suppresses none
+
+insideCheck is call
+insideCheck in generatorBelow
+insideCheck invokes compare.equalUInt64
+insideCheck argument left UInt64 topShifted copy
+insideCheck argument right UInt64 noBits copy
+insideCheck result inside Bool
+insideCheck ownedBy none
+insideCheck cleanedBy none
+insideCheck borrows none
+insideCheck catch none
+insideCheck suppresses none
+
+moveHigh is call
+moveHigh in generatorBelow
+moveHigh invokes bits.shiftLeftUInt64
+moveHigh argument value UInt64 high copy
+moveHigh argument amount Int64 thirtyTwo copy
+moveHigh result highPart UInt64
+moveHigh ownedBy none
+moveHigh cleanedBy none
+moveHigh borrows none
+moveHigh catch none
+moveHigh suppresses none
+
+joinIt is call
+joinIt in generatorBelow
+joinIt invokes bits.orUInt64
+joinIt argument left UInt64 highPart copy
+joinIt argument right UInt64 low copy
+joinIt result joined UInt64
+joinIt ownedBy none
+joinIt cleanedBy none
+joinIt borrows none
+joinIt catch none
+joinIt suppresses none
+
+lengthOf is call
+lengthOf in generatorBelow
+lengthOf invokes bitLength
+lengthOf argument value UInt64 width copy
+lengthOf result k Int64
+lengthOf ownedBy none
+lengthOf cleanedBy none
+lengthOf borrows none
+lengthOf catch none
+lengthOf suppresses none
+
+readBits is call
+readBits in generatorBelow
+readBits invokes randomBits
+readBits argument state machine.Address state copy
+readBits argument k Int64 k copy
+readBits result candidate UInt64
+readBits ownedBy none
+readBits cleanedBy none
+readBits borrows none
+readBits catch none
+readBits suppresses none
+
+belowCheck is call
+belowCheck in generatorBelow
+belowCheck invokes compare.lessThanUInt64
+belowCheck argument left UInt64 candidate copy
+belowCheck argument right UInt64 width copy
+belowCheck result below Bool
+belowCheck ownedBy none
+belowCheck cleanedBy none
+belowCheck borrows none
+belowCheck catch none
+belowCheck suppresses none
+
+seedGenerator is operation
+seedGenerator purpose "A new generator seeded from a whole number as random.Random(seed) seeds one: its magnitude's 32-bit words, least significant first (one word for 0)"
+seedGenerator invariant none
+seedGenerator typeParameter none
+seedGenerator input seed Int64 copied
+seedGenerator output machine.Address
+seedGenerator outputOwnedBy none
+seedGenerator raises none
+seedGenerator effect use machine.memory
+seedGenerator effect use system.calls
+seedGenerator uses memoryAccess
+seedGenerator uses systemCalls
+seedGenerator memoryHeap false
+seedGenerator async false
+seedGenerator maxRecursion none
+seedGenerator label begin loopKind none
+seedGenerator label begin within none
+seedGenerator label flip loopKind none
+seedGenerator label flip within none
+seedGenerator label words loopKind none
+seedGenerator label words within none
+seedGenerator label twoWords loopKind none
+seedGenerator label twoWords within none
+seedGenerator label seedIt loopKind none
+seedGenerator label seedIt within none
+seedGenerator let magnitude UInt64 0 mutable
+seedGenerator let length Int64 1 mutable
+seedGenerator let two Int64 2 immutable
+seedGenerator let noBits UInt64 0 immutable
+seedGenerator let zero Int64 0 immutable
+seedGenerator let wordMaskWide UInt64 4294967295 immutable
+seedGenerator let thirtyTwo Int64 32 immutable
+seedGenerator let eight Int64 8 immutable
+seedGenerator at begin do takeState
+seedGenerator at begin do wideSeed
+seedGenerator at begin set magnitude raw
+seedGenerator at begin do negativeCheck
+seedGenerator at begin branch if negative goto flip else goto words
+seedGenerator at flip do flipIt
+seedGenerator at flip set magnitude flipped
+seedGenerator at flip goto words
+seedGenerator at words do lowOf
+seedGenerator at words do highOf
+seedGenerator at words do lowNarrow
+seedGenerator at words do highNarrow
+seedGenerator at words do findKey
+seedGenerator at words do storeLow
+seedGenerator at words do findHigh
+seedGenerator at words do storeHigh
+seedGenerator at words do highCheck
+seedGenerator at words branch if hasHigh goto twoWords else goto seedIt
+seedGenerator at twoWords set length two
+seedGenerator at twoWords goto seedIt
+seedGenerator at seedIt do seedItNow
+seedGenerator at seedIt return ok state
+
+takeState is call
+takeState in seedGenerator
+takeState invokes heap.take
+takeState argument bytes Int64 generatorBytes copy
+takeState result state machine.Address
+takeState ownedBy none
+takeState cleanedBy none
+takeState borrows none
+takeState catch none
+takeState suppresses none
+
+wideSeed is call
+wideSeed in seedGenerator
+wideSeed invokes convert.int64BitsToUInt64
+wideSeed argument value Int64 seed copy
+wideSeed result raw UInt64
+wideSeed ownedBy none
+wideSeed cleanedBy none
+wideSeed borrows none
+wideSeed catch none
+wideSeed suppresses none
+
+negativeCheck is call
+negativeCheck in seedGenerator
+negativeCheck invokes compare.lessThanInt64
+negativeCheck argument left Int64 seed copy
+negativeCheck argument right Int64 zero copy
+negativeCheck result negative Bool
+negativeCheck ownedBy none
+negativeCheck cleanedBy none
+negativeCheck borrows none
+negativeCheck catch none
+negativeCheck suppresses none
+
+flipIt is call
+flipIt in seedGenerator
+flipIt invokes math.wrappingSubtractUInt64
+flipIt argument left UInt64 noBits copy
+flipIt argument right UInt64 raw copy
+flipIt result flipped UInt64
+flipIt ownedBy none
+flipIt cleanedBy none
+flipIt borrows none
+flipIt catch none
+flipIt suppresses none
+
+lowOf is call
+lowOf in seedGenerator
+lowOf invokes bits.andUInt64
+lowOf argument left UInt64 magnitude copy
+lowOf argument right UInt64 wordMaskWide copy
+lowOf result lowWide UInt64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+highOf is call
+highOf in seedGenerator
+highOf invokes bits.shiftRightUInt64
+highOf argument value UInt64 magnitude copy
+highOf argument amount Int64 thirtyTwo copy
+highOf result highWide UInt64
+highOf ownedBy none
+highOf cleanedBy none
+highOf borrows none
+highOf catch none
+highOf suppresses none
+
+lowNarrow is call
+lowNarrow in seedGenerator
+lowNarrow invokes convert.uint64BitsToInt64
+lowNarrow argument value UInt64 lowWide copy
+lowNarrow result low Int64
+lowNarrow ownedBy none
+lowNarrow cleanedBy none
+lowNarrow borrows none
+lowNarrow catch none
+lowNarrow suppresses none
+
+highNarrow is call
+highNarrow in seedGenerator
+highNarrow invokes convert.uint64BitsToInt64
+highNarrow argument value UInt64 highWide copy
+highNarrow result high Int64
+highNarrow ownedBy none
+highNarrow cleanedBy none
+highNarrow borrows none
+highNarrow catch none
+highNarrow suppresses none
+
+findKey is call
+findKey in seedGenerator
+findKey invokes kernel.stateAt
+findKey argument offset Int64 keyAt copy
+findKey result key machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+storeLow is call
+storeLow in seedGenerator
+storeLow invokes machine.storeInt64
+storeLow argument address machine.Address key copy
+storeLow argument value Int64 low copy
+storeLow result none
+storeLow ownedBy none
+storeLow cleanedBy none
+storeLow borrows none
+storeLow catch none
+storeLow suppresses none
+
+findHigh is call
+findHigh in seedGenerator
+findHigh invokes machine.offset
+findHigh argument address machine.Address key copy
+findHigh argument bytes Int64 eight copy
+findHigh result highAt machine.Address
+findHigh ownedBy none
+findHigh cleanedBy none
+findHigh borrows none
+findHigh catch none
+findHigh suppresses none
+
+storeHigh is call
+storeHigh in seedGenerator
+storeHigh invokes machine.storeInt64
+storeHigh argument address machine.Address highAt copy
+storeHigh argument value Int64 high copy
+storeHigh result none
+storeHigh ownedBy none
+storeHigh cleanedBy none
+storeHigh borrows none
+storeHigh catch none
+storeHigh suppresses none
+
+highCheck is call
+highCheck in seedGenerator
+highCheck invokes compare.notEqualInt64
+highCheck argument left Int64 high copy
+highCheck argument right Int64 zero copy
+highCheck result hasHigh Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+seedItNow is call
+seedItNow in seedGenerator
+seedItNow invokes seedState
+seedItNow argument state machine.Address state copy
+seedItNow argument keyLength Int64 length copy
+seedItNow result none
+seedItNow ownedBy none
+seedItNow cleanedBy none
+seedItNow borrows none
+seedItNow catch none
+seedItNow suppresses none
+
+# ---------------------------------------------------------------- targets
+betweenTarget is operation
+betweenTarget purpose "random.int64Between: a number from low to high, both included, from the secure source; low above high is emptyRange"
+betweenTarget invariant none
+betweenTarget typeParameter none
+betweenTarget input shape machine.Address copied
+betweenTarget input args machine.Address copied
+betweenTarget input results machine.Address copied
+betweenTarget input payload machine.Address copied
+betweenTarget output Int32
+betweenTarget outputOwnedBy none
+betweenTarget raises none
+betweenTarget effect use machine.memory
+betweenTarget effect use system.calls
+betweenTarget uses memoryAccess
+betweenTarget uses systemCalls
+betweenTarget memoryHeap false
+betweenTarget async false
+betweenTarget maxRecursion none
+betweenTarget label begin loopKind none
+betweenTarget label begin within none
+betweenTarget label giveEmpty loopKind none
+betweenTarget label giveEmpty within none
+betweenTarget label pick loopKind none
+betweenTarget label pick within none
+betweenTarget let ok Int32 0 immutable
+betweenTarget let zero Int64 0 immutable
+betweenTarget let one Int64 1 immutable
+betweenTarget at begin do readLow
+betweenTarget at begin do readHigh
+betweenTarget at begin do emptyCheck
+betweenTarget at begin branch if empty goto giveEmpty else goto pick
+betweenTarget at giveEmpty do emptyStatus
+betweenTarget at giveEmpty return ok status
+betweenTarget at pick do widthIt
+betweenTarget at pick do pickIt
+betweenTarget at pick do addIt
+betweenTarget at pick do storeIt
+betweenTarget at pick return ok ok
+
+readLow is call
+readLow in betweenTarget
+readLow invokes slots.argOf
+readLow argument shape machine.Address shape copy
+readLow argument args machine.Address args copy
+readLow argument parameter Int64 zero copy
+readLow result low Int64
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+readHigh is call
+readHigh in betweenTarget
+readHigh invokes slots.argOf
+readHigh argument shape machine.Address shape copy
+readHigh argument args machine.Address args copy
+readHigh argument parameter Int64 one copy
+readHigh result high Int64
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+emptyCheck is call
+emptyCheck in betweenTarget
+emptyCheck invokes compare.greaterThanInt64
+emptyCheck argument left Int64 low copy
+emptyCheck argument right Int64 high copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+emptyStatus is call
+emptyStatus in betweenTarget
+emptyStatus invokes slots.failWith
+emptyStatus argument payload machine.Address payload copy
+emptyStatus argument status Int32 emptyRange copy
+emptyStatus argument value Int64 zero copy
+emptyStatus result status Int32
+emptyStatus ownedBy none
+emptyStatus cleanedBy none
+emptyStatus borrows none
+emptyStatus catch none
+emptyStatus suppresses none
+
+widthIt is call
+widthIt in betweenTarget
+widthIt invokes widthOf
+widthIt argument low Int64 low copy
+widthIt argument high Int64 high copy
+widthIt result width UInt64
+widthIt ownedBy none
+widthIt cleanedBy none
+widthIt borrows none
+widthIt catch none
+widthIt suppresses none
+
+pickIt is call
+pickIt in betweenTarget
+pickIt invokes secureBelow
+pickIt argument width UInt64 width copy
+pickIt result offset UInt64
+pickIt ownedBy none
+pickIt cleanedBy none
+pickIt borrows none
+pickIt catch none
+pickIt suppresses none
+
+addIt is call
+addIt in betweenTarget
+addIt invokes offsetFrom
+addIt argument low Int64 low copy
+addIt argument offset UInt64 offset copy
+addIt result value Int64
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+storeIt is call
+storeIt in betweenTarget
+storeIt invokes machine.storeInt64
+storeIt argument address machine.Address results copy
+storeIt argument value Int64 value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+newGeneratorTarget is operation
+newGeneratorTarget purpose "random.newGenerator: a generator seeded from a whole number, owned by a region"
+newGeneratorTarget invariant none
+newGeneratorTarget typeParameter none
+newGeneratorTarget input shape machine.Address copied
+newGeneratorTarget input args machine.Address copied
+newGeneratorTarget input results machine.Address copied
+newGeneratorTarget output none
+newGeneratorTarget outputOwnedBy none
+newGeneratorTarget raises none
+newGeneratorTarget effect use machine.memory
+newGeneratorTarget effect use system.calls
+newGeneratorTarget uses memoryAccess
+newGeneratorTarget uses systemCalls
+newGeneratorTarget memoryHeap false
+newGeneratorTarget async false
+newGeneratorTarget maxRecursion none
+newGeneratorTarget label begin loopKind none
+newGeneratorTarget label begin within none
+newGeneratorTarget let zero Int64 0 immutable
+newGeneratorTarget let one Int64 1 immutable
+newGeneratorTarget at begin do readSeed
+newGeneratorTarget at begin do readRegion
+newGeneratorTarget at begin do makeIt
+newGeneratorTarget at begin do makeHandle
+newGeneratorTarget at begin do storeIt
+newGeneratorTarget at begin return ok none
+
+readSeed is call
+readSeed in newGeneratorTarget
+readSeed invokes slots.argOf
+readSeed argument shape machine.Address shape copy
+readSeed argument args machine.Address args copy
+readSeed argument parameter Int64 zero copy
+readSeed result seed Int64
+readSeed ownedBy none
+readSeed cleanedBy none
+readSeed borrows none
+readSeed catch none
+readSeed suppresses none
+
+readRegion is call
+readRegion in newGeneratorTarget
+readRegion invokes slots.addressArg
+readRegion argument shape machine.Address shape copy
+readRegion argument args machine.Address args copy
+readRegion argument parameter Int64 one copy
+readRegion result region machine.Address
+readRegion ownedBy none
+readRegion cleanedBy none
+readRegion borrows none
+readRegion catch none
+readRegion suppresses none
+
+makeIt is call
+makeIt in newGeneratorTarget
+makeIt invokes seedGenerator
+makeIt argument seed Int64 seed copy
+makeIt result state machine.Address
+makeIt ownedBy none
+makeIt cleanedBy none
+makeIt borrows none
+makeIt catch none
+makeIt suppresses none
+
+makeHandle is call
+makeHandle in newGeneratorTarget
+makeHandle invokes handles.newHandle
+makeHandle argument kind Int64 kindGenerator copy
+makeHandle argument object machine.Address state copy
+makeHandle argument region machine.Address region copy
+makeHandle result handle Int64
+makeHandle ownedBy none
+makeHandle cleanedBy none
+makeHandle borrows none
+makeHandle catch none
+makeHandle suppresses none
+
+storeIt is call
+storeIt in newGeneratorTarget
+storeIt invokes machine.storeInt64
+storeIt argument address machine.Address results copy
+storeIt argument value Int64 handle copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+nextTarget is operation
+nextTarget purpose "random.nextInt64: a generator's next number from low to high, as randint(low, high) gives it; low above high is emptyRange and takes nothing from the generator"
+nextTarget invariant none
+nextTarget typeParameter none
+nextTarget input shape machine.Address copied
+nextTarget input args machine.Address copied
+nextTarget input results machine.Address copied
+nextTarget input payload machine.Address copied
+nextTarget output Int32
+nextTarget outputOwnedBy none
+nextTarget raises none
+nextTarget effect use machine.memory
+nextTarget effect use system.calls
+nextTarget uses memoryAccess
+nextTarget uses systemCalls
+nextTarget memoryHeap false
+nextTarget async false
+nextTarget maxRecursion none
+nextTarget label begin loopKind none
+nextTarget label begin within none
+nextTarget label giveEmpty loopKind none
+nextTarget label giveEmpty within none
+nextTarget label pick loopKind none
+nextTarget label pick within none
+nextTarget let ok Int32 0 immutable
+nextTarget let zero Int64 0 immutable
+nextTarget let one Int64 1 immutable
+nextTarget let two Int64 2 immutable
+nextTarget at begin do readHandle
+nextTarget at begin do findState
+nextTarget at begin do readLow
+nextTarget at begin do readHigh
+nextTarget at begin do emptyCheck
+nextTarget at begin branch if empty goto giveEmpty else goto pick
+nextTarget at giveEmpty do emptyStatus
+nextTarget at giveEmpty return ok status
+nextTarget at pick do widthIt
+nextTarget at pick do pickIt
+nextTarget at pick do addIt
+nextTarget at pick do storeIt
+nextTarget at pick return ok ok
+
+readHandle is call
+readHandle in nextTarget
+readHandle invokes slots.argOf
+readHandle argument shape machine.Address shape copy
+readHandle argument args machine.Address args copy
+readHandle argument parameter Int64 zero copy
+readHandle result handle Int64
+readHandle ownedBy none
+readHandle cleanedBy none
+readHandle borrows none
+readHandle catch none
+readHandle suppresses none
+
+findState is call
+findState in nextTarget
+findState invokes handles.objectOf
+findState argument handle Int64 handle copy
+findState argument kind Int64 kindGenerator copy
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+readLow is call
+readLow in nextTarget
+readLow invokes slots.argOf
+readLow argument shape machine.Address shape copy
+readLow argument args machine.Address args copy
+readLow argument parameter Int64 one copy
+readLow result low Int64
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+readHigh is call
+readHigh in nextTarget
+readHigh invokes slots.argOf
+readHigh argument shape machine.Address shape copy
+readHigh argument args machine.Address args copy
+readHigh argument parameter Int64 two copy
+readHigh result high Int64
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+emptyCheck is call
+emptyCheck in nextTarget
+emptyCheck invokes compare.greaterThanInt64
+emptyCheck argument left Int64 low copy
+emptyCheck argument right Int64 high copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+emptyStatus is call
+emptyStatus in nextTarget
+emptyStatus invokes slots.failWith
+emptyStatus argument payload machine.Address payload copy
+emptyStatus argument status Int32 emptyRange copy
+emptyStatus argument value Int64 zero copy
+emptyStatus result status Int32
+emptyStatus ownedBy none
+emptyStatus cleanedBy none
+emptyStatus borrows none
+emptyStatus catch none
+emptyStatus suppresses none
+
+widthIt is call
+widthIt in nextTarget
+widthIt invokes widthOf
+widthIt argument low Int64 low copy
+widthIt argument high Int64 high copy
+widthIt result width UInt64
+widthIt ownedBy none
+widthIt cleanedBy none
+widthIt borrows none
+widthIt catch none
+widthIt suppresses none
+
+pickIt is call
+pickIt in nextTarget
+pickIt invokes generatorBelow
+pickIt argument state machine.Address state copy
+pickIt argument width UInt64 width copy
+pickIt result offset UInt64
+pickIt ownedBy none
+pickIt cleanedBy none
+pickIt borrows none
+pickIt catch none
+pickIt suppresses none
+
+addIt is call
+addIt in nextTarget
+addIt invokes offsetFrom
+addIt argument low Int64 low copy
+addIt argument offset UInt64 offset copy
+addIt result value Int64
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+storeIt is call
+storeIt in nextTarget
+storeIt invokes machine.storeInt64
+storeIt argument address machine.Address results copy
+storeIt argument value Int64 value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+randomCall is operation
+randomCall purpose "Run a random target by its place among them (1 int64Between, 2 newGenerator, 3 nextInt64): 0, or an error's variant number with its payload stored"
+randomCall invariant runsRandom "\"int64Between gives a number of its range or emptyRange; a generator gives what random.Random(seed).randint gives, in the same order\""
+randomCall typeParameter none
+randomCall input which Int64 copied
+randomCall input shape machine.Address copied
+randomCall input args machine.Address copied
+randomCall input results machine.Address copied
+randomCall input payload machine.Address copied
+randomCall output Int32
+randomCall outputOwnedBy none
+randomCall raises none
+randomCall effect use machine.memory
+randomCall effect use system.calls
+randomCall uses memoryAccess
+randomCall uses systemCalls
+randomCall memoryHeap false
+randomCall async false
+randomCall maxRecursion none
+randomCall label begin loopKind none
+randomCall label begin within none
+randomCall label runBetween loopKind none
+randomCall label runBetween within none
+randomCall label newCheck loopKind none
+randomCall label newCheck within none
+randomCall label runNew loopKind none
+randomCall label runNew within none
+randomCall label runNext loopKind none
+randomCall label runNext within none
+randomCall let ok Int32 0 immutable
+randomCall let one Int64 1 immutable
+randomCall let two Int64 2 immutable
+randomCall at begin do isBetween
+randomCall at begin branch if between goto runBetween else goto newCheck
+randomCall at runBetween do betweenIt
+randomCall at runBetween return ok betweenStatus
+randomCall at newCheck do isNew
+randomCall at newCheck branch if makeNew goto runNew else goto runNext
+randomCall at runNew do newIt
+randomCall at runNew return ok ok
+randomCall at runNext do nextIt
+randomCall at runNext return ok nextStatus
+
+isBetween is call
+isBetween in randomCall
+isBetween invokes compare.equalInt64
+isBetween argument left Int64 which copy
+isBetween argument right Int64 one copy
+isBetween result between Bool
+isBetween ownedBy none
+isBetween cleanedBy none
+isBetween borrows none
+isBetween catch none
+isBetween suppresses none
+
+betweenIt is call
+betweenIt in randomCall
+betweenIt invokes betweenTarget
+betweenIt argument shape machine.Address shape copy
+betweenIt argument args machine.Address args copy
+betweenIt argument results machine.Address results copy
+betweenIt argument payload machine.Address payload copy
+betweenIt result betweenStatus Int32
+betweenIt ownedBy none
+betweenIt cleanedBy none
+betweenIt borrows none
+betweenIt catch none
+betweenIt suppresses none
+
+isNew is call
+isNew in randomCall
+isNew invokes compare.equalInt64
+isNew argument left Int64 which copy
+isNew argument right Int64 two copy
+isNew result makeNew Bool
+isNew ownedBy none
+isNew cleanedBy none
+isNew borrows none
+isNew catch none
+isNew suppresses none
+
+newIt is call
+newIt in randomCall
+newIt invokes newGeneratorTarget
+newIt argument shape machine.Address shape copy
+newIt argument args machine.Address args copy
+newIt argument results machine.Address results copy
+newIt result none
+newIt ownedBy none
+newIt cleanedBy none
+newIt borrows none
+newIt catch none
+newIt suppresses none
+
+nextIt is call
+nextIt in randomCall
+nextIt invokes nextTarget
+nextIt argument shape machine.Address shape copy
+nextIt argument args machine.Address args copy
+nextIt argument results machine.Address results copy
+nextIt argument payload machine.Address payload copy
+nextIt result nextStatus Int32
+nextIt ownedBy none
+nextIt cleanedBy none
+nextIt borrows none
+nextIt catch none
+nextIt suppresses none

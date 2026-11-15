@@ -1,0 +1,1337 @@
+# Tests of the `generators` module; generated from tools/generators.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests build a shape and a call's slots in the last 4 KiB of machine.state: the shape from byte 61440, the
+# arguments from 61952, the results from 62016, the payload at 62080, the slot counts at 62208.
+setArg is operation
+setArg purpose "Set an argument slot of the tests' call to a number"
+setArg invariant none
+setArg typeParameter none
+setArg input slot Int64 copied
+setArg input value Int64 copied
+setArg output none
+setArg outputOwnedBy none
+setArg raises none
+setArg effect use machine.memory
+setArg uses memoryAccess
+setArg memoryHeap false
+setArg async false
+setArg maxRecursion none
+setArg label begin loopKind none
+setArg label begin within none
+setArg let eight Int64 8 immutable
+setArg let argsOffset Int64 61952 immutable
+setArg at begin do offsetOf
+setArg at begin do withBase
+setArg at begin do findSlot
+setArg at begin do storeIt
+setArg at begin return ok none
+
+offsetOf is call
+offsetOf in setArg
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 slot copy
+offsetOf argument right Int64 eight copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+withBase is call
+withBase in setArg
+withBase invokes math.addInt64
+withBase argument left Int64 offset copy
+withBase argument right Int64 argsOffset copy
+withBase result place Int64
+withBase ownedBy none
+withBase cleanedBy none
+withBase borrows none
+withBase catch none
+withBase suppresses none
+
+findSlot is call
+findSlot in setArg
+findSlot invokes kernel.stateAt
+findSlot argument offset Int64 place copy
+findSlot result address machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeIt is call
+storeIt in setArg
+storeIt invokes machine.storeInt64
+storeIt argument address machine.Address address copy
+storeIt argument value Int64 value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+callRandom is operation
+callRandom purpose "Call a random target with the tests' slots, each parameter one slot, and give its status"
+callRandom invariant none
+callRandom typeParameter none
+callRandom input which Int64 copied
+callRandom input params Int64 copied
+callRandom output Int32
+callRandom outputOwnedBy none
+callRandom raises none
+callRandom effect use machine.memory
+callRandom effect use system.calls
+callRandom uses memoryAccess
+callRandom uses systemCalls
+callRandom memoryHeap false
+callRandom async false
+callRandom maxRecursion none
+callRandom label begin loopKind none
+callRandom label begin within none
+callRandom label eachParam loopKind while
+callRandom label eachParam within none
+callRandom label eachParam maxIterations params
+callRandom label setParam loopKind none
+callRandom label setParam within eachParam
+callRandom label call loopKind none
+callRandom label call within none
+callRandom let at Int64 0 mutable
+callRandom let shapeAt Int64 61440 immutable
+callRandom let twentyFour Int64 24 immutable
+callRandom let eight Int64 8 immutable
+callRandom let forty Int64 40 immutable
+callRandom let one Int64 1 immutable
+callRandom let twoThirtyTwo Int64 232 immutable
+callRandom let argsOffset Int64 61952 immutable
+callRandom let resultsOffset Int64 62016 immutable
+callRandom let payloadOffset Int64 62080 immutable
+callRandom at begin do findShape
+callRandom at begin do findParams
+callRandom at begin do storeParams
+callRandom at begin goto eachParam
+callRandom at eachParam do doneCheck
+callRandom at eachParam branch if done goto call else goto setParam
+callRandom at setParam do placeOf
+callRandom at setParam do countOffset
+callRandom at setParam do findCount
+callRandom at setParam do storeCount
+callRandom at setParam do startOffset
+callRandom at setParam do findStart
+callRandom at setParam do storeStart
+callRandom at setParam do nextParam
+callRandom at setParam set at after
+callRandom at setParam goto eachParam
+callRandom at call do findArgs
+callRandom at call do findResults
+callRandom at call do findPayload
+callRandom at call do callIt
+callRandom at call return ok status
+
+findShape is call
+findShape in callRandom
+findShape invokes kernel.stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findParams is call
+findParams in callRandom
+findParams invokes machine.offset
+findParams argument address machine.Address shape copy
+findParams argument bytes Int64 twentyFour copy
+findParams result paramsAt machine.Address
+findParams ownedBy none
+findParams cleanedBy none
+findParams borrows none
+findParams catch none
+findParams suppresses none
+
+storeParams is call
+storeParams in callRandom
+storeParams invokes machine.storeInt64
+storeParams argument address machine.Address paramsAt copy
+storeParams argument value Int64 params copy
+storeParams result none
+storeParams ownedBy none
+storeParams cleanedBy none
+storeParams borrows none
+storeParams catch none
+storeParams suppresses none
+
+doneCheck is call
+doneCheck in callRandom
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 params copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+placeOf is call
+placeOf in callRandom
+placeOf invokes math.multiplyInt64
+placeOf argument left Int64 at copy
+placeOf argument right Int64 eight copy
+placeOf result place Int64
+placeOf ownedBy none
+placeOf cleanedBy none
+placeOf borrows none
+placeOf catch none
+placeOf suppresses none
+
+countOffset is call
+countOffset in callRandom
+countOffset invokes math.addInt64
+countOffset argument left Int64 place copy
+countOffset argument right Int64 forty copy
+countOffset result countPlace Int64
+countOffset ownedBy none
+countOffset cleanedBy none
+countOffset borrows none
+countOffset catch none
+countOffset suppresses none
+
+findCount is call
+findCount in callRandom
+findCount invokes machine.offset
+findCount argument address machine.Address shape copy
+findCount argument bytes Int64 countPlace copy
+findCount result countAt machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+storeCount is call
+storeCount in callRandom
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address countAt copy
+storeCount argument value Int64 one copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+startOffset is call
+startOffset in callRandom
+startOffset invokes math.addInt64
+startOffset argument left Int64 place copy
+startOffset argument right Int64 twoThirtyTwo copy
+startOffset result startPlace Int64
+startOffset ownedBy none
+startOffset cleanedBy none
+startOffset borrows none
+startOffset catch none
+startOffset suppresses none
+
+findStart is call
+findStart in callRandom
+findStart invokes machine.offset
+findStart argument address machine.Address shape copy
+findStart argument bytes Int64 startPlace copy
+findStart result startAt machine.Address
+findStart ownedBy none
+findStart cleanedBy none
+findStart borrows none
+findStart catch none
+findStart suppresses none
+
+storeStart is call
+storeStart in callRandom
+storeStart invokes machine.storeInt64
+storeStart argument address machine.Address startAt copy
+storeStart argument value Int64 at copy
+storeStart result none
+storeStart ownedBy none
+storeStart cleanedBy none
+storeStart borrows none
+storeStart catch none
+storeStart suppresses none
+
+nextParam is call
+nextParam in callRandom
+nextParam invokes math.addInt64
+nextParam argument left Int64 at copy
+nextParam argument right Int64 one copy
+nextParam result after Int64
+nextParam ownedBy none
+nextParam cleanedBy none
+nextParam borrows none
+nextParam catch none
+nextParam suppresses none
+
+findArgs is call
+findArgs in callRandom
+findArgs invokes kernel.stateAt
+findArgs argument offset Int64 argsOffset copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in callRandom
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in callRandom
+findPayload invokes kernel.stateAt
+findPayload argument offset Int64 payloadOffset copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+callIt is call
+callIt in callRandom
+callIt invokes randomCall
+callIt argument which Int64 which copy
+callIt argument shape machine.Address shape copy
+callIt argument args machine.Address args copy
+callIt argument results machine.Address results copy
+callIt argument payload machine.Address payload copy
+callIt result status Int32
+callIt ownedBy none
+callIt cleanedBy none
+callIt borrows none
+callIt catch none
+callIt suppresses none
+
+result is operation
+result purpose "The first result slot of the tests' call"
+result invariant none
+result typeParameter none
+result input none
+result output Int64
+result outputOwnedBy none
+result raises none
+result effect use machine.memory
+result uses memoryAccess
+result memoryHeap false
+result async false
+result maxRecursion none
+result label begin loopKind none
+result label begin within none
+result let resultsOffset Int64 62016 immutable
+result at begin do findResults
+result at begin do readIt
+result at begin return ok value
+
+findResults is call
+findResults in result
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+readIt is call
+readIt in result
+readIt invokes machine.loadInt64
+readIt argument address machine.Address results copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+expectStatus is operation
+expectStatus purpose "Compare a call's status with what is expected"
+expectStatus invariant none
+expectStatus typeParameter none
+expectStatus input wanted Int64 copied
+expectStatus input status Int32 copied
+expectStatus output none
+expectStatus outputOwnedBy none
+expectStatus raises none
+expectStatus effect none
+expectStatus uses none
+expectStatus memoryHeap false
+expectStatus async false
+expectStatus maxRecursion none
+expectStatus label begin loopKind none
+expectStatus label begin within none
+expectStatus let none
+expectStatus at begin do widenStatus
+expectStatus at begin do compareIt
+expectStatus at begin return ok none
+
+widenStatus is call
+widenStatus in expectStatus
+widenStatus invokes convert.int32ToInt64
+widenStatus argument value Int32 status copy
+widenStatus result statusValue Int64
+widenStatus ownedBy none
+widenStatus cleanedBy none
+widenStatus borrows none
+widenStatus catch none
+widenStatus suppresses none
+
+compareIt is call
+compareIt in expectStatus
+compareIt invokes test.assertEqualInt64
+compareIt argument expected Int64 wanted copy
+compareIt argument actual Int64 statusValue copy
+compareIt result none
+compareIt ownedBy none
+compareIt cleanedBy none
+compareIt borrows none
+compareIt catch none
+compareIt suppresses none
+
+newGenerator is operation
+newGenerator purpose "A generator seeded from a whole number, in a region"
+newGenerator invariant none
+newGenerator typeParameter none
+newGenerator input seed Int64 copied
+newGenerator input region machine.Address copied
+newGenerator output Int64
+newGenerator outputOwnedBy none
+newGenerator raises none
+newGenerator effect use machine.memory
+newGenerator effect use system.calls
+newGenerator uses memoryAccess
+newGenerator uses systemCalls
+newGenerator memoryHeap false
+newGenerator async false
+newGenerator maxRecursion none
+newGenerator label begin loopKind none
+newGenerator label begin within none
+newGenerator let zero Int64 0 immutable
+newGenerator let regionOffset Int64 61960 immutable
+newGenerator let two Int64 2 immutable
+newGenerator at begin do setSeed
+newGenerator at begin do findRegionSlot
+newGenerator at begin do setRegion
+newGenerator at begin do callIt
+newGenerator at begin do expectOk
+newGenerator at begin do readIt
+newGenerator at begin return ok handle
+
+setSeed is call
+setSeed in newGenerator
+setSeed invokes setArg
+setSeed argument slot Int64 zero copy
+setSeed argument value Int64 seed copy
+setSeed result none
+setSeed ownedBy none
+setSeed cleanedBy none
+setSeed borrows none
+setSeed catch none
+setSeed suppresses none
+
+findRegionSlot is call
+findRegionSlot in newGenerator
+findRegionSlot invokes kernel.stateAt
+findRegionSlot argument offset Int64 regionOffset copy
+findRegionSlot result regionSlot machine.Address
+findRegionSlot ownedBy none
+findRegionSlot cleanedBy none
+findRegionSlot borrows none
+findRegionSlot catch none
+findRegionSlot suppresses none
+
+setRegion is call
+setRegion in newGenerator
+setRegion invokes machine.storeAddress
+setRegion argument address machine.Address regionSlot copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+callIt is call
+callIt in newGenerator
+callIt invokes callRandom
+callIt argument which Int64 two copy
+callIt argument params Int64 two copy
+callIt result status Int32
+callIt ownedBy none
+callIt cleanedBy none
+callIt borrows none
+callIt catch none
+callIt suppresses none
+
+expectOk is call
+expectOk in newGenerator
+expectOk invokes expectStatus
+expectOk argument wanted Int64 zero copy
+expectOk argument status Int32 status copy
+expectOk result none
+expectOk ownedBy none
+expectOk cleanedBy none
+expectOk borrows none
+expectOk catch none
+expectOk suppresses none
+
+readIt is call
+readIt in newGenerator
+readIt invokes result
+readIt argument none
+readIt result handle Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+expectNext is operation
+expectNext purpose "Draw a generator's next number from a range and compare it with what Python's randint gives"
+expectNext invariant none
+expectNext typeParameter none
+expectNext input handle Int64 copied
+expectNext input low Int64 copied
+expectNext input high Int64 copied
+expectNext input wanted Int64 copied
+expectNext output none
+expectNext outputOwnedBy none
+expectNext raises none
+expectNext effect use machine.memory
+expectNext effect use system.calls
+expectNext uses memoryAccess
+expectNext uses systemCalls
+expectNext memoryHeap false
+expectNext async false
+expectNext maxRecursion none
+expectNext label begin loopKind none
+expectNext label begin within none
+expectNext let zero Int64 0 immutable
+expectNext let one Int64 1 immutable
+expectNext let two Int64 2 immutable
+expectNext let three Int64 3 immutable
+expectNext at begin do setHandle
+expectNext at begin do setLow
+expectNext at begin do setHigh
+expectNext at begin do callIt
+expectNext at begin do expectOk
+expectNext at begin do readIt
+expectNext at begin do expectIt
+expectNext at begin return ok none
+
+setHandle is call
+setHandle in expectNext
+setHandle invokes setArg
+setHandle argument slot Int64 zero copy
+setHandle argument value Int64 handle copy
+setHandle result none
+setHandle ownedBy none
+setHandle cleanedBy none
+setHandle borrows none
+setHandle catch none
+setHandle suppresses none
+
+setLow is call
+setLow in expectNext
+setLow invokes setArg
+setLow argument slot Int64 one copy
+setLow argument value Int64 low copy
+setLow result none
+setLow ownedBy none
+setLow cleanedBy none
+setLow borrows none
+setLow catch none
+setLow suppresses none
+
+setHigh is call
+setHigh in expectNext
+setHigh invokes setArg
+setHigh argument slot Int64 two copy
+setHigh argument value Int64 high copy
+setHigh result none
+setHigh ownedBy none
+setHigh cleanedBy none
+setHigh borrows none
+setHigh catch none
+setHigh suppresses none
+
+callIt is call
+callIt in expectNext
+callIt invokes callRandom
+callIt argument which Int64 three copy
+callIt argument params Int64 three copy
+callIt result status Int32
+callIt ownedBy none
+callIt cleanedBy none
+callIt borrows none
+callIt catch none
+callIt suppresses none
+
+expectOk is call
+expectOk in expectNext
+expectOk invokes expectStatus
+expectOk argument wanted Int64 zero copy
+expectOk argument status Int32 status copy
+expectOk result none
+expectOk ownedBy none
+expectOk cleanedBy none
+expectOk borrows none
+expectOk catch none
+expectOk suppresses none
+
+readIt is call
+readIt in expectNext
+readIt invokes result
+readIt argument none
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+expectIt is call
+expectIt in expectNext
+expectIt invokes test.assertEqualInt64
+expectIt argument expected Int64 wanted copy
+expectIt argument actual Int64 value copy
+expectIt result none
+expectIt ownedBy none
+expectIt cleanedBy none
+expectIt borrows none
+expectIt catch none
+expectIt suppresses none
+
+expectBetween is operation
+expectBetween purpose "Draw a number from the secure source and check it lies in its range"
+expectBetween invariant none
+expectBetween typeParameter none
+expectBetween input low Int64 copied
+expectBetween input high Int64 copied
+expectBetween output none
+expectBetween outputOwnedBy none
+expectBetween raises none
+expectBetween effect use machine.memory
+expectBetween effect use system.calls
+expectBetween uses memoryAccess
+expectBetween uses systemCalls
+expectBetween memoryHeap false
+expectBetween async false
+expectBetween maxRecursion none
+expectBetween label begin loopKind none
+expectBetween label begin within none
+expectBetween let zero Int64 0 immutable
+expectBetween let one Int64 1 immutable
+expectBetween let two Int64 2 immutable
+expectBetween at begin do setLow
+expectBetween at begin do setHigh
+expectBetween at begin do callIt
+expectBetween at begin do expectOk
+expectBetween at begin do readIt
+expectBetween at begin do lowCheck
+expectBetween at begin do doAssertTrue
+expectBetween at begin do highCheck
+expectBetween at begin do doAssertTrue2
+expectBetween at begin return ok none
+
+setLow is call
+setLow in expectBetween
+setLow invokes setArg
+setLow argument slot Int64 zero copy
+setLow argument value Int64 low copy
+setLow result none
+setLow ownedBy none
+setLow cleanedBy none
+setLow borrows none
+setLow catch none
+setLow suppresses none
+
+setHigh is call
+setHigh in expectBetween
+setHigh invokes setArg
+setHigh argument slot Int64 one copy
+setHigh argument value Int64 high copy
+setHigh result none
+setHigh ownedBy none
+setHigh cleanedBy none
+setHigh borrows none
+setHigh catch none
+setHigh suppresses none
+
+callIt is call
+callIt in expectBetween
+callIt invokes callRandom
+callIt argument which Int64 one copy
+callIt argument params Int64 two copy
+callIt result status Int32
+callIt ownedBy none
+callIt cleanedBy none
+callIt borrows none
+callIt catch none
+callIt suppresses none
+
+expectOk is call
+expectOk in expectBetween
+expectOk invokes expectStatus
+expectOk argument wanted Int64 zero copy
+expectOk argument status Int32 status copy
+expectOk result none
+expectOk ownedBy none
+expectOk cleanedBy none
+expectOk borrows none
+expectOk catch none
+expectOk suppresses none
+
+readIt is call
+readIt in expectBetween
+readIt invokes result
+readIt argument none
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+lowCheck is call
+lowCheck in expectBetween
+lowCheck invokes compare.greaterOrEqualInt64
+lowCheck argument left Int64 value copy
+lowCheck argument right Int64 low copy
+lowCheck result above Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+doAssertTrue is call
+doAssertTrue in expectBetween
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool above copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+highCheck is call
+highCheck in expectBetween
+highCheck invokes compare.lessOrEqualInt64
+highCheck argument left Int64 value copy
+highCheck argument right Int64 high copy
+highCheck result below Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in expectBetween
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool below copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+randomTest is test
+randomTest purpose "Seeded generators give what random.Random(seed).randint gives; the secure source stays in its range; an empty range is emptyRange"
+randomTest verifies randomCall runsRandom
+randomTest typeParameter none
+randomTest input none
+randomTest output none
+randomTest outputOwnedBy none
+randomTest raises none
+randomTest effect use machine.memory
+randomTest effect use system.calls
+randomTest uses memoryAccess
+randomTest uses systemCalls
+randomTest memoryHeap false
+randomTest async false
+randomTest maxRecursion none
+randomTest label begin loopKind none
+randomTest label begin within none
+randomTest label eachRound loopKind while
+randomTest label eachRound within none
+randomTest label eachRound maxIterations hundred
+randomTest label draw loopKind none
+randomTest label draw within eachRound
+randomTest label finish loopKind none
+randomTest label finish within none
+randomTest let label String "random test" immutable
+randomTest let round Int64 0 mutable
+randomTest let least Int64 -9223372036854775808 immutable
+randomTest let most Int64 9223372036854775807 immutable
+randomTest let capacity Int64 65536 immutable
+randomTest let seed42 Int64 42 immutable
+randomTest let one Int64 1 immutable
+randomTest let six Int64 6 immutable
+randomTest let zero Int64 0 immutable
+randomTest let twoTo32 Int64 4294967296 immutable
+randomTest let got3 Int64 1181241943 immutable
+randomTest let got4 Int64 836864915349561680 immutable
+randomTest let seven Int64 7 immutable
+randomTest let five Int64 5 immutable
+randomTest let twoTo40 Int64 1099511627776 immutable
+randomTest let got6 Int64 30201276664 immutable
+randomTest let minusThousand Int64 -1000 immutable
+randomTest let thousand Int64 1000 immutable
+randomTest let got7 Int64 -809 immutable
+randomTest let minusSeven Int64 -7 immutable
+randomTest let hundred Int64 100 immutable
+randomTest let got8 Int64 42 immutable
+randomTest let got9 Int64 20 immutable
+randomTest let nine Int64 9 immutable
+randomTest let twoTo62 Int64 4611686018427387904 immutable
+randomTest let got11 Int64 3633012915649368328 immutable
+randomTest let two Int64 2 immutable
+randomTest let four Int64 4 immutable
+randomTest let three Int64 3 immutable
+randomTest let shapeAt Int64 61440 immutable
+randomTest let argsOffset Int64 61952 immutable
+randomTest let resultsOffset Int64 62016 immutable
+randomTest let payloadOffset Int64 62080 immutable
+randomTest let minusThree Int64 -3 immutable
+randomTest at begin do findLabel
+randomTest at begin do labelLength
+randomTest at begin do make
+randomTest at begin do makeFirst
+randomTest at begin do next1
+randomTest at begin do next2
+randomTest at begin do next3
+randomTest at begin do next4
+randomTest at begin do next5
+randomTest at begin do next6
+randomTest at begin do next7
+randomTest at begin do makeSecond
+randomTest at begin do next8
+randomTest at begin do next9
+randomTest at begin do makeThird
+randomTest at begin do next10
+randomTest at begin do makeFourth
+randomTest at begin do next11
+randomTest at begin do setHandle
+randomTest at begin do setLow
+randomTest at begin do setHigh
+randomTest at begin do emptyIt
+randomTest at begin do expectEmpty
+randomTest at begin do setBetweenLow
+randomTest at begin do setBetweenHigh
+randomTest at begin do findShape
+randomTest at begin do findArgs
+randomTest at begin do findResults
+randomTest at begin do findPayload
+randomTest at begin do emptyBetween
+randomTest at begin do widenBetween
+randomTest at begin do expectEmptyBetween
+randomTest at begin goto eachRound
+randomTest at eachRound do roundsDone
+randomTest at eachRound branch if done goto finish else goto draw
+randomTest at draw do drawSmall
+randomTest at draw do drawAll
+randomTest at draw do drawOne
+randomTest at draw do nextRound
+randomTest at draw set round after
+randomTest at draw goto eachRound
+randomTest at finish do free
+randomTest at finish return ok none
+
+findLabel is call
+findLabel in randomTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in randomTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in randomTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+makeFirst is call
+makeFirst in randomTest
+makeFirst invokes newGenerator
+makeFirst argument seed Int64 seed42 copy
+makeFirst argument region machine.Address region copy
+makeFirst result first Int64
+makeFirst ownedBy none
+makeFirst cleanedBy none
+makeFirst borrows none
+makeFirst catch none
+makeFirst suppresses none
+
+next1 is call
+next1 in randomTest
+next1 invokes expectNext
+next1 argument handle Int64 first copy
+next1 argument low Int64 one copy
+next1 argument high Int64 six copy
+next1 argument wanted Int64 six copy
+next1 result none
+next1 ownedBy none
+next1 cleanedBy none
+next1 borrows none
+next1 catch none
+next1 suppresses none
+
+next2 is call
+next2 in randomTest
+next2 invokes expectNext
+next2 argument handle Int64 first copy
+next2 argument low Int64 one copy
+next2 argument high Int64 six copy
+next2 argument wanted Int64 one copy
+next2 result none
+next2 ownedBy none
+next2 cleanedBy none
+next2 borrows none
+next2 catch none
+next2 suppresses none
+
+next3 is call
+next3 in randomTest
+next3 invokes expectNext
+next3 argument handle Int64 first copy
+next3 argument low Int64 zero copy
+next3 argument high Int64 twoTo32 copy
+next3 argument wanted Int64 got3 copy
+next3 result none
+next3 ownedBy none
+next3 cleanedBy none
+next3 borrows none
+next3 catch none
+next3 suppresses none
+
+next4 is call
+next4 in randomTest
+next4 invokes expectNext
+next4 argument handle Int64 first copy
+next4 argument low Int64 least copy
+next4 argument high Int64 most copy
+next4 argument wanted Int64 got4 copy
+next4 result none
+next4 ownedBy none
+next4 cleanedBy none
+next4 borrows none
+next4 catch none
+next4 suppresses none
+
+next5 is call
+next5 in randomTest
+next5 invokes expectNext
+next5 argument handle Int64 first copy
+next5 argument low Int64 seven copy
+next5 argument high Int64 seven copy
+next5 argument wanted Int64 seven copy
+next5 result none
+next5 ownedBy none
+next5 cleanedBy none
+next5 borrows none
+next5 catch none
+next5 suppresses none
+
+next6 is call
+next6 in randomTest
+next6 invokes expectNext
+next6 argument handle Int64 first copy
+next6 argument low Int64 five copy
+next6 argument high Int64 twoTo40 copy
+next6 argument wanted Int64 got6 copy
+next6 result none
+next6 ownedBy none
+next6 cleanedBy none
+next6 borrows none
+next6 catch none
+next6 suppresses none
+
+next7 is call
+next7 in randomTest
+next7 invokes expectNext
+next7 argument handle Int64 first copy
+next7 argument low Int64 minusThousand copy
+next7 argument high Int64 thousand copy
+next7 argument wanted Int64 got7 copy
+next7 result none
+next7 ownedBy none
+next7 cleanedBy none
+next7 borrows none
+next7 catch none
+next7 suppresses none
+
+makeSecond is call
+makeSecond in randomTest
+makeSecond invokes newGenerator
+makeSecond argument seed Int64 minusSeven copy
+makeSecond argument region machine.Address region copy
+makeSecond result second Int64
+makeSecond ownedBy none
+makeSecond cleanedBy none
+makeSecond borrows none
+makeSecond catch none
+makeSecond suppresses none
+
+next8 is call
+next8 in randomTest
+next8 invokes expectNext
+next8 argument handle Int64 second copy
+next8 argument low Int64 one copy
+next8 argument high Int64 hundred copy
+next8 argument wanted Int64 got8 copy
+next8 result none
+next8 ownedBy none
+next8 cleanedBy none
+next8 borrows none
+next8 catch none
+next8 suppresses none
+
+next9 is call
+next9 in randomTest
+next9 invokes expectNext
+next9 argument handle Int64 second copy
+next9 argument low Int64 one copy
+next9 argument high Int64 hundred copy
+next9 argument wanted Int64 got9 copy
+next9 result none
+next9 ownedBy none
+next9 cleanedBy none
+next9 borrows none
+next9 catch none
+next9 suppresses none
+
+makeThird is call
+makeThird in randomTest
+makeThird invokes newGenerator
+makeThird argument seed Int64 zero copy
+makeThird argument region machine.Address region copy
+makeThird result third Int64
+makeThird ownedBy none
+makeThird cleanedBy none
+makeThird borrows none
+makeThird catch none
+makeThird suppresses none
+
+next10 is call
+next10 in randomTest
+next10 invokes expectNext
+next10 argument handle Int64 third copy
+next10 argument low Int64 zero copy
+next10 argument high Int64 nine copy
+next10 argument wanted Int64 six copy
+next10 result none
+next10 ownedBy none
+next10 cleanedBy none
+next10 borrows none
+next10 catch none
+next10 suppresses none
+
+makeFourth is call
+makeFourth in randomTest
+makeFourth invokes newGenerator
+makeFourth argument seed Int64 least copy
+makeFourth argument region machine.Address region copy
+makeFourth result fourth Int64
+makeFourth ownedBy none
+makeFourth cleanedBy none
+makeFourth borrows none
+makeFourth catch none
+makeFourth suppresses none
+
+next11 is call
+next11 in randomTest
+next11 invokes expectNext
+next11 argument handle Int64 fourth copy
+next11 argument low Int64 zero copy
+next11 argument high Int64 twoTo62 copy
+next11 argument wanted Int64 got11 copy
+next11 result none
+next11 ownedBy none
+next11 cleanedBy none
+next11 borrows none
+next11 catch none
+next11 suppresses none
+
+setHandle is call
+setHandle in randomTest
+setHandle invokes setArg
+setHandle argument slot Int64 zero copy
+setHandle argument value Int64 first copy
+setHandle result none
+setHandle ownedBy none
+setHandle cleanedBy none
+setHandle borrows none
+setHandle catch none
+setHandle suppresses none
+
+setLow is call
+setLow in randomTest
+setLow invokes setArg
+setLow argument slot Int64 one copy
+setLow argument value Int64 five copy
+setLow result none
+setLow ownedBy none
+setLow cleanedBy none
+setLow borrows none
+setLow catch none
+setLow suppresses none
+
+setHigh is call
+setHigh in randomTest
+setHigh invokes setArg
+setHigh argument slot Int64 two copy
+setHigh argument value Int64 four copy
+setHigh result none
+setHigh ownedBy none
+setHigh cleanedBy none
+setHigh borrows none
+setHigh catch none
+setHigh suppresses none
+
+emptyIt is call
+emptyIt in randomTest
+emptyIt invokes callRandom
+emptyIt argument which Int64 three copy
+emptyIt argument params Int64 three copy
+emptyIt result emptyStatus Int32
+emptyIt ownedBy none
+emptyIt cleanedBy none
+emptyIt borrows none
+emptyIt catch none
+emptyIt suppresses none
+
+expectEmpty is call
+expectEmpty in randomTest
+expectEmpty invokes expectStatus
+expectEmpty argument wanted Int64 one copy
+expectEmpty argument status Int32 emptyStatus copy
+expectEmpty result none
+expectEmpty ownedBy none
+expectEmpty cleanedBy none
+expectEmpty borrows none
+expectEmpty catch none
+expectEmpty suppresses none
+
+setBetweenLow is call
+setBetweenLow in randomTest
+setBetweenLow invokes setArg
+setBetweenLow argument slot Int64 zero copy
+setBetweenLow argument value Int64 five copy
+setBetweenLow result none
+setBetweenLow ownedBy none
+setBetweenLow cleanedBy none
+setBetweenLow borrows none
+setBetweenLow catch none
+setBetweenLow suppresses none
+
+setBetweenHigh is call
+setBetweenHigh in randomTest
+setBetweenHigh invokes setArg
+setBetweenHigh argument slot Int64 one copy
+setBetweenHigh argument value Int64 four copy
+setBetweenHigh result none
+setBetweenHigh ownedBy none
+setBetweenHigh cleanedBy none
+setBetweenHigh borrows none
+setBetweenHigh catch none
+setBetweenHigh suppresses none
+
+findShape is call
+findShape in randomTest
+findShape invokes kernel.stateAt
+findShape argument offset Int64 shapeAt copy
+findShape result shape machine.Address
+findShape ownedBy none
+findShape cleanedBy none
+findShape borrows none
+findShape catch none
+findShape suppresses none
+
+findArgs is call
+findArgs in randomTest
+findArgs invokes kernel.stateAt
+findArgs argument offset Int64 argsOffset copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in randomTest
+findResults invokes kernel.stateAt
+findResults argument offset Int64 resultsOffset copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in randomTest
+findPayload invokes kernel.stateAt
+findPayload argument offset Int64 payloadOffset copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+emptyBetween is call
+emptyBetween in randomTest
+emptyBetween invokes randomCall
+emptyBetween argument which Int64 one copy
+emptyBetween argument shape machine.Address shape copy
+emptyBetween argument args machine.Address args copy
+emptyBetween argument results machine.Address results copy
+emptyBetween argument payload machine.Address payload copy
+emptyBetween result betweenStatus Int32
+emptyBetween ownedBy none
+emptyBetween cleanedBy none
+emptyBetween borrows none
+emptyBetween catch none
+emptyBetween suppresses none
+
+widenBetween is call
+widenBetween in randomTest
+widenBetween invokes convert.int32ToInt64
+widenBetween argument value Int32 betweenStatus copy
+widenBetween result betweenValue Int64
+widenBetween ownedBy none
+widenBetween cleanedBy none
+widenBetween borrows none
+widenBetween catch none
+widenBetween suppresses none
+
+expectEmptyBetween is call
+expectEmptyBetween in randomTest
+expectEmptyBetween invokes test.assertEqualInt64
+expectEmptyBetween argument expected Int64 one copy
+expectEmptyBetween argument actual Int64 betweenValue copy
+expectEmptyBetween result none
+expectEmptyBetween ownedBy none
+expectEmptyBetween cleanedBy none
+expectEmptyBetween borrows none
+expectEmptyBetween catch none
+expectEmptyBetween suppresses none
+
+roundsDone is call
+roundsDone in randomTest
+roundsDone invokes compare.greaterOrEqualInt64
+roundsDone argument left Int64 round copy
+roundsDone argument right Int64 hundred copy
+roundsDone result done Bool
+roundsDone ownedBy none
+roundsDone cleanedBy none
+roundsDone borrows none
+roundsDone catch none
+roundsDone suppresses none
+
+drawSmall is call
+drawSmall in randomTest
+drawSmall invokes expectBetween
+drawSmall argument low Int64 minusThree copy
+drawSmall argument high Int64 three copy
+drawSmall result none
+drawSmall ownedBy none
+drawSmall cleanedBy none
+drawSmall borrows none
+drawSmall catch none
+drawSmall suppresses none
+
+drawAll is call
+drawAll in randomTest
+drawAll invokes expectBetween
+drawAll argument low Int64 least copy
+drawAll argument high Int64 most copy
+drawAll result none
+drawAll ownedBy none
+drawAll cleanedBy none
+drawAll borrows none
+drawAll catch none
+drawAll suppresses none
+
+drawOne is call
+drawOne in randomTest
+drawOne invokes expectBetween
+drawOne argument low Int64 seven copy
+drawOne argument high Int64 seven copy
+drawOne result none
+drawOne ownedBy none
+drawOne cleanedBy none
+drawOne borrows none
+drawOne catch none
+drawOne suppresses none
+
+nextRound is call
+nextRound in randomTest
+nextRound invokes math.addInt64
+nextRound argument left Int64 round copy
+nextRound argument right Int64 one copy
+nextRound result after Int64
+nextRound ownedBy none
+nextRound cleanedBy none
+nextRound borrows none
+nextRound catch none
+nextRound suppresses none
+
+free is call
+free in randomTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none

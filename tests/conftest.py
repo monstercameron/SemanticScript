@@ -21,7 +21,8 @@ EXE = ".exe" if os.name == "nt" else ""
 # D-142: what stage0 passes the C compiler after the C file: the runtime in SemanticScript as an object (built once
 # per session by `stage0_native`, which puts its path first), then the flags that link it with no C library
 LINK: list[str] = []
-LINK_FLAGS = (["-nostdlib", "-nostartfiles", "-Wl,-e,refined_entry", "-Wl,--stack,268435456", "-lkernel32", "-lgcc"]
+LINK_FLAGS = (["-nostdlib", "-nostartfiles", "-Wl,-e,refined_entry", "-Wl,--stack,268435456", "-lkernel32",
+               "-lws2_32", "-lbcrypt", "-lgcc"]
               if os.name == "nt" else ["-nostdlib", "-nostartfiles", "-static", "-fno-stack-protector", "-lgcc"])
 
 

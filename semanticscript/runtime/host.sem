@@ -32,6 +32,9 @@ host imports tasks
 host imports files
 host imports processes
 host imports hashes
+host imports generators
+host imports requests
+host imports documents
 host exports hostCall
 host exports utf8InvalidAt
 
@@ -206,6 +209,30 @@ hostTargets row cryptoToHex 69
 hostTargets row ffiBind 70
 hostTargets row ffiClose 71
 hostTargets row ffiOpen 72
+hostTargets row randomInt64Between 73
+hostTargets row randomNewGenerator 74
+hostTargets row randomNextInt64 75
+hostTargets row httpParseRequest 76
+hostTargets row httpHeader 77
+hostTargets row httpResponse 78
+hostTargets row httpSerializeResponse 79
+hostTargets row jsonParse 80
+hostTargets row jsonKind 81
+hostTargets row jsonAsInt64 82
+hostTargets row jsonAsBool 83
+hostTargets row jsonAsText 84
+hostTargets row jsonLength 85
+hostTargets row jsonItem 86
+hostTargets row jsonField 87
+hostTargets row jsonNewObject 88
+hostTargets row jsonNewArray 89
+hostTargets row jsonSetInt64 90
+hostTargets row jsonSetText 91
+hostTargets row jsonSetBool 92
+hostTargets row jsonSetValue 93
+hostTargets row jsonAppendInt64 94
+hostTargets row jsonAppendText 95
+hostTargets row jsonStringify 96
 hostTargets cell bufferAppendByte name "buffer.appendByte"
 hostTargets cell bufferAppendByte scoped -1
 hostTargets cell bufferAppendInt64 name "buffer.appendInt64"
@@ -350,6 +377,54 @@ hostTargets cell ffiClose name "ffi.close"
 hostTargets cell ffiClose scoped -1
 hostTargets cell ffiOpen name "ffi.open"
 hostTargets cell ffiOpen scoped 0
+hostTargets cell randomInt64Between name "random.int64Between"
+hostTargets cell randomInt64Between scoped -1
+hostTargets cell randomNewGenerator name "random.newGenerator"
+hostTargets cell randomNewGenerator scoped -1
+hostTargets cell randomNextInt64 name "random.nextInt64"
+hostTargets cell randomNextInt64 scoped -1
+hostTargets cell httpParseRequest name "http.parseRequest"
+hostTargets cell httpParseRequest scoped -1
+hostTargets cell httpHeader name "http.header"
+hostTargets cell httpHeader scoped -1
+hostTargets cell httpResponse name "http.response"
+hostTargets cell httpResponse scoped -1
+hostTargets cell httpSerializeResponse name "http.serializeResponse"
+hostTargets cell httpSerializeResponse scoped -1
+hostTargets cell jsonParse name "json.parse"
+hostTargets cell jsonParse scoped -1
+hostTargets cell jsonKind name "json.kind"
+hostTargets cell jsonKind scoped -1
+hostTargets cell jsonAsInt64 name "json.asInt64"
+hostTargets cell jsonAsInt64 scoped -1
+hostTargets cell jsonAsBool name "json.asBool"
+hostTargets cell jsonAsBool scoped -1
+hostTargets cell jsonAsText name "json.asText"
+hostTargets cell jsonAsText scoped -1
+hostTargets cell jsonLength name "json.length"
+hostTargets cell jsonLength scoped -1
+hostTargets cell jsonItem name "json.item"
+hostTargets cell jsonItem scoped -1
+hostTargets cell jsonField name "json.field"
+hostTargets cell jsonField scoped -1
+hostTargets cell jsonNewObject name "json.newObject"
+hostTargets cell jsonNewObject scoped -1
+hostTargets cell jsonNewArray name "json.newArray"
+hostTargets cell jsonNewArray scoped -1
+hostTargets cell jsonSetInt64 name "json.setInt64"
+hostTargets cell jsonSetInt64 scoped -1
+hostTargets cell jsonSetText name "json.setText"
+hostTargets cell jsonSetText scoped -1
+hostTargets cell jsonSetBool name "json.setBool"
+hostTargets cell jsonSetBool scoped -1
+hostTargets cell jsonSetValue name "json.setValue"
+hostTargets cell jsonSetValue scoped -1
+hostTargets cell jsonAppendInt64 name "json.appendInt64"
+hostTargets cell jsonAppendInt64 scoped -1
+hostTargets cell jsonAppendText name "json.appendText"
+hostTargets cell jsonAppendText scoped -1
+hostTargets cell jsonStringify name "json.stringify"
+hostTargets cell jsonStringify scoped -1
 
 endProcess is operation
 endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
@@ -8963,8 +9038,8 @@ dispatchMore label check72 loopKind none
 dispatchMore label check72 within none
 dispatchMore label do72 loopKind none
 dispatchMore label do72 within none
-dispatchMore label unknown loopKind none
-dispatchMore label unknown within none
+dispatchMore label rest loopKind none
+dispatchMore label rest within none
 dispatchMore let ok Int32 0 immutable
 dispatchMore let n26 Int64 26 immutable
 dispatchMore let n27 Int64 27 immutable
@@ -9013,7 +9088,6 @@ dispatchMore let n69 Int64 69 immutable
 dispatchMore let n70 Int64 70 immutable
 dispatchMore let n71 Int64 71 immutable
 dispatchMore let n72 Int64 72 immutable
-dispatchMore let unknownText String "a host call named a target this runtime does not number" immutable
 dispatchMore at begin goto check26
 dispatchMore at check26 do is26
 dispatchMore at check26 branch if t26 goto do26 else goto check27
@@ -9200,11 +9274,11 @@ dispatchMore at check71 branch if t71 goto do71 else goto check72
 dispatchMore at do71 do run71
 dispatchMore at do71 return ok ok
 dispatchMore at check72 do is72
-dispatchMore at check72 branch if t72 goto do72 else goto unknown
+dispatchMore at check72 branch if t72 goto do72 else goto rest
 dispatchMore at do72 do run72
 dispatchMore at do72 return ok status72
-dispatchMore at unknown do failUnknown
-dispatchMore at unknown return ok ok
+dispatchMore at rest do runRest
+dispatchMore at rest return ok restStatus
 
 is26 is call
 is26 in dispatchMore
@@ -10386,8 +10460,197 @@ run72 borrows none
 run72 catch none
 run72 suppresses none
 
+runRest is call
+runRest in dispatchMore
+runRest invokes dispatchRest
+runRest argument number Int64 number copy
+runRest argument shape machine.Address shape copy
+runRest argument args machine.Address args copy
+runRest argument results machine.Address results copy
+runRest argument payload machine.Address payload copy
+runRest result restStatus Int32
+runRest ownedBy none
+runRest cleanedBy none
+runRest borrows none
+runRest catch none
+runRest suppresses none
+
+dispatchRest is operation
+dispatchRest purpose "Run a host target of the modules that came last by its number (73 on): random (73 to 75), http (76 to 79), json (80 to 96); 0, or an error's variant number with its payload stored"
+dispatchRest invariant none
+dispatchRest typeParameter none
+dispatchRest input number Int64 copied
+dispatchRest input shape machine.Address copied
+dispatchRest input args machine.Address copied
+dispatchRest input results machine.Address copied
+dispatchRest input payload machine.Address copied
+dispatchRest output Int32
+dispatchRest outputOwnedBy none
+dispatchRest raises none
+dispatchRest effect use machine.memory
+dispatchRest effect use system.calls
+dispatchRest uses memoryAccess
+dispatchRest uses systemCalls
+dispatchRest memoryHeap false
+dispatchRest async false
+dispatchRest maxRecursion none
+dispatchRest label begin loopKind none
+dispatchRest label begin within none
+dispatchRest label runRandom loopKind none
+dispatchRest label runRandom within none
+dispatchRest label httpCheck loopKind none
+dispatchRest label httpCheck within none
+dispatchRest label runHttp loopKind none
+dispatchRest label runHttp within none
+dispatchRest label jsonCheck loopKind none
+dispatchRest label jsonCheck within none
+dispatchRest label runJson loopKind none
+dispatchRest label runJson within none
+dispatchRest label unknown loopKind none
+dispatchRest label unknown within none
+dispatchRest let ok Int32 0 immutable
+dispatchRest let n75 Int64 75 immutable
+dispatchRest let n72 Int64 72 immutable
+dispatchRest let n79 Int64 79 immutable
+dispatchRest let n96 Int64 96 immutable
+dispatchRest let unknownText String "a host call named a target this runtime does not number" immutable
+dispatchRest at begin do randomCheck
+dispatchRest at begin branch if isRandom goto runRandom else goto httpCheck
+dispatchRest at runRandom do randomPlace
+dispatchRest at runRandom do randomIt
+dispatchRest at runRandom return ok randomStatus
+dispatchRest at httpCheck do checkHttp
+dispatchRest at httpCheck branch if isHttp goto runHttp else goto jsonCheck
+dispatchRest at runHttp do httpPlace
+dispatchRest at runHttp do httpIt
+dispatchRest at runHttp return ok httpStatus
+dispatchRest at jsonCheck do checkJson
+dispatchRest at jsonCheck branch if isJson goto runJson else goto unknown
+dispatchRest at runJson do jsonPlace
+dispatchRest at runJson do jsonIt
+dispatchRest at runJson return ok jsonStatus
+dispatchRest at unknown do failUnknown
+dispatchRest at unknown return ok ok
+
+randomCheck is call
+randomCheck in dispatchRest
+randomCheck invokes compare.lessOrEqualInt64
+randomCheck argument left Int64 number copy
+randomCheck argument right Int64 n75 copy
+randomCheck result isRandom Bool
+randomCheck ownedBy none
+randomCheck cleanedBy none
+randomCheck borrows none
+randomCheck catch none
+randomCheck suppresses none
+
+randomPlace is call
+randomPlace in dispatchRest
+randomPlace invokes math.subtractInt64
+randomPlace argument left Int64 number copy
+randomPlace argument right Int64 n72 copy
+randomPlace result randomWhich Int64
+randomPlace ownedBy none
+randomPlace cleanedBy none
+randomPlace borrows none
+randomPlace catch none
+randomPlace suppresses none
+
+randomIt is call
+randomIt in dispatchRest
+randomIt invokes generators.randomCall
+randomIt argument which Int64 randomWhich copy
+randomIt argument shape machine.Address shape copy
+randomIt argument args machine.Address args copy
+randomIt argument results machine.Address results copy
+randomIt argument payload machine.Address payload copy
+randomIt result randomStatus Int32
+randomIt ownedBy none
+randomIt cleanedBy none
+randomIt borrows none
+randomIt catch none
+randomIt suppresses none
+
+checkHttp is call
+checkHttp in dispatchRest
+checkHttp invokes compare.lessOrEqualInt64
+checkHttp argument left Int64 number copy
+checkHttp argument right Int64 n79 copy
+checkHttp result isHttp Bool
+checkHttp ownedBy none
+checkHttp cleanedBy none
+checkHttp borrows none
+checkHttp catch none
+checkHttp suppresses none
+
+httpPlace is call
+httpPlace in dispatchRest
+httpPlace invokes math.subtractInt64
+httpPlace argument left Int64 number copy
+httpPlace argument right Int64 n75 copy
+httpPlace result httpWhich Int64
+httpPlace ownedBy none
+httpPlace cleanedBy none
+httpPlace borrows none
+httpPlace catch none
+httpPlace suppresses none
+
+httpIt is call
+httpIt in dispatchRest
+httpIt invokes requests.httpCall
+httpIt argument which Int64 httpWhich copy
+httpIt argument shape machine.Address shape copy
+httpIt argument args machine.Address args copy
+httpIt argument results machine.Address results copy
+httpIt argument payload machine.Address payload copy
+httpIt result httpStatus Int32
+httpIt ownedBy none
+httpIt cleanedBy none
+httpIt borrows none
+httpIt catch none
+httpIt suppresses none
+
+checkJson is call
+checkJson in dispatchRest
+checkJson invokes compare.lessOrEqualInt64
+checkJson argument left Int64 number copy
+checkJson argument right Int64 n96 copy
+checkJson result isJson Bool
+checkJson ownedBy none
+checkJson cleanedBy none
+checkJson borrows none
+checkJson catch none
+checkJson suppresses none
+
+jsonPlace is call
+jsonPlace in dispatchRest
+jsonPlace invokes math.subtractInt64
+jsonPlace argument left Int64 number copy
+jsonPlace argument right Int64 n79 copy
+jsonPlace result jsonWhich Int64
+jsonPlace ownedBy none
+jsonPlace cleanedBy none
+jsonPlace borrows none
+jsonPlace catch none
+jsonPlace suppresses none
+
+jsonIt is call
+jsonIt in dispatchRest
+jsonIt invokes documents.jsonCall
+jsonIt argument which Int64 jsonWhich copy
+jsonIt argument shape machine.Address shape copy
+jsonIt argument args machine.Address args copy
+jsonIt argument results machine.Address results copy
+jsonIt argument payload machine.Address payload copy
+jsonIt result jsonStatus Int32
+jsonIt ownedBy none
+jsonIt cleanedBy none
+jsonIt borrows none
+jsonIt catch none
+jsonIt suppresses none
+
 failUnknown is call
-failUnknown in dispatchMore
+failUnknown in dispatchRest
 failUnknown invokes failText
 failUnknown argument text String unknownText lend
 failUnknown result none

@@ -1,0 +1,4 @@
+# JSON values for a standalone executable: nodes shared by the handles and containers that hold them,
+# counted, and given back with what they hold when the last one lets go, as Python objects are under `refined run`.
+#
+# This module is generated from tools/values.dsl by tools/build.py.

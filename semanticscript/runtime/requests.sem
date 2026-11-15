@@ -1,0 +1,5253 @@
+# HTTP requests and responses as text for a standalone executable: the http targets, reading a request and
+# writing a response exactly as host.py does under `refined run`.
+#
+# This module is generated from tools/requests.dsl by tools/build.py.
+
+requests is module
+requests purpose "HTTP requests and responses as text: the http targets, as host.py reads and writes them"
+requests path requests
+requests imports standard.machine
+requests imports standard.string
+requests imports standard.math
+requests imports standard.compare
+requests imports standard.convert
+requests imports standard.logic
+requests imports standard.test
+requests imports kernel
+requests imports memory
+requests imports numbers
+requests imports heap
+requests imports tables
+requests imports values
+requests imports handles
+requests imports regions
+requests imports slots
+requests imports wide
+requests imports files
+requests exports httpCall
+
+memoryAccess is capability
+memoryAccess purpose "Authority to read a request's bytes and keep its headers and the responses in memory"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to take memory for headers, responses, and their text"
+systemCalls grants use system.calls none
+
+# `http.parseRequest` reads a request as host.py does: the head ends at the first blank line (`\x0d\n\x0d\n`, else
+# `\n\n`, else the whole text), its lines are split at `\n` with a `\x0d` before one dropped, the first is exactly
+# three parts split at single spaces (a method of the seven HttpMethod names in any case of ASCII, a path that
+# starts with `/`, a version that starts with `HTTP/`), and every other line is a header `name: value`, the
+# name trimmed of ASCII white space and lower-cased (each byte that is not ASCII stands for U+FFFD, as
+# `decode("ascii", "replace")` reads it), the value trimmed and copied into the request's region. The headers are
+# kept by the address of the request's path, as host.py keeps them, so `http.header` finds them for the record
+# the parse gave and its copies (a lookup lower-cases the name as `str.lower` does: ASCII letters, and the Kelvin
+# sign that becomes `k`). machine.state bytes 1080 to 1095 belong to this module: 1080 the address of the table of
+# requests' headers (a heap block, 0 before the first parse), 1088 a path's address while it is looked up.
+# A list of headers is a heap block: at 0 how many, 8 how many it holds, then for each 32 bytes, the address of a
+# heap copy of its name, the name's bytes, the value's address in the region, and the value's bytes.
+tableAt is constant
+tableAt purpose "Where the address of the table of requests' headers is kept, in machine.state"
+tableAt type Int64
+tableAt value 1080
+
+pathKeyAt is constant
+pathKeyAt purpose "Where a path's address is put while its headers are looked up, in machine.state"
+pathKeyAt type Int64
+pathKeyAt value 1088
+
+kindResponse is constant
+kindResponse purpose "The kind of an HTTP response's handle"
+kindResponse type Int64
+kindResponse value 12
+
+malformed is constant
+malformed purpose "http.HttpParseError.malformed, numbered from 1"
+malformed type Int32
+malformed value 1
+
+absent is constant
+absent purpose "string.NotFound.absent, numbered from 1"
+absent type Int32
+absent value 1
+
+entryBytes is constant
+entryBytes purpose "The bytes of a header in a list of headers"
+entryBytes type Int64
+entryBytes value 32
+
+byteOf is operation
+byteOf purpose "The byte of a text at a position, as a whole number"
+byteOf invariant none
+byteOf typeParameter none
+byteOf input text machine.Address copied
+byteOf input at Int64 copied
+byteOf output Int64
+byteOf outputOwnedBy none
+byteOf raises none
+byteOf effect use machine.memory
+byteOf uses memoryAccess
+byteOf memoryHeap false
+byteOf async false
+byteOf maxRecursion none
+byteOf label begin loopKind none
+byteOf label begin within none
+byteOf let none
+byteOf at begin do locateByte
+byteOf at begin do readByte
+byteOf at begin do widen
+byteOf at begin return ok value
+
+locateByte is call
+locateByte in byteOf
+locateByte invokes machine.offset
+locateByte argument address machine.Address text copy
+locateByte argument bytes Int64 at copy
+locateByte result place machine.Address
+locateByte ownedBy none
+locateByte cleanedBy none
+locateByte borrows none
+locateByte catch none
+locateByte suppresses none
+
+readByte is call
+readByte in byteOf
+readByte invokes machine.loadByte
+readByte argument address machine.Address place copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+widen is call
+widen in byteOf
+widen invokes convert.byteToInt64
+widen argument value Byte byte copy
+widen result value Int64
+widen ownedBy none
+widen cleanedBy none
+widen borrows none
+widen catch none
+widen suppresses none
+
+findByte is operation
+findByte purpose "The first position from `from` up to `to` that holds a byte, or `to` when none does"
+findByte invariant none
+findByte typeParameter none
+findByte input text machine.Address copied
+findByte input from Int64 copied
+findByte input to Int64 copied
+findByte input wanted Int64 copied
+findByte output Int64
+findByte outputOwnedBy none
+findByte raises none
+findByte effect use machine.memory
+findByte uses memoryAccess
+findByte memoryHeap false
+findByte async false
+findByte maxRecursion none
+findByte label begin loopKind none
+findByte label begin within none
+findByte label eachByte loopKind while
+findByte label eachByte within none
+findByte label eachByte maxIterations to
+findByte label checkByte loopKind none
+findByte label checkByte within eachByte
+findByte label advance loopKind none
+findByte label advance within eachByte
+findByte label giveEnd loopKind none
+findByte label giveEnd within none
+findByte label giveAt loopKind none
+findByte label giveAt within none
+findByte let at Int64 0 mutable
+findByte let one Int64 1 immutable
+findByte at begin set at from
+findByte at begin goto eachByte
+findByte at eachByte do endCheck
+findByte at eachByte branch if atEnd goto giveEnd else goto checkByte
+findByte at checkByte do readIt
+findByte at checkByte do sameCheck
+findByte at checkByte branch if same goto giveAt else goto advance
+findByte at advance do nextAt
+findByte at advance set at after
+findByte at advance goto eachByte
+findByte at giveEnd return ok to
+findByte at giveAt return ok at
+
+endCheck is call
+endCheck in findByte
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 at copy
+endCheck argument right Int64 to copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+readIt is call
+readIt in findByte
+readIt invokes byteOf
+readIt argument text machine.Address text copy
+readIt argument at Int64 at copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+sameCheck is call
+sameCheck in findByte
+sameCheck invokes compare.equalInt64
+sameCheck argument left Int64 value copy
+sameCheck argument right Int64 wanted copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+nextAt is call
+nextAt in findByte
+nextAt invokes math.addInt64
+nextAt argument left Int64 at copy
+nextAt argument right Int64 one copy
+nextAt result after Int64
+nextAt ownedBy none
+nextAt cleanedBy none
+nextAt borrows none
+nextAt catch none
+nextAt suppresses none
+
+isBlank is operation
+isBlank purpose "Whether a byte is ASCII white space as bytes.strip() strips it: space, tab, line feed, vertical tab, form feed, carriage return"
+isBlank invariant none
+isBlank typeParameter none
+isBlank input value Int64 copied
+isBlank output Bool
+isBlank outputOwnedBy none
+isBlank raises none
+isBlank effect none
+isBlank uses none
+isBlank memoryHeap false
+isBlank async false
+isBlank maxRecursion none
+isBlank label begin loopKind none
+isBlank label begin within none
+isBlank let space Int64 32 immutable
+isBlank let tab Int64 9 immutable
+isBlank let carriageReturn Int64 13 immutable
+isBlank at begin do spaceCheck
+isBlank at begin do lowCheck
+isBlank at begin do highCheck
+isBlank at begin do controlCheck
+isBlank at begin do eitherCheck
+isBlank at begin return ok blank
+
+spaceCheck is call
+spaceCheck in isBlank
+spaceCheck invokes compare.equalInt64
+spaceCheck argument left Int64 value copy
+spaceCheck argument right Int64 space copy
+spaceCheck result isSpace Bool
+spaceCheck ownedBy none
+spaceCheck cleanedBy none
+spaceCheck borrows none
+spaceCheck catch none
+spaceCheck suppresses none
+
+lowCheck is call
+lowCheck in isBlank
+lowCheck invokes compare.greaterOrEqualInt64
+lowCheck argument left Int64 value copy
+lowCheck argument right Int64 tab copy
+lowCheck result aboveTab Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+highCheck is call
+highCheck in isBlank
+highCheck invokes compare.lessOrEqualInt64
+highCheck argument left Int64 value copy
+highCheck argument right Int64 carriageReturn copy
+highCheck result belowReturn Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+controlCheck is call
+controlCheck in isBlank
+controlCheck invokes logic.and
+controlCheck argument left Bool aboveTab copy
+controlCheck argument right Bool belowReturn copy
+controlCheck result isControl Bool
+controlCheck ownedBy none
+controlCheck cleanedBy none
+controlCheck borrows none
+controlCheck catch none
+controlCheck suppresses none
+
+eitherCheck is call
+eitherCheck in isBlank
+eitherCheck invokes logic.or
+eitherCheck argument left Bool isSpace copy
+eitherCheck argument right Bool isControl copy
+eitherCheck result blank Bool
+eitherCheck ownedBy none
+eitherCheck cleanedBy none
+eitherCheck borrows none
+eitherCheck catch none
+eitherCheck suppresses none
+
+trimStart is operation
+trimStart purpose "The first position of a range that is not white space, or its end"
+trimStart invariant none
+trimStart typeParameter none
+trimStart input text machine.Address copied
+trimStart input start Int64 copied
+trimStart input end Int64 copied
+trimStart output Int64
+trimStart outputOwnedBy none
+trimStart raises none
+trimStart effect use machine.memory
+trimStart uses memoryAccess
+trimStart memoryHeap false
+trimStart async false
+trimStart maxRecursion none
+trimStart label begin loopKind none
+trimStart label begin within none
+trimStart label eachByte loopKind while
+trimStart label eachByte within none
+trimStart label eachByte maxIterations end
+trimStart label checkByte loopKind none
+trimStart label checkByte within eachByte
+trimStart label advance loopKind none
+trimStart label advance within eachByte
+trimStart label give loopKind none
+trimStart label give within none
+trimStart let at Int64 0 mutable
+trimStart let one Int64 1 immutable
+trimStart at begin set at start
+trimStart at begin goto eachByte
+trimStart at eachByte do endCheck
+trimStart at eachByte branch if atEnd goto give else goto checkByte
+trimStart at checkByte do readIt
+trimStart at checkByte do blankCheck
+trimStart at checkByte branch if blank goto advance else goto give
+trimStart at advance do nextAt
+trimStart at advance set at after
+trimStart at advance goto eachByte
+trimStart at give return ok at
+
+endCheck is call
+endCheck in trimStart
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 at copy
+endCheck argument right Int64 end copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+readIt is call
+readIt in trimStart
+readIt invokes byteOf
+readIt argument text machine.Address text copy
+readIt argument at Int64 at copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+blankCheck is call
+blankCheck in trimStart
+blankCheck invokes isBlank
+blankCheck argument value Int64 value copy
+blankCheck result blank Bool
+blankCheck ownedBy none
+blankCheck cleanedBy none
+blankCheck borrows none
+blankCheck catch none
+blankCheck suppresses none
+
+nextAt is call
+nextAt in trimStart
+nextAt invokes math.addInt64
+nextAt argument left Int64 at copy
+nextAt argument right Int64 one copy
+nextAt result after Int64
+nextAt ownedBy none
+nextAt cleanedBy none
+nextAt borrows none
+nextAt catch none
+nextAt suppresses none
+
+trimEnd is operation
+trimEnd purpose "The end of a range less the white space it ends with"
+trimEnd invariant none
+trimEnd typeParameter none
+trimEnd input text machine.Address copied
+trimEnd input start Int64 copied
+trimEnd input end Int64 copied
+trimEnd output Int64
+trimEnd outputOwnedBy none
+trimEnd raises none
+trimEnd effect use machine.memory
+trimEnd uses memoryAccess
+trimEnd memoryHeap false
+trimEnd async false
+trimEnd maxRecursion none
+trimEnd label begin loopKind none
+trimEnd label begin within none
+trimEnd label eachByte loopKind while
+trimEnd label eachByte within none
+trimEnd label eachByte maxIterations end
+trimEnd label checkByte loopKind none
+trimEnd label checkByte within eachByte
+trimEnd label back loopKind none
+trimEnd label back within eachByte
+trimEnd label give loopKind none
+trimEnd label give within none
+trimEnd let at Int64 0 mutable
+trimEnd let one Int64 1 immutable
+trimEnd at begin set at end
+trimEnd at begin goto eachByte
+trimEnd at eachByte do startCheck
+trimEnd at eachByte branch if atStart goto give else goto checkByte
+trimEnd at checkByte do lastOf
+trimEnd at checkByte do readIt
+trimEnd at checkByte do blankCheck
+trimEnd at checkByte branch if blank goto back else goto give
+trimEnd at back set at last
+trimEnd at back goto eachByte
+trimEnd at give return ok at
+
+startCheck is call
+startCheck in trimEnd
+startCheck invokes compare.lessOrEqualInt64
+startCheck argument left Int64 at copy
+startCheck argument right Int64 start copy
+startCheck result atStart Bool
+startCheck ownedBy none
+startCheck cleanedBy none
+startCheck borrows none
+startCheck catch none
+startCheck suppresses none
+
+lastOf is call
+lastOf in trimEnd
+lastOf invokes math.subtractInt64
+lastOf argument left Int64 at copy
+lastOf argument right Int64 one copy
+lastOf result last Int64
+lastOf ownedBy none
+lastOf cleanedBy none
+lastOf borrows none
+lastOf catch none
+lastOf suppresses none
+
+readIt is call
+readIt in trimEnd
+readIt invokes byteOf
+readIt argument text machine.Address text copy
+readIt argument at Int64 last copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+blankCheck is call
+blankCheck in trimEnd
+blankCheck invokes isBlank
+blankCheck argument value Int64 value copy
+blankCheck result blank Bool
+blankCheck ownedBy none
+blankCheck cleanedBy none
+blankCheck borrows none
+blankCheck catch none
+blankCheck suppresses none
+
+lowerOf is operation
+lowerOf purpose "A byte lower-cased as bytes.lower() does: ASCII capitals only"
+lowerOf invariant none
+lowerOf typeParameter none
+lowerOf input value Int64 copied
+lowerOf output Int64
+lowerOf outputOwnedBy none
+lowerOf raises none
+lowerOf effect none
+lowerOf uses none
+lowerOf memoryHeap false
+lowerOf async false
+lowerOf maxRecursion none
+lowerOf label begin loopKind none
+lowerOf label begin within none
+lowerOf label lower loopKind none
+lowerOf label lower within none
+lowerOf label keep loopKind none
+lowerOf label keep within none
+lowerOf let capitalA Int64 65 immutable
+lowerOf let capitalZ Int64 90 immutable
+lowerOf let thirtyTwo Int64 32 immutable
+lowerOf at begin do lowCheck
+lowerOf at begin do highCheck
+lowerOf at begin do capitalCheck
+lowerOf at begin branch if capital goto lower else goto keep
+lowerOf at lower do lowered
+lowerOf at lower return ok small
+lowerOf at keep return ok value
+
+lowCheck is call
+lowCheck in lowerOf
+lowCheck invokes compare.greaterOrEqualInt64
+lowCheck argument left Int64 value copy
+lowCheck argument right Int64 capitalA copy
+lowCheck result aboveA Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+highCheck is call
+highCheck in lowerOf
+highCheck invokes compare.lessOrEqualInt64
+highCheck argument left Int64 value copy
+highCheck argument right Int64 capitalZ copy
+highCheck result belowZ Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+capitalCheck is call
+capitalCheck in lowerOf
+capitalCheck invokes logic.and
+capitalCheck argument left Bool aboveA copy
+capitalCheck argument right Bool belowZ copy
+capitalCheck result capital Bool
+capitalCheck ownedBy none
+capitalCheck cleanedBy none
+capitalCheck borrows none
+capitalCheck catch none
+capitalCheck suppresses none
+
+lowered is call
+lowered in lowerOf
+lowered invokes math.addInt64
+lowered argument left Int64 value copy
+lowered argument right Int64 thirtyTwo copy
+lowered result small Int64
+lowered ownedBy none
+lowered cleanedBy none
+lowered borrows none
+lowered catch none
+lowered suppresses none
+
+sameWord is operation
+sameWord purpose "Whether a range of bytes is a lower-case ASCII word in any case of ASCII"
+sameWord invariant none
+sameWord typeParameter none
+sameWord input text machine.Address copied
+sameWord input start Int64 copied
+sameWord input end Int64 copied
+sameWord input word String borrowed
+sameWord output Bool
+sameWord outputOwnedBy none
+sameWord raises none
+sameWord effect use machine.memory
+sameWord uses memoryAccess
+sameWord memoryHeap false
+sameWord async false
+sameWord maxRecursion none
+sameWord label begin loopKind none
+sameWord label begin within none
+sameWord label eachByte loopKind while
+sameWord label eachByte within none
+sameWord label eachByte maxIterations wordBytes
+sameWord label compareByte loopKind none
+sameWord label compareByte within eachByte
+sameWord label advance loopKind none
+sameWord label advance within eachByte
+sameWord label same loopKind none
+sameWord label same within none
+sameWord label differ loopKind none
+sameWord label differ within none
+sameWord let at Int64 0 mutable
+sameWord let yes Bool true immutable
+sameWord let no Bool false immutable
+sameWord let one Int64 1 immutable
+sameWord at begin do wordLength
+sameWord at begin do rangeLength
+sameWord at begin do lengthCheck
+sameWord at begin branch if sameLength goto eachByte else goto differ
+sameWord at eachByte do doneCheck
+sameWord at eachByte branch if done goto same else goto compareByte
+sameWord at compareByte do placeOf
+sameWord at compareByte do readIt
+sameWord at compareByte do lowerIt
+sameWord at compareByte do findWord
+sameWord at compareByte do readWord
+sameWord at compareByte do equalCheck
+sameWord at compareByte branch if equal goto advance else goto differ
+sameWord at advance do nextAt
+sameWord at advance set at after
+sameWord at advance goto eachByte
+sameWord at same return ok yes
+sameWord at differ return ok no
+
+wordLength is call
+wordLength in sameWord
+wordLength invokes string.byteLength
+wordLength argument text String word lend
+wordLength result wordBytes Int64
+wordLength ownedBy none
+wordLength cleanedBy none
+wordLength borrows none
+wordLength catch none
+wordLength suppresses none
+
+rangeLength is call
+rangeLength in sameWord
+rangeLength invokes math.subtractInt64
+rangeLength argument left Int64 end copy
+rangeLength argument right Int64 start copy
+rangeLength result rangeBytes Int64
+rangeLength ownedBy none
+rangeLength cleanedBy none
+rangeLength borrows none
+rangeLength catch none
+rangeLength suppresses none
+
+lengthCheck is call
+lengthCheck in sameWord
+lengthCheck invokes compare.equalInt64
+lengthCheck argument left Int64 wordBytes copy
+lengthCheck argument right Int64 rangeBytes copy
+lengthCheck result sameLength Bool
+lengthCheck ownedBy none
+lengthCheck cleanedBy none
+lengthCheck borrows none
+lengthCheck catch none
+lengthCheck suppresses none
+
+doneCheck is call
+doneCheck in sameWord
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 wordBytes copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+placeOf is call
+placeOf in sameWord
+placeOf invokes math.addInt64
+placeOf argument left Int64 start copy
+placeOf argument right Int64 at copy
+placeOf result place Int64
+placeOf ownedBy none
+placeOf cleanedBy none
+placeOf borrows none
+placeOf catch none
+placeOf suppresses none
+
+readIt is call
+readIt in sameWord
+readIt invokes byteOf
+readIt argument text machine.Address text copy
+readIt argument at Int64 place copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+lowerIt is call
+lowerIt in sameWord
+lowerIt invokes lowerOf
+lowerIt argument value Int64 value copy
+lowerIt result lowered Int64
+lowerIt ownedBy none
+lowerIt cleanedBy none
+lowerIt borrows none
+lowerIt catch none
+lowerIt suppresses none
+
+findWord is call
+findWord in sameWord
+findWord invokes machine.addressOfString
+findWord argument text String word lend
+findWord result wordAt machine.Address
+findWord ownedBy none
+findWord cleanedBy none
+findWord borrows none
+findWord catch none
+findWord suppresses none
+
+readWord is call
+readWord in sameWord
+readWord invokes byteOf
+readWord argument text machine.Address wordAt copy
+readWord argument at Int64 at copy
+readWord result wanted Int64
+readWord ownedBy none
+readWord cleanedBy none
+readWord borrows none
+readWord catch none
+readWord suppresses none
+
+equalCheck is call
+equalCheck in sameWord
+equalCheck invokes compare.equalInt64
+equalCheck argument left Int64 lowered copy
+equalCheck argument right Int64 wanted copy
+equalCheck result equal Bool
+equalCheck ownedBy none
+equalCheck cleanedBy none
+equalCheck borrows none
+equalCheck catch none
+equalCheck suppresses none
+
+nextAt is call
+nextAt in sameWord
+nextAt invokes math.addInt64
+nextAt argument left Int64 at copy
+nextAt argument right Int64 one copy
+nextAt result after Int64
+nextAt ownedBy none
+nextAt cleanedBy none
+nextAt borrows none
+nextAt catch none
+nextAt suppresses none
+
+methodOf is operation
+methodOf purpose "The HttpMethod a range names (its number from 0: get, head, post, put, delete, options, patch), or -1"
+methodOf invariant none
+methodOf typeParameter none
+methodOf input text machine.Address copied
+methodOf input start Int64 copied
+methodOf input end Int64 copied
+methodOf output Int64
+methodOf outputOwnedBy none
+methodOf raises none
+methodOf effect use machine.memory
+methodOf uses memoryAccess
+methodOf memoryHeap false
+methodOf async false
+methodOf maxRecursion none
+methodOf label begin loopKind none
+methodOf label begin within none
+methodOf label giveGet loopKind none
+methodOf label giveGet within none
+methodOf label headCheck loopKind none
+methodOf label headCheck within none
+methodOf label giveHead loopKind none
+methodOf label giveHead within none
+methodOf label postCheck loopKind none
+methodOf label postCheck within none
+methodOf label givePost loopKind none
+methodOf label givePost within none
+methodOf label putCheck loopKind none
+methodOf label putCheck within none
+methodOf label givePut loopKind none
+methodOf label givePut within none
+methodOf label deleteCheck loopKind none
+methodOf label deleteCheck within none
+methodOf label giveDelete loopKind none
+methodOf label giveDelete within none
+methodOf label optionsCheck loopKind none
+methodOf label optionsCheck within none
+methodOf label giveOptions loopKind none
+methodOf label giveOptions within none
+methodOf label patchCheck loopKind none
+methodOf label patchCheck within none
+methodOf label givePatch loopKind none
+methodOf label givePatch within none
+methodOf label unknown loopKind none
+methodOf label unknown within none
+methodOf let zero Int64 0 immutable
+methodOf let one Int64 1 immutable
+methodOf let two Int64 2 immutable
+methodOf let three Int64 3 immutable
+methodOf let four Int64 4 immutable
+methodOf let five Int64 5 immutable
+methodOf let six Int64 6 immutable
+methodOf let minusOne Int64 -1 immutable
+methodOf let getText String "get" immutable
+methodOf let headText String "head" immutable
+methodOf let postText String "post" immutable
+methodOf let putText String "put" immutable
+methodOf let deleteText String "delete" immutable
+methodOf let optionsText String "options" immutable
+methodOf let patchText String "patch" immutable
+methodOf at begin do getCheck
+methodOf at begin branch if isGet goto giveGet else goto headCheck
+methodOf at giveGet return ok zero
+methodOf at headCheck do checkHead
+methodOf at headCheck branch if isHead goto giveHead else goto postCheck
+methodOf at giveHead return ok one
+methodOf at postCheck do checkPost
+methodOf at postCheck branch if isPost goto givePost else goto putCheck
+methodOf at givePost return ok two
+methodOf at putCheck do checkPut
+methodOf at putCheck branch if isPut goto givePut else goto deleteCheck
+methodOf at givePut return ok three
+methodOf at deleteCheck do checkDelete
+methodOf at deleteCheck branch if isDelete goto giveDelete else goto optionsCheck
+methodOf at giveDelete return ok four
+methodOf at optionsCheck do checkOptions
+methodOf at optionsCheck branch if isOptions goto giveOptions else goto patchCheck
+methodOf at giveOptions return ok five
+methodOf at patchCheck do checkPatch
+methodOf at patchCheck branch if isPatch goto givePatch else goto unknown
+methodOf at givePatch return ok six
+methodOf at unknown return ok minusOne
+
+getCheck is call
+getCheck in methodOf
+getCheck invokes sameWord
+getCheck argument text machine.Address text copy
+getCheck argument start Int64 start copy
+getCheck argument end Int64 end copy
+getCheck argument word String getText lend
+getCheck result isGet Bool
+getCheck ownedBy none
+getCheck cleanedBy none
+getCheck borrows none
+getCheck catch none
+getCheck suppresses none
+
+checkHead is call
+checkHead in methodOf
+checkHead invokes sameWord
+checkHead argument text machine.Address text copy
+checkHead argument start Int64 start copy
+checkHead argument end Int64 end copy
+checkHead argument word String headText lend
+checkHead result isHead Bool
+checkHead ownedBy none
+checkHead cleanedBy none
+checkHead borrows none
+checkHead catch none
+checkHead suppresses none
+
+checkPost is call
+checkPost in methodOf
+checkPost invokes sameWord
+checkPost argument text machine.Address text copy
+checkPost argument start Int64 start copy
+checkPost argument end Int64 end copy
+checkPost argument word String postText lend
+checkPost result isPost Bool
+checkPost ownedBy none
+checkPost cleanedBy none
+checkPost borrows none
+checkPost catch none
+checkPost suppresses none
+
+checkPut is call
+checkPut in methodOf
+checkPut invokes sameWord
+checkPut argument text machine.Address text copy
+checkPut argument start Int64 start copy
+checkPut argument end Int64 end copy
+checkPut argument word String putText lend
+checkPut result isPut Bool
+checkPut ownedBy none
+checkPut cleanedBy none
+checkPut borrows none
+checkPut catch none
+checkPut suppresses none
+
+checkDelete is call
+checkDelete in methodOf
+checkDelete invokes sameWord
+checkDelete argument text machine.Address text copy
+checkDelete argument start Int64 start copy
+checkDelete argument end Int64 end copy
+checkDelete argument word String deleteText lend
+checkDelete result isDelete Bool
+checkDelete ownedBy none
+checkDelete cleanedBy none
+checkDelete borrows none
+checkDelete catch none
+checkDelete suppresses none
+
+checkOptions is call
+checkOptions in methodOf
+checkOptions invokes sameWord
+checkOptions argument text machine.Address text copy
+checkOptions argument start Int64 start copy
+checkOptions argument end Int64 end copy
+checkOptions argument word String optionsText lend
+checkOptions result isOptions Bool
+checkOptions ownedBy none
+checkOptions cleanedBy none
+checkOptions borrows none
+checkOptions catch none
+checkOptions suppresses none
+
+checkPatch is call
+checkPatch in methodOf
+checkPatch invokes sameWord
+checkPatch argument text machine.Address text copy
+checkPatch argument start Int64 start copy
+checkPatch argument end Int64 end copy
+checkPatch argument word String patchText lend
+checkPatch result isPatch Bool
+checkPatch ownedBy none
+checkPatch cleanedBy none
+checkPatch borrows none
+checkPatch catch none
+checkPatch suppresses none
+
+# ---------------------------------------------------------------- headers
+headerTable is operation
+headerTable purpose "The table of requests' headers, by the address of their path: made the first time"
+headerTable invariant none
+headerTable typeParameter none
+headerTable input none
+headerTable output machine.Address
+headerTable outputOwnedBy none
+headerTable raises none
+headerTable effect use machine.memory
+headerTable effect use system.calls
+headerTable uses memoryAccess
+headerTable uses systemCalls
+headerTable memoryHeap false
+headerTable async false
+headerTable maxRecursion none
+headerTable label begin loopKind none
+headerTable label begin within none
+headerTable label make loopKind none
+headerTable label make within none
+headerTable label give loopKind none
+headerTable label give within none
+headerTable let tableBytes Int64 88 immutable
+headerTable let zero Int64 0 immutable
+headerTable let one Int64 1 immutable
+headerTable at begin do findSlot
+headerTable at begin do readTable
+headerTable at begin do nowhere
+headerTable at begin do missingCheck
+headerTable at begin branch if missing goto make else goto give
+headerTable at make do takeTable
+headerTable at make do prepareIt
+headerTable at make do storeTable
+headerTable at make return ok made
+headerTable at give return ok table
+
+findSlot is call
+findSlot in headerTable
+findSlot invokes kernel.stateAt
+findSlot argument offset Int64 tableAt copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readTable is call
+readTable in headerTable
+readTable invokes machine.loadAddress
+readTable argument address machine.Address slot copy
+readTable result table machine.Address
+readTable ownedBy none
+readTable cleanedBy none
+readTable borrows none
+readTable catch none
+readTable suppresses none
+
+nowhere is call
+nowhere in headerTable
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+missingCheck is call
+missingCheck in headerTable
+missingCheck invokes machine.equal
+missingCheck argument left machine.Address table copy
+missingCheck argument right machine.Address anywhere copy
+missingCheck result missing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+takeTable is call
+takeTable in headerTable
+takeTable invokes heap.take
+takeTable argument bytes Int64 tableBytes copy
+takeTable result made machine.Address
+takeTable ownedBy none
+takeTable cleanedBy none
+takeTable borrows none
+takeTable catch none
+takeTable suppresses none
+
+prepareIt is call
+prepareIt in headerTable
+prepareIt invokes tables.prepare
+prepareIt argument table machine.Address made copy
+prepareIt argument text Int64 zero copy
+prepareIt argument keySlots Int64 one copy
+prepareIt argument valueSlots Int64 one copy
+prepareIt result none
+prepareIt ownedBy none
+prepareIt cleanedBy none
+prepareIt borrows none
+prepareIt catch none
+prepareIt suppresses none
+
+storeTable is call
+storeTable in headerTable
+storeTable invokes machine.storeAddress
+storeTable argument address machine.Address slot copy
+storeTable argument value machine.Address made copy
+storeTable result none
+storeTable ownedBy none
+storeTable cleanedBy none
+storeTable borrows none
+storeTable catch none
+storeTable suppresses none
+
+pathKey is operation
+pathKey purpose "Put a path's address in the slot its headers are looked up by, and give the slot"
+pathKey invariant none
+pathKey typeParameter none
+pathKey input path machine.Address copied
+pathKey output machine.Address
+pathKey outputOwnedBy none
+pathKey raises none
+pathKey effect use machine.memory
+pathKey uses memoryAccess
+pathKey memoryHeap false
+pathKey async false
+pathKey maxRecursion none
+pathKey label begin loopKind none
+pathKey label begin within none
+pathKey let none
+pathKey at begin do findSlot
+pathKey at begin do storePath
+pathKey at begin return ok slot
+
+findSlot is call
+findSlot in pathKey
+findSlot invokes kernel.stateAt
+findSlot argument offset Int64 pathKeyAt copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storePath is call
+storePath in pathKey
+storePath invokes machine.storeAddress
+storePath argument address machine.Address slot copy
+storePath argument value machine.Address path copy
+storePath result none
+storePath ownedBy none
+storePath cleanedBy none
+storePath borrows none
+storePath catch none
+storePath suppresses none
+
+giveList is operation
+giveList purpose "Give back a list of headers and the copies of its names"
+giveList invariant none
+giveList typeParameter none
+giveList input list machine.Address copied
+giveList output none
+giveList outputOwnedBy none
+giveList raises none
+giveList effect use machine.memory
+giveList effect use system.calls
+giveList uses memoryAccess
+giveList uses systemCalls
+giveList memoryHeap false
+giveList async false
+giveList maxRecursion none
+giveList label begin loopKind none
+giveList label begin within none
+giveList label eachHeader loopKind while
+giveList label eachHeader within none
+giveList label eachHeader maxIterations count
+giveList label giveName loopKind none
+giveList label giveName within eachHeader
+giveList label finish loopKind none
+giveList label finish within none
+giveList let at Int64 0 mutable
+giveList let sixteen Int64 16 immutable
+giveList let one Int64 1 immutable
+giveList at begin do readCount
+giveList at begin goto eachHeader
+giveList at eachHeader do doneCheck
+giveList at eachHeader branch if done goto finish else goto giveName
+giveList at giveName do offsetOf
+giveList at giveName do entryOffset
+giveList at giveName do findEntry
+giveList at giveName do readName
+giveList at giveName do giveIt
+giveList at giveName do nextHeader
+giveList at giveName set at after
+giveList at giveName goto eachHeader
+giveList at finish do giveBlock
+giveList at finish return ok none
+
+readCount is call
+readCount in giveList
+readCount invokes machine.loadInt64
+readCount argument address machine.Address list copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+doneCheck is call
+doneCheck in giveList
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 count copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+offsetOf is call
+offsetOf in giveList
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 at copy
+offsetOf argument right Int64 entryBytes copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+entryOffset is call
+entryOffset in giveList
+entryOffset invokes math.addInt64
+entryOffset argument left Int64 offset copy
+entryOffset argument right Int64 sixteen copy
+entryOffset result place Int64
+entryOffset ownedBy none
+entryOffset cleanedBy none
+entryOffset borrows none
+entryOffset catch none
+entryOffset suppresses none
+
+findEntry is call
+findEntry in giveList
+findEntry invokes machine.offset
+findEntry argument address machine.Address list copy
+findEntry argument bytes Int64 place copy
+findEntry result entry machine.Address
+findEntry ownedBy none
+findEntry cleanedBy none
+findEntry borrows none
+findEntry catch none
+findEntry suppresses none
+
+readName is call
+readName in giveList
+readName invokes machine.loadAddress
+readName argument address machine.Address entry copy
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+giveIt is call
+giveIt in giveList
+giveIt invokes heap.give
+giveIt argument block machine.Address name copy
+giveIt result none
+giveIt ownedBy none
+giveIt cleanedBy none
+giveIt borrows none
+giveIt catch none
+giveIt suppresses none
+
+nextHeader is call
+nextHeader in giveList
+nextHeader invokes math.addInt64
+nextHeader argument left Int64 at copy
+nextHeader argument right Int64 one copy
+nextHeader result after Int64
+nextHeader ownedBy none
+nextHeader cleanedBy none
+nextHeader borrows none
+nextHeader catch none
+nextHeader suppresses none
+
+giveBlock is call
+giveBlock in giveList
+giveBlock invokes heap.give
+giveBlock argument block machine.Address list copy
+giveBlock result none
+giveBlock ownedBy none
+giveBlock cleanedBy none
+giveBlock borrows none
+giveBlock catch none
+giveBlock suppresses none
+
+keepHeaders is operation
+keepHeaders purpose "Keep a list of headers by the address of a request's path, giving back any list kept for it before"
+keepHeaders invariant none
+keepHeaders typeParameter none
+keepHeaders input path machine.Address copied
+keepHeaders input list machine.Address copied
+keepHeaders output none
+keepHeaders outputOwnedBy none
+keepHeaders raises none
+keepHeaders effect use machine.memory
+keepHeaders effect use system.calls
+keepHeaders uses memoryAccess
+keepHeaders uses systemCalls
+keepHeaders memoryHeap false
+keepHeaders async false
+keepHeaders maxRecursion none
+keepHeaders label begin loopKind none
+keepHeaders label begin within none
+keepHeaders label replace loopKind none
+keepHeaders label replace within none
+keepHeaders label insert loopKind none
+keepHeaders label insert within none
+keepHeaders let zero Int64 0 immutable
+keepHeaders let twentyFour Int64 24 immutable
+keepHeaders at begin do findTable
+keepHeaders at begin do findKey
+keepHeaders at begin do hashIt
+keepHeaders at begin do findIt
+keepHeaders at begin do missingCheck
+keepHeaders at begin branch if missing goto insert else goto replace
+keepHeaders at replace do findRow
+keepHeaders at replace do findValue
+keepHeaders at replace do readOld
+keepHeaders at replace do giveOld
+keepHeaders at replace do storeNew
+keepHeaders at replace return ok none
+keepHeaders at insert do insertIt
+keepHeaders at insert do findNewValue
+keepHeaders at insert do storeList
+keepHeaders at insert return ok none
+
+findTable is call
+findTable in keepHeaders
+findTable invokes headerTable
+findTable argument none
+findTable result table machine.Address
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch none
+findTable suppresses none
+
+findKey is call
+findKey in keepHeaders
+findKey invokes pathKey
+findKey argument path machine.Address path copy
+findKey result key machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+hashIt is call
+hashIt in keepHeaders
+hashIt invokes tables.hashKey
+hashIt argument table machine.Address table copy
+hashIt argument key machine.Address key copy
+hashIt result hash UInt64
+hashIt ownedBy none
+hashIt cleanedBy none
+hashIt borrows none
+hashIt catch none
+hashIt suppresses none
+
+findIt is call
+findIt in keepHeaders
+findIt invokes tables.find
+findIt argument table machine.Address table copy
+findIt argument key machine.Address key copy
+findIt argument hash UInt64 hash copy
+findIt result row Int64
+findIt ownedBy none
+findIt cleanedBy none
+findIt borrows none
+findIt catch none
+findIt suppresses none
+
+missingCheck is call
+missingCheck in keepHeaders
+missingCheck invokes compare.lessThanInt64
+missingCheck argument left Int64 row copy
+missingCheck argument right Int64 zero copy
+missingCheck result missing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+findRow is call
+findRow in keepHeaders
+findRow invokes tables.rowAddress
+findRow argument table machine.Address table copy
+findRow argument row Int64 row copy
+findRow result rowAt machine.Address
+findRow ownedBy none
+findRow cleanedBy none
+findRow borrows none
+findRow catch none
+findRow suppresses none
+
+findValue is call
+findValue in keepHeaders
+findValue invokes machine.offset
+findValue argument address machine.Address rowAt copy
+findValue argument bytes Int64 twentyFour copy
+findValue result valueSlot machine.Address
+findValue ownedBy none
+findValue cleanedBy none
+findValue borrows none
+findValue catch none
+findValue suppresses none
+
+readOld is call
+readOld in keepHeaders
+readOld invokes machine.loadAddress
+readOld argument address machine.Address valueSlot copy
+readOld result old machine.Address
+readOld ownedBy none
+readOld cleanedBy none
+readOld borrows none
+readOld catch none
+readOld suppresses none
+
+giveOld is call
+giveOld in keepHeaders
+giveOld invokes giveList
+giveOld argument list machine.Address old copy
+giveOld result none
+giveOld ownedBy none
+giveOld cleanedBy none
+giveOld borrows none
+giveOld catch none
+giveOld suppresses none
+
+storeNew is call
+storeNew in keepHeaders
+storeNew invokes machine.storeAddress
+storeNew argument address machine.Address valueSlot copy
+storeNew argument value machine.Address list copy
+storeNew result none
+storeNew ownedBy none
+storeNew cleanedBy none
+storeNew borrows none
+storeNew catch none
+storeNew suppresses none
+
+insertIt is call
+insertIt in keepHeaders
+insertIt invokes tables.insert
+insertIt argument table machine.Address table copy
+insertIt argument key machine.Address key copy
+insertIt argument hash UInt64 hash copy
+insertIt result newRow machine.Address
+insertIt ownedBy none
+insertIt cleanedBy none
+insertIt borrows none
+insertIt catch none
+insertIt suppresses none
+
+findNewValue is call
+findNewValue in keepHeaders
+findNewValue invokes machine.offset
+findNewValue argument address machine.Address newRow copy
+findNewValue argument bytes Int64 twentyFour copy
+findNewValue result newSlot machine.Address
+findNewValue ownedBy none
+findNewValue cleanedBy none
+findNewValue borrows none
+findNewValue catch none
+findNewValue suppresses none
+
+storeList is call
+storeList in keepHeaders
+storeList invokes machine.storeAddress
+storeList argument address machine.Address newSlot copy
+storeList argument value machine.Address list copy
+storeList result none
+storeList ownedBy none
+storeList cleanedBy none
+storeList borrows none
+storeList catch none
+storeList suppresses none
+
+headersOf is operation
+headersOf purpose "The list of headers kept for a request's path, or the address 0"
+headersOf invariant none
+headersOf typeParameter none
+headersOf input path machine.Address copied
+headersOf output machine.Address
+headersOf outputOwnedBy none
+headersOf raises none
+headersOf effect use machine.memory
+headersOf effect use system.calls
+headersOf uses memoryAccess
+headersOf uses systemCalls
+headersOf memoryHeap false
+headersOf async false
+headersOf maxRecursion none
+headersOf label begin loopKind none
+headersOf label begin within none
+headersOf label giveNone loopKind none
+headersOf label giveNone within none
+headersOf label readList loopKind none
+headersOf label readList within none
+headersOf let zero Int64 0 immutable
+headersOf let twentyFour Int64 24 immutable
+headersOf at begin do findTable
+headersOf at begin do findKey
+headersOf at begin do hashIt
+headersOf at begin do findIt
+headersOf at begin do missingCheck
+headersOf at begin branch if missing goto giveNone else goto readList
+headersOf at giveNone do nowhere
+headersOf at giveNone return ok anywhere
+headersOf at readList do findRow
+headersOf at readList do findValue
+headersOf at readList do readValue
+headersOf at readList return ok list
+
+findTable is call
+findTable in headersOf
+findTable invokes headerTable
+findTable argument none
+findTable result table machine.Address
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch none
+findTable suppresses none
+
+findKey is call
+findKey in headersOf
+findKey invokes pathKey
+findKey argument path machine.Address path copy
+findKey result key machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+hashIt is call
+hashIt in headersOf
+hashIt invokes tables.hashKey
+hashIt argument table machine.Address table copy
+hashIt argument key machine.Address key copy
+hashIt result hash UInt64
+hashIt ownedBy none
+hashIt cleanedBy none
+hashIt borrows none
+hashIt catch none
+hashIt suppresses none
+
+findIt is call
+findIt in headersOf
+findIt invokes tables.find
+findIt argument table machine.Address table copy
+findIt argument key machine.Address key copy
+findIt argument hash UInt64 hash copy
+findIt result row Int64
+findIt ownedBy none
+findIt cleanedBy none
+findIt borrows none
+findIt catch none
+findIt suppresses none
+
+missingCheck is call
+missingCheck in headersOf
+missingCheck invokes compare.lessThanInt64
+missingCheck argument left Int64 row copy
+missingCheck argument right Int64 zero copy
+missingCheck result missing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+nowhere is call
+nowhere in headersOf
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+findRow is call
+findRow in headersOf
+findRow invokes tables.rowAddress
+findRow argument table machine.Address table copy
+findRow argument row Int64 row copy
+findRow result rowAt machine.Address
+findRow ownedBy none
+findRow cleanedBy none
+findRow borrows none
+findRow catch none
+findRow suppresses none
+
+findValue is call
+findValue in headersOf
+findValue invokes machine.offset
+findValue argument address machine.Address rowAt copy
+findValue argument bytes Int64 twentyFour copy
+findValue result valueSlot machine.Address
+findValue ownedBy none
+findValue cleanedBy none
+findValue borrows none
+findValue catch none
+findValue suppresses none
+
+readValue is call
+readValue in headersOf
+readValue invokes machine.loadAddress
+readValue argument address machine.Address valueSlot copy
+readValue result list machine.Address
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+addHeader is operation
+addHeader purpose "Add a header to a list (its name a heap copy the list keeps, its value in the region) and give the list, grown when full"
+addHeader invariant none
+addHeader typeParameter none
+addHeader input list machine.Address copied
+addHeader input name machine.Address copied
+addHeader input nameBytes Int64 copied
+addHeader input value machine.Address copied
+addHeader input valueBytes Int64 copied
+addHeader output machine.Address
+addHeader outputOwnedBy none
+addHeader raises none
+addHeader effect use machine.memory
+addHeader effect use system.calls
+addHeader uses memoryAccess
+addHeader uses systemCalls
+addHeader memoryHeap false
+addHeader async false
+addHeader maxRecursion none
+addHeader label begin loopKind none
+addHeader label begin within none
+addHeader label grow loopKind none
+addHeader label grow within none
+addHeader label store loopKind none
+addHeader label store within none
+addHeader let grown machine.Address unset mutable
+addHeader let eight Int64 8 immutable
+addHeader let two Int64 2 immutable
+addHeader let four Int64 4 immutable
+addHeader let sixteen Int64 16 immutable
+addHeader let twentyFour Int64 24 immutable
+addHeader let one Int64 1 immutable
+addHeader at begin set grown list
+addHeader at begin do readCount
+addHeader at begin do findCapacity
+addHeader at begin do readCapacity
+addHeader at begin do fullCheck
+addHeader at begin branch if full goto grow else goto store
+addHeader at grow do twice
+addHeader at grow do more
+addHeader at grow do entriesOf
+addHeader at grow do bytesOf
+addHeader at grow do resizeIt
+addHeader at grow set grown resized
+addHeader at grow do findGrownCapacity
+addHeader at grow do storeCapacity
+addHeader at grow goto store
+addHeader at store do offsetOf
+addHeader at store do entryOffset
+addHeader at store do findEntry
+addHeader at store do storeName
+addHeader at store do findNameBytes
+addHeader at store do storeNameBytes
+addHeader at store do findValue
+addHeader at store do storeValue
+addHeader at store do findValueBytes
+addHeader at store do storeValueBytes
+addHeader at store do moreCount
+addHeader at store do storeCount
+addHeader at store return ok grown
+
+readCount is call
+readCount in addHeader
+readCount invokes machine.loadInt64
+readCount argument address machine.Address list copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCapacity is call
+findCapacity in addHeader
+findCapacity invokes machine.offset
+findCapacity argument address machine.Address list copy
+findCapacity argument bytes Int64 eight copy
+findCapacity result capacitySlot machine.Address
+findCapacity ownedBy none
+findCapacity cleanedBy none
+findCapacity borrows none
+findCapacity catch none
+findCapacity suppresses none
+
+readCapacity is call
+readCapacity in addHeader
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address capacitySlot copy
+readCapacity result capacity Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+fullCheck is call
+fullCheck in addHeader
+fullCheck invokes compare.greaterOrEqualInt64
+fullCheck argument left Int64 count copy
+fullCheck argument right Int64 capacity copy
+fullCheck result full Bool
+fullCheck ownedBy none
+fullCheck cleanedBy none
+fullCheck borrows none
+fullCheck catch none
+fullCheck suppresses none
+
+twice is call
+twice in addHeader
+twice invokes math.multiplyInt64
+twice argument left Int64 capacity copy
+twice argument right Int64 two copy
+twice result doubled Int64
+twice ownedBy none
+twice cleanedBy none
+twice borrows none
+twice catch none
+twice suppresses none
+
+more is call
+more in addHeader
+more invokes math.addInt64
+more argument left Int64 doubled copy
+more argument right Int64 four copy
+more result grownCapacity Int64
+more ownedBy none
+more cleanedBy none
+more borrows none
+more catch none
+more suppresses none
+
+entriesOf is call
+entriesOf in addHeader
+entriesOf invokes math.multiplyInt64
+entriesOf argument left Int64 grownCapacity copy
+entriesOf argument right Int64 entryBytes copy
+entriesOf result entries Int64
+entriesOf ownedBy none
+entriesOf cleanedBy none
+entriesOf borrows none
+entriesOf catch none
+entriesOf suppresses none
+
+bytesOf is call
+bytesOf in addHeader
+bytesOf invokes math.addInt64
+bytesOf argument left Int64 entries copy
+bytesOf argument right Int64 sixteen copy
+bytesOf result bytes Int64
+bytesOf ownedBy none
+bytesOf cleanedBy none
+bytesOf borrows none
+bytesOf catch none
+bytesOf suppresses none
+
+resizeIt is call
+resizeIt in addHeader
+resizeIt invokes heap.resize
+resizeIt argument block machine.Address list copy
+resizeIt argument bytes Int64 bytes copy
+resizeIt result resized machine.Address
+resizeIt ownedBy none
+resizeIt cleanedBy none
+resizeIt borrows none
+resizeIt catch none
+resizeIt suppresses none
+
+findGrownCapacity is call
+findGrownCapacity in addHeader
+findGrownCapacity invokes machine.offset
+findGrownCapacity argument address machine.Address resized copy
+findGrownCapacity argument bytes Int64 eight copy
+findGrownCapacity result grownSlot machine.Address
+findGrownCapacity ownedBy none
+findGrownCapacity cleanedBy none
+findGrownCapacity borrows none
+findGrownCapacity catch none
+findGrownCapacity suppresses none
+
+storeCapacity is call
+storeCapacity in addHeader
+storeCapacity invokes machine.storeInt64
+storeCapacity argument address machine.Address grownSlot copy
+storeCapacity argument value Int64 grownCapacity copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+offsetOf is call
+offsetOf in addHeader
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 count copy
+offsetOf argument right Int64 entryBytes copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+entryOffset is call
+entryOffset in addHeader
+entryOffset invokes math.addInt64
+entryOffset argument left Int64 offset copy
+entryOffset argument right Int64 sixteen copy
+entryOffset result place Int64
+entryOffset ownedBy none
+entryOffset cleanedBy none
+entryOffset borrows none
+entryOffset catch none
+entryOffset suppresses none
+
+findEntry is call
+findEntry in addHeader
+findEntry invokes machine.offset
+findEntry argument address machine.Address grown copy
+findEntry argument bytes Int64 place copy
+findEntry result entry machine.Address
+findEntry ownedBy none
+findEntry cleanedBy none
+findEntry borrows none
+findEntry catch none
+findEntry suppresses none
+
+storeName is call
+storeName in addHeader
+storeName invokes machine.storeAddress
+storeName argument address machine.Address entry copy
+storeName argument value machine.Address name copy
+storeName result none
+storeName ownedBy none
+storeName cleanedBy none
+storeName borrows none
+storeName catch none
+storeName suppresses none
+
+findNameBytes is call
+findNameBytes in addHeader
+findNameBytes invokes machine.offset
+findNameBytes argument address machine.Address entry copy
+findNameBytes argument bytes Int64 eight copy
+findNameBytes result nameBytesSlot machine.Address
+findNameBytes ownedBy none
+findNameBytes cleanedBy none
+findNameBytes borrows none
+findNameBytes catch none
+findNameBytes suppresses none
+
+storeNameBytes is call
+storeNameBytes in addHeader
+storeNameBytes invokes machine.storeInt64
+storeNameBytes argument address machine.Address nameBytesSlot copy
+storeNameBytes argument value Int64 nameBytes copy
+storeNameBytes result none
+storeNameBytes ownedBy none
+storeNameBytes cleanedBy none
+storeNameBytes borrows none
+storeNameBytes catch none
+storeNameBytes suppresses none
+
+findValue is call
+findValue in addHeader
+findValue invokes machine.offset
+findValue argument address machine.Address entry copy
+findValue argument bytes Int64 sixteen copy
+findValue result valueSlot machine.Address
+findValue ownedBy none
+findValue cleanedBy none
+findValue borrows none
+findValue catch none
+findValue suppresses none
+
+storeValue is call
+storeValue in addHeader
+storeValue invokes machine.storeAddress
+storeValue argument address machine.Address valueSlot copy
+storeValue argument value machine.Address value copy
+storeValue result none
+storeValue ownedBy none
+storeValue cleanedBy none
+storeValue borrows none
+storeValue catch none
+storeValue suppresses none
+
+findValueBytes is call
+findValueBytes in addHeader
+findValueBytes invokes machine.offset
+findValueBytes argument address machine.Address entry copy
+findValueBytes argument bytes Int64 twentyFour copy
+findValueBytes result valueBytesSlot machine.Address
+findValueBytes ownedBy none
+findValueBytes cleanedBy none
+findValueBytes borrows none
+findValueBytes catch none
+findValueBytes suppresses none
+
+storeValueBytes is call
+storeValueBytes in addHeader
+storeValueBytes invokes machine.storeInt64
+storeValueBytes argument address machine.Address valueBytesSlot copy
+storeValueBytes argument value Int64 valueBytes copy
+storeValueBytes result none
+storeValueBytes ownedBy none
+storeValueBytes cleanedBy none
+storeValueBytes borrows none
+storeValueBytes catch none
+storeValueBytes suppresses none
+
+moreCount is call
+moreCount in addHeader
+moreCount invokes math.addInt64
+moreCount argument left Int64 count copy
+moreCount argument right Int64 one copy
+moreCount result after Int64
+moreCount ownedBy none
+moreCount cleanedBy none
+moreCount borrows none
+moreCount catch none
+moreCount suppresses none
+
+storeCount is call
+storeCount in addHeader
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address grown copy
+storeCount argument value Int64 after copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+headerName is operation
+headerName purpose "A header's name as host.py keys it, in a new builder: trimmed, ASCII lower-cased, each byte that is not ASCII U+FFFD"
+headerName invariant none
+headerName typeParameter none
+headerName input text machine.Address copied
+headerName input start Int64 copied
+headerName input end Int64 copied
+headerName output machine.Address
+headerName outputOwnedBy none
+headerName raises none
+headerName effect use machine.memory
+headerName effect use system.calls
+headerName uses memoryAccess
+headerName uses systemCalls
+headerName memoryHeap false
+headerName async false
+headerName maxRecursion none
+headerName label begin loopKind none
+headerName label begin within none
+headerName label eachByte loopKind while
+headerName label eachByte within none
+headerName label eachByte maxIterations end
+headerName label readByte loopKind none
+headerName label readByte within eachByte
+headerName label addAscii loopKind none
+headerName label addAscii within eachByte
+headerName label addReplacement loopKind none
+headerName label addReplacement within eachByte
+headerName label advance loopKind none
+headerName label advance within eachByte
+headerName label finish loopKind none
+headerName label finish within none
+headerName let at Int64 0 mutable
+headerName let replacement String "\xef\xbf\xbd" immutable
+headerName let n128 Int64 128 immutable
+headerName let three Int64 3 immutable
+headerName let one Int64 1 immutable
+headerName at begin do makeName
+headerName at begin set at start
+headerName at begin goto eachByte
+headerName at eachByte do doneCheck
+headerName at eachByte branch if done goto finish else goto readByte
+headerName at readByte do readIt
+headerName at readByte do asciiCheck
+headerName at readByte branch if ascii goto addAscii else goto addReplacement
+headerName at addAscii do lowerIt
+headerName at addAscii do narrowIt
+headerName at addAscii do addIt
+headerName at addAscii goto advance
+headerName at addReplacement do findReplacement
+headerName at addReplacement do addMark
+headerName at addReplacement goto advance
+headerName at advance do nextAt
+headerName at advance set at after
+headerName at advance goto eachByte
+headerName at finish return ok name
+
+makeName is call
+makeName in headerName
+makeName invokes wide.builderNew
+makeName argument none
+makeName result name machine.Address
+makeName ownedBy none
+makeName cleanedBy none
+makeName borrows none
+makeName catch none
+makeName suppresses none
+
+doneCheck is call
+doneCheck in headerName
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 end copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+readIt is call
+readIt in headerName
+readIt invokes byteOf
+readIt argument text machine.Address text copy
+readIt argument at Int64 at copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+asciiCheck is call
+asciiCheck in headerName
+asciiCheck invokes compare.lessThanInt64
+asciiCheck argument left Int64 value copy
+asciiCheck argument right Int64 n128 copy
+asciiCheck result ascii Bool
+asciiCheck ownedBy none
+asciiCheck cleanedBy none
+asciiCheck borrows none
+asciiCheck catch none
+asciiCheck suppresses none
+
+lowerIt is call
+lowerIt in headerName
+lowerIt invokes lowerOf
+lowerIt argument value Int64 value copy
+lowerIt result lowered Int64
+lowerIt ownedBy none
+lowerIt cleanedBy none
+lowerIt borrows none
+lowerIt catch none
+lowerIt suppresses none
+
+narrowIt is call
+narrowIt in headerName
+narrowIt invokes convert.int64ToByte
+narrowIt argument value Int64 lowered copy
+narrowIt result byte Byte
+narrowIt ownedBy none
+narrowIt cleanedBy none
+narrowIt borrows none
+narrowIt catch none
+narrowIt suppresses none
+
+addIt is call
+addIt in headerName
+addIt invokes wide.builderAddByte
+addIt argument builder machine.Address name copy
+addIt argument byte Byte byte copy
+addIt result none
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+findReplacement is call
+findReplacement in headerName
+findReplacement invokes machine.addressOfString
+findReplacement argument text String replacement lend
+findReplacement result replacementAt machine.Address
+findReplacement ownedBy none
+findReplacement cleanedBy none
+findReplacement borrows none
+findReplacement catch none
+findReplacement suppresses none
+
+addMark is call
+addMark in headerName
+addMark invokes wide.builderAdd
+addMark argument builder machine.Address name copy
+addMark argument data machine.Address replacementAt copy
+addMark argument bytes Int64 three copy
+addMark result none
+addMark ownedBy none
+addMark cleanedBy none
+addMark borrows none
+addMark catch none
+addMark suppresses none
+
+nextAt is call
+nextAt in headerName
+nextAt invokes math.addInt64
+nextAt argument left Int64 at copy
+nextAt argument right Int64 one copy
+nextAt result after Int64
+nextAt ownedBy none
+nextAt cleanedBy none
+nextAt borrows none
+nextAt catch none
+nextAt suppresses none
+
+lookupName is operation
+lookupName purpose "A name to look a header up by, lower-cased as str.lower() lower-cases it, in a new builder; 0 in the first slot of `ok` when it holds a character no header name can hold"
+lookupName invariant none
+lookupName typeParameter none
+lookupName input text machine.Address copied
+lookupName input bytes Int64 copied
+lookupName input ok machine.Address copied
+lookupName output machine.Address
+lookupName outputOwnedBy none
+lookupName raises none
+lookupName effect use machine.memory
+lookupName effect use system.calls
+lookupName uses memoryAccess
+lookupName uses systemCalls
+lookupName memoryHeap false
+lookupName async false
+lookupName maxRecursion none
+lookupName label begin loopKind none
+lookupName label begin within none
+lookupName label eachCharacter loopKind while
+lookupName label eachCharacter within none
+lookupName label eachCharacter maxIterations bytes
+lookupName label readCharacter loopKind none
+lookupName label readCharacter within eachCharacter
+lookupName label addAscii loopKind none
+lookupName label addAscii within eachCharacter
+lookupName label otherCheck loopKind none
+lookupName label otherCheck within eachCharacter
+lookupName label addK loopKind none
+lookupName label addK within eachCharacter
+lookupName label replacementCheck loopKind none
+lookupName label replacementCheck within eachCharacter
+lookupName label addReplacement loopKind none
+lookupName label addReplacement within eachCharacter
+lookupName label unmatched loopKind none
+lookupName label unmatched within eachCharacter
+lookupName label advance loopKind none
+lookupName label advance within eachCharacter
+lookupName label finish loopKind none
+lookupName label finish within none
+lookupName let at Int64 0 mutable
+lookupName let replacement String "\xef\xbf\xbd" immutable
+lookupName let one Int64 1 immutable
+lookupName let eight Int64 8 immutable
+lookupName let n128 Int64 128 immutable
+lookupName let zero Int64 0 immutable
+lookupName let kelvinSign Int64 8490 immutable
+lookupName let smallK Byte 107 immutable
+lookupName let replacementCode Int64 65533 immutable
+lookupName let three Int64 3 immutable
+lookupName at begin do storeOk
+lookupName at begin do makeName
+lookupName at begin do findCode
+lookupName at begin goto eachCharacter
+lookupName at eachCharacter do doneCheck
+lookupName at eachCharacter branch if done goto finish else goto readCharacter
+lookupName at readCharacter do decodeIt
+lookupName at readCharacter do readCode
+lookupName at readCharacter do asciiCheck
+lookupName at readCharacter do validCheck
+lookupName at readCharacter do plainCheck
+lookupName at readCharacter branch if plain goto addAscii else goto otherCheck
+lookupName at addAscii do lowerIt
+lookupName at addAscii do narrowIt
+lookupName at addAscii do addIt
+lookupName at addAscii goto advance
+lookupName at otherCheck do kelvinCheck
+lookupName at otherCheck branch if kelvin goto addK else goto replacementCheck
+lookupName at addK do addSmallK
+lookupName at addK goto advance
+lookupName at replacementCheck do invalidCheck
+lookupName at replacementCheck do markCheck
+lookupName at replacementCheck do eitherCheck
+lookupName at replacementCheck branch if replaced goto addReplacement else goto unmatched
+lookupName at addReplacement do findReplacement
+lookupName at addReplacement do addMark
+lookupName at addReplacement goto advance
+lookupName at unmatched do storeNo
+lookupName at unmatched goto advance
+lookupName at advance do nextAt
+lookupName at advance set at after
+lookupName at advance goto eachCharacter
+lookupName at finish return ok name
+
+storeOk is call
+storeOk in lookupName
+storeOk invokes machine.storeInt64
+storeOk argument address machine.Address ok copy
+storeOk argument value Int64 one copy
+storeOk result none
+storeOk ownedBy none
+storeOk cleanedBy none
+storeOk borrows none
+storeOk catch none
+storeOk suppresses none
+
+makeName is call
+makeName in lookupName
+makeName invokes wide.builderNew
+makeName argument none
+makeName result name machine.Address
+makeName ownedBy none
+makeName cleanedBy none
+makeName borrows none
+makeName catch none
+makeName suppresses none
+
+findCode is call
+findCode in lookupName
+findCode invokes machine.offset
+findCode argument address machine.Address ok copy
+findCode argument bytes Int64 eight copy
+findCode result codeAt machine.Address
+findCode ownedBy none
+findCode cleanedBy none
+findCode borrows none
+findCode catch none
+findCode suppresses none
+
+doneCheck is call
+doneCheck in lookupName
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 bytes copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+decodeIt is call
+decodeIt in lookupName
+decodeIt invokes values.decodeAt
+decodeIt argument text machine.Address text copy
+decodeIt argument bytes Int64 bytes copy
+decodeIt argument at Int64 at copy
+decodeIt argument out machine.Address codeAt copy
+decodeIt result taken Int64
+decodeIt ownedBy none
+decodeIt cleanedBy none
+decodeIt borrows none
+decodeIt catch none
+decodeIt suppresses none
+
+readCode is call
+readCode in lookupName
+readCode invokes machine.loadInt64
+readCode argument address machine.Address codeAt copy
+readCode result code Int64
+readCode ownedBy none
+readCode cleanedBy none
+readCode borrows none
+readCode catch none
+readCode suppresses none
+
+asciiCheck is call
+asciiCheck in lookupName
+asciiCheck invokes compare.lessThanInt64
+asciiCheck argument left Int64 code copy
+asciiCheck argument right Int64 n128 copy
+asciiCheck result ascii Bool
+asciiCheck ownedBy none
+asciiCheck cleanedBy none
+asciiCheck borrows none
+asciiCheck catch none
+asciiCheck suppresses none
+
+validCheck is call
+validCheck in lookupName
+validCheck invokes compare.greaterOrEqualInt64
+validCheck argument left Int64 code copy
+validCheck argument right Int64 zero copy
+validCheck result valid Bool
+validCheck ownedBy none
+validCheck cleanedBy none
+validCheck borrows none
+validCheck catch none
+validCheck suppresses none
+
+plainCheck is call
+plainCheck in lookupName
+plainCheck invokes logic.and
+plainCheck argument left Bool ascii copy
+plainCheck argument right Bool valid copy
+plainCheck result plain Bool
+plainCheck ownedBy none
+plainCheck cleanedBy none
+plainCheck borrows none
+plainCheck catch none
+plainCheck suppresses none
+
+lowerIt is call
+lowerIt in lookupName
+lowerIt invokes lowerOf
+lowerIt argument value Int64 code copy
+lowerIt result lowered Int64
+lowerIt ownedBy none
+lowerIt cleanedBy none
+lowerIt borrows none
+lowerIt catch none
+lowerIt suppresses none
+
+narrowIt is call
+narrowIt in lookupName
+narrowIt invokes convert.int64ToByte
+narrowIt argument value Int64 lowered copy
+narrowIt result byte Byte
+narrowIt ownedBy none
+narrowIt cleanedBy none
+narrowIt borrows none
+narrowIt catch none
+narrowIt suppresses none
+
+addIt is call
+addIt in lookupName
+addIt invokes wide.builderAddByte
+addIt argument builder machine.Address name copy
+addIt argument byte Byte byte copy
+addIt result none
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+kelvinCheck is call
+kelvinCheck in lookupName
+kelvinCheck invokes compare.equalInt64
+kelvinCheck argument left Int64 code copy
+kelvinCheck argument right Int64 kelvinSign copy
+kelvinCheck result kelvin Bool
+kelvinCheck ownedBy none
+kelvinCheck cleanedBy none
+kelvinCheck borrows none
+kelvinCheck catch none
+kelvinCheck suppresses none
+
+addSmallK is call
+addSmallK in lookupName
+addSmallK invokes wide.builderAddByte
+addSmallK argument builder machine.Address name copy
+addSmallK argument byte Byte smallK copy
+addSmallK result none
+addSmallK ownedBy none
+addSmallK cleanedBy none
+addSmallK borrows none
+addSmallK catch none
+addSmallK suppresses none
+
+invalidCheck is call
+invalidCheck in lookupName
+invalidCheck invokes logic.not
+invalidCheck argument value Bool valid copy
+invalidCheck result invalid Bool
+invalidCheck ownedBy none
+invalidCheck cleanedBy none
+invalidCheck borrows none
+invalidCheck catch none
+invalidCheck suppresses none
+
+markCheck is call
+markCheck in lookupName
+markCheck invokes compare.equalInt64
+markCheck argument left Int64 code copy
+markCheck argument right Int64 replacementCode copy
+markCheck result isMark Bool
+markCheck ownedBy none
+markCheck cleanedBy none
+markCheck borrows none
+markCheck catch none
+markCheck suppresses none
+
+eitherCheck is call
+eitherCheck in lookupName
+eitherCheck invokes logic.or
+eitherCheck argument left Bool invalid copy
+eitherCheck argument right Bool isMark copy
+eitherCheck result replaced Bool
+eitherCheck ownedBy none
+eitherCheck cleanedBy none
+eitherCheck borrows none
+eitherCheck catch none
+eitherCheck suppresses none
+
+findReplacement is call
+findReplacement in lookupName
+findReplacement invokes machine.addressOfString
+findReplacement argument text String replacement lend
+findReplacement result replacementAt machine.Address
+findReplacement ownedBy none
+findReplacement cleanedBy none
+findReplacement borrows none
+findReplacement catch none
+findReplacement suppresses none
+
+addMark is call
+addMark in lookupName
+addMark invokes wide.builderAdd
+addMark argument builder machine.Address name copy
+addMark argument data machine.Address replacementAt copy
+addMark argument bytes Int64 three copy
+addMark result none
+addMark ownedBy none
+addMark cleanedBy none
+addMark borrows none
+addMark catch none
+addMark suppresses none
+
+storeNo is call
+storeNo in lookupName
+storeNo invokes machine.storeInt64
+storeNo argument address machine.Address ok copy
+storeNo argument value Int64 zero copy
+storeNo result none
+storeNo ownedBy none
+storeNo cleanedBy none
+storeNo borrows none
+storeNo catch none
+storeNo suppresses none
+
+nextAt is call
+nextAt in lookupName
+nextAt invokes math.addInt64
+nextAt argument left Int64 at copy
+nextAt argument right Int64 taken copy
+nextAt result after Int64
+nextAt ownedBy none
+nextAt cleanedBy none
+nextAt borrows none
+nextAt catch none
+nextAt suppresses none
+
+# ---------------------------------------------------------------- targets
+parseTarget is operation
+parseTarget purpose "http.parseRequest: the request's method and path, its headers kept by the path's address; malformed as host.py finds it"
+parseTarget invariant none
+parseTarget typeParameter none
+parseTarget input shape machine.Address copied
+parseTarget input args machine.Address copied
+parseTarget input results machine.Address copied
+parseTarget input payload machine.Address copied
+parseTarget output Int32
+parseTarget outputOwnedBy none
+parseTarget raises none
+parseTarget effect use machine.memory
+parseTarget effect use system.calls
+parseTarget uses memoryAccess
+parseTarget uses systemCalls
+parseTarget memoryHeap false
+parseTarget async false
+parseTarget maxRecursion none
+parseTarget label begin loopKind none
+parseTarget label begin within none
+parseTarget label searchLf loopKind none
+parseTarget label searchLf within none
+parseTarget label wholeHead loopKind none
+parseTarget label wholeHead within none
+parseTarget label firstLine loopKind none
+parseTarget label firstLine within none
+parseTarget label checkReturn loopKind none
+parseTarget label checkReturn within none
+parseTarget label stripReturn loopKind none
+parseTarget label stripReturn within none
+parseTarget label split loopKind none
+parseTarget label split within none
+parseTarget label findFirstSpace loopKind none
+parseTarget label findFirstSpace within none
+parseTarget label findSecondSpace loopKind none
+parseTarget label findSecondSpace within none
+parseTarget label findThirdSpace loopKind none
+parseTarget label findThirdSpace within none
+parseTarget label checkVersion loopKind none
+parseTarget label checkVersion within none
+parseTarget label compareVersion loopKind none
+parseTarget label compareVersion within none
+parseTarget label checkPath loopKind none
+parseTarget label checkPath within none
+parseTarget label checkSlash loopKind none
+parseTarget label checkSlash within none
+parseTarget label checkMethod loopKind none
+parseTarget label checkMethod within none
+parseTarget label putPath loopKind none
+parseTarget label putPath within none
+parseTarget label startLines loopKind none
+parseTarget label startLines within none
+parseTarget label eachLine loopKind while
+parseTarget label eachLine within none
+parseTarget label eachLine maxIterations forever
+parseTarget label lineReturn loopKind none
+parseTarget label lineReturn within eachLine
+parseTarget label lineStrip loopKind none
+parseTarget label lineStrip within eachLine
+parseTarget label findColon loopKind none
+parseTarget label findColon within eachLine
+parseTarget label header loopKind none
+parseTarget label header within eachLine
+parseTarget label nextLine loopKind none
+parseTarget label nextLine within eachLine
+parseTarget label keep loopKind none
+parseTarget label keep within none
+parseTarget label dropMalformed loopKind none
+parseTarget label dropMalformed within none
+parseTarget label giveMalformed loopKind none
+parseTarget label giveMalformed within none
+parseTarget let headEnd Int64 0 mutable
+parseTarget let lineEnd Int64 0 mutable
+parseTarget let start Int64 0 mutable
+parseTarget let end Int64 0 mutable
+parseTarget let list machine.Address unset mutable
+parseTarget let ok Int32 0 immutable
+parseTarget let newline Int64 10 immutable
+parseTarget let space Int64 32 immutable
+parseTarget let carriageReturn Int64 13 immutable
+parseTarget let crlfTwice String "\x0d\n\x0d\n" immutable
+parseTarget let lfTwice String "\n\n" immutable
+parseTarget let version String "HTTP/" immutable
+parseTarget let forever Int64 9223372036854775807 immutable
+parseTarget let zero Int64 0 immutable
+parseTarget let eight Int64 8 immutable
+parseTarget let one Int64 1 immutable
+parseTarget let four Int64 4 immutable
+parseTarget let two Int64 2 immutable
+parseTarget let five Int64 5 immutable
+parseTarget let slashByte Int64 47 immutable
+parseTarget let sixteen Int64 16 immutable
+parseTarget let listBytes Int64 144 immutable
+parseTarget let colonByte Int64 58 immutable
+parseTarget let scratchAt Int64 1096 immutable
+parseTarget at begin do readRaw
+parseTarget at begin do findLength
+parseTarget at begin do findBytes
+parseTarget at begin do readBytes
+parseTarget at begin do readRegion
+parseTarget at begin do findCrlf
+parseTarget at begin do searchCrlf
+parseTarget at begin set headEnd crlfFound
+parseTarget at begin do crlfCheck
+parseTarget at begin branch if noCrlf goto searchLf else goto firstLine
+parseTarget at searchLf do findLf
+parseTarget at searchLf do searchIt
+parseTarget at searchLf set headEnd lfFound
+parseTarget at searchLf do lfCheck
+parseTarget at searchLf branch if noLf goto wholeHead else goto firstLine
+parseTarget at wholeHead set headEnd bytes
+parseTarget at wholeHead goto firstLine
+parseTarget at firstLine do firstEnd
+parseTarget at firstLine set lineEnd firstNewline
+parseTarget at firstLine set end firstNewline
+parseTarget at firstLine do moreCheck
+parseTarget at firstLine do emptyCheck
+parseTarget at firstLine do returnCheck
+parseTarget at firstLine branch if mayStrip goto checkReturn else goto split
+parseTarget at checkReturn do lastOf
+parseTarget at checkReturn do readLast
+parseTarget at checkReturn do isReturnCheck
+parseTarget at checkReturn branch if isReturn goto stripReturn else goto split
+parseTarget at stripReturn set end lastAt
+parseTarget at stripReturn goto split
+parseTarget at split do blankCheck
+parseTarget at split branch if blank goto giveMalformed else goto findFirstSpace
+parseTarget at findFirstSpace do firstSpace
+parseTarget at findFirstSpace do noFirstCheck
+parseTarget at findFirstSpace branch if noFirst goto giveMalformed else goto findSecondSpace
+parseTarget at findSecondSpace do afterFirst
+parseTarget at findSecondSpace do secondSpace
+parseTarget at findSecondSpace do noSecondCheck
+parseTarget at findSecondSpace branch if noSecond goto giveMalformed else goto findThirdSpace
+parseTarget at findThirdSpace do afterSecond
+parseTarget at findThirdSpace do thirdSpace
+parseTarget at findThirdSpace do extraCheck
+parseTarget at findThirdSpace branch if extra goto giveMalformed else goto checkVersion
+parseTarget at checkVersion do versionLength
+parseTarget at checkVersion do longCheck
+parseTarget at checkVersion branch if longEnough goto compareVersion else goto giveMalformed
+parseTarget at compareVersion do findVersion
+parseTarget at compareVersion do findWanted
+parseTarget at compareVersion do sameVersion
+parseTarget at compareVersion do versionCheck
+parseTarget at compareVersion branch if isVersion goto checkPath else goto giveMalformed
+parseTarget at checkPath do pathLength
+parseTarget at checkPath do pathEmptyCheck
+parseTarget at checkPath branch if pathEmpty goto giveMalformed else goto checkSlash
+parseTarget at checkSlash do readSlash
+parseTarget at checkSlash do slashCheck
+parseTarget at checkSlash branch if isSlash goto checkMethod else goto giveMalformed
+parseTarget at checkMethod do methodIt
+parseTarget at checkMethod do unknownCheck
+parseTarget at checkMethod branch if unknown goto giveMalformed else goto putPath
+parseTarget at putPath do findPath
+parseTarget at putPath do pathResult
+parseTarget at putPath do putIt
+parseTarget at putPath do readCopy
+parseTarget at putPath do storeMethod
+parseTarget at putPath do findPayloadSlot
+parseTarget at putPath do storeNoPayload
+parseTarget at putPath do takeList
+parseTarget at putPath do storeListCapacity
+parseTarget at putPath do storeCapacity
+parseTarget at putPath set list newList
+parseTarget at putPath do noMoreCheck
+parseTarget at putPath branch if noMore goto keep else goto startLines
+parseTarget at startLines do afterLine
+parseTarget at startLines set start nextStart
+parseTarget at startLines goto eachLine
+parseTarget at eachLine do findLineEnd
+parseTarget at eachLine set lineEnd thisEnd
+parseTarget at eachLine set end thisEnd
+parseTarget at eachLine do lineMoreCheck
+parseTarget at eachLine do lineBytesCheck
+parseTarget at eachLine do lineStripCheck
+parseTarget at eachLine branch if lineMayStrip goto lineReturn else goto findColon
+parseTarget at lineReturn do lineLastOf
+parseTarget at lineReturn do readLineLast
+parseTarget at lineReturn do lineReturnCheck
+parseTarget at lineReturn branch if lineIsReturn goto lineStrip else goto findColon
+parseTarget at lineStrip set end lineLastAt
+parseTarget at lineStrip goto findColon
+parseTarget at findColon do colonOf
+parseTarget at findColon do colonCheck
+parseTarget at findColon branch if noColon goto dropMalformed else goto header
+parseTarget at header do nameStart
+parseTarget at header do nameEnd
+parseTarget at header do afterColon
+parseTarget at header do valueStartOf
+parseTarget at header do valueEndOf
+parseTarget at header do findValue
+parseTarget at header do valueLength
+parseTarget at header do findScratch
+parseTarget at header do putValue
+parseTarget at header do readValueCopy
+parseTarget at header do nameOf
+parseTarget at header do readName
+parseTarget at header do readNameLength
+parseTarget at header do copySize
+parseTarget at header do takeCopy
+parseTarget at header do copyName
+parseTarget at header do giveText
+parseTarget at header do giveBuilder
+parseTarget at header do addIt
+parseTarget at header set list added
+parseTarget at header do lastLineCheck
+parseTarget at header branch if lastLine goto keep else goto nextLine
+parseTarget at nextLine do afterThis
+parseTarget at nextLine set start following
+parseTarget at nextLine goto eachLine
+parseTarget at keep do keepIt
+parseTarget at keep return ok ok
+parseTarget at dropMalformed do dropList
+parseTarget at dropMalformed goto giveMalformed
+parseTarget at giveMalformed do malformedStatus
+parseTarget at giveMalformed return ok status
+
+readRaw is call
+readRaw in parseTarget
+readRaw invokes slots.addressArg
+readRaw argument shape machine.Address shape copy
+readRaw argument args machine.Address args copy
+readRaw argument parameter Int64 zero copy
+readRaw result raw machine.Address
+readRaw ownedBy none
+readRaw cleanedBy none
+readRaw borrows none
+readRaw catch none
+readRaw suppresses none
+
+findLength is call
+findLength in parseTarget
+findLength invokes slots.slotOf
+findLength argument shape machine.Address shape copy
+findLength argument args machine.Address args copy
+findLength argument parameter Int64 zero copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+findBytes is call
+findBytes in parseTarget
+findBytes invokes machine.offset
+findBytes argument address machine.Address lengthSlot copy
+findBytes argument bytes Int64 eight copy
+findBytes result bytesSlot machine.Address
+findBytes ownedBy none
+findBytes cleanedBy none
+findBytes borrows none
+findBytes catch none
+findBytes suppresses none
+
+readBytes is call
+readBytes in parseTarget
+readBytes invokes machine.loadInt64
+readBytes argument address machine.Address bytesSlot copy
+readBytes result bytes Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+readRegion is call
+readRegion in parseTarget
+readRegion invokes slots.addressArg
+readRegion argument shape machine.Address shape copy
+readRegion argument args machine.Address args copy
+readRegion argument parameter Int64 one copy
+readRegion result region machine.Address
+readRegion ownedBy none
+readRegion cleanedBy none
+readRegion borrows none
+readRegion catch none
+readRegion suppresses none
+
+findCrlf is call
+findCrlf in parseTarget
+findCrlf invokes machine.addressOfString
+findCrlf argument text String crlfTwice lend
+findCrlf result crlfAt machine.Address
+findCrlf ownedBy none
+findCrlf cleanedBy none
+findCrlf borrows none
+findCrlf catch none
+findCrlf suppresses none
+
+searchCrlf is call
+searchCrlf in parseTarget
+searchCrlf invokes memory.findBytes
+searchCrlf argument haystack machine.Address raw copy
+searchCrlf argument haystackBytes Int64 bytes copy
+searchCrlf argument needle machine.Address crlfAt copy
+searchCrlf argument needleBytes Int64 four copy
+searchCrlf result crlfFound Int64
+searchCrlf ownedBy none
+searchCrlf cleanedBy none
+searchCrlf borrows none
+searchCrlf catch none
+searchCrlf suppresses none
+
+crlfCheck is call
+crlfCheck in parseTarget
+crlfCheck invokes compare.lessThanInt64
+crlfCheck argument left Int64 crlfFound copy
+crlfCheck argument right Int64 zero copy
+crlfCheck result noCrlf Bool
+crlfCheck ownedBy none
+crlfCheck cleanedBy none
+crlfCheck borrows none
+crlfCheck catch none
+crlfCheck suppresses none
+
+findLf is call
+findLf in parseTarget
+findLf invokes machine.addressOfString
+findLf argument text String lfTwice lend
+findLf result lfAt machine.Address
+findLf ownedBy none
+findLf cleanedBy none
+findLf borrows none
+findLf catch none
+findLf suppresses none
+
+searchIt is call
+searchIt in parseTarget
+searchIt invokes memory.findBytes
+searchIt argument haystack machine.Address raw copy
+searchIt argument haystackBytes Int64 bytes copy
+searchIt argument needle machine.Address lfAt copy
+searchIt argument needleBytes Int64 two copy
+searchIt result lfFound Int64
+searchIt ownedBy none
+searchIt cleanedBy none
+searchIt borrows none
+searchIt catch none
+searchIt suppresses none
+
+lfCheck is call
+lfCheck in parseTarget
+lfCheck invokes compare.lessThanInt64
+lfCheck argument left Int64 lfFound copy
+lfCheck argument right Int64 zero copy
+lfCheck result noLf Bool
+lfCheck ownedBy none
+lfCheck cleanedBy none
+lfCheck borrows none
+lfCheck catch none
+lfCheck suppresses none
+
+firstEnd is call
+firstEnd in parseTarget
+firstEnd invokes findByte
+firstEnd argument text machine.Address raw copy
+firstEnd argument from Int64 zero copy
+firstEnd argument to Int64 headEnd copy
+firstEnd argument wanted Int64 newline copy
+firstEnd result firstNewline Int64
+firstEnd ownedBy none
+firstEnd cleanedBy none
+firstEnd borrows none
+firstEnd catch none
+firstEnd suppresses none
+
+moreCheck is call
+moreCheck in parseTarget
+moreCheck invokes compare.lessThanInt64
+moreCheck argument left Int64 firstNewline copy
+moreCheck argument right Int64 headEnd copy
+moreCheck result hasMore Bool
+moreCheck ownedBy none
+moreCheck cleanedBy none
+moreCheck borrows none
+moreCheck catch none
+moreCheck suppresses none
+
+emptyCheck is call
+emptyCheck in parseTarget
+emptyCheck invokes compare.greaterThanInt64
+emptyCheck argument left Int64 firstNewline copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result hasBytes Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+returnCheck is call
+returnCheck in parseTarget
+returnCheck invokes logic.and
+returnCheck argument left Bool hasMore copy
+returnCheck argument right Bool hasBytes copy
+returnCheck result mayStrip Bool
+returnCheck ownedBy none
+returnCheck cleanedBy none
+returnCheck borrows none
+returnCheck catch none
+returnCheck suppresses none
+
+lastOf is call
+lastOf in parseTarget
+lastOf invokes math.subtractInt64
+lastOf argument left Int64 firstNewline copy
+lastOf argument right Int64 one copy
+lastOf result lastAt Int64
+lastOf ownedBy none
+lastOf cleanedBy none
+lastOf borrows none
+lastOf catch none
+lastOf suppresses none
+
+readLast is call
+readLast in parseTarget
+readLast invokes byteOf
+readLast argument text machine.Address raw copy
+readLast argument at Int64 lastAt copy
+readLast result last Int64
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch none
+readLast suppresses none
+
+isReturnCheck is call
+isReturnCheck in parseTarget
+isReturnCheck invokes compare.equalInt64
+isReturnCheck argument left Int64 last copy
+isReturnCheck argument right Int64 carriageReturn copy
+isReturnCheck result isReturn Bool
+isReturnCheck ownedBy none
+isReturnCheck cleanedBy none
+isReturnCheck borrows none
+isReturnCheck catch none
+isReturnCheck suppresses none
+
+blankCheck is call
+blankCheck in parseTarget
+blankCheck invokes compare.equalInt64
+blankCheck argument left Int64 end copy
+blankCheck argument right Int64 zero copy
+blankCheck result blank Bool
+blankCheck ownedBy none
+blankCheck cleanedBy none
+blankCheck borrows none
+blankCheck catch none
+blankCheck suppresses none
+
+firstSpace is call
+firstSpace in parseTarget
+firstSpace invokes findByte
+firstSpace argument text machine.Address raw copy
+firstSpace argument from Int64 zero copy
+firstSpace argument to Int64 end copy
+firstSpace argument wanted Int64 space copy
+firstSpace result s1 Int64
+firstSpace ownedBy none
+firstSpace cleanedBy none
+firstSpace borrows none
+firstSpace catch none
+firstSpace suppresses none
+
+noFirstCheck is call
+noFirstCheck in parseTarget
+noFirstCheck invokes compare.greaterOrEqualInt64
+noFirstCheck argument left Int64 s1 copy
+noFirstCheck argument right Int64 end copy
+noFirstCheck result noFirst Bool
+noFirstCheck ownedBy none
+noFirstCheck cleanedBy none
+noFirstCheck borrows none
+noFirstCheck catch none
+noFirstCheck suppresses none
+
+afterFirst is call
+afterFirst in parseTarget
+afterFirst invokes math.addInt64
+afterFirst argument left Int64 s1 copy
+afterFirst argument right Int64 one copy
+afterFirst result pathStart Int64
+afterFirst ownedBy none
+afterFirst cleanedBy none
+afterFirst borrows none
+afterFirst catch none
+afterFirst suppresses none
+
+secondSpace is call
+secondSpace in parseTarget
+secondSpace invokes findByte
+secondSpace argument text machine.Address raw copy
+secondSpace argument from Int64 pathStart copy
+secondSpace argument to Int64 end copy
+secondSpace argument wanted Int64 space copy
+secondSpace result s2 Int64
+secondSpace ownedBy none
+secondSpace cleanedBy none
+secondSpace borrows none
+secondSpace catch none
+secondSpace suppresses none
+
+noSecondCheck is call
+noSecondCheck in parseTarget
+noSecondCheck invokes compare.greaterOrEqualInt64
+noSecondCheck argument left Int64 s2 copy
+noSecondCheck argument right Int64 end copy
+noSecondCheck result noSecond Bool
+noSecondCheck ownedBy none
+noSecondCheck cleanedBy none
+noSecondCheck borrows none
+noSecondCheck catch none
+noSecondCheck suppresses none
+
+afterSecond is call
+afterSecond in parseTarget
+afterSecond invokes math.addInt64
+afterSecond argument left Int64 s2 copy
+afterSecond argument right Int64 one copy
+afterSecond result versionStart Int64
+afterSecond ownedBy none
+afterSecond cleanedBy none
+afterSecond borrows none
+afterSecond catch none
+afterSecond suppresses none
+
+thirdSpace is call
+thirdSpace in parseTarget
+thirdSpace invokes findByte
+thirdSpace argument text machine.Address raw copy
+thirdSpace argument from Int64 versionStart copy
+thirdSpace argument to Int64 end copy
+thirdSpace argument wanted Int64 space copy
+thirdSpace result s3 Int64
+thirdSpace ownedBy none
+thirdSpace cleanedBy none
+thirdSpace borrows none
+thirdSpace catch none
+thirdSpace suppresses none
+
+extraCheck is call
+extraCheck in parseTarget
+extraCheck invokes compare.lessThanInt64
+extraCheck argument left Int64 s3 copy
+extraCheck argument right Int64 end copy
+extraCheck result extra Bool
+extraCheck ownedBy none
+extraCheck cleanedBy none
+extraCheck borrows none
+extraCheck catch none
+extraCheck suppresses none
+
+versionLength is call
+versionLength in parseTarget
+versionLength invokes math.subtractInt64
+versionLength argument left Int64 end copy
+versionLength argument right Int64 versionStart copy
+versionLength result versionBytes Int64
+versionLength ownedBy none
+versionLength cleanedBy none
+versionLength borrows none
+versionLength catch none
+versionLength suppresses none
+
+longCheck is call
+longCheck in parseTarget
+longCheck invokes compare.greaterOrEqualInt64
+longCheck argument left Int64 versionBytes copy
+longCheck argument right Int64 five copy
+longCheck result longEnough Bool
+longCheck ownedBy none
+longCheck cleanedBy none
+longCheck borrows none
+longCheck catch none
+longCheck suppresses none
+
+findVersion is call
+findVersion in parseTarget
+findVersion invokes machine.offset
+findVersion argument address machine.Address raw copy
+findVersion argument bytes Int64 versionStart copy
+findVersion result versionAt machine.Address
+findVersion ownedBy none
+findVersion cleanedBy none
+findVersion borrows none
+findVersion catch none
+findVersion suppresses none
+
+findWanted is call
+findWanted in parseTarget
+findWanted invokes machine.addressOfString
+findWanted argument text String version lend
+findWanted result wantedAt machine.Address
+findWanted ownedBy none
+findWanted cleanedBy none
+findWanted borrows none
+findWanted catch none
+findWanted suppresses none
+
+sameVersion is call
+sameVersion in parseTarget
+sameVersion invokes memory.bytesEqual
+sameVersion argument left machine.Address versionAt copy
+sameVersion argument leftBytes Int64 five copy
+sameVersion argument right machine.Address wantedAt copy
+sameVersion argument rightBytes Int64 five copy
+sameVersion result versionSame Int32
+sameVersion ownedBy none
+sameVersion cleanedBy none
+sameVersion borrows none
+sameVersion catch none
+sameVersion suppresses none
+
+versionCheck is call
+versionCheck in parseTarget
+versionCheck invokes compare.notEqualInt32
+versionCheck argument left Int32 versionSame copy
+versionCheck argument right Int32 ok copy
+versionCheck result isVersion Bool
+versionCheck ownedBy none
+versionCheck cleanedBy none
+versionCheck borrows none
+versionCheck catch none
+versionCheck suppresses none
+
+pathLength is call
+pathLength in parseTarget
+pathLength invokes math.subtractInt64
+pathLength argument left Int64 s2 copy
+pathLength argument right Int64 pathStart copy
+pathLength result pathBytes Int64
+pathLength ownedBy none
+pathLength cleanedBy none
+pathLength borrows none
+pathLength catch none
+pathLength suppresses none
+
+pathEmptyCheck is call
+pathEmptyCheck in parseTarget
+pathEmptyCheck invokes compare.equalInt64
+pathEmptyCheck argument left Int64 pathBytes copy
+pathEmptyCheck argument right Int64 zero copy
+pathEmptyCheck result pathEmpty Bool
+pathEmptyCheck ownedBy none
+pathEmptyCheck cleanedBy none
+pathEmptyCheck borrows none
+pathEmptyCheck catch none
+pathEmptyCheck suppresses none
+
+readSlash is call
+readSlash in parseTarget
+readSlash invokes byteOf
+readSlash argument text machine.Address raw copy
+readSlash argument at Int64 pathStart copy
+readSlash result slash Int64
+readSlash ownedBy none
+readSlash cleanedBy none
+readSlash borrows none
+readSlash catch none
+readSlash suppresses none
+
+slashCheck is call
+slashCheck in parseTarget
+slashCheck invokes compare.equalInt64
+slashCheck argument left Int64 slash copy
+slashCheck argument right Int64 slashByte copy
+slashCheck result isSlash Bool
+slashCheck ownedBy none
+slashCheck cleanedBy none
+slashCheck borrows none
+slashCheck catch none
+slashCheck suppresses none
+
+methodIt is call
+methodIt in parseTarget
+methodIt invokes methodOf
+methodIt argument text machine.Address raw copy
+methodIt argument start Int64 zero copy
+methodIt argument end Int64 s1 copy
+methodIt result method Int64
+methodIt ownedBy none
+methodIt cleanedBy none
+methodIt borrows none
+methodIt catch none
+methodIt suppresses none
+
+unknownCheck is call
+unknownCheck in parseTarget
+unknownCheck invokes compare.lessThanInt64
+unknownCheck argument left Int64 method copy
+unknownCheck argument right Int64 zero copy
+unknownCheck result unknown Bool
+unknownCheck ownedBy none
+unknownCheck cleanedBy none
+unknownCheck borrows none
+unknownCheck catch none
+unknownCheck suppresses none
+
+findPath is call
+findPath in parseTarget
+findPath invokes machine.offset
+findPath argument address machine.Address raw copy
+findPath argument bytes Int64 pathStart copy
+findPath result pathAt machine.Address
+findPath ownedBy none
+findPath cleanedBy none
+findPath borrows none
+findPath catch none
+findPath suppresses none
+
+pathResult is call
+pathResult in parseTarget
+pathResult invokes machine.offset
+pathResult argument address machine.Address results copy
+pathResult argument bytes Int64 sixteen copy
+pathResult result pathSlots machine.Address
+pathResult ownedBy none
+pathResult cleanedBy none
+pathResult borrows none
+pathResult catch none
+pathResult suppresses none
+
+putIt is call
+putIt in parseTarget
+putIt invokes slots.putText
+putIt argument region machine.Address region copy
+putIt argument data machine.Address pathAt copy
+putIt argument bytes Int64 pathBytes copy
+putIt argument out machine.Address pathSlots copy
+putIt result none
+putIt ownedBy none
+putIt cleanedBy none
+putIt borrows none
+putIt catch none
+putIt suppresses none
+
+readCopy is call
+readCopy in parseTarget
+readCopy invokes machine.loadAddress
+readCopy argument address machine.Address pathSlots copy
+readCopy result pathCopy machine.Address
+readCopy ownedBy none
+readCopy cleanedBy none
+readCopy borrows none
+readCopy catch none
+readCopy suppresses none
+
+storeMethod is call
+storeMethod in parseTarget
+storeMethod invokes machine.storeInt64
+storeMethod argument address machine.Address results copy
+storeMethod argument value Int64 method copy
+storeMethod result none
+storeMethod ownedBy none
+storeMethod cleanedBy none
+storeMethod borrows none
+storeMethod catch none
+storeMethod suppresses none
+
+findPayloadSlot is call
+findPayloadSlot in parseTarget
+findPayloadSlot invokes machine.offset
+findPayloadSlot argument address machine.Address results copy
+findPayloadSlot argument bytes Int64 eight copy
+findPayloadSlot result methodPayload machine.Address
+findPayloadSlot ownedBy none
+findPayloadSlot cleanedBy none
+findPayloadSlot borrows none
+findPayloadSlot catch none
+findPayloadSlot suppresses none
+
+storeNoPayload is call
+storeNoPayload in parseTarget
+storeNoPayload invokes machine.storeInt64
+storeNoPayload argument address machine.Address methodPayload copy
+storeNoPayload argument value Int64 zero copy
+storeNoPayload result none
+storeNoPayload ownedBy none
+storeNoPayload cleanedBy none
+storeNoPayload borrows none
+storeNoPayload catch none
+storeNoPayload suppresses none
+
+takeList is call
+takeList in parseTarget
+takeList invokes heap.take
+takeList argument bytes Int64 listBytes copy
+takeList result newList machine.Address
+takeList ownedBy none
+takeList cleanedBy none
+takeList borrows none
+takeList catch none
+takeList suppresses none
+
+storeListCapacity is call
+storeListCapacity in parseTarget
+storeListCapacity invokes machine.offset
+storeListCapacity argument address machine.Address newList copy
+storeListCapacity argument bytes Int64 eight copy
+storeListCapacity result listCapacitySlot machine.Address
+storeListCapacity ownedBy none
+storeListCapacity cleanedBy none
+storeListCapacity borrows none
+storeListCapacity catch none
+storeListCapacity suppresses none
+
+storeCapacity is call
+storeCapacity in parseTarget
+storeCapacity invokes machine.storeInt64
+storeCapacity argument address machine.Address listCapacitySlot copy
+storeCapacity argument value Int64 four copy
+storeCapacity result none
+storeCapacity ownedBy none
+storeCapacity cleanedBy none
+storeCapacity borrows none
+storeCapacity catch none
+storeCapacity suppresses none
+
+noMoreCheck is call
+noMoreCheck in parseTarget
+noMoreCheck invokes compare.greaterOrEqualInt64
+noMoreCheck argument left Int64 lineEnd copy
+noMoreCheck argument right Int64 headEnd copy
+noMoreCheck result noMore Bool
+noMoreCheck ownedBy none
+noMoreCheck cleanedBy none
+noMoreCheck borrows none
+noMoreCheck catch none
+noMoreCheck suppresses none
+
+afterLine is call
+afterLine in parseTarget
+afterLine invokes math.addInt64
+afterLine argument left Int64 lineEnd copy
+afterLine argument right Int64 one copy
+afterLine result nextStart Int64
+afterLine ownedBy none
+afterLine cleanedBy none
+afterLine borrows none
+afterLine catch none
+afterLine suppresses none
+
+findLineEnd is call
+findLineEnd in parseTarget
+findLineEnd invokes findByte
+findLineEnd argument text machine.Address raw copy
+findLineEnd argument from Int64 start copy
+findLineEnd argument to Int64 headEnd copy
+findLineEnd argument wanted Int64 newline copy
+findLineEnd result thisEnd Int64
+findLineEnd ownedBy none
+findLineEnd cleanedBy none
+findLineEnd borrows none
+findLineEnd catch none
+findLineEnd suppresses none
+
+lineMoreCheck is call
+lineMoreCheck in parseTarget
+lineMoreCheck invokes compare.lessThanInt64
+lineMoreCheck argument left Int64 thisEnd copy
+lineMoreCheck argument right Int64 headEnd copy
+lineMoreCheck result lineHasMore Bool
+lineMoreCheck ownedBy none
+lineMoreCheck cleanedBy none
+lineMoreCheck borrows none
+lineMoreCheck catch none
+lineMoreCheck suppresses none
+
+lineBytesCheck is call
+lineBytesCheck in parseTarget
+lineBytesCheck invokes compare.greaterThanInt64
+lineBytesCheck argument left Int64 thisEnd copy
+lineBytesCheck argument right Int64 start copy
+lineBytesCheck result lineHasBytes Bool
+lineBytesCheck ownedBy none
+lineBytesCheck cleanedBy none
+lineBytesCheck borrows none
+lineBytesCheck catch none
+lineBytesCheck suppresses none
+
+lineStripCheck is call
+lineStripCheck in parseTarget
+lineStripCheck invokes logic.and
+lineStripCheck argument left Bool lineHasMore copy
+lineStripCheck argument right Bool lineHasBytes copy
+lineStripCheck result lineMayStrip Bool
+lineStripCheck ownedBy none
+lineStripCheck cleanedBy none
+lineStripCheck borrows none
+lineStripCheck catch none
+lineStripCheck suppresses none
+
+lineLastOf is call
+lineLastOf in parseTarget
+lineLastOf invokes math.subtractInt64
+lineLastOf argument left Int64 thisEnd copy
+lineLastOf argument right Int64 one copy
+lineLastOf result lineLastAt Int64
+lineLastOf ownedBy none
+lineLastOf cleanedBy none
+lineLastOf borrows none
+lineLastOf catch none
+lineLastOf suppresses none
+
+readLineLast is call
+readLineLast in parseTarget
+readLineLast invokes byteOf
+readLineLast argument text machine.Address raw copy
+readLineLast argument at Int64 lineLastAt copy
+readLineLast result lineLast Int64
+readLineLast ownedBy none
+readLineLast cleanedBy none
+readLineLast borrows none
+readLineLast catch none
+readLineLast suppresses none
+
+lineReturnCheck is call
+lineReturnCheck in parseTarget
+lineReturnCheck invokes compare.equalInt64
+lineReturnCheck argument left Int64 lineLast copy
+lineReturnCheck argument right Int64 carriageReturn copy
+lineReturnCheck result lineIsReturn Bool
+lineReturnCheck ownedBy none
+lineReturnCheck cleanedBy none
+lineReturnCheck borrows none
+lineReturnCheck catch none
+lineReturnCheck suppresses none
+
+colonOf is call
+colonOf in parseTarget
+colonOf invokes findByte
+colonOf argument text machine.Address raw copy
+colonOf argument from Int64 start copy
+colonOf argument to Int64 end copy
+colonOf argument wanted Int64 colonByte copy
+colonOf result colon Int64
+colonOf ownedBy none
+colonOf cleanedBy none
+colonOf borrows none
+colonOf catch none
+colonOf suppresses none
+
+colonCheck is call
+colonCheck in parseTarget
+colonCheck invokes compare.greaterOrEqualInt64
+colonCheck argument left Int64 colon copy
+colonCheck argument right Int64 end copy
+colonCheck result noColon Bool
+colonCheck ownedBy none
+colonCheck cleanedBy none
+colonCheck borrows none
+colonCheck catch none
+colonCheck suppresses none
+
+nameStart is call
+nameStart in parseTarget
+nameStart invokes trimStart
+nameStart argument text machine.Address raw copy
+nameStart argument start Int64 start copy
+nameStart argument end Int64 colon copy
+nameStart result nameFrom Int64
+nameStart ownedBy none
+nameStart cleanedBy none
+nameStart borrows none
+nameStart catch none
+nameStart suppresses none
+
+nameEnd is call
+nameEnd in parseTarget
+nameEnd invokes trimEnd
+nameEnd argument text machine.Address raw copy
+nameEnd argument start Int64 nameFrom copy
+nameEnd argument end Int64 colon copy
+nameEnd result nameTo Int64
+nameEnd ownedBy none
+nameEnd cleanedBy none
+nameEnd borrows none
+nameEnd catch none
+nameEnd suppresses none
+
+afterColon is call
+afterColon in parseTarget
+afterColon invokes math.addInt64
+afterColon argument left Int64 colon copy
+afterColon argument right Int64 one copy
+afterColon result valueStart Int64
+afterColon ownedBy none
+afterColon cleanedBy none
+afterColon borrows none
+afterColon catch none
+afterColon suppresses none
+
+valueStartOf is call
+valueStartOf in parseTarget
+valueStartOf invokes trimStart
+valueStartOf argument text machine.Address raw copy
+valueStartOf argument start Int64 valueStart copy
+valueStartOf argument end Int64 end copy
+valueStartOf result valueFrom Int64
+valueStartOf ownedBy none
+valueStartOf cleanedBy none
+valueStartOf borrows none
+valueStartOf catch none
+valueStartOf suppresses none
+
+valueEndOf is call
+valueEndOf in parseTarget
+valueEndOf invokes trimEnd
+valueEndOf argument text machine.Address raw copy
+valueEndOf argument start Int64 valueFrom copy
+valueEndOf argument end Int64 end copy
+valueEndOf result valueTo Int64
+valueEndOf ownedBy none
+valueEndOf cleanedBy none
+valueEndOf borrows none
+valueEndOf catch none
+valueEndOf suppresses none
+
+findValue is call
+findValue in parseTarget
+findValue invokes machine.offset
+findValue argument address machine.Address raw copy
+findValue argument bytes Int64 valueFrom copy
+findValue result valueAt machine.Address
+findValue ownedBy none
+findValue cleanedBy none
+findValue borrows none
+findValue catch none
+findValue suppresses none
+
+valueLength is call
+valueLength in parseTarget
+valueLength invokes math.subtractInt64
+valueLength argument left Int64 valueTo copy
+valueLength argument right Int64 valueFrom copy
+valueLength result valueBytes Int64
+valueLength ownedBy none
+valueLength cleanedBy none
+valueLength borrows none
+valueLength catch none
+valueLength suppresses none
+
+findScratch is call
+findScratch in parseTarget
+findScratch invokes kernel.stateAt
+findScratch argument offset Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+putValue is call
+putValue in parseTarget
+putValue invokes slots.putText
+putValue argument region machine.Address region copy
+putValue argument data machine.Address valueAt copy
+putValue argument bytes Int64 valueBytes copy
+putValue argument out machine.Address scratch copy
+putValue result none
+putValue ownedBy none
+putValue cleanedBy none
+putValue borrows none
+putValue catch none
+putValue suppresses none
+
+readValueCopy is call
+readValueCopy in parseTarget
+readValueCopy invokes machine.loadAddress
+readValueCopy argument address machine.Address scratch copy
+readValueCopy result valueCopy machine.Address
+readValueCopy ownedBy none
+readValueCopy cleanedBy none
+readValueCopy borrows none
+readValueCopy catch none
+readValueCopy suppresses none
+
+nameOf is call
+nameOf in parseTarget
+nameOf invokes headerName
+nameOf argument text machine.Address raw copy
+nameOf argument start Int64 nameFrom copy
+nameOf argument end Int64 nameTo copy
+nameOf result nameBuilder machine.Address
+nameOf ownedBy none
+nameOf cleanedBy none
+nameOf borrows none
+nameOf catch none
+nameOf suppresses none
+
+readName is call
+readName in parseTarget
+readName invokes wide.builderText
+readName argument builder machine.Address nameBuilder copy
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+readNameLength is call
+readNameLength in parseTarget
+readNameLength invokes wide.builderLength
+readNameLength argument builder machine.Address nameBuilder copy
+readNameLength result nameBytes Int64
+readNameLength ownedBy none
+readNameLength cleanedBy none
+readNameLength borrows none
+readNameLength catch none
+readNameLength suppresses none
+
+copySize is call
+copySize in parseTarget
+copySize invokes math.addInt64
+copySize argument left Int64 nameBytes copy
+copySize argument right Int64 one copy
+copySize result copyBytes Int64
+copySize ownedBy none
+copySize cleanedBy none
+copySize borrows none
+copySize catch none
+copySize suppresses none
+
+takeCopy is call
+takeCopy in parseTarget
+takeCopy invokes heap.take
+takeCopy argument bytes Int64 copyBytes copy
+takeCopy result nameCopy machine.Address
+takeCopy ownedBy none
+takeCopy cleanedBy none
+takeCopy borrows none
+takeCopy catch none
+takeCopy suppresses none
+
+copyName is call
+copyName in parseTarget
+copyName invokes machine.copy
+copyName argument target machine.Address nameCopy copy
+copyName argument source machine.Address name copy
+copyName argument bytes Int64 nameBytes copy
+copyName result none
+copyName ownedBy none
+copyName cleanedBy none
+copyName borrows none
+copyName catch none
+copyName suppresses none
+
+giveText is call
+giveText in parseTarget
+giveText invokes heap.give
+giveText argument block machine.Address name copy
+giveText result none
+giveText ownedBy none
+giveText cleanedBy none
+giveText borrows none
+giveText catch none
+giveText suppresses none
+
+giveBuilder is call
+giveBuilder in parseTarget
+giveBuilder invokes heap.give
+giveBuilder argument block machine.Address nameBuilder copy
+giveBuilder result none
+giveBuilder ownedBy none
+giveBuilder cleanedBy none
+giveBuilder borrows none
+giveBuilder catch none
+giveBuilder suppresses none
+
+addIt is call
+addIt in parseTarget
+addIt invokes addHeader
+addIt argument list machine.Address list copy
+addIt argument name machine.Address nameCopy copy
+addIt argument nameBytes Int64 nameBytes copy
+addIt argument value machine.Address valueCopy copy
+addIt argument valueBytes Int64 valueBytes copy
+addIt result added machine.Address
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+lastLineCheck is call
+lastLineCheck in parseTarget
+lastLineCheck invokes compare.greaterOrEqualInt64
+lastLineCheck argument left Int64 lineEnd copy
+lastLineCheck argument right Int64 headEnd copy
+lastLineCheck result lastLine Bool
+lastLineCheck ownedBy none
+lastLineCheck cleanedBy none
+lastLineCheck borrows none
+lastLineCheck catch none
+lastLineCheck suppresses none
+
+afterThis is call
+afterThis in parseTarget
+afterThis invokes math.addInt64
+afterThis argument left Int64 lineEnd copy
+afterThis argument right Int64 one copy
+afterThis result following Int64
+afterThis ownedBy none
+afterThis cleanedBy none
+afterThis borrows none
+afterThis catch none
+afterThis suppresses none
+
+keepIt is call
+keepIt in parseTarget
+keepIt invokes keepHeaders
+keepIt argument path machine.Address pathCopy copy
+keepIt argument list machine.Address list copy
+keepIt result none
+keepIt ownedBy none
+keepIt cleanedBy none
+keepIt borrows none
+keepIt catch none
+keepIt suppresses none
+
+dropList is call
+dropList in parseTarget
+dropList invokes giveList
+dropList argument list machine.Address list copy
+dropList result none
+dropList ownedBy none
+dropList cleanedBy none
+dropList borrows none
+dropList catch none
+dropList suppresses none
+
+malformedStatus is call
+malformedStatus in parseTarget
+malformedStatus invokes slots.failWith
+malformedStatus argument payload machine.Address payload copy
+malformedStatus argument status Int32 malformed copy
+malformedStatus argument value Int64 zero copy
+malformedStatus result status Int32
+malformedStatus ownedBy none
+malformedStatus cleanedBy none
+malformedStatus borrows none
+malformedStatus catch none
+malformedStatus suppresses none
+
+headerTarget is operation
+headerTarget purpose "http.header: the value of a request's header by its name in any case, or string.NotFound.absent"
+headerTarget invariant none
+headerTarget typeParameter none
+headerTarget input shape machine.Address copied
+headerTarget input args machine.Address copied
+headerTarget input results machine.Address copied
+headerTarget input payload machine.Address copied
+headerTarget output Int32
+headerTarget outputOwnedBy none
+headerTarget raises none
+headerTarget effect use machine.memory
+headerTarget effect use system.calls
+headerTarget uses memoryAccess
+headerTarget uses systemCalls
+headerTarget memoryHeap false
+headerTarget async false
+headerTarget maxRecursion none
+headerTarget label begin loopKind none
+headerTarget label begin within none
+headerTarget label lower loopKind none
+headerTarget label lower within none
+headerTarget label eachHeader loopKind while
+headerTarget label eachHeader within none
+headerTarget label eachHeader maxIterations count
+headerTarget label compareOne loopKind none
+headerTarget label compareOne within eachHeader
+headerTarget label give loopKind none
+headerTarget label give within none
+headerTarget label giveBack loopKind none
+headerTarget label giveBack within none
+headerTarget label giveAbsent loopKind none
+headerTarget label giveAbsent within none
+headerTarget let at Int64 0 mutable
+headerTarget let ok Int32 0 immutable
+headerTarget let zero Int64 0 immutable
+headerTarget let sixteen Int64 16 immutable
+headerTarget let one Int64 1 immutable
+headerTarget let okAt Int64 1104 immutable
+headerTarget let eight Int64 8 immutable
+headerTarget let twentyFour Int64 24 immutable
+headerTarget at begin do findRequest
+headerTarget at begin do findPathSlot
+headerTarget at begin do readPath
+headerTarget at begin do readName
+headerTarget at begin do readNameBytes
+headerTarget at begin do findList
+headerTarget at begin do nowhere
+headerTarget at begin do noListCheck
+headerTarget at begin branch if noList goto giveAbsent else goto lower
+headerTarget at lower do findOk
+headerTarget at lower do lowerIt
+headerTarget at lower do readOk
+headerTarget at lower do readWanted
+headerTarget at lower do readWantedLength
+headerTarget at lower do readCount
+headerTarget at lower set at count
+headerTarget at lower do unmatchableCheck
+headerTarget at lower branch if unmatchable goto giveBack else goto eachHeader
+headerTarget at eachHeader do doneCheck
+headerTarget at eachHeader branch if done goto giveBack else goto compareOne
+headerTarget at compareOne do backOne
+headerTarget at compareOne set at previous
+headerTarget at compareOne do offsetOf
+headerTarget at compareOne do entryOffset
+headerTarget at compareOne do findEntry
+headerTarget at compareOne do readEntryName
+headerTarget at compareOne do findEntryBytes
+headerTarget at compareOne do readEntryBytes
+headerTarget at compareOne do sameCheck
+headerTarget at compareOne do foundCheck
+headerTarget at compareOne branch if found goto give else goto eachHeader
+headerTarget at give do findValue
+headerTarget at give do readValue
+headerTarget at give do findValueBytes
+headerTarget at give do readValueBytes
+headerTarget at give do storeValue
+headerTarget at give do findLengthSlot
+headerTarget at give do storeLength
+headerTarget at give do giveText
+headerTarget at give do giveBuilder
+headerTarget at give return ok ok
+headerTarget at giveBack do giveUnmatched
+headerTarget at giveBack do giveUnmatchedBuilder
+headerTarget at giveBack goto giveAbsent
+headerTarget at giveAbsent do absentStatus
+headerTarget at giveAbsent return ok status
+
+findRequest is call
+findRequest in headerTarget
+findRequest invokes slots.slotOf
+findRequest argument shape machine.Address shape copy
+findRequest argument args machine.Address args copy
+findRequest argument parameter Int64 zero copy
+findRequest result request machine.Address
+findRequest ownedBy none
+findRequest cleanedBy none
+findRequest borrows none
+findRequest catch none
+findRequest suppresses none
+
+findPathSlot is call
+findPathSlot in headerTarget
+findPathSlot invokes machine.offset
+findPathSlot argument address machine.Address request copy
+findPathSlot argument bytes Int64 sixteen copy
+findPathSlot result pathSlot machine.Address
+findPathSlot ownedBy none
+findPathSlot cleanedBy none
+findPathSlot borrows none
+findPathSlot catch none
+findPathSlot suppresses none
+
+readPath is call
+readPath in headerTarget
+readPath invokes machine.loadAddress
+readPath argument address machine.Address pathSlot copy
+readPath result path machine.Address
+readPath ownedBy none
+readPath cleanedBy none
+readPath borrows none
+readPath catch none
+readPath suppresses none
+
+readName is call
+readName in headerTarget
+readName invokes files.textAt
+readName argument shape machine.Address shape copy
+readName argument args machine.Address args copy
+readName argument parameter Int64 one copy
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+readNameBytes is call
+readNameBytes in headerTarget
+readNameBytes invokes files.textBytes
+readNameBytes argument shape machine.Address shape copy
+readNameBytes argument args machine.Address args copy
+readNameBytes argument parameter Int64 one copy
+readNameBytes result nameBytes Int64
+readNameBytes ownedBy none
+readNameBytes cleanedBy none
+readNameBytes borrows none
+readNameBytes catch none
+readNameBytes suppresses none
+
+findList is call
+findList in headerTarget
+findList invokes headersOf
+findList argument path machine.Address path copy
+findList result list machine.Address
+findList ownedBy none
+findList cleanedBy none
+findList borrows none
+findList catch none
+findList suppresses none
+
+nowhere is call
+nowhere in headerTarget
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+noListCheck is call
+noListCheck in headerTarget
+noListCheck invokes machine.equal
+noListCheck argument left machine.Address list copy
+noListCheck argument right machine.Address anywhere copy
+noListCheck result noList Bool
+noListCheck ownedBy none
+noListCheck cleanedBy none
+noListCheck borrows none
+noListCheck catch none
+noListCheck suppresses none
+
+findOk is call
+findOk in headerTarget
+findOk invokes kernel.stateAt
+findOk argument offset Int64 okAt copy
+findOk result okSlots machine.Address
+findOk ownedBy none
+findOk cleanedBy none
+findOk borrows none
+findOk catch none
+findOk suppresses none
+
+lowerIt is call
+lowerIt in headerTarget
+lowerIt invokes lookupName
+lowerIt argument text machine.Address name copy
+lowerIt argument bytes Int64 nameBytes copy
+lowerIt argument ok machine.Address okSlots copy
+lowerIt result wanted machine.Address
+lowerIt ownedBy none
+lowerIt cleanedBy none
+lowerIt borrows none
+lowerIt catch none
+lowerIt suppresses none
+
+readOk is call
+readOk in headerTarget
+readOk invokes machine.loadInt64
+readOk argument address machine.Address okSlots copy
+readOk result matchable Int64
+readOk ownedBy none
+readOk cleanedBy none
+readOk borrows none
+readOk catch none
+readOk suppresses none
+
+readWanted is call
+readWanted in headerTarget
+readWanted invokes wide.builderText
+readWanted argument builder machine.Address wanted copy
+readWanted result wantedText machine.Address
+readWanted ownedBy none
+readWanted cleanedBy none
+readWanted borrows none
+readWanted catch none
+readWanted suppresses none
+
+readWantedLength is call
+readWantedLength in headerTarget
+readWantedLength invokes wide.builderLength
+readWantedLength argument builder machine.Address wanted copy
+readWantedLength result wantedBytes Int64
+readWantedLength ownedBy none
+readWantedLength cleanedBy none
+readWantedLength borrows none
+readWantedLength catch none
+readWantedLength suppresses none
+
+readCount is call
+readCount in headerTarget
+readCount invokes machine.loadInt64
+readCount argument address machine.Address list copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+unmatchableCheck is call
+unmatchableCheck in headerTarget
+unmatchableCheck invokes compare.equalInt64
+unmatchableCheck argument left Int64 matchable copy
+unmatchableCheck argument right Int64 zero copy
+unmatchableCheck result unmatchable Bool
+unmatchableCheck ownedBy none
+unmatchableCheck cleanedBy none
+unmatchableCheck borrows none
+unmatchableCheck catch none
+unmatchableCheck suppresses none
+
+doneCheck is call
+doneCheck in headerTarget
+doneCheck invokes compare.lessOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 zero copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+backOne is call
+backOne in headerTarget
+backOne invokes math.subtractInt64
+backOne argument left Int64 at copy
+backOne argument right Int64 one copy
+backOne result previous Int64
+backOne ownedBy none
+backOne cleanedBy none
+backOne borrows none
+backOne catch none
+backOne suppresses none
+
+offsetOf is call
+offsetOf in headerTarget
+offsetOf invokes math.multiplyInt64
+offsetOf argument left Int64 previous copy
+offsetOf argument right Int64 entryBytes copy
+offsetOf result offset Int64
+offsetOf ownedBy none
+offsetOf cleanedBy none
+offsetOf borrows none
+offsetOf catch none
+offsetOf suppresses none
+
+entryOffset is call
+entryOffset in headerTarget
+entryOffset invokes math.addInt64
+entryOffset argument left Int64 offset copy
+entryOffset argument right Int64 sixteen copy
+entryOffset result place Int64
+entryOffset ownedBy none
+entryOffset cleanedBy none
+entryOffset borrows none
+entryOffset catch none
+entryOffset suppresses none
+
+findEntry is call
+findEntry in headerTarget
+findEntry invokes machine.offset
+findEntry argument address machine.Address list copy
+findEntry argument bytes Int64 place copy
+findEntry result entry machine.Address
+findEntry ownedBy none
+findEntry cleanedBy none
+findEntry borrows none
+findEntry catch none
+findEntry suppresses none
+
+readEntryName is call
+readEntryName in headerTarget
+readEntryName invokes machine.loadAddress
+readEntryName argument address machine.Address entry copy
+readEntryName result entryName machine.Address
+readEntryName ownedBy none
+readEntryName cleanedBy none
+readEntryName borrows none
+readEntryName catch none
+readEntryName suppresses none
+
+findEntryBytes is call
+findEntryBytes in headerTarget
+findEntryBytes invokes machine.offset
+findEntryBytes argument address machine.Address entry copy
+findEntryBytes argument bytes Int64 eight copy
+findEntryBytes result entryBytesSlot machine.Address
+findEntryBytes ownedBy none
+findEntryBytes cleanedBy none
+findEntryBytes borrows none
+findEntryBytes catch none
+findEntryBytes suppresses none
+
+readEntryBytes is call
+readEntryBytes in headerTarget
+readEntryBytes invokes machine.loadInt64
+readEntryBytes argument address machine.Address entryBytesSlot copy
+readEntryBytes result entryLength Int64
+readEntryBytes ownedBy none
+readEntryBytes cleanedBy none
+readEntryBytes borrows none
+readEntryBytes catch none
+readEntryBytes suppresses none
+
+sameCheck is call
+sameCheck in headerTarget
+sameCheck invokes memory.bytesEqual
+sameCheck argument left machine.Address entryName copy
+sameCheck argument leftBytes Int64 entryLength copy
+sameCheck argument right machine.Address wantedText copy
+sameCheck argument rightBytes Int64 wantedBytes copy
+sameCheck result same Int32
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+foundCheck is call
+foundCheck in headerTarget
+foundCheck invokes compare.notEqualInt32
+foundCheck argument left Int32 same copy
+foundCheck argument right Int32 ok copy
+foundCheck result found Bool
+foundCheck ownedBy none
+foundCheck cleanedBy none
+foundCheck borrows none
+foundCheck catch none
+foundCheck suppresses none
+
+findValue is call
+findValue in headerTarget
+findValue invokes machine.offset
+findValue argument address machine.Address entry copy
+findValue argument bytes Int64 sixteen copy
+findValue result valueSlot machine.Address
+findValue ownedBy none
+findValue cleanedBy none
+findValue borrows none
+findValue catch none
+findValue suppresses none
+
+readValue is call
+readValue in headerTarget
+readValue invokes machine.loadAddress
+readValue argument address machine.Address valueSlot copy
+readValue result value machine.Address
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+findValueBytes is call
+findValueBytes in headerTarget
+findValueBytes invokes machine.offset
+findValueBytes argument address machine.Address entry copy
+findValueBytes argument bytes Int64 twentyFour copy
+findValueBytes result valueBytesSlot machine.Address
+findValueBytes ownedBy none
+findValueBytes cleanedBy none
+findValueBytes borrows none
+findValueBytes catch none
+findValueBytes suppresses none
+
+readValueBytes is call
+readValueBytes in headerTarget
+readValueBytes invokes machine.loadInt64
+readValueBytes argument address machine.Address valueBytesSlot copy
+readValueBytes result valueBytes Int64
+readValueBytes ownedBy none
+readValueBytes cleanedBy none
+readValueBytes borrows none
+readValueBytes catch none
+readValueBytes suppresses none
+
+storeValue is call
+storeValue in headerTarget
+storeValue invokes machine.storeAddress
+storeValue argument address machine.Address results copy
+storeValue argument value machine.Address value copy
+storeValue result none
+storeValue ownedBy none
+storeValue cleanedBy none
+storeValue borrows none
+storeValue catch none
+storeValue suppresses none
+
+findLengthSlot is call
+findLengthSlot in headerTarget
+findLengthSlot invokes machine.offset
+findLengthSlot argument address machine.Address results copy
+findLengthSlot argument bytes Int64 eight copy
+findLengthSlot result lengthSlot machine.Address
+findLengthSlot ownedBy none
+findLengthSlot cleanedBy none
+findLengthSlot borrows none
+findLengthSlot catch none
+findLengthSlot suppresses none
+
+storeLength is call
+storeLength in headerTarget
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 valueBytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+giveText is call
+giveText in headerTarget
+giveText invokes heap.give
+giveText argument block machine.Address wantedText copy
+giveText result none
+giveText ownedBy none
+giveText cleanedBy none
+giveText borrows none
+giveText catch none
+giveText suppresses none
+
+giveBuilder is call
+giveBuilder in headerTarget
+giveBuilder invokes heap.give
+giveBuilder argument block machine.Address wanted copy
+giveBuilder result none
+giveBuilder ownedBy none
+giveBuilder cleanedBy none
+giveBuilder borrows none
+giveBuilder catch none
+giveBuilder suppresses none
+
+giveUnmatched is call
+giveUnmatched in headerTarget
+giveUnmatched invokes heap.give
+giveUnmatched argument block machine.Address wantedText copy
+giveUnmatched result none
+giveUnmatched ownedBy none
+giveUnmatched cleanedBy none
+giveUnmatched borrows none
+giveUnmatched catch none
+giveUnmatched suppresses none
+
+giveUnmatchedBuilder is call
+giveUnmatchedBuilder in headerTarget
+giveUnmatchedBuilder invokes heap.give
+giveUnmatchedBuilder argument block machine.Address wanted copy
+giveUnmatchedBuilder result none
+giveUnmatchedBuilder ownedBy none
+giveUnmatchedBuilder cleanedBy none
+giveUnmatchedBuilder borrows none
+giveUnmatchedBuilder catch none
+giveUnmatchedBuilder suppresses none
+
+absentStatus is call
+absentStatus in headerTarget
+absentStatus invokes slots.failWith
+absentStatus argument payload machine.Address payload copy
+absentStatus argument status Int32 absent copy
+absentStatus argument value Int64 zero copy
+absentStatus result status Int32
+absentStatus ownedBy none
+absentStatus cleanedBy none
+absentStatus borrows none
+absentStatus catch none
+absentStatus suppresses none
+
+responseTarget is operation
+responseTarget purpose "http.response: a response of a status and a body, owned by a region"
+responseTarget invariant none
+responseTarget typeParameter none
+responseTarget input shape machine.Address copied
+responseTarget input args machine.Address copied
+responseTarget input results machine.Address copied
+responseTarget output none
+responseTarget outputOwnedBy none
+responseTarget raises none
+responseTarget effect use machine.memory
+responseTarget effect use system.calls
+responseTarget uses memoryAccess
+responseTarget uses systemCalls
+responseTarget memoryHeap false
+responseTarget async false
+responseTarget maxRecursion none
+responseTarget label begin loopKind none
+responseTarget label begin within none
+responseTarget let zero Int64 0 immutable
+responseTarget let one Int64 1 immutable
+responseTarget let two Int64 2 immutable
+responseTarget let twentyFour Int64 24 immutable
+responseTarget let eight Int64 8 immutable
+responseTarget let sixteen Int64 16 immutable
+responseTarget at begin do readStatus
+responseTarget at begin do readBody
+responseTarget at begin do readBodyBytes
+responseTarget at begin do readRegion
+responseTarget at begin do takeResponse
+responseTarget at begin do storeStatus
+responseTarget at begin do sizeOf
+responseTarget at begin do takeBody
+responseTarget at begin do copyBody
+responseTarget at begin do findBody
+responseTarget at begin do storeBody
+responseTarget at begin do findLength
+responseTarget at begin do storeLength
+responseTarget at begin do makeHandle
+responseTarget at begin do storeHandle
+responseTarget at begin return ok none
+
+readStatus is call
+readStatus in responseTarget
+readStatus invokes slots.argOf
+readStatus argument shape machine.Address shape copy
+readStatus argument args machine.Address args copy
+readStatus argument parameter Int64 zero copy
+readStatus result status Int64
+readStatus ownedBy none
+readStatus cleanedBy none
+readStatus borrows none
+readStatus catch none
+readStatus suppresses none
+
+readBody is call
+readBody in responseTarget
+readBody invokes files.textAt
+readBody argument shape machine.Address shape copy
+readBody argument args machine.Address args copy
+readBody argument parameter Int64 one copy
+readBody result body machine.Address
+readBody ownedBy none
+readBody cleanedBy none
+readBody borrows none
+readBody catch none
+readBody suppresses none
+
+readBodyBytes is call
+readBodyBytes in responseTarget
+readBodyBytes invokes files.textBytes
+readBodyBytes argument shape machine.Address shape copy
+readBodyBytes argument args machine.Address args copy
+readBodyBytes argument parameter Int64 one copy
+readBodyBytes result bodyBytes Int64
+readBodyBytes ownedBy none
+readBodyBytes cleanedBy none
+readBodyBytes borrows none
+readBodyBytes catch none
+readBodyBytes suppresses none
+
+readRegion is call
+readRegion in responseTarget
+readRegion invokes slots.addressArg
+readRegion argument shape machine.Address shape copy
+readRegion argument args machine.Address args copy
+readRegion argument parameter Int64 two copy
+readRegion result region machine.Address
+readRegion ownedBy none
+readRegion cleanedBy none
+readRegion borrows none
+readRegion catch none
+readRegion suppresses none
+
+takeResponse is call
+takeResponse in responseTarget
+takeResponse invokes heap.take
+takeResponse argument bytes Int64 twentyFour copy
+takeResponse result response machine.Address
+takeResponse ownedBy none
+takeResponse cleanedBy none
+takeResponse borrows none
+takeResponse catch none
+takeResponse suppresses none
+
+storeStatus is call
+storeStatus in responseTarget
+storeStatus invokes machine.storeInt64
+storeStatus argument address machine.Address response copy
+storeStatus argument value Int64 status copy
+storeStatus result none
+storeStatus ownedBy none
+storeStatus cleanedBy none
+storeStatus borrows none
+storeStatus catch none
+storeStatus suppresses none
+
+sizeOf is call
+sizeOf in responseTarget
+sizeOf invokes math.addInt64
+sizeOf argument left Int64 bodyBytes copy
+sizeOf argument right Int64 one copy
+sizeOf result copyBytes Int64
+sizeOf ownedBy none
+sizeOf cleanedBy none
+sizeOf borrows none
+sizeOf catch none
+sizeOf suppresses none
+
+takeBody is call
+takeBody in responseTarget
+takeBody invokes heap.take
+takeBody argument bytes Int64 copyBytes copy
+takeBody result copy machine.Address
+takeBody ownedBy none
+takeBody cleanedBy none
+takeBody borrows none
+takeBody catch none
+takeBody suppresses none
+
+copyBody is call
+copyBody in responseTarget
+copyBody invokes machine.copy
+copyBody argument target machine.Address copy copy
+copyBody argument source machine.Address body copy
+copyBody argument bytes Int64 bodyBytes copy
+copyBody result none
+copyBody ownedBy none
+copyBody cleanedBy none
+copyBody borrows none
+copyBody catch none
+copyBody suppresses none
+
+findBody is call
+findBody in responseTarget
+findBody invokes machine.offset
+findBody argument address machine.Address response copy
+findBody argument bytes Int64 eight copy
+findBody result bodySlot machine.Address
+findBody ownedBy none
+findBody cleanedBy none
+findBody borrows none
+findBody catch none
+findBody suppresses none
+
+storeBody is call
+storeBody in responseTarget
+storeBody invokes machine.storeAddress
+storeBody argument address machine.Address bodySlot copy
+storeBody argument value machine.Address copy copy
+storeBody result none
+storeBody ownedBy none
+storeBody cleanedBy none
+storeBody borrows none
+storeBody catch none
+storeBody suppresses none
+
+findLength is call
+findLength in responseTarget
+findLength invokes machine.offset
+findLength argument address machine.Address response copy
+findLength argument bytes Int64 sixteen copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in responseTarget
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 bodyBytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+makeHandle is call
+makeHandle in responseTarget
+makeHandle invokes handles.newHandle
+makeHandle argument kind Int64 kindResponse copy
+makeHandle argument object machine.Address response copy
+makeHandle argument region machine.Address region copy
+makeHandle result handle Int64
+makeHandle ownedBy none
+makeHandle cleanedBy none
+makeHandle borrows none
+makeHandle catch none
+makeHandle suppresses none
+
+storeHandle is call
+storeHandle in responseTarget
+storeHandle invokes machine.storeInt64
+storeHandle argument address machine.Address results copy
+storeHandle argument value Int64 handle copy
+storeHandle result none
+storeHandle ownedBy none
+storeHandle cleanedBy none
+storeHandle borrows none
+storeHandle catch none
+storeHandle suppresses none
+
+addText is operation
+addText purpose "Add a text to a builder"
+addText invariant none
+addText typeParameter none
+addText input builder machine.Address copied
+addText input text String borrowed
+addText output none
+addText outputOwnedBy none
+addText raises none
+addText effect use machine.memory
+addText effect use system.calls
+addText uses memoryAccess
+addText uses systemCalls
+addText memoryHeap false
+addText async false
+addText maxRecursion none
+addText label begin loopKind none
+addText label begin within none
+addText let none
+addText at begin do findText
+addText at begin do textLength
+addText at begin do addIt
+addText at begin return ok none
+
+findText is call
+findText in addText
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in addText
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+addIt is call
+addIt in addText
+addIt invokes wide.builderAdd
+addIt argument builder machine.Address builder copy
+addIt argument data machine.Address textAt copy
+addIt argument bytes Int64 bytes copy
+addIt result none
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+addNumber is operation
+addNumber purpose "Add a whole number's decimal text to a builder"
+addNumber invariant none
+addNumber typeParameter none
+addNumber input builder machine.Address copied
+addNumber input value Int64 copied
+addNumber output none
+addNumber outputOwnedBy none
+addNumber raises none
+addNumber effect use machine.memory
+addNumber effect use system.calls
+addNumber uses memoryAccess
+addNumber uses systemCalls
+addNumber memoryHeap false
+addNumber async false
+addNumber maxRecursion none
+addNumber label begin loopKind none
+addNumber label begin within none
+addNumber let digitsAt Int64 1112 immutable
+addNumber at begin do findDigits
+addNumber at begin do writeIt
+addNumber at begin do addIt
+addNumber at begin return ok none
+
+findDigits is call
+findDigits in addNumber
+findDigits invokes kernel.stateAt
+findDigits argument offset Int64 digitsAt copy
+findDigits result digits machine.Address
+findDigits ownedBy none
+findDigits cleanedBy none
+findDigits borrows none
+findDigits catch none
+findDigits suppresses none
+
+writeIt is call
+writeIt in addNumber
+writeIt invokes numbers.formatDecimal
+writeIt argument value Int64 value copy
+writeIt argument target machine.Address digits copy
+writeIt result count Int64
+writeIt ownedBy none
+writeIt cleanedBy none
+writeIt borrows none
+writeIt catch none
+writeIt suppresses none
+
+addIt is call
+addIt in addNumber
+addIt invokes wide.builderAdd
+addIt argument builder machine.Address builder copy
+addIt argument data machine.Address digits copy
+addIt argument bytes Int64 count copy
+addIt result none
+addIt ownedBy none
+addIt cleanedBy none
+addIt borrows none
+addIt catch none
+addIt suppresses none
+
+addReason is operation
+addReason purpose "Add the reason phrase host.py writes for a status to a builder: those it names, otherwise `Status`"
+addReason invariant none
+addReason typeParameter none
+addReason input builder machine.Address copied
+addReason input status Int64 copied
+addReason output none
+addReason outputOwnedBy none
+addReason raises none
+addReason effect use machine.memory
+addReason effect use system.calls
+addReason uses memoryAccess
+addReason uses systemCalls
+addReason memoryHeap false
+addReason async false
+addReason maxRecursion none
+addReason label begin loopKind none
+addReason label begin within none
+addReason label giveOk loopKind none
+addReason label giveOk within none
+addReason label createdCheck loopKind none
+addReason label createdCheck within none
+addReason label giveCreated loopKind none
+addReason label giveCreated within none
+addReason label noContentCheck loopKind none
+addReason label noContentCheck within none
+addReason label giveNoContent loopKind none
+addReason label giveNoContent within none
+addReason label badRequestCheck loopKind none
+addReason label badRequestCheck within none
+addReason label giveBadRequest loopKind none
+addReason label giveBadRequest within none
+addReason label notFoundCheck loopKind none
+addReason label notFoundCheck within none
+addReason label giveNotFound loopKind none
+addReason label giveNotFound within none
+addReason label notAllowedCheck loopKind none
+addReason label notAllowedCheck within none
+addReason label giveNotAllowed loopKind none
+addReason label giveNotAllowed within none
+addReason label serverErrorCheck loopKind none
+addReason label serverErrorCheck within none
+addReason label giveServerError loopKind none
+addReason label giveServerError within none
+addReason label giveOther loopKind none
+addReason label giveOther within none
+addReason let ok String "OK" immutable
+addReason let created String "Created" immutable
+addReason let noContent String "No Content" immutable
+addReason let badRequest String "Bad Request" immutable
+addReason let notFound String "Not Found" immutable
+addReason let notAllowed String "Method Not Allowed" immutable
+addReason let serverError String "Internal Server Error" immutable
+addReason let other String "Status" immutable
+addReason let n200 Int64 200 immutable
+addReason let n201 Int64 201 immutable
+addReason let n204 Int64 204 immutable
+addReason let n400 Int64 400 immutable
+addReason let n404 Int64 404 immutable
+addReason let n405 Int64 405 immutable
+addReason let n500 Int64 500 immutable
+addReason at begin do okCheck
+addReason at begin branch if isOk goto giveOk else goto createdCheck
+addReason at giveOk do addOk
+addReason at giveOk return ok none
+addReason at createdCheck do checkCreated
+addReason at createdCheck branch if isCreated goto giveCreated else goto noContentCheck
+addReason at giveCreated do addCreated
+addReason at giveCreated return ok none
+addReason at noContentCheck do checkNoContent
+addReason at noContentCheck branch if isNoContent goto giveNoContent else goto badRequestCheck
+addReason at giveNoContent do addNoContent
+addReason at giveNoContent return ok none
+addReason at badRequestCheck do checkBadRequest
+addReason at badRequestCheck branch if isBadRequest goto giveBadRequest else goto notFoundCheck
+addReason at giveBadRequest do addBadRequest
+addReason at giveBadRequest return ok none
+addReason at notFoundCheck do checkNotFound
+addReason at notFoundCheck branch if isNotFound goto giveNotFound else goto notAllowedCheck
+addReason at giveNotFound do addNotFound
+addReason at giveNotFound return ok none
+addReason at notAllowedCheck do checkNotAllowed
+addReason at notAllowedCheck branch if isNotAllowed goto giveNotAllowed else goto serverErrorCheck
+addReason at giveNotAllowed do addNotAllowed
+addReason at giveNotAllowed return ok none
+addReason at serverErrorCheck do checkServerError
+addReason at serverErrorCheck branch if isServerError goto giveServerError else goto giveOther
+addReason at giveServerError do addServerError
+addReason at giveServerError return ok none
+addReason at giveOther do addOther
+addReason at giveOther return ok none
+
+okCheck is call
+okCheck in addReason
+okCheck invokes compare.equalInt64
+okCheck argument left Int64 status copy
+okCheck argument right Int64 n200 copy
+okCheck result isOk Bool
+okCheck ownedBy none
+okCheck cleanedBy none
+okCheck borrows none
+okCheck catch none
+okCheck suppresses none
+
+addOk is call
+addOk in addReason
+addOk invokes addText
+addOk argument builder machine.Address builder copy
+addOk argument text String ok lend
+addOk result none
+addOk ownedBy none
+addOk cleanedBy none
+addOk borrows none
+addOk catch none
+addOk suppresses none
+
+checkCreated is call
+checkCreated in addReason
+checkCreated invokes compare.equalInt64
+checkCreated argument left Int64 status copy
+checkCreated argument right Int64 n201 copy
+checkCreated result isCreated Bool
+checkCreated ownedBy none
+checkCreated cleanedBy none
+checkCreated borrows none
+checkCreated catch none
+checkCreated suppresses none
+
+addCreated is call
+addCreated in addReason
+addCreated invokes addText
+addCreated argument builder machine.Address builder copy
+addCreated argument text String created lend
+addCreated result none
+addCreated ownedBy none
+addCreated cleanedBy none
+addCreated borrows none
+addCreated catch none
+addCreated suppresses none
+
+checkNoContent is call
+checkNoContent in addReason
+checkNoContent invokes compare.equalInt64
+checkNoContent argument left Int64 status copy
+checkNoContent argument right Int64 n204 copy
+checkNoContent result isNoContent Bool
+checkNoContent ownedBy none
+checkNoContent cleanedBy none
+checkNoContent borrows none
+checkNoContent catch none
+checkNoContent suppresses none
+
+addNoContent is call
+addNoContent in addReason
+addNoContent invokes addText
+addNoContent argument builder machine.Address builder copy
+addNoContent argument text String noContent lend
+addNoContent result none
+addNoContent ownedBy none
+addNoContent cleanedBy none
+addNoContent borrows none
+addNoContent catch none
+addNoContent suppresses none
+
+checkBadRequest is call
+checkBadRequest in addReason
+checkBadRequest invokes compare.equalInt64
+checkBadRequest argument left Int64 status copy
+checkBadRequest argument right Int64 n400 copy
+checkBadRequest result isBadRequest Bool
+checkBadRequest ownedBy none
+checkBadRequest cleanedBy none
+checkBadRequest borrows none
+checkBadRequest catch none
+checkBadRequest suppresses none
+
+addBadRequest is call
+addBadRequest in addReason
+addBadRequest invokes addText
+addBadRequest argument builder machine.Address builder copy
+addBadRequest argument text String badRequest lend
+addBadRequest result none
+addBadRequest ownedBy none
+addBadRequest cleanedBy none
+addBadRequest borrows none
+addBadRequest catch none
+addBadRequest suppresses none
+
+checkNotFound is call
+checkNotFound in addReason
+checkNotFound invokes compare.equalInt64
+checkNotFound argument left Int64 status copy
+checkNotFound argument right Int64 n404 copy
+checkNotFound result isNotFound Bool
+checkNotFound ownedBy none
+checkNotFound cleanedBy none
+checkNotFound borrows none
+checkNotFound catch none
+checkNotFound suppresses none
+
+addNotFound is call
+addNotFound in addReason
+addNotFound invokes addText
+addNotFound argument builder machine.Address builder copy
+addNotFound argument text String notFound lend
+addNotFound result none
+addNotFound ownedBy none
+addNotFound cleanedBy none
+addNotFound borrows none
+addNotFound catch none
+addNotFound suppresses none
+
+checkNotAllowed is call
+checkNotAllowed in addReason
+checkNotAllowed invokes compare.equalInt64
+checkNotAllowed argument left Int64 status copy
+checkNotAllowed argument right Int64 n405 copy
+checkNotAllowed result isNotAllowed Bool
+checkNotAllowed ownedBy none
+checkNotAllowed cleanedBy none
+checkNotAllowed borrows none
+checkNotAllowed catch none
+checkNotAllowed suppresses none
+
+addNotAllowed is call
+addNotAllowed in addReason
+addNotAllowed invokes addText
+addNotAllowed argument builder machine.Address builder copy
+addNotAllowed argument text String notAllowed lend
+addNotAllowed result none
+addNotAllowed ownedBy none
+addNotAllowed cleanedBy none
+addNotAllowed borrows none
+addNotAllowed catch none
+addNotAllowed suppresses none
+
+checkServerError is call
+checkServerError in addReason
+checkServerError invokes compare.equalInt64
+checkServerError argument left Int64 status copy
+checkServerError argument right Int64 n500 copy
+checkServerError result isServerError Bool
+checkServerError ownedBy none
+checkServerError cleanedBy none
+checkServerError borrows none
+checkServerError catch none
+checkServerError suppresses none
+
+addServerError is call
+addServerError in addReason
+addServerError invokes addText
+addServerError argument builder machine.Address builder copy
+addServerError argument text String serverError lend
+addServerError result none
+addServerError ownedBy none
+addServerError cleanedBy none
+addServerError borrows none
+addServerError catch none
+addServerError suppresses none
+
+addOther is call
+addOther in addReason
+addOther invokes addText
+addOther argument builder machine.Address builder copy
+addOther argument text String other lend
+addOther result none
+addOther ownedBy none
+addOther cleanedBy none
+addOther borrows none
+addOther catch none
+addOther suppresses none
+
+serializeTarget is operation
+serializeTarget purpose "http.serializeResponse: the response as bytes, its status line and headers as host.py writes them, then its body"
+serializeTarget invariant none
+serializeTarget typeParameter none
+serializeTarget input shape machine.Address copied
+serializeTarget input args machine.Address copied
+serializeTarget input results machine.Address copied
+serializeTarget output none
+serializeTarget outputOwnedBy none
+serializeTarget raises none
+serializeTarget effect use machine.memory
+serializeTarget effect use system.calls
+serializeTarget uses memoryAccess
+serializeTarget uses systemCalls
+serializeTarget memoryHeap false
+serializeTarget async false
+serializeTarget maxRecursion none
+serializeTarget label begin loopKind none
+serializeTarget label begin within none
+serializeTarget let zero Int64 0 immutable
+serializeTarget let one Int64 1 immutable
+serializeTarget let eight Int64 8 immutable
+serializeTarget let sixteen Int64 16 immutable
+serializeTarget let startText String "HTTP/1.1 " immutable
+serializeTarget let spaceText String " " immutable
+serializeTarget let typeText String "\x0d\nContent-Type: text/plain; charset=utf-8\x0d\nContent-Length: " immutable
+serializeTarget let closeText String "\x0d\nConnection: close\x0d\n\x0d\n" immutable
+serializeTarget at begin do readHandle
+serializeTarget at begin do findResponse
+serializeTarget at begin do readRegion
+serializeTarget at begin do readStatus
+serializeTarget at begin do findBody
+serializeTarget at begin do readBody
+serializeTarget at begin do findLength
+serializeTarget at begin do readLength
+serializeTarget at begin do makeText
+serializeTarget at begin do addStart
+serializeTarget at begin do addStatus
+serializeTarget at begin do addSpace
+serializeTarget at begin do addReasonIt
+serializeTarget at begin do addType
+serializeTarget at begin do addLength
+serializeTarget at begin do addClose
+serializeTarget at begin do addBody
+serializeTarget at begin do readText
+serializeTarget at begin do readTextLength
+serializeTarget at begin do putIt
+serializeTarget at begin do giveText
+serializeTarget at begin do giveBuilder
+serializeTarget at begin return ok none
+
+readHandle is call
+readHandle in serializeTarget
+readHandle invokes slots.argOf
+readHandle argument shape machine.Address shape copy
+readHandle argument args machine.Address args copy
+readHandle argument parameter Int64 zero copy
+readHandle result handle Int64
+readHandle ownedBy none
+readHandle cleanedBy none
+readHandle borrows none
+readHandle catch none
+readHandle suppresses none
+
+findResponse is call
+findResponse in serializeTarget
+findResponse invokes handles.objectOf
+findResponse argument handle Int64 handle copy
+findResponse argument kind Int64 kindResponse copy
+findResponse result response machine.Address
+findResponse ownedBy none
+findResponse cleanedBy none
+findResponse borrows none
+findResponse catch none
+findResponse suppresses none
+
+readRegion is call
+readRegion in serializeTarget
+readRegion invokes slots.addressArg
+readRegion argument shape machine.Address shape copy
+readRegion argument args machine.Address args copy
+readRegion argument parameter Int64 one copy
+readRegion result region machine.Address
+readRegion ownedBy none
+readRegion cleanedBy none
+readRegion borrows none
+readRegion catch none
+readRegion suppresses none
+
+readStatus is call
+readStatus in serializeTarget
+readStatus invokes machine.loadInt64
+readStatus argument address machine.Address response copy
+readStatus result status Int64
+readStatus ownedBy none
+readStatus cleanedBy none
+readStatus borrows none
+readStatus catch none
+readStatus suppresses none
+
+findBody is call
+findBody in serializeTarget
+findBody invokes machine.offset
+findBody argument address machine.Address response copy
+findBody argument bytes Int64 eight copy
+findBody result bodySlot machine.Address
+findBody ownedBy none
+findBody cleanedBy none
+findBody borrows none
+findBody catch none
+findBody suppresses none
+
+readBody is call
+readBody in serializeTarget
+readBody invokes machine.loadAddress
+readBody argument address machine.Address bodySlot copy
+readBody result body machine.Address
+readBody ownedBy none
+readBody cleanedBy none
+readBody borrows none
+readBody catch none
+readBody suppresses none
+
+findLength is call
+findLength in serializeTarget
+findLength invokes machine.offset
+findLength argument address machine.Address response copy
+findLength argument bytes Int64 sixteen copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+readLength is call
+readLength in serializeTarget
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthSlot copy
+readLength result bodyBytes Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+makeText is call
+makeText in serializeTarget
+makeText invokes wide.builderNew
+makeText argument none
+makeText result text machine.Address
+makeText ownedBy none
+makeText cleanedBy none
+makeText borrows none
+makeText catch none
+makeText suppresses none
+
+addStart is call
+addStart in serializeTarget
+addStart invokes addText
+addStart argument builder machine.Address text copy
+addStart argument text String startText lend
+addStart result none
+addStart ownedBy none
+addStart cleanedBy none
+addStart borrows none
+addStart catch none
+addStart suppresses none
+
+addStatus is call
+addStatus in serializeTarget
+addStatus invokes addNumber
+addStatus argument builder machine.Address text copy
+addStatus argument value Int64 status copy
+addStatus result none
+addStatus ownedBy none
+addStatus cleanedBy none
+addStatus borrows none
+addStatus catch none
+addStatus suppresses none
+
+addSpace is call
+addSpace in serializeTarget
+addSpace invokes addText
+addSpace argument builder machine.Address text copy
+addSpace argument text String spaceText lend
+addSpace result none
+addSpace ownedBy none
+addSpace cleanedBy none
+addSpace borrows none
+addSpace catch none
+addSpace suppresses none
+
+addReasonIt is call
+addReasonIt in serializeTarget
+addReasonIt invokes addReason
+addReasonIt argument builder machine.Address text copy
+addReasonIt argument status Int64 status copy
+addReasonIt result none
+addReasonIt ownedBy none
+addReasonIt cleanedBy none
+addReasonIt borrows none
+addReasonIt catch none
+addReasonIt suppresses none
+
+addType is call
+addType in serializeTarget
+addType invokes addText
+addType argument builder machine.Address text copy
+addType argument text String typeText lend
+addType result none
+addType ownedBy none
+addType cleanedBy none
+addType borrows none
+addType catch none
+addType suppresses none
+
+addLength is call
+addLength in serializeTarget
+addLength invokes addNumber
+addLength argument builder machine.Address text copy
+addLength argument value Int64 bodyBytes copy
+addLength result none
+addLength ownedBy none
+addLength cleanedBy none
+addLength borrows none
+addLength catch none
+addLength suppresses none
+
+addClose is call
+addClose in serializeTarget
+addClose invokes addText
+addClose argument builder machine.Address text copy
+addClose argument text String closeText lend
+addClose result none
+addClose ownedBy none
+addClose cleanedBy none
+addClose borrows none
+addClose catch none
+addClose suppresses none
+
+addBody is call
+addBody in serializeTarget
+addBody invokes wide.builderAdd
+addBody argument builder machine.Address text copy
+addBody argument data machine.Address body copy
+addBody argument bytes Int64 bodyBytes copy
+addBody result none
+addBody ownedBy none
+addBody cleanedBy none
+addBody borrows none
+addBody catch none
+addBody suppresses none
+
+readText is call
+readText in serializeTarget
+readText invokes wide.builderText
+readText argument builder machine.Address text copy
+readText result bytes machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+readTextLength is call
+readTextLength in serializeTarget
+readTextLength invokes wide.builderLength
+readTextLength argument builder machine.Address text copy
+readTextLength result count Int64
+readTextLength ownedBy none
+readTextLength cleanedBy none
+readTextLength borrows none
+readTextLength catch none
+readTextLength suppresses none
+
+putIt is call
+putIt in serializeTarget
+putIt invokes slots.putText
+putIt argument region machine.Address region copy
+putIt argument data machine.Address bytes copy
+putIt argument bytes Int64 count copy
+putIt argument out machine.Address results copy
+putIt result none
+putIt ownedBy none
+putIt cleanedBy none
+putIt borrows none
+putIt catch none
+putIt suppresses none
+
+giveText is call
+giveText in serializeTarget
+giveText invokes heap.give
+giveText argument block machine.Address bytes copy
+giveText result none
+giveText ownedBy none
+giveText cleanedBy none
+giveText borrows none
+giveText catch none
+giveText suppresses none
+
+giveBuilder is call
+giveBuilder in serializeTarget
+giveBuilder invokes heap.give
+giveBuilder argument block machine.Address text copy
+giveBuilder result none
+giveBuilder ownedBy none
+giveBuilder cleanedBy none
+giveBuilder borrows none
+giveBuilder catch none
+giveBuilder suppresses none
+
+httpCall is operation
+httpCall purpose "Run an http target by its place among them (1 parseRequest, 2 header, 3 response, 4 serializeResponse): 0, or an error's variant number with its payload stored"
+httpCall invariant runsHttp "\"Each target reads and writes what host.py's http handlers read and write, malformed and absent included\""
+httpCall typeParameter none
+httpCall input which Int64 copied
+httpCall input shape machine.Address copied
+httpCall input args machine.Address copied
+httpCall input results machine.Address copied
+httpCall input payload machine.Address copied
+httpCall output Int32
+httpCall outputOwnedBy none
+httpCall raises none
+httpCall effect use machine.memory
+httpCall effect use system.calls
+httpCall uses memoryAccess
+httpCall uses systemCalls
+httpCall memoryHeap false
+httpCall async false
+httpCall maxRecursion none
+httpCall label begin loopKind none
+httpCall label begin within none
+httpCall label runParse loopKind none
+httpCall label runParse within none
+httpCall label headerCheck loopKind none
+httpCall label headerCheck within none
+httpCall label runHeader loopKind none
+httpCall label runHeader within none
+httpCall label responseCheck loopKind none
+httpCall label responseCheck within none
+httpCall label runResponse loopKind none
+httpCall label runResponse within none
+httpCall label runSerialize loopKind none
+httpCall label runSerialize within none
+httpCall let ok Int32 0 immutable
+httpCall let one Int64 1 immutable
+httpCall let two Int64 2 immutable
+httpCall let three Int64 3 immutable
+httpCall at begin do parseCheck
+httpCall at begin branch if isParse goto runParse else goto headerCheck
+httpCall at runParse do parseIt
+httpCall at runParse return ok parseStatus
+httpCall at headerCheck do checkHeader
+httpCall at headerCheck branch if isHeader goto runHeader else goto responseCheck
+httpCall at runHeader do headerIt
+httpCall at runHeader return ok headerStatus
+httpCall at responseCheck do checkResponse
+httpCall at responseCheck branch if isResponse goto runResponse else goto runSerialize
+httpCall at runResponse do responseIt
+httpCall at runResponse return ok ok
+httpCall at runSerialize do serializeIt
+httpCall at runSerialize return ok ok
+
+parseCheck is call
+parseCheck in httpCall
+parseCheck invokes compare.equalInt64
+parseCheck argument left Int64 which copy
+parseCheck argument right Int64 one copy
+parseCheck result isParse Bool
+parseCheck ownedBy none
+parseCheck cleanedBy none
+parseCheck borrows none
+parseCheck catch none
+parseCheck suppresses none
+
+parseIt is call
+parseIt in httpCall
+parseIt invokes parseTarget
+parseIt argument shape machine.Address shape copy
+parseIt argument args machine.Address args copy
+parseIt argument results machine.Address results copy
+parseIt argument payload machine.Address payload copy
+parseIt result parseStatus Int32
+parseIt ownedBy none
+parseIt cleanedBy none
+parseIt borrows none
+parseIt catch none
+parseIt suppresses none
+
+checkHeader is call
+checkHeader in httpCall
+checkHeader invokes compare.equalInt64
+checkHeader argument left Int64 which copy
+checkHeader argument right Int64 two copy
+checkHeader result isHeader Bool
+checkHeader ownedBy none
+checkHeader cleanedBy none
+checkHeader borrows none
+checkHeader catch none
+checkHeader suppresses none
+
+headerIt is call
+headerIt in httpCall
+headerIt invokes headerTarget
+headerIt argument shape machine.Address shape copy
+headerIt argument args machine.Address args copy
+headerIt argument results machine.Address results copy
+headerIt argument payload machine.Address payload copy
+headerIt result headerStatus Int32
+headerIt ownedBy none
+headerIt cleanedBy none
+headerIt borrows none
+headerIt catch none
+headerIt suppresses none
+
+checkResponse is call
+checkResponse in httpCall
+checkResponse invokes compare.equalInt64
+checkResponse argument left Int64 which copy
+checkResponse argument right Int64 three copy
+checkResponse result isResponse Bool
+checkResponse ownedBy none
+checkResponse cleanedBy none
+checkResponse borrows none
+checkResponse catch none
+checkResponse suppresses none
+
+responseIt is call
+responseIt in httpCall
+responseIt invokes responseTarget
+responseIt argument shape machine.Address shape copy
+responseIt argument args machine.Address args copy
+responseIt argument results machine.Address results copy
+responseIt result none
+responseIt ownedBy none
+responseIt cleanedBy none
+responseIt borrows none
+responseIt catch none
+responseIt suppresses none
+
+serializeIt is call
+serializeIt in httpCall
+serializeIt invokes serializeTarget
+serializeIt argument shape machine.Address shape copy
+serializeIt argument args machine.Address args copy
+serializeIt argument results machine.Address results copy
+serializeIt result none
+serializeIt ownedBy none
+serializeIt cleanedBy none
+serializeIt borrows none
+serializeIt catch none
+serializeIt suppresses none

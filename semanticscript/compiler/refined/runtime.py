@@ -350,9 +350,11 @@ def _init() -> None:
         llvm.add_symbol(name, ctypes.cast(cb, ctypes.c_void_p).value)
     if os.name == "nt":
         # D-122: a `system` target calls the operating system's own function, in this process as in an executable
-        from .library import SYSTEM_CALLS
+        # D-144: ws2_32's and bcrypt's from their own DLLs, every other row kernel32's
+        from .library import SYSTEM_CALLS, SYSTEM_DLLS
         for symbol, _sig in SYSTEM_CALLS.values():
-            llvm.add_symbol(symbol, ctypes.cast(getattr(ctypes.windll.kernel32, symbol), ctypes.c_void_p).value)
+            dll = getattr(ctypes.windll, SYSTEM_DLLS.get(symbol, "kernel32"))
+            llvm.add_symbol(symbol, ctypes.cast(getattr(dll, symbol), ctypes.c_void_p).value)
     _INITIALIZED = True
 
 
