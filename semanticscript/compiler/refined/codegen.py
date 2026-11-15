@@ -285,11 +285,11 @@ _CONTEXT_ROUTINES = {
 # with the exit system call (its stack and record are the joiner's to give back)
 _THREAD_START = {
     "x86_64": [".text", ".p2align 4", ".globl refined_start_thread", ".type refined_start_thread,@function",
-               "refined_start_thread:", "  subq 6, %rdi", "  movq %rcx, (%rdi)", "  movq %r8, 8(%rdi)",
-               "  movq %rdx, %r10", "  movq %rsi, %r8", "  movq %rdi, %rsi", "  movl /usr/bin/bashx3d0f00, %edi",
-               "  movq %r10, %rdx", "  movl 6, %eax", "  syscall", "  testq %rax, %rax", "  jnz 1f",
-               "  xorl %ebp, %ebp", "  movq (%rsp), %rdi", "  movq 8(%rsp), %rax", "  andq hBc16, %rsp",
-               "  callq *%rax", "  movl 0, %eax", "  xorl %edi, %edi", "  syscall", "  ud2", "1:", "  retq"],
+               "refined_start_thread:", "  subq $16, %rdi", "  movq %rcx, (%rdi)", "  movq %r8, 8(%rdi)",
+               "  movq %rdx, %r10", "  movq %rsi, %r8", "  movq %rdi, %rsi", "  movl $0x3d0f00, %edi",
+               "  movq %r10, %rdx", "  movl $56, %eax", "  syscall", "  testq %rax, %rax", "  jnz 1f",
+               "  xorl %ebp, %ebp", "  movq (%rsp), %rdi", "  movq 8(%rsp), %rax", "  andq $-16, %rsp",
+               "  callq *%rax", "  movl $60, %eax", "  xorl %edi, %edi", "  syscall", "  ud2", "1:", "  retq"],
     "aarch64": [".text", ".p2align 4", ".globl refined_start_thread", ".type refined_start_thread,@function",
                 "refined_start_thread:", "  sub x0, x0, #16", "  str x3, [x0]", "  str x4, [x0, #8]", "  mov x4, x2",
                 "  mov x3, x1", "  mov x1, x0", "  movz x0, #0x0f00", "  movk x0, #0x3d, lsl #16", "  mov x8, #220",
@@ -1611,7 +1611,7 @@ class OpGen:
         sig = self._ref_sig(ci)
         fptr = b.load(self.allocas[ci.reference])
         out_kind = pair_record(self.world, sig.output)
-        out_struct = self.ltype(sig.output) if sig.output else None
+        out_struct = self.lt(sig.output) if sig.output else None
         values, types = [], []
         sret = out_kind is not None and self.be.pair_abi(out_kind)[1] == "memory"
         if sret:
@@ -1639,7 +1639,7 @@ class OpGen:
         elif out_kind:
             ret = self.be.pair_abi(out_kind)[0]
         else:
-            ret = self.ltype(sig.output) if sig.output else ir.VoidType()
+            ret = self.lt(sig.output) if sig.output else ir.VoidType()
         if self.be.module.triple.startswith("x86_64"):
             fty = ir.FunctionType(ret, [], var_arg=True)  # D-158
         else:
