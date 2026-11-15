@@ -22,6 +22,30 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   as under `refined run`; the others are refused, naming what they need.
   The C runtime stays the default.
 
+### The runtime in SemanticScript, stage 2
+
+- Floating-point text in SemanticScript (D-125, D-129): `refined_write_float`,
+  `refined_format_float`, and `refined_parse_float` write a Float64 exactly as
+  `refined run` does (Python's repr: the shortest digits that read back,
+  nearest the value) and read text correctly rounded, computed exactly with a
+  new bignum module. Checked over a table of thousands of values against
+  Python.
+- The host library in SemanticScript (D-126, D-128, D-130): `refined_host`
+  and its targets for byte buffers, maps, sets, `string.fromBytes`, and log
+  lines, with handles that trap when used after their region is released,
+  and `refined_handle_region`. New runtime modules `heap`, `tables`,
+  `handles`, `bignum`, `floats`, and `host`.
+- `convert.float64BitsToUInt64` and `convert.uint64BitsToFloat64` (D-127);
+  `system` rows for the process heap (`GetProcessHeap`, `HeapAlloc`,
+  `HeapReAlloc`, `HeapFree`).
+- 49 of the suite's 76 running programs now build with the runtime in
+  SemanticScript and no C library; a program calling a host target that
+  runtime lacks is refused (R901), naming it.
+- Fixed: the C runtime wrote `100.0` as `1e+02`, `1e15` as `1e+15`, NaN as
+  `-nan(ind)`, and 17 digits for some values next to powers of two; it now
+  writes what `refined run` writes. Host targets whose names hold digits
+  (`buffer.appendInt64`) are now seen by the executable's R901 check.
+
 ## 1.0.0 (2026-11-14)
 
 ### The language compiles its own compiler

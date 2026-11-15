@@ -18,6 +18,7 @@ regions imports standard.logic
 regions imports standard.test
 regions imports numbers
 regions imports frames
+regions imports handles
 regions exports newRegion
 regions exports allocate
 regions exports remaining
@@ -35,7 +36,8 @@ systemCalls grants use system.calls none
 # A chunk is memory from VirtualAlloc: at 0 the next chunk of its region, 8 its size, 16 how many of its bytes are
 # used, its own 32 bytes included; what it hands out starts at 32 and is zeroed. A region's header lives in its
 # first chunk, after the chunk's own: at 0 its capacity, 8 the bytes asked of it (as `refined run` counts them),
-# 16 the chunk being filled, 24 the address and 32 the length of its label, 40 how many chunks it has.
+# 16 the chunk being filled, 24 the address and 32 the length of its label, 40 how many chunks it has, 48 and 56
+# the host objects it owns (the handles module's).
 # A region's chunks of the standard size go back to a list of free chunks, zeroed, when it is released.
 # machine.state bytes 128 to 191 belong to this module: 128 the first free chunk, 136 how many are free, 144 to
 # 175 a number's digits.
@@ -2031,7 +2033,7 @@ leftOf suppresses none
 
 release is operation
 release purpose "Give back every chunk of a region at once: refined_region_free"
-release invariant reusesChunks "\"Every chunk of the region is given back; a chunk of the standard size is kept, zeroed, for the next region while 64 are not yet kept\""
+release invariant reusesChunks "\"Every host object the region owns is closed and every chunk of the region is given back; a chunk of the standard size is kept, zeroed, for the next region while 64 are not yet kept\""
 release typeParameter none
 release input region machine.Address copied
 release output none
@@ -2057,6 +2059,7 @@ release label done within none
 release let chunk machine.Address unset mutable
 release let sixteen Int64 16 immutable
 release let forty Int64 40 immutable
+release at begin do dropHandles
 release at begin do findChunks
 release at begin do readChunk
 release at begin set chunk first
@@ -2071,6 +2074,17 @@ release at dropOne do drop
 release at dropOne set chunk next
 release at dropOne goto eachChunk
 release at done return ok none
+
+dropHandles is call
+dropHandles in release
+dropHandles invokes handles.dropRegion
+dropHandles argument region machine.Address region copy
+dropHandles result none
+dropHandles ownedBy none
+dropHandles cleanedBy none
+dropHandles borrows none
+dropHandles catch none
+dropHandles suppresses none
 
 findChunks is call
 findChunks in release

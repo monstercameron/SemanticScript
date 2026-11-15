@@ -1,0 +1,548 @@
+# Tests of the `heap` module; generated from tools/heap.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+takeTest is test
+takeTest purpose "A block from the heap is zeroed, can be written, grows with its bytes kept, and goes back"
+takeTest verifies take takesZeroed
+takeTest verifies resize keepsBytes
+takeTest verifies give givesBack
+takeTest typeParameter none
+takeTest input none
+takeTest output none
+takeTest outputOwnedBy none
+takeTest raises none
+takeTest effect use machine.memory
+takeTest effect use system.calls
+takeTest uses memoryAccess
+takeTest uses systemCalls
+takeTest memoryHeap false
+takeTest async false
+takeTest maxRecursion none
+takeTest label begin loopKind none
+takeTest label begin within none
+takeTest let sixtyFour Int64 64 immutable
+takeTest let sixtyThree Int64 63 immutable
+takeTest let zero Int64 0 immutable
+takeTest let answer Int64 42 immutable
+takeTest let fourThousand Int64 4096 immutable
+takeTest let farOffset Int64 4088 immutable
+takeTest let eight Int64 8 immutable
+takeTest at begin do takeBlock
+takeTest at begin do findLast
+takeTest at begin do readLast
+takeTest at begin do widenLast
+takeTest at begin do expectZeroed
+takeTest at begin do writeFirst
+takeTest at begin do growBlock
+takeTest at begin do readFirst
+takeTest at begin do expectKept
+takeTest at begin do findFar
+takeTest at begin do readFar
+takeTest at begin do expectFarZeroed
+takeTest at begin do nowhere
+takeTest at begin do takeFresh
+takeTest at begin do readFresh
+takeTest at begin do expectFresh
+takeTest at begin do giveGrown
+takeTest at begin do giveFresh
+takeTest at begin do giveNothing
+takeTest at begin return ok none
+
+takeBlock is call
+takeBlock in takeTest
+takeBlock invokes take
+takeBlock argument bytes Int64 sixtyFour copy
+takeBlock result block machine.Address
+takeBlock ownedBy none
+takeBlock cleanedBy none
+takeBlock borrows none
+takeBlock catch none
+takeBlock suppresses none
+
+findLast is call
+findLast in takeTest
+findLast invokes machine.offset
+findLast argument address machine.Address block copy
+findLast argument bytes Int64 sixtyThree copy
+findLast result lastAt machine.Address
+findLast ownedBy none
+findLast cleanedBy none
+findLast borrows none
+findLast catch none
+findLast suppresses none
+
+readLast is call
+readLast in takeTest
+readLast invokes machine.loadByte
+readLast argument address machine.Address lastAt copy
+readLast result lastByte Byte
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch none
+readLast suppresses none
+
+widenLast is call
+widenLast in takeTest
+widenLast invokes convert.byteToInt64
+widenLast argument value Byte lastByte copy
+widenLast result lastValue Int64
+widenLast ownedBy none
+widenLast cleanedBy none
+widenLast borrows none
+widenLast catch none
+widenLast suppresses none
+
+expectZeroed is call
+expectZeroed in takeTest
+expectZeroed invokes test.assertEqualInt64
+expectZeroed argument expected Int64 zero copy
+expectZeroed argument actual Int64 lastValue copy
+expectZeroed result none
+expectZeroed ownedBy none
+expectZeroed cleanedBy none
+expectZeroed borrows none
+expectZeroed catch none
+expectZeroed suppresses none
+
+writeFirst is call
+writeFirst in takeTest
+writeFirst invokes machine.storeInt64
+writeFirst argument address machine.Address block copy
+writeFirst argument value Int64 answer copy
+writeFirst result none
+writeFirst ownedBy none
+writeFirst cleanedBy none
+writeFirst borrows none
+writeFirst catch none
+writeFirst suppresses none
+
+growBlock is call
+growBlock in takeTest
+growBlock invokes resize
+growBlock argument block machine.Address block copy
+growBlock argument bytes Int64 fourThousand copy
+growBlock result grown machine.Address
+growBlock ownedBy none
+growBlock cleanedBy none
+growBlock borrows none
+growBlock catch none
+growBlock suppresses none
+
+readFirst is call
+readFirst in takeTest
+readFirst invokes machine.loadInt64
+readFirst argument address machine.Address grown copy
+readFirst result firstValue Int64
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+expectKept is call
+expectKept in takeTest
+expectKept invokes test.assertEqualInt64
+expectKept argument expected Int64 answer copy
+expectKept argument actual Int64 firstValue copy
+expectKept result none
+expectKept ownedBy none
+expectKept cleanedBy none
+expectKept borrows none
+expectKept catch none
+expectKept suppresses none
+
+findFar is call
+findFar in takeTest
+findFar invokes machine.offset
+findFar argument address machine.Address grown copy
+findFar argument bytes Int64 farOffset copy
+findFar result farAt machine.Address
+findFar ownedBy none
+findFar cleanedBy none
+findFar borrows none
+findFar catch none
+findFar suppresses none
+
+readFar is call
+readFar in takeTest
+readFar invokes machine.loadInt64
+readFar argument address machine.Address farAt copy
+readFar result farValue Int64
+readFar ownedBy none
+readFar cleanedBy none
+readFar borrows none
+readFar catch none
+readFar suppresses none
+
+expectFarZeroed is call
+expectFarZeroed in takeTest
+expectFarZeroed invokes test.assertEqualInt64
+expectFarZeroed argument expected Int64 zero copy
+expectFarZeroed argument actual Int64 farValue copy
+expectFarZeroed result none
+expectFarZeroed ownedBy none
+expectFarZeroed cleanedBy none
+expectFarZeroed borrows none
+expectFarZeroed catch none
+expectFarZeroed suppresses none
+
+nowhere is call
+nowhere in takeTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+takeFresh is call
+takeFresh in takeTest
+takeFresh invokes resize
+takeFresh argument block machine.Address anywhere copy
+takeFresh argument bytes Int64 eight copy
+takeFresh result fresh machine.Address
+takeFresh ownedBy none
+takeFresh cleanedBy none
+takeFresh borrows none
+takeFresh catch none
+takeFresh suppresses none
+
+readFresh is call
+readFresh in takeTest
+readFresh invokes machine.loadInt64
+readFresh argument address machine.Address fresh copy
+readFresh result freshValue Int64
+readFresh ownedBy none
+readFresh cleanedBy none
+readFresh borrows none
+readFresh catch none
+readFresh suppresses none
+
+expectFresh is call
+expectFresh in takeTest
+expectFresh invokes test.assertEqualInt64
+expectFresh argument expected Int64 zero copy
+expectFresh argument actual Int64 freshValue copy
+expectFresh result none
+expectFresh ownedBy none
+expectFresh cleanedBy none
+expectFresh borrows none
+expectFresh catch none
+expectFresh suppresses none
+
+giveGrown is call
+giveGrown in takeTest
+giveGrown invokes give
+giveGrown argument block machine.Address grown copy
+giveGrown result none
+giveGrown ownedBy none
+giveGrown cleanedBy none
+giveGrown borrows none
+giveGrown catch none
+giveGrown suppresses none
+
+giveFresh is call
+giveFresh in takeTest
+giveFresh invokes give
+giveFresh argument block machine.Address fresh copy
+giveFresh result none
+giveFresh ownedBy none
+giveFresh cleanedBy none
+giveFresh borrows none
+giveFresh catch none
+giveFresh suppresses none
+
+giveNothing is call
+giveNothing in takeTest
+giveNothing invokes give
+giveNothing argument block machine.Address anywhere copy
+giveNothing result none
+giveNothing ownedBy none
+giveNothing cleanedBy none
+giveNothing borrows none
+giveNothing catch none
+giveNothing suppresses none
+
+emptyTakeTest is test
+emptyTakeTest purpose "Asking for no bytes still gives a block of its own"
+emptyTakeTest verifies take takesZeroed
+emptyTakeTest typeParameter none
+emptyTakeTest input none
+emptyTakeTest output none
+emptyTakeTest outputOwnedBy none
+emptyTakeTest raises none
+emptyTakeTest effect use machine.memory
+emptyTakeTest effect use system.calls
+emptyTakeTest uses memoryAccess
+emptyTakeTest uses systemCalls
+emptyTakeTest memoryHeap false
+emptyTakeTest async false
+emptyTakeTest maxRecursion none
+emptyTakeTest label begin loopKind none
+emptyTakeTest label begin within none
+emptyTakeTest let zero Int64 0 immutable
+emptyTakeTest at begin do takeNone
+emptyTakeTest at begin do nowhere
+emptyTakeTest at begin do zeroCheck
+emptyTakeTest at begin do notZero
+emptyTakeTest at begin do expectBlock
+emptyTakeTest at begin do giveBlock
+emptyTakeTest at begin return ok none
+
+takeNone is call
+takeNone in emptyTakeTest
+takeNone invokes take
+takeNone argument bytes Int64 zero copy
+takeNone result block machine.Address
+takeNone ownedBy none
+takeNone cleanedBy none
+takeNone borrows none
+takeNone catch none
+takeNone suppresses none
+
+nowhere is call
+nowhere in emptyTakeTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+zeroCheck is call
+zeroCheck in emptyTakeTest
+zeroCheck invokes machine.equal
+zeroCheck argument left machine.Address block copy
+zeroCheck argument right machine.Address anywhere copy
+zeroCheck result isZero Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+notZero is call
+notZero in emptyTakeTest
+notZero invokes logic.not
+notZero argument value Bool isZero copy
+notZero result isBlock Bool
+notZero ownedBy none
+notZero cleanedBy none
+notZero borrows none
+notZero catch none
+notZero suppresses none
+
+expectBlock is call
+expectBlock in emptyTakeTest
+expectBlock invokes test.assertTrue
+expectBlock argument value Bool isBlock copy
+expectBlock result none
+expectBlock ownedBy none
+expectBlock cleanedBy none
+expectBlock borrows none
+expectBlock catch none
+expectBlock suppresses none
+
+giveBlock is call
+giveBlock in emptyTakeTest
+giveBlock invokes give
+giveBlock argument block machine.Address block copy
+giveBlock result none
+giveBlock ownedBy none
+giveBlock cleanedBy none
+giveBlock borrows none
+giveBlock catch none
+giveBlock suppresses none
+
+messageTest is test
+messageTest purpose "A trap's message is put together from its parts"
+messageTest verifies joinMessage joinsParts
+messageTest verifies numbersMessage writesNumbers
+messageTest typeParameter none
+messageTest input none
+messageTest output none
+messageTest outputOwnedBy none
+messageTest raises none
+messageTest effect use machine.memory
+messageTest effect use system.calls
+messageTest uses memoryAccess
+messageTest uses systemCalls
+messageTest memoryHeap false
+messageTest async false
+messageTest maxRecursion none
+messageTest label begin loopKind none
+messageTest label begin within none
+messageTest let name String "Map" immutable
+messageTest let joined String "a Map handle was used" immutable
+messageTest let counted String "a set was read at position -3 of 12" immutable
+messageTest let lead String "a " immutable
+messageTest let three Int64 3 immutable
+messageTest let tail String " handle was used" immutable
+messageTest let twentyOne Int64 21 immutable
+messageTest let scratchAt Int64 61440 immutable
+messageTest let numberLead String "a set was read at position " immutable
+messageTest let minusThree Int64 -3 immutable
+messageTest let of String " of " immutable
+messageTest let twelve Int64 12 immutable
+messageTest at begin do findName
+messageTest at begin do join
+messageTest at begin do viewJoined
+messageTest at begin do expectJoined
+messageTest at begin do giveJoined
+messageTest at begin do findState
+messageTest at begin do findLength
+messageTest at begin do count
+messageTest at begin do readLength
+messageTest at begin do viewCounted
+messageTest at begin do expectCounted
+messageTest at begin do giveCounted
+messageTest at begin return ok none
+
+findName is call
+findName in messageTest
+findName invokes machine.addressOfString
+findName argument text String name lend
+findName result nameAt machine.Address
+findName ownedBy none
+findName cleanedBy none
+findName borrows none
+findName catch none
+findName suppresses none
+
+join is call
+join in messageTest
+join invokes joinMessage
+join argument first String lead lend
+join argument middle machine.Address nameAt copy
+join argument middleBytes Int64 three copy
+join argument last String tail lend
+join result message machine.Address
+join ownedBy none
+join cleanedBy none
+join borrows none
+join catch none
+join suppresses none
+
+viewJoined is call
+viewJoined in messageTest
+viewJoined invokes machine.stringAt
+viewJoined argument address machine.Address message copy
+viewJoined argument bytes Int64 twentyOne copy
+viewJoined result shown String
+viewJoined ownedBy none
+viewJoined cleanedBy none
+viewJoined borrows none
+viewJoined catch none
+viewJoined suppresses none
+
+expectJoined is call
+expectJoined in messageTest
+expectJoined invokes test.assertEqualString
+expectJoined argument expected String joined lend
+expectJoined argument actual String shown lend
+expectJoined result none
+expectJoined ownedBy none
+expectJoined cleanedBy none
+expectJoined borrows none
+expectJoined catch none
+expectJoined suppresses none
+
+giveJoined is call
+giveJoined in messageTest
+giveJoined invokes give
+giveJoined argument block machine.Address message copy
+giveJoined result none
+giveJoined ownedBy none
+giveJoined cleanedBy none
+giveJoined borrows none
+giveJoined catch none
+giveJoined suppresses none
+
+findState is call
+findState in messageTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findLength is call
+findLength in messageTest
+findLength invokes machine.offset
+findLength argument address machine.Address state copy
+findLength argument bytes Int64 scratchAt copy
+findLength result lengthAt machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+count is call
+count in messageTest
+count invokes numbersMessage
+count argument first String numberLead lend
+count argument number Int64 minusThree copy
+count argument middle String of lend
+count argument other Int64 twelve copy
+count argument lengthAt machine.Address lengthAt copy
+count result numbered machine.Address
+count ownedBy none
+count cleanedBy none
+count borrows none
+count catch none
+count suppresses none
+
+readLength is call
+readLength in messageTest
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthAt copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+viewCounted is call
+viewCounted in messageTest
+viewCounted invokes machine.stringAt
+viewCounted argument address machine.Address numbered copy
+viewCounted argument bytes Int64 length copy
+viewCounted result countedShown String
+viewCounted ownedBy none
+viewCounted cleanedBy none
+viewCounted borrows none
+viewCounted catch none
+viewCounted suppresses none
+
+expectCounted is call
+expectCounted in messageTest
+expectCounted invokes test.assertEqualString
+expectCounted argument expected String counted lend
+expectCounted argument actual String countedShown lend
+expectCounted result none
+expectCounted ownedBy none
+expectCounted cleanedBy none
+expectCounted borrows none
+expectCounted catch none
+expectCounted suppresses none
+
+giveCounted is call
+giveCounted in messageTest
+giveCounted invokes give
+giveCounted argument block machine.Address numbered copy
+giveCounted result none
+giveCounted ownedBy none
+giveCounted cleanedBy none
+giveCounted borrows none
+giveCounted catch none
+giveCounted suppresses none

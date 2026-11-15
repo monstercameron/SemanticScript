@@ -1,0 +1,5634 @@
+# Floating-point numbers as text, and text as floating-point numbers, exactly as `refined run`
+# writes and reads them (D-125, D-129): the shortest digits that read back as the value, nearest
+# it, laid out as Python's repr, and correctly rounded reading, both computed exactly with the
+# bignum module (refined_write_float, refined_format_float, refined_parse_float).
+#
+# This module is generated from tools/floats.dsl by tools/build.py; its test cases come from
+# tools/floatcases.py.
+
+floats is module
+floats purpose "Floating-point numbers as text and text as floating-point numbers, exactly as `refined run` writes and reads them (D-125, D-129)"
+floats path floats
+floats imports standard.machine
+floats imports standard.string
+floats imports standard.math
+floats imports standard.compare
+floats imports standard.convert
+floats imports standard.bits
+floats imports standard.logic
+floats imports standard.test
+floats imports numbers
+floats imports output
+floats imports regions
+floats imports bignum
+floats exports formatFloat
+floats exports parseFloat
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep the numbers and digits of a conversion in machine.state and to write text by address"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to write a number to standard output or standard error and to take a region's memory"
+systemCalls grants use system.calls none
+
+# machine.state bytes 40960 to 49151 belong to this module: five numbers of the bignum module (1,608 bytes each)
+# from 40960, a float's digits at 49008, its text at 49040, and what reading text found at 49104 (how many
+# significant digits) and 49112 (the bits of the result).
+# Writing a Float64 is Python's repr, which `refined run` uses: the shortest digits that read back as the same
+# value, the nearest of them to it, an exact tie going to the even digit (Steele and White's free-format method as
+# Burger and Dybvig give it, computed exactly with bignums); laid out with an exponent (`1e+16`, `1.5e-07`) when
+# the decimal point is 4 or more places left of the first digit or more than 16 right of it, and otherwise as
+# digits with a point and at least one digit after it (`100.0`, `0.001`); `nan`, `inf`, and `-inf` for the rest.
+# Reading text is correctly rounded, ties to even, as strtod and Python read it: the significand's digits (at
+# most 800 kept, and one more standing for any that are dropped and not zero) over a power of ten, divided
+# exactly to 54 bits and a remainder.
+numbersAt is constant
+numbersAt purpose "Where the five numbers start, in machine.state"
+numbersAt type Int64
+numbersAt value 40960
+
+digitsAt is constant
+digitsAt purpose "Where a float's digits are put, in machine.state"
+digitsAt type Int64
+digitsAt value 49008
+
+textAt is constant
+textAt purpose "Where a float's text is put together, in machine.state"
+textAt type Int64
+textAt value 49040
+
+keptAt is constant
+keptAt purpose "Where reading text leaves how many significant digits it kept, in machine.state"
+keptAt type Int64
+keptAt value 49104
+
+bitsAt is constant
+bitsAt purpose "Where reading text leaves the bits of the result, in machine.state"
+bitsAt type Int64
+bitsAt value 49112
+
+numberBytes is constant
+numberBytes purpose "The bytes of one of the bignum module's numbers"
+numberBytes type Int64
+numberBytes value 1608
+
+mostKept is constant
+mostKept purpose "How many significant digits of a text are kept exactly; more than any double's halfway point needs"
+mostKept type Int64
+mostKept value 800
+
+# ---------------------------------------------------------------- helpers
+numberAt is operation
+numberAt purpose "The address of one of the module's five numbers, 0 to 4"
+numberAt invariant none
+numberAt typeParameter none
+numberAt input slot Int64 copied
+numberAt output machine.Address
+numberAt outputOwnedBy none
+numberAt raises none
+numberAt effect use machine.memory
+numberAt uses memoryAccess
+numberAt memoryHeap false
+numberAt async false
+numberAt maxRecursion none
+numberAt label begin loopKind none
+numberAt label begin within none
+numberAt let none
+numberAt at begin do findState
+numberAt at begin do bytesOf
+numberAt at begin do startOf
+numberAt at begin do findNumber
+numberAt at begin return ok number
+
+findState is call
+findState in numberAt
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+bytesOf is call
+bytesOf in numberAt
+bytesOf invokes math.multiplyInt64
+bytesOf argument left Int64 slot copy
+bytesOf argument right Int64 numberBytes copy
+bytesOf result offset Int64
+bytesOf ownedBy none
+bytesOf cleanedBy none
+bytesOf borrows none
+bytesOf catch none
+bytesOf suppresses none
+
+startOf is call
+startOf in numberAt
+startOf invokes math.addInt64
+startOf argument left Int64 numbersAt copy
+startOf argument right Int64 offset copy
+startOf result start Int64
+startOf ownedBy none
+startOf cleanedBy none
+startOf borrows none
+startOf catch none
+startOf suppresses none
+
+findNumber is call
+findNumber in numberAt
+findNumber invokes machine.offset
+findNumber argument address machine.Address state copy
+findNumber argument bytes Int64 start copy
+findNumber result number machine.Address
+findNumber ownedBy none
+findNumber cleanedBy none
+findNumber borrows none
+findNumber catch none
+findNumber suppresses none
+
+stateAt is operation
+stateAt purpose "The address of a byte of machine.state"
+stateAt invariant none
+stateAt typeParameter none
+stateAt input offset Int64 copied
+stateAt output machine.Address
+stateAt outputOwnedBy none
+stateAt raises none
+stateAt effect use machine.memory
+stateAt uses memoryAccess
+stateAt memoryHeap false
+stateAt async false
+stateAt maxRecursion none
+stateAt label begin loopKind none
+stateAt label begin within none
+stateAt let none
+stateAt at begin do findState
+stateAt at begin do findPlace
+stateAt at begin return ok place
+
+findState is call
+findState in stateAt
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findPlace is call
+findPlace in stateAt
+findPlace invokes machine.offset
+findPlace argument address machine.Address state copy
+findPlace argument bytes Int64 offset copy
+findPlace result place machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+putByte is operation
+putByte purpose "Write a byte at a position of a text and give the position after it"
+putByte invariant none
+putByte typeParameter none
+putByte input target machine.Address copied
+putByte input at Int64 copied
+putByte input value Byte copied
+putByte output Int64
+putByte outputOwnedBy none
+putByte raises none
+putByte effect use machine.memory
+putByte uses memoryAccess
+putByte memoryHeap false
+putByte async false
+putByte maxRecursion none
+putByte label begin loopKind none
+putByte label begin within none
+putByte let one Int64 1 immutable
+putByte at begin do findPlace
+putByte at begin do storeIt
+putByte at begin do advance
+putByte at begin return ok after
+
+findPlace is call
+findPlace in putByte
+findPlace invokes machine.offset
+findPlace argument address machine.Address target copy
+findPlace argument bytes Int64 at copy
+findPlace result place machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+storeIt is call
+storeIt in putByte
+storeIt invokes machine.storeByte
+storeIt argument address machine.Address place copy
+storeIt argument value Byte value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+advance is call
+advance in putByte
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 one copy
+advance result after Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+putRange is operation
+putRange purpose "Copy bytes to a position of a text and give the position after them"
+putRange invariant none
+putRange typeParameter none
+putRange input target machine.Address copied
+putRange input at Int64 copied
+putRange input source machine.Address copied
+putRange input bytes Int64 copied
+putRange output Int64
+putRange outputOwnedBy none
+putRange raises none
+putRange effect use machine.memory
+putRange uses memoryAccess
+putRange memoryHeap false
+putRange async false
+putRange maxRecursion none
+putRange label begin loopKind none
+putRange label begin within none
+putRange let none
+putRange at begin do findPlace
+putRange at begin do copyIt
+putRange at begin do advance
+putRange at begin return ok after
+
+findPlace is call
+findPlace in putRange
+findPlace invokes machine.offset
+findPlace argument address machine.Address target copy
+findPlace argument bytes Int64 at copy
+findPlace result place machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+copyIt is call
+copyIt in putRange
+copyIt invokes machine.copy
+copyIt argument target machine.Address place copy
+copyIt argument source machine.Address source copy
+copyIt argument bytes Int64 bytes copy
+copyIt result none
+copyIt ownedBy none
+copyIt cleanedBy none
+copyIt borrows none
+copyIt catch none
+copyIt suppresses none
+
+advance is call
+advance in putRange
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 bytes copy
+advance result after Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+putZeros is operation
+putZeros purpose "Write a number of `0` digits at a position of a text and give the position after them"
+putZeros invariant none
+putZeros typeParameter none
+putZeros input target machine.Address copied
+putZeros input at Int64 copied
+putZeros input count Int64 copied
+putZeros output Int64
+putZeros outputOwnedBy none
+putZeros raises none
+putZeros effect use machine.memory
+putZeros uses memoryAccess
+putZeros memoryHeap false
+putZeros async false
+putZeros maxRecursion none
+putZeros label begin loopKind none
+putZeros label begin within none
+putZeros let zeroDigit Byte 48 immutable
+putZeros at begin do findPlace
+putZeros at begin do fillIt
+putZeros at begin do advance
+putZeros at begin return ok after
+
+findPlace is call
+findPlace in putZeros
+findPlace invokes machine.offset
+findPlace argument address machine.Address target copy
+findPlace argument bytes Int64 at copy
+findPlace result place machine.Address
+findPlace ownedBy none
+findPlace cleanedBy none
+findPlace borrows none
+findPlace catch none
+findPlace suppresses none
+
+fillIt is call
+fillIt in putZeros
+fillIt invokes machine.fill
+fillIt argument target machine.Address place copy
+fillIt argument value Byte zeroDigit copy
+fillIt argument bytes Int64 count copy
+fillIt result none
+fillIt ownedBy none
+fillIt cleanedBy none
+fillIt borrows none
+fillIt catch none
+fillIt suppresses none
+
+advance is call
+advance in putZeros
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 count copy
+advance result after Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+widthOf is operation
+widthOf purpose "How many bits a 64-bit value takes: 0 for 0"
+widthOf invariant none
+widthOf typeParameter none
+widthOf input value UInt64 copied
+widthOf output Int64
+widthOf outputOwnedBy none
+widthOf raises none
+widthOf effect none
+widthOf uses none
+widthOf memoryHeap false
+widthOf async false
+widthOf maxRecursion none
+widthOf label begin loopKind none
+widthOf label begin within none
+widthOf label eachBit loopKind while
+widthOf label eachBit within none
+widthOf label eachBit maxIterations sixtyFour
+widthOf label countBit loopKind none
+widthOf label countBit within eachBit
+widthOf label finish loopKind none
+widthOf label finish within none
+widthOf let rest UInt64 0 mutable
+widthOf let count Int64 0 mutable
+widthOf let sixtyFour Int64 64 immutable
+widthOf let zeroWide UInt64 0 immutable
+widthOf let one Int64 1 immutable
+widthOf at begin set rest value
+widthOf at begin goto eachBit
+widthOf at eachBit do doneCheck
+widthOf at eachBit branch if done goto finish else goto countBit
+widthOf at countBit do halve
+widthOf at countBit set rest halved
+widthOf at countBit do addBit
+widthOf at countBit set count counted
+widthOf at countBit goto eachBit
+widthOf at finish return ok count
+
+doneCheck is call
+doneCheck in widthOf
+doneCheck invokes compare.equalUInt64
+doneCheck argument left UInt64 rest copy
+doneCheck argument right UInt64 zeroWide copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+halve is call
+halve in widthOf
+halve invokes bits.shiftRightUInt64
+halve argument value UInt64 rest copy
+halve argument amount Int64 one copy
+halve result halved UInt64
+halve ownedBy none
+halve cleanedBy none
+halve borrows none
+halve catch none
+halve suppresses none
+
+addBit is call
+addBit in widthOf
+addBit invokes math.addInt64
+addBit argument left Int64 count copy
+addBit argument right Int64 one copy
+addBit result counted Int64
+addBit ownedBy none
+addBit cleanedBy none
+addBit borrows none
+addBit catch none
+addBit suppresses none
+
+beyond is operation
+beyond purpose "Whether a comparison (-1, 0, 1) is past a bound: above it, or at it when the bound is included"
+beyond invariant none
+beyond typeParameter none
+beyond input order Int64 copied
+beyond input included Bool copied
+beyond output Bool
+beyond outputOwnedBy none
+beyond raises none
+beyond effect none
+beyond uses none
+beyond memoryHeap false
+beyond async false
+beyond maxRecursion none
+beyond label begin loopKind none
+beyond label begin within none
+beyond let zero Int64 0 immutable
+beyond at begin do aboveCheck
+beyond at begin do atCheck
+beyond at begin do atIncluded
+beyond at begin do eitherCheck
+beyond at begin return ok past
+
+aboveCheck is call
+aboveCheck in beyond
+aboveCheck invokes compare.greaterThanInt64
+aboveCheck argument left Int64 order copy
+aboveCheck argument right Int64 zero copy
+aboveCheck result above Bool
+aboveCheck ownedBy none
+aboveCheck cleanedBy none
+aboveCheck borrows none
+aboveCheck catch none
+aboveCheck suppresses none
+
+atCheck is call
+atCheck in beyond
+atCheck invokes compare.equalInt64
+atCheck argument left Int64 order copy
+atCheck argument right Int64 zero copy
+atCheck result at Bool
+atCheck ownedBy none
+atCheck cleanedBy none
+atCheck borrows none
+atCheck catch none
+atCheck suppresses none
+
+atIncluded is call
+atIncluded in beyond
+atIncluded invokes logic.and
+atIncluded argument left Bool at copy
+atIncluded argument right Bool included copy
+atIncluded result atBound Bool
+atIncluded ownedBy none
+atIncluded cleanedBy none
+atIncluded borrows none
+atIncluded catch none
+atIncluded suppresses none
+
+eitherCheck is call
+eitherCheck in beyond
+eitherCheck invokes logic.or
+eitherCheck argument left Bool above copy
+eitherCheck argument right Bool atBound copy
+eitherCheck result past Bool
+eitherCheck ownedBy none
+eitherCheck cleanedBy none
+eitherCheck borrows none
+eitherCheck catch none
+eitherCheck suppresses none
+
+# ---------------------------------------------------------------- writing: the shortest digits
+shortestDigits is operation
+shortestDigits purpose "The shortest digits that read back as f times 2^e, the nearest to it, ties to the even digit, as ASCII at an address with their count stored at another; gives the decimal exponent k, the value being 0.d1d2... times 10^k"
+shortestDigits invariant none
+shortestDigits typeParameter none
+shortestDigits input f UInt64 copied
+shortestDigits input e Int64 copied
+shortestDigits input digits machine.Address copied
+shortestDigits input countAt machine.Address copied
+shortestDigits output Int64
+shortestDigits outputOwnedBy none
+shortestDigits raises none
+shortestDigits effect use machine.memory
+shortestDigits effect use system.calls
+shortestDigits uses memoryAccess
+shortestDigits uses systemCalls
+shortestDigits memoryHeap false
+shortestDigits async false
+shortestDigits maxRecursion none
+shortestDigits label begin loopKind none
+shortestDigits label begin within none
+shortestDigits label positiveExponent loopKind none
+shortestDigits label positiveExponent within none
+shortestDigits label positiveEqual loopKind none
+shortestDigits label positiveEqual within none
+shortestDigits label positiveUnequal loopKind none
+shortestDigits label positiveUnequal within none
+shortestDigits label negativeExponent loopKind none
+shortestDigits label negativeExponent within none
+shortestDigits label negativeEqual loopKind none
+shortestDigits label negativeEqual within none
+shortestDigits label negativeUnequal loopKind none
+shortestDigits label negativeUnequal within none
+shortestDigits label estimate loopKind none
+shortestDigits label estimate within none
+shortestDigits label scaleS loopKind none
+shortestDigits label scaleS within none
+shortestDigits label scaleR loopKind none
+shortestDigits label scaleR within none
+shortestDigits label fixup loopKind while
+shortestDigits label fixup within none
+shortestDigits label fixup maxIterations eight
+shortestDigits label raise loopKind none
+shortestDigits label raise within fixup
+shortestDigits label generate loopKind while
+shortestDigits label generate within none
+shortestDigits label generate maxIterations twenty
+shortestDigits label step loopKind none
+shortestDigits label step within generate
+shortestDigits label eachSubtract loopKind while
+shortestDigits label eachSubtract within generate
+shortestDigits label eachSubtract maxIterations ten
+shortestDigits label subtractOnce loopKind none
+shortestDigits label subtractOnce within eachSubtract
+shortestDigits label tests loopKind none
+shortestDigits label tests within generate
+shortestDigits label onlyHigh loopKind none
+shortestDigits label onlyHigh within generate
+shortestDigits label emit loopKind none
+shortestDigits label emit within generate
+shortestDigits label lowEnds loopKind none
+shortestDigits label lowEnds within none
+shortestDigits label both loopKind none
+shortestDigits label both within none
+shortestDigits label halfCheck loopKind none
+shortestDigits label halfCheck within none
+shortestDigits label tie loopKind none
+shortestDigits label tie within none
+shortestDigits label highDone loopKind none
+shortestDigits label highDone within none
+shortestDigits label lowDone loopKind none
+shortestDigits label lowDone within none
+shortestDigits let k Int64 0 mutable
+shortestDigits let count Int64 0 mutable
+shortestDigits let digit Int64 0 mutable
+shortestDigits let hiddenBit UInt64 4503599627370496 immutable
+shortestDigits let leastExponent Int64 -1074 immutable
+shortestDigits let tenWide UInt64 10 immutable
+shortestDigits let eight Int64 8 immutable
+shortestDigits let twenty Int64 20 immutable
+shortestDigits let ten Int64 10 immutable
+shortestDigits let zero Int64 0 immutable
+shortestDigits let one Int64 1 immutable
+shortestDigits let two Int64 2 immutable
+shortestDigits let three Int64 3 immutable
+shortestDigits let four Int64 4 immutable
+shortestDigits let oneWide UInt64 1 immutable
+shortestDigits let zeroWide UInt64 0 immutable
+shortestDigits let twoWide UInt64 2 immutable
+shortestDigits let fourWide UInt64 4 immutable
+shortestDigits let log10Of2 Int64 78913 immutable
+shortestDigits let eighteen Int64 18 immutable
+shortestDigits let zeroCharacter Byte 48 immutable
+shortestDigits at begin do findR
+shortestDigits at begin do findS
+shortestDigits at begin do findPlus
+shortestDigits at begin do findMinus
+shortestDigits at begin do findT
+shortestDigits at begin do lowBitOf
+shortestDigits at begin do evenCheck
+shortestDigits at begin do powerCheck
+shortestDigits at begin do normalCheck
+shortestDigits at begin do unequalCheck
+shortestDigits at begin do setR
+shortestDigits at begin do signCheck
+shortestDigits at begin branch if nonNegative goto positiveExponent else goto negativeExponent
+shortestDigits at positiveExponent branch if unequal goto positiveUnequal else goto positiveEqual
+shortestDigits at positiveEqual do rShift
+shortestDigits at positiveEqual do shiftR
+shortestDigits at positiveEqual do setS
+shortestDigits at positiveEqual do setPlus
+shortestDigits at positiveEqual do shiftPlus
+shortestDigits at positiveEqual do copyMinus
+shortestDigits at positiveEqual goto estimate
+shortestDigits at positiveUnequal do rShiftWide
+shortestDigits at positiveUnequal do shiftRWide
+shortestDigits at positiveUnequal do setSWide
+shortestDigits at positiveUnequal do setPlusWide
+shortestDigits at positiveUnequal do plusShift
+shortestDigits at positiveUnequal do shiftPlusWide
+shortestDigits at positiveUnequal do setMinusWide
+shortestDigits at positiveUnequal do shiftMinusWide
+shortestDigits at positiveUnequal goto estimate
+shortestDigits at negativeExponent branch if unequal goto negativeUnequal else goto negativeEqual
+shortestDigits at negativeEqual do shiftRNegative
+shortestDigits at negativeEqual do setSNegative
+shortestDigits at negativeEqual do sShift
+shortestDigits at negativeEqual do shiftSNegative
+shortestDigits at negativeEqual do setPlusNegative
+shortestDigits at negativeEqual do setMinusNegative
+shortestDigits at negativeEqual goto estimate
+shortestDigits at negativeUnequal do shiftRBoth
+shortestDigits at negativeUnequal do setSBoth
+shortestDigits at negativeUnequal do sShiftBoth
+shortestDigits at negativeUnequal do shiftSBoth
+shortestDigits at negativeUnequal do setPlusBoth
+shortestDigits at negativeUnequal do setMinusBoth
+shortestDigits at negativeUnequal goto estimate
+shortestDigits at estimate do widthOfF
+shortestDigits at estimate do topBit
+shortestDigits at estimate do logTwo
+shortestDigits at estimate do scaleLog
+shortestDigits at estimate do shiftLog
+shortestDigits at estimate do lowerGuess
+shortestDigits at estimate set k estimated
+shortestDigits at estimate do scaleCheck
+shortestDigits at estimate branch if upward goto scaleS else goto scaleR
+shortestDigits at scaleS do scaleDenominator
+shortestDigits at scaleS goto fixup
+shortestDigits at scaleR do negateK
+shortestDigits at scaleR do scaleNumerator
+shortestDigits at scaleR do scalePlus
+shortestDigits at scaleR do scaleMinus
+shortestDigits at scaleR goto fixup
+shortestDigits at fixup do copyHigh
+shortestDigits at fixup do addHigh
+shortestDigits at fixup do orderHigh
+shortestDigits at fixup do highCheck
+shortestDigits at fixup branch if tooLow goto raise else goto generate
+shortestDigits at raise do raiseS
+shortestDigits at raise do raiseK
+shortestDigits at raise set k raised
+shortestDigits at raise goto fixup
+shortestDigits at generate do roomCheck
+shortestDigits at generate branch if room goto step else goto lowDone
+shortestDigits at step do timesTenR
+shortestDigits at step do timesTenPlus
+shortestDigits at step do timesTenMinus
+shortestDigits at step set digit zero
+shortestDigits at step goto eachSubtract
+shortestDigits at eachSubtract do orderDigit
+shortestDigits at eachSubtract do subtractCheck
+shortestDigits at eachSubtract branch if canSubtract goto subtractOnce else goto tests
+shortestDigits at subtractOnce do takeS
+shortestDigits at subtractOnce do countDigit
+shortestDigits at subtractOnce set digit nextDigit
+shortestDigits at subtractOnce goto eachSubtract
+shortestDigits at tests do orderLow
+shortestDigits at tests do lowCheck
+shortestDigits at tests do copyRest
+shortestDigits at tests do addRest
+shortestDigits at tests do orderRest
+shortestDigits at tests do highNearCheck
+shortestDigits at tests branch if lowClose goto lowEnds else goto onlyHigh
+shortestDigits at onlyHigh branch if highClose goto highDone else goto emit
+shortestDigits at emit do digitByte
+shortestDigits at emit do digitCharacter
+shortestDigits at emit do findDigit
+shortestDigits at emit do storeDigit
+shortestDigits at emit do moreDigits
+shortestDigits at emit set count counted
+shortestDigits at emit goto generate
+shortestDigits at lowEnds branch if highClose goto both else goto lowDone
+shortestDigits at both do copyTwice
+shortestDigits at both do doubleRest
+shortestDigits at both do orderHalf
+shortestDigits at both do belowHalf
+shortestDigits at both branch if lower goto lowDone else goto halfCheck
+shortestDigits at halfCheck do aboveHalf
+shortestDigits at halfCheck branch if higher goto highDone else goto tie
+shortestDigits at tie do parityOf
+shortestDigits at tie do oddCheck
+shortestDigits at tie branch if odd goto highDone else goto lowDone
+shortestDigits at highDone do bumpDigit
+shortestDigits at highDone set digit bumped
+shortestDigits at highDone goto lowDone
+shortestDigits at lowDone do lastByte
+shortestDigits at lowDone do lastCharacter
+shortestDigits at lowDone do findLast
+shortestDigits at lowDone do storeLast
+shortestDigits at lowDone do finalCount
+shortestDigits at lowDone do storeCount
+shortestDigits at lowDone return ok k
+
+findR is call
+findR in shortestDigits
+findR invokes numberAt
+findR argument slot Int64 zero copy
+findR result r machine.Address
+findR ownedBy none
+findR cleanedBy none
+findR borrows none
+findR catch none
+findR suppresses none
+
+findS is call
+findS in shortestDigits
+findS invokes numberAt
+findS argument slot Int64 one copy
+findS result s machine.Address
+findS ownedBy none
+findS cleanedBy none
+findS borrows none
+findS catch none
+findS suppresses none
+
+findPlus is call
+findPlus in shortestDigits
+findPlus invokes numberAt
+findPlus argument slot Int64 two copy
+findPlus result plus machine.Address
+findPlus ownedBy none
+findPlus cleanedBy none
+findPlus borrows none
+findPlus catch none
+findPlus suppresses none
+
+findMinus is call
+findMinus in shortestDigits
+findMinus invokes numberAt
+findMinus argument slot Int64 three copy
+findMinus result minus machine.Address
+findMinus ownedBy none
+findMinus cleanedBy none
+findMinus borrows none
+findMinus catch none
+findMinus suppresses none
+
+findT is call
+findT in shortestDigits
+findT invokes numberAt
+findT argument slot Int64 four copy
+findT result t machine.Address
+findT ownedBy none
+findT cleanedBy none
+findT borrows none
+findT catch none
+findT suppresses none
+
+lowBitOf is call
+lowBitOf in shortestDigits
+lowBitOf invokes bits.andUInt64
+lowBitOf argument left UInt64 f copy
+lowBitOf argument right UInt64 oneWide copy
+lowBitOf result lowBit UInt64
+lowBitOf ownedBy none
+lowBitOf cleanedBy none
+lowBitOf borrows none
+lowBitOf catch none
+lowBitOf suppresses none
+
+evenCheck is call
+evenCheck in shortestDigits
+evenCheck invokes compare.equalUInt64
+evenCheck argument left UInt64 lowBit copy
+evenCheck argument right UInt64 zeroWide copy
+evenCheck result even Bool
+evenCheck ownedBy none
+evenCheck cleanedBy none
+evenCheck borrows none
+evenCheck catch none
+evenCheck suppresses none
+
+powerCheck is call
+powerCheck in shortestDigits
+powerCheck invokes compare.equalUInt64
+powerCheck argument left UInt64 f copy
+powerCheck argument right UInt64 hiddenBit copy
+powerCheck result isPower Bool
+powerCheck ownedBy none
+powerCheck cleanedBy none
+powerCheck borrows none
+powerCheck catch none
+powerCheck suppresses none
+
+normalCheck is call
+normalCheck in shortestDigits
+normalCheck invokes compare.greaterThanInt64
+normalCheck argument left Int64 e copy
+normalCheck argument right Int64 leastExponent copy
+normalCheck result aboveLeast Bool
+normalCheck ownedBy none
+normalCheck cleanedBy none
+normalCheck borrows none
+normalCheck catch none
+normalCheck suppresses none
+
+unequalCheck is call
+unequalCheck in shortestDigits
+unequalCheck invokes logic.and
+unequalCheck argument left Bool isPower copy
+unequalCheck argument right Bool aboveLeast copy
+unequalCheck result unequal Bool
+unequalCheck ownedBy none
+unequalCheck cleanedBy none
+unequalCheck borrows none
+unequalCheck catch none
+unequalCheck suppresses none
+
+setR is call
+setR in shortestDigits
+setR invokes bignum.setSmall
+setR argument number machine.Address r copy
+setR argument value UInt64 f copy
+setR result none
+setR ownedBy none
+setR cleanedBy none
+setR borrows none
+setR catch none
+setR suppresses none
+
+signCheck is call
+signCheck in shortestDigits
+signCheck invokes compare.greaterOrEqualInt64
+signCheck argument left Int64 e copy
+signCheck argument right Int64 zero copy
+signCheck result nonNegative Bool
+signCheck ownedBy none
+signCheck cleanedBy none
+signCheck borrows none
+signCheck catch none
+signCheck suppresses none
+
+rShift is call
+rShift in shortestDigits
+rShift invokes math.addInt64
+rShift argument left Int64 e copy
+rShift argument right Int64 one copy
+rShift result rBits Int64
+rShift ownedBy none
+rShift cleanedBy none
+rShift borrows none
+rShift catch none
+rShift suppresses none
+
+shiftR is call
+shiftR in shortestDigits
+shiftR invokes bignum.shiftLeft
+shiftR argument number machine.Address r copy
+shiftR argument amount Int64 rBits copy
+shiftR result none
+shiftR ownedBy none
+shiftR cleanedBy none
+shiftR borrows none
+shiftR catch none
+shiftR suppresses none
+
+setS is call
+setS in shortestDigits
+setS invokes bignum.setSmall
+setS argument number machine.Address s copy
+setS argument value UInt64 twoWide copy
+setS result none
+setS ownedBy none
+setS cleanedBy none
+setS borrows none
+setS catch none
+setS suppresses none
+
+setPlus is call
+setPlus in shortestDigits
+setPlus invokes bignum.setSmall
+setPlus argument number machine.Address plus copy
+setPlus argument value UInt64 oneWide copy
+setPlus result none
+setPlus ownedBy none
+setPlus cleanedBy none
+setPlus borrows none
+setPlus catch none
+setPlus suppresses none
+
+shiftPlus is call
+shiftPlus in shortestDigits
+shiftPlus invokes bignum.shiftLeft
+shiftPlus argument number machine.Address plus copy
+shiftPlus argument amount Int64 e copy
+shiftPlus result none
+shiftPlus ownedBy none
+shiftPlus cleanedBy none
+shiftPlus borrows none
+shiftPlus catch none
+shiftPlus suppresses none
+
+copyMinus is call
+copyMinus in shortestDigits
+copyMinus invokes bignum.copyNumber
+copyMinus argument target machine.Address minus copy
+copyMinus argument source machine.Address plus copy
+copyMinus result none
+copyMinus ownedBy none
+copyMinus cleanedBy none
+copyMinus borrows none
+copyMinus catch none
+copyMinus suppresses none
+
+rShiftWide is call
+rShiftWide in shortestDigits
+rShiftWide invokes math.addInt64
+rShiftWide argument left Int64 e copy
+rShiftWide argument right Int64 two copy
+rShiftWide result rBitsWide Int64
+rShiftWide ownedBy none
+rShiftWide cleanedBy none
+rShiftWide borrows none
+rShiftWide catch none
+rShiftWide suppresses none
+
+shiftRWide is call
+shiftRWide in shortestDigits
+shiftRWide invokes bignum.shiftLeft
+shiftRWide argument number machine.Address r copy
+shiftRWide argument amount Int64 rBitsWide copy
+shiftRWide result none
+shiftRWide ownedBy none
+shiftRWide cleanedBy none
+shiftRWide borrows none
+shiftRWide catch none
+shiftRWide suppresses none
+
+setSWide is call
+setSWide in shortestDigits
+setSWide invokes bignum.setSmall
+setSWide argument number machine.Address s copy
+setSWide argument value UInt64 fourWide copy
+setSWide result none
+setSWide ownedBy none
+setSWide cleanedBy none
+setSWide borrows none
+setSWide catch none
+setSWide suppresses none
+
+setPlusWide is call
+setPlusWide in shortestDigits
+setPlusWide invokes bignum.setSmall
+setPlusWide argument number machine.Address plus copy
+setPlusWide argument value UInt64 oneWide copy
+setPlusWide result none
+setPlusWide ownedBy none
+setPlusWide cleanedBy none
+setPlusWide borrows none
+setPlusWide catch none
+setPlusWide suppresses none
+
+plusShift is call
+plusShift in shortestDigits
+plusShift invokes math.addInt64
+plusShift argument left Int64 e copy
+plusShift argument right Int64 one copy
+plusShift result plusBits Int64
+plusShift ownedBy none
+plusShift cleanedBy none
+plusShift borrows none
+plusShift catch none
+plusShift suppresses none
+
+shiftPlusWide is call
+shiftPlusWide in shortestDigits
+shiftPlusWide invokes bignum.shiftLeft
+shiftPlusWide argument number machine.Address plus copy
+shiftPlusWide argument amount Int64 plusBits copy
+shiftPlusWide result none
+shiftPlusWide ownedBy none
+shiftPlusWide cleanedBy none
+shiftPlusWide borrows none
+shiftPlusWide catch none
+shiftPlusWide suppresses none
+
+setMinusWide is call
+setMinusWide in shortestDigits
+setMinusWide invokes bignum.setSmall
+setMinusWide argument number machine.Address minus copy
+setMinusWide argument value UInt64 oneWide copy
+setMinusWide result none
+setMinusWide ownedBy none
+setMinusWide cleanedBy none
+setMinusWide borrows none
+setMinusWide catch none
+setMinusWide suppresses none
+
+shiftMinusWide is call
+shiftMinusWide in shortestDigits
+shiftMinusWide invokes bignum.shiftLeft
+shiftMinusWide argument number machine.Address minus copy
+shiftMinusWide argument amount Int64 e copy
+shiftMinusWide result none
+shiftMinusWide ownedBy none
+shiftMinusWide cleanedBy none
+shiftMinusWide borrows none
+shiftMinusWide catch none
+shiftMinusWide suppresses none
+
+shiftRNegative is call
+shiftRNegative in shortestDigits
+shiftRNegative invokes bignum.shiftLeft
+shiftRNegative argument number machine.Address r copy
+shiftRNegative argument amount Int64 one copy
+shiftRNegative result none
+shiftRNegative ownedBy none
+shiftRNegative cleanedBy none
+shiftRNegative borrows none
+shiftRNegative catch none
+shiftRNegative suppresses none
+
+setSNegative is call
+setSNegative in shortestDigits
+setSNegative invokes bignum.setSmall
+setSNegative argument number machine.Address s copy
+setSNegative argument value UInt64 oneWide copy
+setSNegative result none
+setSNegative ownedBy none
+setSNegative cleanedBy none
+setSNegative borrows none
+setSNegative catch none
+setSNegative suppresses none
+
+sShift is call
+sShift in shortestDigits
+sShift invokes math.subtractInt64
+sShift argument left Int64 one copy
+sShift argument right Int64 e copy
+sShift result sBits Int64
+sShift ownedBy none
+sShift cleanedBy none
+sShift borrows none
+sShift catch none
+sShift suppresses none
+
+shiftSNegative is call
+shiftSNegative in shortestDigits
+shiftSNegative invokes bignum.shiftLeft
+shiftSNegative argument number machine.Address s copy
+shiftSNegative argument amount Int64 sBits copy
+shiftSNegative result none
+shiftSNegative ownedBy none
+shiftSNegative cleanedBy none
+shiftSNegative borrows none
+shiftSNegative catch none
+shiftSNegative suppresses none
+
+setPlusNegative is call
+setPlusNegative in shortestDigits
+setPlusNegative invokes bignum.setSmall
+setPlusNegative argument number machine.Address plus copy
+setPlusNegative argument value UInt64 oneWide copy
+setPlusNegative result none
+setPlusNegative ownedBy none
+setPlusNegative cleanedBy none
+setPlusNegative borrows none
+setPlusNegative catch none
+setPlusNegative suppresses none
+
+setMinusNegative is call
+setMinusNegative in shortestDigits
+setMinusNegative invokes bignum.setSmall
+setMinusNegative argument number machine.Address minus copy
+setMinusNegative argument value UInt64 oneWide copy
+setMinusNegative result none
+setMinusNegative ownedBy none
+setMinusNegative cleanedBy none
+setMinusNegative borrows none
+setMinusNegative catch none
+setMinusNegative suppresses none
+
+shiftRBoth is call
+shiftRBoth in shortestDigits
+shiftRBoth invokes bignum.shiftLeft
+shiftRBoth argument number machine.Address r copy
+shiftRBoth argument amount Int64 two copy
+shiftRBoth result none
+shiftRBoth ownedBy none
+shiftRBoth cleanedBy none
+shiftRBoth borrows none
+shiftRBoth catch none
+shiftRBoth suppresses none
+
+setSBoth is call
+setSBoth in shortestDigits
+setSBoth invokes bignum.setSmall
+setSBoth argument number machine.Address s copy
+setSBoth argument value UInt64 oneWide copy
+setSBoth result none
+setSBoth ownedBy none
+setSBoth cleanedBy none
+setSBoth borrows none
+setSBoth catch none
+setSBoth suppresses none
+
+sShiftBoth is call
+sShiftBoth in shortestDigits
+sShiftBoth invokes math.subtractInt64
+sShiftBoth argument left Int64 two copy
+sShiftBoth argument right Int64 e copy
+sShiftBoth result sBitsBoth Int64
+sShiftBoth ownedBy none
+sShiftBoth cleanedBy none
+sShiftBoth borrows none
+sShiftBoth catch none
+sShiftBoth suppresses none
+
+shiftSBoth is call
+shiftSBoth in shortestDigits
+shiftSBoth invokes bignum.shiftLeft
+shiftSBoth argument number machine.Address s copy
+shiftSBoth argument amount Int64 sBitsBoth copy
+shiftSBoth result none
+shiftSBoth ownedBy none
+shiftSBoth cleanedBy none
+shiftSBoth borrows none
+shiftSBoth catch none
+shiftSBoth suppresses none
+
+setPlusBoth is call
+setPlusBoth in shortestDigits
+setPlusBoth invokes bignum.setSmall
+setPlusBoth argument number machine.Address plus copy
+setPlusBoth argument value UInt64 twoWide copy
+setPlusBoth result none
+setPlusBoth ownedBy none
+setPlusBoth cleanedBy none
+setPlusBoth borrows none
+setPlusBoth catch none
+setPlusBoth suppresses none
+
+setMinusBoth is call
+setMinusBoth in shortestDigits
+setMinusBoth invokes bignum.setSmall
+setMinusBoth argument number machine.Address minus copy
+setMinusBoth argument value UInt64 oneWide copy
+setMinusBoth result none
+setMinusBoth ownedBy none
+setMinusBoth cleanedBy none
+setMinusBoth borrows none
+setMinusBoth catch none
+setMinusBoth suppresses none
+
+widthOfF is call
+widthOfF in shortestDigits
+widthOfF invokes widthOf
+widthOfF argument value UInt64 f copy
+widthOfF result width Int64
+widthOfF ownedBy none
+widthOfF cleanedBy none
+widthOfF borrows none
+widthOfF catch none
+widthOfF suppresses none
+
+topBit is call
+topBit in shortestDigits
+topBit invokes math.subtractInt64
+topBit argument left Int64 width copy
+topBit argument right Int64 one copy
+topBit result below Int64
+topBit ownedBy none
+topBit cleanedBy none
+topBit borrows none
+topBit catch none
+topBit suppresses none
+
+logTwo is call
+logTwo in shortestDigits
+logTwo invokes math.addInt64
+logTwo argument left Int64 below copy
+logTwo argument right Int64 e copy
+logTwo result lowLog Int64
+logTwo ownedBy none
+logTwo cleanedBy none
+logTwo borrows none
+logTwo catch none
+logTwo suppresses none
+
+scaleLog is call
+scaleLog in shortestDigits
+scaleLog invokes math.multiplyInt64
+scaleLog argument left Int64 lowLog copy
+scaleLog argument right Int64 log10Of2 copy
+scaleLog result scaled Int64
+scaleLog ownedBy none
+scaleLog cleanedBy none
+scaleLog borrows none
+scaleLog catch none
+scaleLog suppresses none
+
+shiftLog is call
+shiftLog in shortestDigits
+shiftLog invokes bits.shiftRightInt64
+shiftLog argument value Int64 scaled copy
+shiftLog argument amount Int64 eighteen copy
+shiftLog result guess Int64
+shiftLog ownedBy none
+shiftLog cleanedBy none
+shiftLog borrows none
+shiftLog catch none
+shiftLog suppresses none
+
+lowerGuess is call
+lowerGuess in shortestDigits
+lowerGuess invokes math.subtractInt64
+lowerGuess argument left Int64 guess copy
+lowerGuess argument right Int64 one copy
+lowerGuess result estimated Int64
+lowerGuess ownedBy none
+lowerGuess cleanedBy none
+lowerGuess borrows none
+lowerGuess catch none
+lowerGuess suppresses none
+
+scaleCheck is call
+scaleCheck in shortestDigits
+scaleCheck invokes compare.greaterOrEqualInt64
+scaleCheck argument left Int64 k copy
+scaleCheck argument right Int64 zero copy
+scaleCheck result upward Bool
+scaleCheck ownedBy none
+scaleCheck cleanedBy none
+scaleCheck borrows none
+scaleCheck catch none
+scaleCheck suppresses none
+
+scaleDenominator is call
+scaleDenominator in shortestDigits
+scaleDenominator invokes bignum.multiplyPowerOfTen
+scaleDenominator argument number machine.Address s copy
+scaleDenominator argument power Int64 k copy
+scaleDenominator result none
+scaleDenominator ownedBy none
+scaleDenominator cleanedBy none
+scaleDenominator borrows none
+scaleDenominator catch none
+scaleDenominator suppresses none
+
+negateK is call
+negateK in shortestDigits
+negateK invokes math.negateInt64
+negateK argument value Int64 k copy
+negateK result power Int64
+negateK ownedBy none
+negateK cleanedBy none
+negateK borrows none
+negateK catch none
+negateK suppresses none
+
+scaleNumerator is call
+scaleNumerator in shortestDigits
+scaleNumerator invokes bignum.multiplyPowerOfTen
+scaleNumerator argument number machine.Address r copy
+scaleNumerator argument power Int64 power copy
+scaleNumerator result none
+scaleNumerator ownedBy none
+scaleNumerator cleanedBy none
+scaleNumerator borrows none
+scaleNumerator catch none
+scaleNumerator suppresses none
+
+scalePlus is call
+scalePlus in shortestDigits
+scalePlus invokes bignum.multiplyPowerOfTen
+scalePlus argument number machine.Address plus copy
+scalePlus argument power Int64 power copy
+scalePlus result none
+scalePlus ownedBy none
+scalePlus cleanedBy none
+scalePlus borrows none
+scalePlus catch none
+scalePlus suppresses none
+
+scaleMinus is call
+scaleMinus in shortestDigits
+scaleMinus invokes bignum.multiplyPowerOfTen
+scaleMinus argument number machine.Address minus copy
+scaleMinus argument power Int64 power copy
+scaleMinus result none
+scaleMinus ownedBy none
+scaleMinus cleanedBy none
+scaleMinus borrows none
+scaleMinus catch none
+scaleMinus suppresses none
+
+copyHigh is call
+copyHigh in shortestDigits
+copyHigh invokes bignum.copyNumber
+copyHigh argument target machine.Address t copy
+copyHigh argument source machine.Address r copy
+copyHigh result none
+copyHigh ownedBy none
+copyHigh cleanedBy none
+copyHigh borrows none
+copyHigh catch none
+copyHigh suppresses none
+
+addHigh is call
+addHigh in shortestDigits
+addHigh invokes bignum.addNumber
+addHigh argument target machine.Address t copy
+addHigh argument addend machine.Address plus copy
+addHigh result none
+addHigh ownedBy none
+addHigh cleanedBy none
+addHigh borrows none
+addHigh catch none
+addHigh suppresses none
+
+orderHigh is call
+orderHigh in shortestDigits
+orderHigh invokes bignum.compareNumbers
+orderHigh argument left machine.Address t copy
+orderHigh argument right machine.Address s copy
+orderHigh result highOrder Int64
+orderHigh ownedBy none
+orderHigh cleanedBy none
+orderHigh borrows none
+orderHigh catch none
+orderHigh suppresses none
+
+highCheck is call
+highCheck in shortestDigits
+highCheck invokes beyond
+highCheck argument order Int64 highOrder copy
+highCheck argument included Bool even copy
+highCheck result tooLow Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+raiseS is call
+raiseS in shortestDigits
+raiseS invokes bignum.multiplySmall
+raiseS argument number machine.Address s copy
+raiseS argument factor UInt64 tenWide copy
+raiseS result none
+raiseS ownedBy none
+raiseS cleanedBy none
+raiseS borrows none
+raiseS catch none
+raiseS suppresses none
+
+raiseK is call
+raiseK in shortestDigits
+raiseK invokes math.addInt64
+raiseK argument left Int64 k copy
+raiseK argument right Int64 one copy
+raiseK result raised Int64
+raiseK ownedBy none
+raiseK cleanedBy none
+raiseK borrows none
+raiseK catch none
+raiseK suppresses none
+
+roomCheck is call
+roomCheck in shortestDigits
+roomCheck invokes compare.lessThanInt64
+roomCheck argument left Int64 count copy
+roomCheck argument right Int64 twenty copy
+roomCheck result room Bool
+roomCheck ownedBy none
+roomCheck cleanedBy none
+roomCheck borrows none
+roomCheck catch none
+roomCheck suppresses none
+
+timesTenR is call
+timesTenR in shortestDigits
+timesTenR invokes bignum.multiplySmall
+timesTenR argument number machine.Address r copy
+timesTenR argument factor UInt64 tenWide copy
+timesTenR result none
+timesTenR ownedBy none
+timesTenR cleanedBy none
+timesTenR borrows none
+timesTenR catch none
+timesTenR suppresses none
+
+timesTenPlus is call
+timesTenPlus in shortestDigits
+timesTenPlus invokes bignum.multiplySmall
+timesTenPlus argument number machine.Address plus copy
+timesTenPlus argument factor UInt64 tenWide copy
+timesTenPlus result none
+timesTenPlus ownedBy none
+timesTenPlus cleanedBy none
+timesTenPlus borrows none
+timesTenPlus catch none
+timesTenPlus suppresses none
+
+timesTenMinus is call
+timesTenMinus in shortestDigits
+timesTenMinus invokes bignum.multiplySmall
+timesTenMinus argument number machine.Address minus copy
+timesTenMinus argument factor UInt64 tenWide copy
+timesTenMinus result none
+timesTenMinus ownedBy none
+timesTenMinus cleanedBy none
+timesTenMinus borrows none
+timesTenMinus catch none
+timesTenMinus suppresses none
+
+orderDigit is call
+orderDigit in shortestDigits
+orderDigit invokes bignum.compareNumbers
+orderDigit argument left machine.Address r copy
+orderDigit argument right machine.Address s copy
+orderDigit result digitOrder Int64
+orderDigit ownedBy none
+orderDigit cleanedBy none
+orderDigit borrows none
+orderDigit catch none
+orderDigit suppresses none
+
+subtractCheck is call
+subtractCheck in shortestDigits
+subtractCheck invokes compare.greaterOrEqualInt64
+subtractCheck argument left Int64 digitOrder copy
+subtractCheck argument right Int64 zero copy
+subtractCheck result canSubtract Bool
+subtractCheck ownedBy none
+subtractCheck cleanedBy none
+subtractCheck borrows none
+subtractCheck catch none
+subtractCheck suppresses none
+
+takeS is call
+takeS in shortestDigits
+takeS invokes bignum.subtractNumber
+takeS argument target machine.Address r copy
+takeS argument subtrahend machine.Address s copy
+takeS result none
+takeS ownedBy none
+takeS cleanedBy none
+takeS borrows none
+takeS catch none
+takeS suppresses none
+
+countDigit is call
+countDigit in shortestDigits
+countDigit invokes math.addInt64
+countDigit argument left Int64 digit copy
+countDigit argument right Int64 one copy
+countDigit result nextDigit Int64
+countDigit ownedBy none
+countDigit cleanedBy none
+countDigit borrows none
+countDigit catch none
+countDigit suppresses none
+
+orderLow is call
+orderLow in shortestDigits
+orderLow invokes bignum.compareNumbers
+orderLow argument left machine.Address minus copy
+orderLow argument right machine.Address r copy
+orderLow result lowOrder Int64
+orderLow ownedBy none
+orderLow cleanedBy none
+orderLow borrows none
+orderLow catch none
+orderLow suppresses none
+
+lowCheck is call
+lowCheck in shortestDigits
+lowCheck invokes beyond
+lowCheck argument order Int64 lowOrder copy
+lowCheck argument included Bool even copy
+lowCheck result lowClose Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+copyRest is call
+copyRest in shortestDigits
+copyRest invokes bignum.copyNumber
+copyRest argument target machine.Address t copy
+copyRest argument source machine.Address r copy
+copyRest result none
+copyRest ownedBy none
+copyRest cleanedBy none
+copyRest borrows none
+copyRest catch none
+copyRest suppresses none
+
+addRest is call
+addRest in shortestDigits
+addRest invokes bignum.addNumber
+addRest argument target machine.Address t copy
+addRest argument addend machine.Address plus copy
+addRest result none
+addRest ownedBy none
+addRest cleanedBy none
+addRest borrows none
+addRest catch none
+addRest suppresses none
+
+orderRest is call
+orderRest in shortestDigits
+orderRest invokes bignum.compareNumbers
+orderRest argument left machine.Address t copy
+orderRest argument right machine.Address s copy
+orderRest result restOrder Int64
+orderRest ownedBy none
+orderRest cleanedBy none
+orderRest borrows none
+orderRest catch none
+orderRest suppresses none
+
+highNearCheck is call
+highNearCheck in shortestDigits
+highNearCheck invokes beyond
+highNearCheck argument order Int64 restOrder copy
+highNearCheck argument included Bool even copy
+highNearCheck result highClose Bool
+highNearCheck ownedBy none
+highNearCheck cleanedBy none
+highNearCheck borrows none
+highNearCheck catch none
+highNearCheck suppresses none
+
+digitByte is call
+digitByte in shortestDigits
+digitByte invokes convert.int64ToByte
+digitByte argument value Int64 digit copy
+digitByte result emitted Byte
+digitByte ownedBy none
+digitByte cleanedBy none
+digitByte borrows none
+digitByte catch none
+digitByte suppresses none
+
+digitCharacter is call
+digitCharacter in shortestDigits
+digitCharacter invokes math.addByte
+digitCharacter argument left Byte emitted copy
+digitCharacter argument right Byte zeroCharacter copy
+digitCharacter result character Byte
+digitCharacter ownedBy none
+digitCharacter cleanedBy none
+digitCharacter borrows none
+digitCharacter catch none
+digitCharacter suppresses none
+
+findDigit is call
+findDigit in shortestDigits
+findDigit invokes machine.offset
+findDigit argument address machine.Address digits copy
+findDigit argument bytes Int64 count copy
+findDigit result place machine.Address
+findDigit ownedBy none
+findDigit cleanedBy none
+findDigit borrows none
+findDigit catch none
+findDigit suppresses none
+
+storeDigit is call
+storeDigit in shortestDigits
+storeDigit invokes machine.storeByte
+storeDigit argument address machine.Address place copy
+storeDigit argument value Byte character copy
+storeDigit result none
+storeDigit ownedBy none
+storeDigit cleanedBy none
+storeDigit borrows none
+storeDigit catch none
+storeDigit suppresses none
+
+moreDigits is call
+moreDigits in shortestDigits
+moreDigits invokes math.addInt64
+moreDigits argument left Int64 count copy
+moreDigits argument right Int64 one copy
+moreDigits result counted Int64
+moreDigits ownedBy none
+moreDigits cleanedBy none
+moreDigits borrows none
+moreDigits catch none
+moreDigits suppresses none
+
+copyTwice is call
+copyTwice in shortestDigits
+copyTwice invokes bignum.copyNumber
+copyTwice argument target machine.Address t copy
+copyTwice argument source machine.Address r copy
+copyTwice result none
+copyTwice ownedBy none
+copyTwice cleanedBy none
+copyTwice borrows none
+copyTwice catch none
+copyTwice suppresses none
+
+doubleRest is call
+doubleRest in shortestDigits
+doubleRest invokes bignum.shiftLeft
+doubleRest argument number machine.Address t copy
+doubleRest argument amount Int64 one copy
+doubleRest result none
+doubleRest ownedBy none
+doubleRest cleanedBy none
+doubleRest borrows none
+doubleRest catch none
+doubleRest suppresses none
+
+orderHalf is call
+orderHalf in shortestDigits
+orderHalf invokes bignum.compareNumbers
+orderHalf argument left machine.Address t copy
+orderHalf argument right machine.Address s copy
+orderHalf result halfOrder Int64
+orderHalf ownedBy none
+orderHalf cleanedBy none
+orderHalf borrows none
+orderHalf catch none
+orderHalf suppresses none
+
+belowHalf is call
+belowHalf in shortestDigits
+belowHalf invokes compare.lessThanInt64
+belowHalf argument left Int64 halfOrder copy
+belowHalf argument right Int64 zero copy
+belowHalf result lower Bool
+belowHalf ownedBy none
+belowHalf cleanedBy none
+belowHalf borrows none
+belowHalf catch none
+belowHalf suppresses none
+
+aboveHalf is call
+aboveHalf in shortestDigits
+aboveHalf invokes compare.greaterThanInt64
+aboveHalf argument left Int64 halfOrder copy
+aboveHalf argument right Int64 zero copy
+aboveHalf result higher Bool
+aboveHalf ownedBy none
+aboveHalf cleanedBy none
+aboveHalf borrows none
+aboveHalf catch none
+aboveHalf suppresses none
+
+parityOf is call
+parityOf in shortestDigits
+parityOf invokes math.remainderInt64
+parityOf argument left Int64 digit copy
+parityOf argument right Int64 two copy
+parityOf result parity Int64
+parityOf ownedBy none
+parityOf cleanedBy none
+parityOf borrows none
+parityOf catch none
+parityOf suppresses none
+
+oddCheck is call
+oddCheck in shortestDigits
+oddCheck invokes compare.equalInt64
+oddCheck argument left Int64 parity copy
+oddCheck argument right Int64 one copy
+oddCheck result odd Bool
+oddCheck ownedBy none
+oddCheck cleanedBy none
+oddCheck borrows none
+oddCheck catch none
+oddCheck suppresses none
+
+bumpDigit is call
+bumpDigit in shortestDigits
+bumpDigit invokes math.addInt64
+bumpDigit argument left Int64 digit copy
+bumpDigit argument right Int64 one copy
+bumpDigit result bumped Int64
+bumpDigit ownedBy none
+bumpDigit cleanedBy none
+bumpDigit borrows none
+bumpDigit catch none
+bumpDigit suppresses none
+
+lastByte is call
+lastByte in shortestDigits
+lastByte invokes convert.int64ToByte
+lastByte argument value Int64 digit copy
+lastByte result lastEmitted Byte
+lastByte ownedBy none
+lastByte cleanedBy none
+lastByte borrows none
+lastByte catch none
+lastByte suppresses none
+
+lastCharacter is call
+lastCharacter in shortestDigits
+lastCharacter invokes math.addByte
+lastCharacter argument left Byte lastEmitted copy
+lastCharacter argument right Byte zeroCharacter copy
+lastCharacter result lastChar Byte
+lastCharacter ownedBy none
+lastCharacter cleanedBy none
+lastCharacter borrows none
+lastCharacter catch none
+lastCharacter suppresses none
+
+findLast is call
+findLast in shortestDigits
+findLast invokes machine.offset
+findLast argument address machine.Address digits copy
+findLast argument bytes Int64 count copy
+findLast result lastPlace machine.Address
+findLast ownedBy none
+findLast cleanedBy none
+findLast borrows none
+findLast catch none
+findLast suppresses none
+
+storeLast is call
+storeLast in shortestDigits
+storeLast invokes machine.storeByte
+storeLast argument address machine.Address lastPlace copy
+storeLast argument value Byte lastChar copy
+storeLast result none
+storeLast ownedBy none
+storeLast cleanedBy none
+storeLast borrows none
+storeLast catch none
+storeLast suppresses none
+
+finalCount is call
+finalCount in shortestDigits
+finalCount invokes math.addInt64
+finalCount argument left Int64 count copy
+finalCount argument right Int64 one copy
+finalCount result total Int64
+finalCount ownedBy none
+finalCount cleanedBy none
+finalCount borrows none
+finalCount catch none
+finalCount suppresses none
+
+storeCount is call
+storeCount in shortestDigits
+storeCount invokes machine.storeInt64
+storeCount argument address machine.Address countAt copy
+storeCount argument value Int64 total copy
+storeCount result none
+storeCount ownedBy none
+storeCount cleanedBy none
+storeCount borrows none
+storeCount catch none
+storeCount suppresses none
+
+# ---------------------------------------------------------------- writing: the layout
+layout is operation
+layout purpose "Lay digits out as Python's repr does, at a position of a text, and give the position after them: with an exponent when the decimal exponent is -4 or less or above 16, otherwise with a point"
+layout invariant none
+layout typeParameter none
+layout input target machine.Address copied
+layout input start Int64 copied
+layout input digits machine.Address copied
+layout input count Int64 copied
+layout input point Int64 copied
+layout output Int64
+layout outputOwnedBy none
+layout raises none
+layout effect use machine.memory
+layout uses memoryAccess
+layout memoryHeap false
+layout async false
+layout maxRecursion none
+layout label begin loopKind none
+layout label begin within none
+layout label exponentForm loopKind none
+layout label exponentForm within none
+layout label fraction loopKind none
+layout label fraction within none
+layout label exponent loopKind none
+layout label exponent within none
+layout label minusSign loopKind none
+layout label minusSign within none
+layout label plusSign loopKind none
+layout label plusSign within none
+layout label twoDigits loopKind none
+layout label twoDigits within none
+layout label leadingZero loopKind none
+layout label leadingZero within none
+layout label powerDigits loopKind none
+layout label powerDigits within none
+layout label fixedForm loopKind none
+layout label fixedForm within none
+layout label leadingFraction loopKind none
+layout label leadingFraction within none
+layout label wholeDigits loopKind none
+layout label wholeDigits within none
+layout label splitDigits loopKind none
+layout label splitDigits within none
+layout label trailingZeros loopKind none
+layout label trailingZeros within none
+layout let at Int64 0 mutable
+layout let power Int64 0 mutable
+layout let sixteen Int64 16 immutable
+layout let minusFour Int64 -4 immutable
+layout let dot Byte 46 immutable
+layout let zeroByte Byte 48 immutable
+layout let one Int64 1 immutable
+layout let letterE Byte 101 immutable
+layout let zero Int64 0 immutable
+layout let minusByte Byte 45 immutable
+layout let plusByte Byte 43 immutable
+layout let ten Int64 10 immutable
+layout at begin set at start
+layout at begin do smallCheck
+layout at begin do largeCheck
+layout at begin do exponentCheck
+layout at begin branch if useExponent goto exponentForm else goto fixedForm
+layout at exponentForm do firstDigit
+layout at exponentForm set at afterFirst
+layout at exponentForm do moreCheck
+layout at exponentForm branch if more goto fraction else goto exponent
+layout at fraction do writeDot
+layout at fraction do findRest
+layout at fraction do restCount
+layout at fraction do writeRest
+layout at fraction set at afterRest
+layout at fraction goto exponent
+layout at exponent do writeE
+layout at exponent set at afterE
+layout at exponent do powerOf
+layout at exponent set power decimalPower
+layout at exponent do negativeCheck
+layout at exponent branch if negative goto minusSign else goto plusSign
+layout at minusSign do writeMinus
+layout at minusSign set at afterMinus
+layout at minusSign do flip
+layout at minusSign set power flipped
+layout at minusSign goto twoDigits
+layout at plusSign do writePlus
+layout at plusSign set at afterPlus
+layout at plusSign goto twoDigits
+layout at twoDigits do oneDigitCheck
+layout at twoDigits branch if oneDigit goto leadingZero else goto powerDigits
+layout at leadingZero do writeLeading
+layout at leadingZero set at afterLeading
+layout at leadingZero goto powerDigits
+layout at powerDigits do findPower
+layout at powerDigits do writePower
+layout at powerDigits do afterPower
+layout at powerDigits return ok ended
+layout at fixedForm do leadCheck
+layout at fixedForm branch if noWhole goto leadingFraction else goto wholeDigits
+layout at leadingFraction do writeZero
+layout at leadingFraction do writePoint
+layout at leadingFraction do zerosOf
+layout at leadingFraction do writeZeros
+layout at leadingFraction do writeAll
+layout at leadingFraction return ok afterAll
+layout at wholeDigits do insideCheck
+layout at wholeDigits branch if inside goto splitDigits else goto trailingZeros
+layout at splitDigits do writeWhole
+layout at splitDigits do writeSplit
+layout at splitDigits do findFraction
+layout at splitDigits do fractionCount
+layout at splitDigits do writeFraction
+layout at splitDigits return ok afterFraction
+layout at trailingZeros do writeDigits
+layout at trailingZeros do zerosNeeded
+layout at trailingZeros do writePadding
+layout at trailingZeros do writeTailDot
+layout at trailingZeros do writeTailZero
+layout at trailingZeros return ok afterTail
+
+smallCheck is call
+smallCheck in layout
+smallCheck invokes compare.lessOrEqualInt64
+smallCheck argument left Int64 point copy
+smallCheck argument right Int64 minusFour copy
+smallCheck result small Bool
+smallCheck ownedBy none
+smallCheck cleanedBy none
+smallCheck borrows none
+smallCheck catch none
+smallCheck suppresses none
+
+largeCheck is call
+largeCheck in layout
+largeCheck invokes compare.greaterThanInt64
+largeCheck argument left Int64 point copy
+largeCheck argument right Int64 sixteen copy
+largeCheck result large Bool
+largeCheck ownedBy none
+largeCheck cleanedBy none
+largeCheck borrows none
+largeCheck catch none
+largeCheck suppresses none
+
+exponentCheck is call
+exponentCheck in layout
+exponentCheck invokes logic.or
+exponentCheck argument left Bool small copy
+exponentCheck argument right Bool large copy
+exponentCheck result useExponent Bool
+exponentCheck ownedBy none
+exponentCheck cleanedBy none
+exponentCheck borrows none
+exponentCheck catch none
+exponentCheck suppresses none
+
+firstDigit is call
+firstDigit in layout
+firstDigit invokes putRange
+firstDigit argument target machine.Address target copy
+firstDigit argument at Int64 at copy
+firstDigit argument source machine.Address digits copy
+firstDigit argument bytes Int64 one copy
+firstDigit result afterFirst Int64
+firstDigit ownedBy none
+firstDigit cleanedBy none
+firstDigit borrows none
+firstDigit catch none
+firstDigit suppresses none
+
+moreCheck is call
+moreCheck in layout
+moreCheck invokes compare.greaterThanInt64
+moreCheck argument left Int64 count copy
+moreCheck argument right Int64 one copy
+moreCheck result more Bool
+moreCheck ownedBy none
+moreCheck cleanedBy none
+moreCheck borrows none
+moreCheck catch none
+moreCheck suppresses none
+
+writeDot is call
+writeDot in layout
+writeDot invokes putByte
+writeDot argument target machine.Address target copy
+writeDot argument at Int64 at copy
+writeDot argument value Byte dot copy
+writeDot result afterDot Int64
+writeDot ownedBy none
+writeDot cleanedBy none
+writeDot borrows none
+writeDot catch none
+writeDot suppresses none
+
+findRest is call
+findRest in layout
+findRest invokes machine.offset
+findRest argument address machine.Address digits copy
+findRest argument bytes Int64 one copy
+findRest result rest machine.Address
+findRest ownedBy none
+findRest cleanedBy none
+findRest borrows none
+findRest catch none
+findRest suppresses none
+
+restCount is call
+restCount in layout
+restCount invokes math.subtractInt64
+restCount argument left Int64 count copy
+restCount argument right Int64 one copy
+restCount result restBytes Int64
+restCount ownedBy none
+restCount cleanedBy none
+restCount borrows none
+restCount catch none
+restCount suppresses none
+
+writeRest is call
+writeRest in layout
+writeRest invokes putRange
+writeRest argument target machine.Address target copy
+writeRest argument at Int64 afterDot copy
+writeRest argument source machine.Address rest copy
+writeRest argument bytes Int64 restBytes copy
+writeRest result afterRest Int64
+writeRest ownedBy none
+writeRest cleanedBy none
+writeRest borrows none
+writeRest catch none
+writeRest suppresses none
+
+writeE is call
+writeE in layout
+writeE invokes putByte
+writeE argument target machine.Address target copy
+writeE argument at Int64 at copy
+writeE argument value Byte letterE copy
+writeE result afterE Int64
+writeE ownedBy none
+writeE cleanedBy none
+writeE borrows none
+writeE catch none
+writeE suppresses none
+
+powerOf is call
+powerOf in layout
+powerOf invokes math.subtractInt64
+powerOf argument left Int64 point copy
+powerOf argument right Int64 one copy
+powerOf result decimalPower Int64
+powerOf ownedBy none
+powerOf cleanedBy none
+powerOf borrows none
+powerOf catch none
+powerOf suppresses none
+
+negativeCheck is call
+negativeCheck in layout
+negativeCheck invokes compare.lessThanInt64
+negativeCheck argument left Int64 decimalPower copy
+negativeCheck argument right Int64 zero copy
+negativeCheck result negative Bool
+negativeCheck ownedBy none
+negativeCheck cleanedBy none
+negativeCheck borrows none
+negativeCheck catch none
+negativeCheck suppresses none
+
+writeMinus is call
+writeMinus in layout
+writeMinus invokes putByte
+writeMinus argument target machine.Address target copy
+writeMinus argument at Int64 at copy
+writeMinus argument value Byte minusByte copy
+writeMinus result afterMinus Int64
+writeMinus ownedBy none
+writeMinus cleanedBy none
+writeMinus borrows none
+writeMinus catch none
+writeMinus suppresses none
+
+flip is call
+flip in layout
+flip invokes math.negateInt64
+flip argument value Int64 decimalPower copy
+flip result flipped Int64
+flip ownedBy none
+flip cleanedBy none
+flip borrows none
+flip catch none
+flip suppresses none
+
+writePlus is call
+writePlus in layout
+writePlus invokes putByte
+writePlus argument target machine.Address target copy
+writePlus argument at Int64 at copy
+writePlus argument value Byte plusByte copy
+writePlus result afterPlus Int64
+writePlus ownedBy none
+writePlus cleanedBy none
+writePlus borrows none
+writePlus catch none
+writePlus suppresses none
+
+oneDigitCheck is call
+oneDigitCheck in layout
+oneDigitCheck invokes compare.lessThanInt64
+oneDigitCheck argument left Int64 power copy
+oneDigitCheck argument right Int64 ten copy
+oneDigitCheck result oneDigit Bool
+oneDigitCheck ownedBy none
+oneDigitCheck cleanedBy none
+oneDigitCheck borrows none
+oneDigitCheck catch none
+oneDigitCheck suppresses none
+
+writeLeading is call
+writeLeading in layout
+writeLeading invokes putByte
+writeLeading argument target machine.Address target copy
+writeLeading argument at Int64 at copy
+writeLeading argument value Byte zeroByte copy
+writeLeading result afterLeading Int64
+writeLeading ownedBy none
+writeLeading cleanedBy none
+writeLeading borrows none
+writeLeading catch none
+writeLeading suppresses none
+
+findPower is call
+findPower in layout
+findPower invokes machine.offset
+findPower argument address machine.Address target copy
+findPower argument bytes Int64 at copy
+findPower result powerAt machine.Address
+findPower ownedBy none
+findPower cleanedBy none
+findPower borrows none
+findPower catch none
+findPower suppresses none
+
+writePower is call
+writePower in layout
+writePower invokes numbers.formatDecimal
+writePower argument value Int64 power copy
+writePower argument target machine.Address powerAt copy
+writePower result powerBytes Int64
+writePower ownedBy none
+writePower cleanedBy none
+writePower borrows none
+writePower catch none
+writePower suppresses none
+
+afterPower is call
+afterPower in layout
+afterPower invokes math.addInt64
+afterPower argument left Int64 at copy
+afterPower argument right Int64 powerBytes copy
+afterPower result ended Int64
+afterPower ownedBy none
+afterPower cleanedBy none
+afterPower borrows none
+afterPower catch none
+afterPower suppresses none
+
+leadCheck is call
+leadCheck in layout
+leadCheck invokes compare.lessOrEqualInt64
+leadCheck argument left Int64 point copy
+leadCheck argument right Int64 zero copy
+leadCheck result noWhole Bool
+leadCheck ownedBy none
+leadCheck cleanedBy none
+leadCheck borrows none
+leadCheck catch none
+leadCheck suppresses none
+
+writeZero is call
+writeZero in layout
+writeZero invokes putByte
+writeZero argument target machine.Address target copy
+writeZero argument at Int64 at copy
+writeZero argument value Byte zeroByte copy
+writeZero result afterZero Int64
+writeZero ownedBy none
+writeZero cleanedBy none
+writeZero borrows none
+writeZero catch none
+writeZero suppresses none
+
+writePoint is call
+writePoint in layout
+writePoint invokes putByte
+writePoint argument target machine.Address target copy
+writePoint argument at Int64 afterZero copy
+writePoint argument value Byte dot copy
+writePoint result afterPoint Int64
+writePoint ownedBy none
+writePoint cleanedBy none
+writePoint borrows none
+writePoint catch none
+writePoint suppresses none
+
+zerosOf is call
+zerosOf in layout
+zerosOf invokes math.negateInt64
+zerosOf argument value Int64 point copy
+zerosOf result zeros Int64
+zerosOf ownedBy none
+zerosOf cleanedBy none
+zerosOf borrows none
+zerosOf catch none
+zerosOf suppresses none
+
+writeZeros is call
+writeZeros in layout
+writeZeros invokes putZeros
+writeZeros argument target machine.Address target copy
+writeZeros argument at Int64 afterPoint copy
+writeZeros argument count Int64 zeros copy
+writeZeros result afterZeros Int64
+writeZeros ownedBy none
+writeZeros cleanedBy none
+writeZeros borrows none
+writeZeros catch none
+writeZeros suppresses none
+
+writeAll is call
+writeAll in layout
+writeAll invokes putRange
+writeAll argument target machine.Address target copy
+writeAll argument at Int64 afterZeros copy
+writeAll argument source machine.Address digits copy
+writeAll argument bytes Int64 count copy
+writeAll result afterAll Int64
+writeAll ownedBy none
+writeAll cleanedBy none
+writeAll borrows none
+writeAll catch none
+writeAll suppresses none
+
+insideCheck is call
+insideCheck in layout
+insideCheck invokes compare.lessThanInt64
+insideCheck argument left Int64 point copy
+insideCheck argument right Int64 count copy
+insideCheck result inside Bool
+insideCheck ownedBy none
+insideCheck cleanedBy none
+insideCheck borrows none
+insideCheck catch none
+insideCheck suppresses none
+
+writeWhole is call
+writeWhole in layout
+writeWhole invokes putRange
+writeWhole argument target machine.Address target copy
+writeWhole argument at Int64 at copy
+writeWhole argument source machine.Address digits copy
+writeWhole argument bytes Int64 point copy
+writeWhole result afterWhole Int64
+writeWhole ownedBy none
+writeWhole cleanedBy none
+writeWhole borrows none
+writeWhole catch none
+writeWhole suppresses none
+
+writeSplit is call
+writeSplit in layout
+writeSplit invokes putByte
+writeSplit argument target machine.Address target copy
+writeSplit argument at Int64 afterWhole copy
+writeSplit argument value Byte dot copy
+writeSplit result afterSplit Int64
+writeSplit ownedBy none
+writeSplit cleanedBy none
+writeSplit borrows none
+writeSplit catch none
+writeSplit suppresses none
+
+findFraction is call
+findFraction in layout
+findFraction invokes machine.offset
+findFraction argument address machine.Address digits copy
+findFraction argument bytes Int64 point copy
+findFraction result fractionAt machine.Address
+findFraction ownedBy none
+findFraction cleanedBy none
+findFraction borrows none
+findFraction catch none
+findFraction suppresses none
+
+fractionCount is call
+fractionCount in layout
+fractionCount invokes math.subtractInt64
+fractionCount argument left Int64 count copy
+fractionCount argument right Int64 point copy
+fractionCount result fractionBytes Int64
+fractionCount ownedBy none
+fractionCount cleanedBy none
+fractionCount borrows none
+fractionCount catch none
+fractionCount suppresses none
+
+writeFraction is call
+writeFraction in layout
+writeFraction invokes putRange
+writeFraction argument target machine.Address target copy
+writeFraction argument at Int64 afterSplit copy
+writeFraction argument source machine.Address fractionAt copy
+writeFraction argument bytes Int64 fractionBytes copy
+writeFraction result afterFraction Int64
+writeFraction ownedBy none
+writeFraction cleanedBy none
+writeFraction borrows none
+writeFraction catch none
+writeFraction suppresses none
+
+writeDigits is call
+writeDigits in layout
+writeDigits invokes putRange
+writeDigits argument target machine.Address target copy
+writeDigits argument at Int64 at copy
+writeDigits argument source machine.Address digits copy
+writeDigits argument bytes Int64 count copy
+writeDigits result afterDigits Int64
+writeDigits ownedBy none
+writeDigits cleanedBy none
+writeDigits borrows none
+writeDigits catch none
+writeDigits suppresses none
+
+zerosNeeded is call
+zerosNeeded in layout
+zerosNeeded invokes math.subtractInt64
+zerosNeeded argument left Int64 point copy
+zerosNeeded argument right Int64 count copy
+zerosNeeded result padding Int64
+zerosNeeded ownedBy none
+zerosNeeded cleanedBy none
+zerosNeeded borrows none
+zerosNeeded catch none
+zerosNeeded suppresses none
+
+writePadding is call
+writePadding in layout
+writePadding invokes putZeros
+writePadding argument target machine.Address target copy
+writePadding argument at Int64 afterDigits copy
+writePadding argument count Int64 padding copy
+writePadding result afterPadding Int64
+writePadding ownedBy none
+writePadding cleanedBy none
+writePadding borrows none
+writePadding catch none
+writePadding suppresses none
+
+writeTailDot is call
+writeTailDot in layout
+writeTailDot invokes putByte
+writeTailDot argument target machine.Address target copy
+writeTailDot argument at Int64 afterPadding copy
+writeTailDot argument value Byte dot copy
+writeTailDot result afterTailDot Int64
+writeTailDot ownedBy none
+writeTailDot cleanedBy none
+writeTailDot borrows none
+writeTailDot catch none
+writeTailDot suppresses none
+
+writeTailZero is call
+writeTailZero in layout
+writeTailZero invokes putByte
+writeTailZero argument target machine.Address target copy
+writeTailZero argument at Int64 afterTailDot copy
+writeTailZero argument value Byte zeroByte copy
+writeTailZero result afterTail Int64
+writeTailZero ownedBy none
+writeTailZero cleanedBy none
+writeTailZero borrows none
+writeTailZero catch none
+writeTailZero suppresses none
+
+formatFloat is operation
+formatFloat purpose "Write a Float64 as `refined run` writes it (Python's repr) at an address and give the number of bytes, at most 24"
+formatFloat invariant writesRepr "\"The text is the shortest that reads back as the value, laid out as Python's repr: `0.1`, `100.0`, `1e+16`, `5e-324`, `-0.0`, `nan`, `inf`, `-inf`\""
+formatFloat typeParameter none
+formatFloat input value Float64 copied
+formatFloat input target machine.Address copied
+formatFloat output Int64
+formatFloat outputOwnedBy none
+formatFloat raises none
+formatFloat effect use machine.memory
+formatFloat effect use system.calls
+formatFloat uses memoryAccess
+formatFloat uses systemCalls
+formatFloat memoryHeap false
+formatFloat async false
+formatFloat maxRecursion none
+formatFloat label begin loopKind none
+formatFloat label begin within none
+formatFloat label specialValue loopKind none
+formatFloat label specialValue within none
+formatFloat label writeNan loopKind none
+formatFloat label writeNan within none
+formatFloat label infinity loopKind none
+formatFloat label infinity within none
+formatFloat label writeNegativeInfinity loopKind none
+formatFloat label writeNegativeInfinity within none
+formatFloat label writeInfinity loopKind none
+formatFloat label writeInfinity within none
+formatFloat label sign loopKind none
+formatFloat label sign within none
+formatFloat label writeSign loopKind none
+formatFloat label writeSign within none
+formatFloat label zeroCheck loopKind none
+formatFloat label zeroCheck within none
+formatFloat label writeZero loopKind none
+formatFloat label writeZero within none
+formatFloat label split loopKind none
+formatFloat label split within none
+formatFloat label subnormal loopKind none
+formatFloat label subnormal within none
+formatFloat label normal loopKind none
+formatFloat label normal within none
+formatFloat label digitsOf loopKind none
+formatFloat label digitsOf within none
+formatFloat let at Int64 0 mutable
+formatFloat let f UInt64 0 mutable
+formatFloat let e Int64 0 mutable
+formatFloat let fractionMask UInt64 4503599627370495 immutable
+formatFloat let exponentMask UInt64 2047 immutable
+formatFloat let hiddenBit UInt64 4503599627370496 immutable
+formatFloat let nanText String "nan" immutable
+formatFloat let infinityText String "inf" immutable
+formatFloat let negativeInfinityText String "-inf" immutable
+formatFloat let zeroText String "0.0" immutable
+formatFloat let leastExponent Int64 -1074 immutable
+formatFloat let sixtyThree Int64 63 immutable
+formatFloat let zeroWide UInt64 0 immutable
+formatFloat let fiftyTwo Int64 52 immutable
+formatFloat let zero Int64 0 immutable
+formatFloat let three Int64 3 immutable
+formatFloat let four Int64 4 immutable
+formatFloat let minusByte Byte 45 immutable
+formatFloat let bias Int64 1075 immutable
+formatFloat at begin do bitsOf
+formatFloat at begin do signOf
+formatFloat at begin do negativeCheck
+formatFloat at begin do exponentShift
+formatFloat at begin do exponentOf
+formatFloat at begin do fractionOf
+formatFloat at begin do specialCheck
+formatFloat at begin branch if special goto specialValue else goto sign
+formatFloat at specialValue do nanCheck
+formatFloat at specialValue branch if isNan goto writeNan else goto infinity
+formatFloat at writeNan do findNan
+formatFloat at writeNan do nanWritten
+formatFloat at writeNan return ok nanEnd
+formatFloat at infinity branch if negative goto writeNegativeInfinity else goto writeInfinity
+formatFloat at writeNegativeInfinity do findNegative
+formatFloat at writeNegativeInfinity do negativeWritten
+formatFloat at writeNegativeInfinity return ok negativeEnd
+formatFloat at writeInfinity do findInfinity
+formatFloat at writeInfinity do infinityWritten
+formatFloat at writeInfinity return ok infinityEnd
+formatFloat at sign branch if negative goto writeSign else goto zeroCheck
+formatFloat at writeSign do signWritten
+formatFloat at writeSign set at afterSign
+formatFloat at writeSign goto zeroCheck
+formatFloat at zeroCheck do zeroFieldCheck
+formatFloat at zeroCheck do zeroFractionCheck
+formatFloat at zeroCheck do bothZero
+formatFloat at zeroCheck branch if isZero goto writeZero else goto split
+formatFloat at writeZero do findZero
+formatFloat at writeZero do zeroWritten
+formatFloat at writeZero return ok zeroEnd
+formatFloat at split branch if zeroField goto subnormal else goto normal
+formatFloat at subnormal set f fraction
+formatFloat at subnormal set e leastExponent
+formatFloat at subnormal goto digitsOf
+formatFloat at normal do withHidden
+formatFloat at normal set f full
+formatFloat at normal do fieldWide
+formatFloat at normal do unbias
+formatFloat at normal set e unbiased
+formatFloat at normal goto digitsOf
+formatFloat at digitsOf do findDigits
+formatFloat at digitsOf do findCount
+formatFloat at digitsOf do shortest
+formatFloat at digitsOf do readCount
+formatFloat at digitsOf do lay
+formatFloat at digitsOf return ok ended
+
+bitsOf is call
+bitsOf in formatFloat
+bitsOf invokes convert.float64BitsToUInt64
+bitsOf argument value Float64 value copy
+bitsOf result raw UInt64
+bitsOf ownedBy none
+bitsOf cleanedBy none
+bitsOf borrows none
+bitsOf catch none
+bitsOf suppresses none
+
+signOf is call
+signOf in formatFloat
+signOf invokes bits.shiftRightUInt64
+signOf argument value UInt64 raw copy
+signOf argument amount Int64 sixtyThree copy
+signOf result signBit UInt64
+signOf ownedBy none
+signOf cleanedBy none
+signOf borrows none
+signOf catch none
+signOf suppresses none
+
+negativeCheck is call
+negativeCheck in formatFloat
+negativeCheck invokes compare.notEqualUInt64
+negativeCheck argument left UInt64 signBit copy
+negativeCheck argument right UInt64 zeroWide copy
+negativeCheck result negative Bool
+negativeCheck ownedBy none
+negativeCheck cleanedBy none
+negativeCheck borrows none
+negativeCheck catch none
+negativeCheck suppresses none
+
+exponentShift is call
+exponentShift in formatFloat
+exponentShift invokes bits.shiftRightUInt64
+exponentShift argument value UInt64 raw copy
+exponentShift argument amount Int64 fiftyTwo copy
+exponentShift result shifted UInt64
+exponentShift ownedBy none
+exponentShift cleanedBy none
+exponentShift borrows none
+exponentShift catch none
+exponentShift suppresses none
+
+exponentOf is call
+exponentOf in formatFloat
+exponentOf invokes bits.andUInt64
+exponentOf argument left UInt64 shifted copy
+exponentOf argument right UInt64 exponentMask copy
+exponentOf result field UInt64
+exponentOf ownedBy none
+exponentOf cleanedBy none
+exponentOf borrows none
+exponentOf catch none
+exponentOf suppresses none
+
+fractionOf is call
+fractionOf in formatFloat
+fractionOf invokes bits.andUInt64
+fractionOf argument left UInt64 raw copy
+fractionOf argument right UInt64 fractionMask copy
+fractionOf result fraction UInt64
+fractionOf ownedBy none
+fractionOf cleanedBy none
+fractionOf borrows none
+fractionOf catch none
+fractionOf suppresses none
+
+specialCheck is call
+specialCheck in formatFloat
+specialCheck invokes compare.equalUInt64
+specialCheck argument left UInt64 field copy
+specialCheck argument right UInt64 exponentMask copy
+specialCheck result special Bool
+specialCheck ownedBy none
+specialCheck cleanedBy none
+specialCheck borrows none
+specialCheck catch none
+specialCheck suppresses none
+
+nanCheck is call
+nanCheck in formatFloat
+nanCheck invokes compare.notEqualUInt64
+nanCheck argument left UInt64 fraction copy
+nanCheck argument right UInt64 zeroWide copy
+nanCheck result isNan Bool
+nanCheck ownedBy none
+nanCheck cleanedBy none
+nanCheck borrows none
+nanCheck catch none
+nanCheck suppresses none
+
+findNan is call
+findNan in formatFloat
+findNan invokes machine.addressOfString
+findNan argument text String nanText lend
+findNan result nanAt machine.Address
+findNan ownedBy none
+findNan cleanedBy none
+findNan borrows none
+findNan catch none
+findNan suppresses none
+
+nanWritten is call
+nanWritten in formatFloat
+nanWritten invokes putRange
+nanWritten argument target machine.Address target copy
+nanWritten argument at Int64 zero copy
+nanWritten argument source machine.Address nanAt copy
+nanWritten argument bytes Int64 three copy
+nanWritten result nanEnd Int64
+nanWritten ownedBy none
+nanWritten cleanedBy none
+nanWritten borrows none
+nanWritten catch none
+nanWritten suppresses none
+
+findNegative is call
+findNegative in formatFloat
+findNegative invokes machine.addressOfString
+findNegative argument text String negativeInfinityText lend
+findNegative result negativeAt machine.Address
+findNegative ownedBy none
+findNegative cleanedBy none
+findNegative borrows none
+findNegative catch none
+findNegative suppresses none
+
+negativeWritten is call
+negativeWritten in formatFloat
+negativeWritten invokes putRange
+negativeWritten argument target machine.Address target copy
+negativeWritten argument at Int64 zero copy
+negativeWritten argument source machine.Address negativeAt copy
+negativeWritten argument bytes Int64 four copy
+negativeWritten result negativeEnd Int64
+negativeWritten ownedBy none
+negativeWritten cleanedBy none
+negativeWritten borrows none
+negativeWritten catch none
+negativeWritten suppresses none
+
+findInfinity is call
+findInfinity in formatFloat
+findInfinity invokes machine.addressOfString
+findInfinity argument text String infinityText lend
+findInfinity result infinityAt machine.Address
+findInfinity ownedBy none
+findInfinity cleanedBy none
+findInfinity borrows none
+findInfinity catch none
+findInfinity suppresses none
+
+infinityWritten is call
+infinityWritten in formatFloat
+infinityWritten invokes putRange
+infinityWritten argument target machine.Address target copy
+infinityWritten argument at Int64 zero copy
+infinityWritten argument source machine.Address infinityAt copy
+infinityWritten argument bytes Int64 three copy
+infinityWritten result infinityEnd Int64
+infinityWritten ownedBy none
+infinityWritten cleanedBy none
+infinityWritten borrows none
+infinityWritten catch none
+infinityWritten suppresses none
+
+signWritten is call
+signWritten in formatFloat
+signWritten invokes putByte
+signWritten argument target machine.Address target copy
+signWritten argument at Int64 zero copy
+signWritten argument value Byte minusByte copy
+signWritten result afterSign Int64
+signWritten ownedBy none
+signWritten cleanedBy none
+signWritten borrows none
+signWritten catch none
+signWritten suppresses none
+
+zeroFieldCheck is call
+zeroFieldCheck in formatFloat
+zeroFieldCheck invokes compare.equalUInt64
+zeroFieldCheck argument left UInt64 field copy
+zeroFieldCheck argument right UInt64 zeroWide copy
+zeroFieldCheck result zeroField Bool
+zeroFieldCheck ownedBy none
+zeroFieldCheck cleanedBy none
+zeroFieldCheck borrows none
+zeroFieldCheck catch none
+zeroFieldCheck suppresses none
+
+zeroFractionCheck is call
+zeroFractionCheck in formatFloat
+zeroFractionCheck invokes compare.equalUInt64
+zeroFractionCheck argument left UInt64 fraction copy
+zeroFractionCheck argument right UInt64 zeroWide copy
+zeroFractionCheck result zeroFraction Bool
+zeroFractionCheck ownedBy none
+zeroFractionCheck cleanedBy none
+zeroFractionCheck borrows none
+zeroFractionCheck catch none
+zeroFractionCheck suppresses none
+
+bothZero is call
+bothZero in formatFloat
+bothZero invokes logic.and
+bothZero argument left Bool zeroField copy
+bothZero argument right Bool zeroFraction copy
+bothZero result isZero Bool
+bothZero ownedBy none
+bothZero cleanedBy none
+bothZero borrows none
+bothZero catch none
+bothZero suppresses none
+
+findZero is call
+findZero in formatFloat
+findZero invokes machine.addressOfString
+findZero argument text String zeroText lend
+findZero result zeroAt machine.Address
+findZero ownedBy none
+findZero cleanedBy none
+findZero borrows none
+findZero catch none
+findZero suppresses none
+
+zeroWritten is call
+zeroWritten in formatFloat
+zeroWritten invokes putRange
+zeroWritten argument target machine.Address target copy
+zeroWritten argument at Int64 at copy
+zeroWritten argument source machine.Address zeroAt copy
+zeroWritten argument bytes Int64 three copy
+zeroWritten result zeroEnd Int64
+zeroWritten ownedBy none
+zeroWritten cleanedBy none
+zeroWritten borrows none
+zeroWritten catch none
+zeroWritten suppresses none
+
+withHidden is call
+withHidden in formatFloat
+withHidden invokes bits.orUInt64
+withHidden argument left UInt64 fraction copy
+withHidden argument right UInt64 hiddenBit copy
+withHidden result full UInt64
+withHidden ownedBy none
+withHidden cleanedBy none
+withHidden borrows none
+withHidden catch none
+withHidden suppresses none
+
+fieldWide is call
+fieldWide in formatFloat
+fieldWide invokes convert.uint64ToInt64
+fieldWide argument value UInt64 field copy
+fieldWide result fieldValue Int64
+fieldWide ownedBy none
+fieldWide cleanedBy none
+fieldWide borrows none
+fieldWide catch none
+fieldWide suppresses none
+
+unbias is call
+unbias in formatFloat
+unbias invokes math.subtractInt64
+unbias argument left Int64 fieldValue copy
+unbias argument right Int64 bias copy
+unbias result unbiased Int64
+unbias ownedBy none
+unbias cleanedBy none
+unbias borrows none
+unbias catch none
+unbias suppresses none
+
+findDigits is call
+findDigits in formatFloat
+findDigits invokes stateAt
+findDigits argument offset Int64 digitsAt copy
+findDigits result digits machine.Address
+findDigits ownedBy none
+findDigits cleanedBy none
+findDigits borrows none
+findDigits catch none
+findDigits suppresses none
+
+findCount is call
+findCount in formatFloat
+findCount invokes stateAt
+findCount argument offset Int64 keptAt copy
+findCount result countAt machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+shortest is call
+shortest in formatFloat
+shortest invokes shortestDigits
+shortest argument f UInt64 f copy
+shortest argument e Int64 e copy
+shortest argument digits machine.Address digits copy
+shortest argument countAt machine.Address countAt copy
+shortest result point Int64
+shortest ownedBy none
+shortest cleanedBy none
+shortest borrows none
+shortest catch none
+shortest suppresses none
+
+readCount is call
+readCount in formatFloat
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countAt copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+lay is call
+lay in formatFloat
+lay invokes layout
+lay argument target machine.Address target copy
+lay argument start Int64 at copy
+lay argument digits machine.Address digits copy
+lay argument count Int64 count copy
+lay argument point Int64 point copy
+lay result ended Int64
+lay ownedBy none
+lay cleanedBy none
+lay borrows none
+lay catch none
+lay suppresses none
+
+formatFloatInRegion is operation
+formatFloatInRegion purpose "A Float64 as `refined run` writes it, in a block of a region; its length is stored at an address: refined_format_float"
+formatFloatInRegion invariant formatsIntoRegion "\"The text is the value's repr, in a block of the region, and its length is stored at the address given\""
+formatFloatInRegion typeParameter none
+formatFloatInRegion input value Float64 copied
+formatFloatInRegion input region machine.Address copied
+formatFloatInRegion input lengthAt machine.Address copied
+formatFloatInRegion output machine.Address
+formatFloatInRegion outputOwnedBy none
+formatFloatInRegion raises none
+formatFloatInRegion effect use machine.memory
+formatFloatInRegion effect use system.calls
+formatFloatInRegion uses memoryAccess
+formatFloatInRegion uses systemCalls
+formatFloatInRegion memoryHeap false
+formatFloatInRegion async false
+formatFloatInRegion maxRecursion none
+formatFloatInRegion abi c "refined_format_float"
+formatFloatInRegion label begin loopKind none
+formatFloatInRegion label begin within none
+formatFloatInRegion let none
+formatFloatInRegion at begin do findText
+formatFloatInRegion at begin do format
+formatFloatInRegion at begin do take
+formatFloatInRegion at begin do copyText
+formatFloatInRegion at begin do storeLength
+formatFloatInRegion at begin return ok block
+
+findText is call
+findText in formatFloatInRegion
+findText invokes stateAt
+findText argument offset Int64 textAt copy
+findText result text machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+format is call
+format in formatFloatInRegion
+format invokes formatFloat
+format argument value Float64 value copy
+format argument target machine.Address text copy
+format result length Int64
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+take is call
+take in formatFloatInRegion
+take invokes regions.allocate
+take argument region machine.Address region copy
+take argument size Int64 length copy
+take result block machine.Address
+take ownedBy none
+take cleanedBy none
+take borrows none
+take catch none
+take suppresses none
+
+copyText is call
+copyText in formatFloatInRegion
+copyText invokes machine.copy
+copyText argument target machine.Address block copy
+copyText argument source machine.Address text copy
+copyText argument bytes Int64 length copy
+copyText result none
+copyText ownedBy none
+copyText cleanedBy none
+copyText borrows none
+copyText catch none
+copyText suppresses none
+
+storeLength is call
+storeLength in formatFloatInRegion
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthAt copy
+storeLength argument value Int64 length copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+writeFloat is operation
+writeFloat purpose "Write a Float64 as `refined run` writes it to standard output (stream 1) or standard error (stream 2), then a line end when asked; gives 0, or the system's error code: refined_write_float"
+writeFloat invariant writesReprLine "\"Writes the value's repr, then one `\\\\n` byte when `newline` is not 0, in one write\""
+writeFloat typeParameter none
+writeFloat input stream Int32 copied
+writeFloat input value Float64 copied
+writeFloat input newline Int32 copied
+writeFloat output Int32
+writeFloat outputOwnedBy none
+writeFloat raises none
+writeFloat effect use machine.memory
+writeFloat effect use system.calls
+writeFloat uses memoryAccess
+writeFloat uses systemCalls
+writeFloat memoryHeap false
+writeFloat async false
+writeFloat maxRecursion none
+writeFloat abi c "refined_write_float"
+writeFloat label begin loopKind none
+writeFloat label begin within none
+writeFloat label addLine loopKind none
+writeFloat label addLine within none
+writeFloat label write loopKind none
+writeFloat label write within none
+writeFloat let length Int64 0 mutable
+writeFloat let ok Int32 0 immutable
+writeFloat let lineEnd Byte 10 immutable
+writeFloat at begin do findText
+writeFloat at begin do format
+writeFloat at begin set length written
+writeFloat at begin do wantLine
+writeFloat at begin branch if wanted goto addLine else goto write
+writeFloat at addLine do withLine
+writeFloat at addLine set length lineLength
+writeFloat at addLine goto write
+writeFloat at write do findHandle
+writeFloat at write do writeText
+writeFloat at write return ok status
+
+findText is call
+findText in writeFloat
+findText invokes stateAt
+findText argument offset Int64 textAt copy
+findText result text machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+format is call
+format in writeFloat
+format invokes formatFloat
+format argument value Float64 value copy
+format argument target machine.Address text copy
+format result written Int64
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+wantLine is call
+wantLine in writeFloat
+wantLine invokes compare.notEqualInt32
+wantLine argument left Int32 newline copy
+wantLine argument right Int32 ok copy
+wantLine result wanted Bool
+wantLine ownedBy none
+wantLine cleanedBy none
+wantLine borrows none
+wantLine catch none
+wantLine suppresses none
+
+withLine is call
+withLine in writeFloat
+withLine invokes putByte
+withLine argument target machine.Address text copy
+withLine argument at Int64 written copy
+withLine argument value Byte lineEnd copy
+withLine result lineLength Int64
+withLine ownedBy none
+withLine cleanedBy none
+withLine borrows none
+withLine catch none
+withLine suppresses none
+
+findHandle is call
+findHandle in writeFloat
+findHandle invokes output.standardHandle
+findHandle argument stream Int32 stream copy
+findHandle result handle machine.Address
+findHandle ownedBy none
+findHandle cleanedBy none
+findHandle borrows none
+findHandle catch none
+findHandle suppresses none
+
+writeText is call
+writeText in writeFloat
+writeText invokes output.writeAll
+writeText argument handle machine.Address handle copy
+writeText argument text machine.Address text copy
+writeText argument bytes Int64 length copy
+writeText result status Int32
+writeText ownedBy none
+writeText cleanedBy none
+writeText borrows none
+writeText catch none
+writeText suppresses none
+
+# ---------------------------------------------------------------- reading
+isDigitByte is operation
+isDigitByte purpose "Whether a byte is an ASCII digit, 0 to 9"
+isDigitByte invariant none
+isDigitByte typeParameter none
+isDigitByte input value Byte copied
+isDigitByte output Bool
+isDigitByte outputOwnedBy none
+isDigitByte raises none
+isDigitByte effect none
+isDigitByte uses none
+isDigitByte memoryHeap false
+isDigitByte async false
+isDigitByte maxRecursion none
+isDigitByte label begin loopKind none
+isDigitByte label begin within none
+isDigitByte let zeroCharacter Byte 48 immutable
+isDigitByte let nineCharacter Byte 57 immutable
+isDigitByte at begin do lowCheck
+isDigitByte at begin do highCheck
+isDigitByte at begin do bothCheck
+isDigitByte at begin return ok digit
+
+lowCheck is call
+lowCheck in isDigitByte
+lowCheck invokes compare.greaterOrEqualByte
+lowCheck argument left Byte value copy
+lowCheck argument right Byte zeroCharacter copy
+lowCheck result aboveLow Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+highCheck is call
+highCheck in isDigitByte
+highCheck invokes compare.lessOrEqualByte
+highCheck argument left Byte value copy
+highCheck argument right Byte nineCharacter copy
+highCheck result belowHigh Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+bothCheck is call
+bothCheck in isDigitByte
+bothCheck invokes logic.and
+bothCheck argument left Bool aboveLow copy
+bothCheck argument right Bool belowHigh copy
+bothCheck result digit Bool
+bothCheck ownedBy none
+bothCheck cleanedBy none
+bothCheck borrows none
+bothCheck catch none
+bothCheck suppresses none
+
+digitAt is operation
+digitAt purpose "Whether the byte at a position of a text is an ASCII digit; a position past the end is not"
+digitAt invariant none
+digitAt typeParameter none
+digitAt input text machine.Address copied
+digitAt input bytes Int64 copied
+digitAt input at Int64 copied
+digitAt output Bool
+digitAt outputOwnedBy none
+digitAt raises none
+digitAt effect use machine.memory
+digitAt uses memoryAccess
+digitAt memoryHeap false
+digitAt async false
+digitAt maxRecursion none
+digitAt label begin loopKind none
+digitAt label begin within none
+digitAt label outside loopKind none
+digitAt label outside within none
+digitAt label read loopKind none
+digitAt label read within none
+digitAt let no Bool false immutable
+digitAt at begin do insideCheck
+digitAt at begin branch if inside goto read else goto outside
+digitAt at outside return ok no
+digitAt at read do findByte
+digitAt at read do readByte
+digitAt at read do digitCheck
+digitAt at read return ok digit
+
+insideCheck is call
+insideCheck in digitAt
+insideCheck invokes compare.lessThanInt64
+insideCheck argument left Int64 at copy
+insideCheck argument right Int64 bytes copy
+insideCheck result inside Bool
+insideCheck ownedBy none
+insideCheck cleanedBy none
+insideCheck borrows none
+insideCheck catch none
+insideCheck suppresses none
+
+findByte is call
+findByte in digitAt
+findByte invokes machine.offset
+findByte argument address machine.Address text copy
+findByte argument bytes Int64 at copy
+findByte result place machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+readByte is call
+readByte in digitAt
+readByte invokes machine.loadByte
+readByte argument address machine.Address place copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+digitCheck is call
+digitCheck in digitAt
+digitCheck invokes isDigitByte
+digitCheck argument value Byte byte copy
+digitCheck result digit Bool
+digitCheck ownedBy none
+digitCheck cleanedBy none
+digitCheck borrows none
+digitCheck catch none
+digitCheck suppresses none
+
+byteIs is operation
+byteIs purpose "Whether the byte at a position of a text is a given byte; a position past the end is not"
+byteIs invariant none
+byteIs typeParameter none
+byteIs input text machine.Address copied
+byteIs input bytes Int64 copied
+byteIs input at Int64 copied
+byteIs input wanted Byte copied
+byteIs output Bool
+byteIs outputOwnedBy none
+byteIs raises none
+byteIs effect use machine.memory
+byteIs uses memoryAccess
+byteIs memoryHeap false
+byteIs async false
+byteIs maxRecursion none
+byteIs label begin loopKind none
+byteIs label begin within none
+byteIs label outside loopKind none
+byteIs label outside within none
+byteIs label read loopKind none
+byteIs label read within none
+byteIs let no Bool false immutable
+byteIs at begin do insideCheck
+byteIs at begin branch if inside goto read else goto outside
+byteIs at outside return ok no
+byteIs at read do findByte
+byteIs at read do readByte
+byteIs at read do sameCheck
+byteIs at read return ok same
+
+insideCheck is call
+insideCheck in byteIs
+insideCheck invokes compare.lessThanInt64
+insideCheck argument left Int64 at copy
+insideCheck argument right Int64 bytes copy
+insideCheck result inside Bool
+insideCheck ownedBy none
+insideCheck cleanedBy none
+insideCheck borrows none
+insideCheck catch none
+insideCheck suppresses none
+
+findByte is call
+findByte in byteIs
+findByte invokes machine.offset
+findByte argument address machine.Address text copy
+findByte argument bytes Int64 at copy
+findByte result place machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+readByte is call
+readByte in byteIs
+readByte invokes machine.loadByte
+readByte argument address machine.Address place copy
+readByte result byte Byte
+readByte ownedBy none
+readByte cleanedBy none
+readByte borrows none
+readByte catch none
+readByte suppresses none
+
+sameCheck is call
+sameCheck in byteIs
+sameCheck invokes compare.equalByte
+sameCheck argument left Byte byte copy
+sameCheck argument right Byte wanted copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+skipDigits is operation
+skipDigits purpose "The position after the run of ASCII digits that starts at a position"
+skipDigits invariant none
+skipDigits typeParameter none
+skipDigits input text machine.Address copied
+skipDigits input bytes Int64 copied
+skipDigits input start Int64 copied
+skipDigits output Int64
+skipDigits outputOwnedBy none
+skipDigits raises none
+skipDigits effect use machine.memory
+skipDigits uses memoryAccess
+skipDigits memoryHeap false
+skipDigits async false
+skipDigits maxRecursion none
+skipDigits label begin loopKind none
+skipDigits label begin within none
+skipDigits label eachDigit loopKind while
+skipDigits label eachDigit within none
+skipDigits label eachDigit maxIterations bytes
+skipDigits label nextDigit loopKind none
+skipDigits label nextDigit within eachDigit
+skipDigits label done loopKind none
+skipDigits label done within none
+skipDigits let at Int64 0 mutable
+skipDigits let one Int64 1 immutable
+skipDigits at begin set at start
+skipDigits at begin goto eachDigit
+skipDigits at eachDigit do digitCheck
+skipDigits at eachDigit branch if digit goto nextDigit else goto done
+skipDigits at nextDigit do advance
+skipDigits at nextDigit set at after
+skipDigits at nextDigit goto eachDigit
+skipDigits at done return ok at
+
+digitCheck is call
+digitCheck in skipDigits
+digitCheck invokes digitAt
+digitCheck argument text machine.Address text copy
+digitCheck argument bytes Int64 bytes copy
+digitCheck argument at Int64 at copy
+digitCheck result digit Bool
+digitCheck ownedBy none
+digitCheck cleanedBy none
+digitCheck borrows none
+digitCheck catch none
+digitCheck suppresses none
+
+advance is call
+advance in skipDigits
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 one copy
+advance result after Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+validText is operation
+validText purpose "Whether a text is a number as `refined run` reads one: `-`? digits (`.` digits)? ([eE] [+-]? digits)?, nothing else"
+validText invariant none
+validText typeParameter none
+validText input text machine.Address copied
+validText input bytes Int64 copied
+validText output Bool
+validText outputOwnedBy none
+validText raises none
+validText effect use machine.memory
+validText uses memoryAccess
+validText memoryHeap false
+validText async false
+validText maxRecursion none
+validText label begin loopKind none
+validText label begin within none
+validText label skipMinus loopKind none
+validText label skipMinus within none
+validText label whole loopKind none
+validText label whole within none
+validText label pointCheck loopKind none
+validText label pointCheck within none
+validText label fraction loopKind none
+validText label fraction within none
+validText label fractionDone loopKind none
+validText label fractionDone within none
+validText label exponentCheck loopKind none
+validText label exponentCheck within none
+validText label exponentSign loopKind none
+validText label exponentSign within none
+validText label skipSign loopKind none
+validText label skipSign within none
+validText label exponentDigits loopKind none
+validText label exponentDigits within none
+validText label exponentDone loopKind none
+validText label exponentDone within none
+validText label ending loopKind none
+validText label ending within none
+validText label accept loopKind none
+validText label accept within none
+validText label refuse loopKind none
+validText label refuse within none
+validText let at Int64 0 mutable
+validText let yes Bool true immutable
+validText let no Bool false immutable
+validText let one Int64 1 immutable
+validText let zero Int64 0 immutable
+validText let minusByte Byte 45 immutable
+validText let dotByte Byte 46 immutable
+validText let lowerByte Byte 101 immutable
+validText let upperByte Byte 69 immutable
+validText let plusByte Byte 43 immutable
+validText at begin do minusCheck
+validText at begin branch if minus goto skipMinus else goto whole
+validText at skipMinus set at one
+validText at skipMinus goto whole
+validText at whole do skipWhole
+validText at whole do wholeCheck
+validText at whole branch if noWhole goto refuse else goto pointCheck
+validText at pointCheck set at afterWhole
+validText at pointCheck do dotCheck
+validText at pointCheck branch if dot goto fraction else goto exponentCheck
+validText at fraction do afterDot
+validText at fraction do skipFraction
+validText at fraction do fractionCheck
+validText at fraction branch if noFraction goto refuse else goto fractionDone
+validText at fractionDone set at afterFraction
+validText at fractionDone goto exponentCheck
+validText at exponentCheck do lowerCheck
+validText at exponentCheck do upperCheck
+validText at exponentCheck do eitherCheck
+validText at exponentCheck branch if exponent goto exponentSign else goto ending
+validText at exponentSign do afterE
+validText at exponentSign set at signAt
+validText at exponentSign do plusCheck
+validText at exponentSign do minusSignCheck
+validText at exponentSign do signCheck
+validText at exponentSign branch if signed goto skipSign else goto exponentDigits
+validText at skipSign do afterSign
+validText at skipSign set at digitsStart
+validText at skipSign goto exponentDigits
+validText at exponentDigits do skipExponent
+validText at exponentDigits do exponentDigitsCheck
+validText at exponentDigits branch if noExponent goto refuse else goto exponentDone
+validText at exponentDone set at afterExponent
+validText at exponentDone goto ending
+validText at ending do endCheck
+validText at ending branch if atEnd goto accept else goto refuse
+validText at accept return ok yes
+validText at refuse return ok no
+
+minusCheck is call
+minusCheck in validText
+minusCheck invokes byteIs
+minusCheck argument text machine.Address text copy
+minusCheck argument bytes Int64 bytes copy
+minusCheck argument at Int64 zero copy
+minusCheck argument wanted Byte minusByte copy
+minusCheck result minus Bool
+minusCheck ownedBy none
+minusCheck cleanedBy none
+minusCheck borrows none
+minusCheck catch none
+minusCheck suppresses none
+
+skipWhole is call
+skipWhole in validText
+skipWhole invokes skipDigits
+skipWhole argument text machine.Address text copy
+skipWhole argument bytes Int64 bytes copy
+skipWhole argument start Int64 at copy
+skipWhole result afterWhole Int64
+skipWhole ownedBy none
+skipWhole cleanedBy none
+skipWhole borrows none
+skipWhole catch none
+skipWhole suppresses none
+
+wholeCheck is call
+wholeCheck in validText
+wholeCheck invokes compare.equalInt64
+wholeCheck argument left Int64 afterWhole copy
+wholeCheck argument right Int64 at copy
+wholeCheck result noWhole Bool
+wholeCheck ownedBy none
+wholeCheck cleanedBy none
+wholeCheck borrows none
+wholeCheck catch none
+wholeCheck suppresses none
+
+dotCheck is call
+dotCheck in validText
+dotCheck invokes byteIs
+dotCheck argument text machine.Address text copy
+dotCheck argument bytes Int64 bytes copy
+dotCheck argument at Int64 at copy
+dotCheck argument wanted Byte dotByte copy
+dotCheck result dot Bool
+dotCheck ownedBy none
+dotCheck cleanedBy none
+dotCheck borrows none
+dotCheck catch none
+dotCheck suppresses none
+
+afterDot is call
+afterDot in validText
+afterDot invokes math.addInt64
+afterDot argument left Int64 at copy
+afterDot argument right Int64 one copy
+afterDot result fractionStart Int64
+afterDot ownedBy none
+afterDot cleanedBy none
+afterDot borrows none
+afterDot catch none
+afterDot suppresses none
+
+skipFraction is call
+skipFraction in validText
+skipFraction invokes skipDigits
+skipFraction argument text machine.Address text copy
+skipFraction argument bytes Int64 bytes copy
+skipFraction argument start Int64 fractionStart copy
+skipFraction result afterFraction Int64
+skipFraction ownedBy none
+skipFraction cleanedBy none
+skipFraction borrows none
+skipFraction catch none
+skipFraction suppresses none
+
+fractionCheck is call
+fractionCheck in validText
+fractionCheck invokes compare.equalInt64
+fractionCheck argument left Int64 afterFraction copy
+fractionCheck argument right Int64 fractionStart copy
+fractionCheck result noFraction Bool
+fractionCheck ownedBy none
+fractionCheck cleanedBy none
+fractionCheck borrows none
+fractionCheck catch none
+fractionCheck suppresses none
+
+lowerCheck is call
+lowerCheck in validText
+lowerCheck invokes byteIs
+lowerCheck argument text machine.Address text copy
+lowerCheck argument bytes Int64 bytes copy
+lowerCheck argument at Int64 at copy
+lowerCheck argument wanted Byte lowerByte copy
+lowerCheck result lowerE Bool
+lowerCheck ownedBy none
+lowerCheck cleanedBy none
+lowerCheck borrows none
+lowerCheck catch none
+lowerCheck suppresses none
+
+upperCheck is call
+upperCheck in validText
+upperCheck invokes byteIs
+upperCheck argument text machine.Address text copy
+upperCheck argument bytes Int64 bytes copy
+upperCheck argument at Int64 at copy
+upperCheck argument wanted Byte upperByte copy
+upperCheck result upperE Bool
+upperCheck ownedBy none
+upperCheck cleanedBy none
+upperCheck borrows none
+upperCheck catch none
+upperCheck suppresses none
+
+eitherCheck is call
+eitherCheck in validText
+eitherCheck invokes logic.or
+eitherCheck argument left Bool lowerE copy
+eitherCheck argument right Bool upperE copy
+eitherCheck result exponent Bool
+eitherCheck ownedBy none
+eitherCheck cleanedBy none
+eitherCheck borrows none
+eitherCheck catch none
+eitherCheck suppresses none
+
+afterE is call
+afterE in validText
+afterE invokes math.addInt64
+afterE argument left Int64 at copy
+afterE argument right Int64 one copy
+afterE result signAt Int64
+afterE ownedBy none
+afterE cleanedBy none
+afterE borrows none
+afterE catch none
+afterE suppresses none
+
+plusCheck is call
+plusCheck in validText
+plusCheck invokes byteIs
+plusCheck argument text machine.Address text copy
+plusCheck argument bytes Int64 bytes copy
+plusCheck argument at Int64 signAt copy
+plusCheck argument wanted Byte plusByte copy
+plusCheck result plus Bool
+plusCheck ownedBy none
+plusCheck cleanedBy none
+plusCheck borrows none
+plusCheck catch none
+plusCheck suppresses none
+
+minusSignCheck is call
+minusSignCheck in validText
+minusSignCheck invokes byteIs
+minusSignCheck argument text machine.Address text copy
+minusSignCheck argument bytes Int64 bytes copy
+minusSignCheck argument at Int64 signAt copy
+minusSignCheck argument wanted Byte minusByte copy
+minusSignCheck result minusSign Bool
+minusSignCheck ownedBy none
+minusSignCheck cleanedBy none
+minusSignCheck borrows none
+minusSignCheck catch none
+minusSignCheck suppresses none
+
+signCheck is call
+signCheck in validText
+signCheck invokes logic.or
+signCheck argument left Bool plus copy
+signCheck argument right Bool minusSign copy
+signCheck result signed Bool
+signCheck ownedBy none
+signCheck cleanedBy none
+signCheck borrows none
+signCheck catch none
+signCheck suppresses none
+
+afterSign is call
+afterSign in validText
+afterSign invokes math.addInt64
+afterSign argument left Int64 signAt copy
+afterSign argument right Int64 one copy
+afterSign result digitsStart Int64
+afterSign ownedBy none
+afterSign cleanedBy none
+afterSign borrows none
+afterSign catch none
+afterSign suppresses none
+
+skipExponent is call
+skipExponent in validText
+skipExponent invokes skipDigits
+skipExponent argument text machine.Address text copy
+skipExponent argument bytes Int64 bytes copy
+skipExponent argument start Int64 at copy
+skipExponent result afterExponent Int64
+skipExponent ownedBy none
+skipExponent cleanedBy none
+skipExponent borrows none
+skipExponent catch none
+skipExponent suppresses none
+
+exponentDigitsCheck is call
+exponentDigitsCheck in validText
+exponentDigitsCheck invokes compare.equalInt64
+exponentDigitsCheck argument left Int64 afterExponent copy
+exponentDigitsCheck argument right Int64 at copy
+exponentDigitsCheck result noExponent Bool
+exponentDigitsCheck ownedBy none
+exponentDigitsCheck cleanedBy none
+exponentDigitsCheck borrows none
+exponentDigitsCheck catch none
+exponentDigitsCheck suppresses none
+
+endCheck is call
+endCheck in validText
+endCheck invokes compare.equalInt64
+endCheck argument left Int64 at copy
+endCheck argument right Int64 bytes copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+significand is operation
+significand purpose "Read a valid text's significant digits into a number (at most 800 exactly, and a last 1 standing for any dropped that are not zero); stores how many it kept and gives the power of ten the number is to be multiplied by"
+significand invariant none
+significand typeParameter none
+significand input text machine.Address copied
+significand input bytes Int64 copied
+significand input number machine.Address copied
+significand input keptTarget machine.Address copied
+significand output Int64
+significand outputOwnedBy none
+significand raises none
+significand effect use machine.memory
+significand effect use system.calls
+significand uses memoryAccess
+significand uses systemCalls
+significand memoryHeap false
+significand async false
+significand maxRecursion none
+significand label begin loopKind none
+significand label begin within none
+significand label skipMinus loopKind none
+significand label skipMinus within none
+significand label eachByte loopKind while
+significand label eachByte within none
+significand label eachByte maxIterations bytes
+significand label readByte loopKind none
+significand label readByte within eachByte
+significand label startFraction loopKind none
+significand label startFraction within eachByte
+significand label digitCheck loopKind none
+significand label digitCheck within eachByte
+significand label useDigit loopKind none
+significand label useDigit within eachByte
+significand label countFraction loopKind none
+significand label countFraction within eachByte
+significand label significant loopKind none
+significand label significant within eachByte
+significand label roomCheck loopKind none
+significand label roomCheck within eachByte
+significand label keep loopKind none
+significand label keep within eachByte
+significand label flushChunk loopKind none
+significand label flushChunk within eachByte
+significand label drop loopKind none
+significand label drop within eachByte
+significand label markSticky loopKind none
+significand label markSticky within eachByte
+significand label nextByte loopKind none
+significand label nextByte within eachByte
+significand label exponentStart loopKind none
+significand label exponentStart within none
+significand label negativeExponent loopKind none
+significand label negativeExponent within none
+significand label plusCheckStep loopKind none
+significand label plusCheckStep within none
+significand label skipPlus loopKind none
+significand label skipPlus within none
+significand label eachExponent loopKind while
+significand label eachExponent within none
+significand label eachExponent maxIterations bytes
+significand label exponentDigit loopKind none
+significand label exponentDigit within eachExponent
+significand label growExponent loopKind none
+significand label growExponent within eachExponent
+significand label nextExponent loopKind none
+significand label nextExponent within eachExponent
+significand label signExponent loopKind none
+significand label signExponent within none
+significand label flipExponent loopKind none
+significand label flipExponent within none
+significand label flush loopKind none
+significand label flush within none
+significand label flushPart loopKind none
+significand label flushPart within none
+significand label stickyCheck loopKind none
+significand label stickyCheck within none
+significand label addSticky loopKind none
+significand label addSticky within none
+significand label finish loopKind none
+significand label finish within none
+significand let at Int64 0 mutable
+significand let kept Int64 0 mutable
+significand let dropped Int64 0 mutable
+significand let fractionDigits Int64 0 mutable
+significand let inFraction Bool false mutable
+significand let sticky Bool false mutable
+significand let chunk UInt64 0 mutable
+significand let chunkDigits Int64 0 mutable
+significand let power Int64 0 mutable
+significand let exponent Int64 0 mutable
+significand let exponentNegative Bool false mutable
+significand let yes Bool true immutable
+significand let saturated Int64 1000000000000000 immutable
+significand let one Int64 1 immutable
+significand let zero Int64 0 immutable
+significand let zeroWide UInt64 0 immutable
+significand let minusByte Byte 45 immutable
+significand let dotByte Byte 46 immutable
+significand let zeroCharacter Byte 48 immutable
+significand let tenWide UInt64 10 immutable
+significand let nine Int64 9 immutable
+significand let plusByte Byte 43 immutable
+significand let ten Int64 10 immutable
+significand let oneWide UInt64 1 immutable
+significand at begin do clearNumber
+significand at begin do minusCheck
+significand at begin branch if minus goto skipMinus else goto eachByte
+significand at skipMinus set at one
+significand at skipMinus goto eachByte
+significand at eachByte do endCheck
+significand at eachByte branch if atEnd goto flush else goto readByte
+significand at readByte do findByte
+significand at readByte do loadIt
+significand at readByte do dotCheck
+significand at readByte branch if dot goto startFraction else goto digitCheck
+significand at startFraction set inFraction yes
+significand at startFraction goto nextByte
+significand at digitCheck do isDigitCheck
+significand at digitCheck branch if digit goto useDigit else goto exponentStart
+significand at useDigit branch if inFraction goto countFraction else goto significant
+significand at countFraction do moreFraction
+significand at countFraction set fractionDigits fractionMore
+significand at countFraction goto significant
+significand at significant do valueOf
+significand at significant do widenDigit
+significand at significant do noneKept
+significand at significant do zeroDigitCheck
+significand at significant do leadingCheck
+significand at significant branch if leading goto nextByte else goto roomCheck
+significand at roomCheck do roomOf
+significand at roomCheck branch if room goto keep else goto drop
+significand at keep do shiftChunk
+significand at keep do addDigit
+significand at keep set chunk grownChunk
+significand at keep do moreChunk
+significand at keep set chunkDigits chunkMore
+significand at keep do moreKept
+significand at keep set kept keptMore
+significand at keep do fullCheck
+significand at keep branch if full goto flushChunk else goto nextByte
+significand at flushChunk do scaleChunk
+significand at flushChunk do addChunk
+significand at flushChunk set chunk zeroWide
+significand at flushChunk set chunkDigits zero
+significand at flushChunk goto nextByte
+significand at drop do moreDropped
+significand at drop set dropped droppedMore
+significand at drop branch if zeroDigit goto nextByte else goto markSticky
+significand at markSticky set sticky yes
+significand at markSticky goto nextByte
+significand at nextByte do advance
+significand at nextByte set at after
+significand at nextByte goto eachByte
+significand at exponentStart do afterE
+significand at exponentStart set at signAt
+significand at exponentStart do negativeCheck
+significand at exponentStart do plusCheck
+significand at exponentStart branch if negativeSign goto negativeExponent else goto plusCheckStep
+significand at negativeExponent set exponentNegative yes
+significand at negativeExponent do skipNegative
+significand at negativeExponent set at afterNegative
+significand at negativeExponent goto eachExponent
+significand at plusCheckStep branch if plusSign goto skipPlus else goto eachExponent
+significand at skipPlus do skipPlusSign
+significand at skipPlus set at afterPlus
+significand at skipPlus goto eachExponent
+significand at eachExponent do exponentEnd
+significand at eachExponent branch if exponentDone goto signExponent else goto exponentDigit
+significand at exponentDigit do findExponentByte
+significand at exponentDigit do loadExponentByte
+significand at exponentDigit do exponentValueOf
+significand at exponentDigit do widenExponent
+significand at exponentDigit do saturationCheck
+significand at exponentDigit branch if below goto growExponent else goto nextExponent
+significand at growExponent do shiftExponent
+significand at growExponent do addExponent
+significand at growExponent set exponent grownExponent
+significand at growExponent goto nextExponent
+significand at nextExponent do advanceExponent
+significand at nextExponent set at afterExponent
+significand at nextExponent goto eachExponent
+significand at signExponent branch if exponentNegative goto flipExponent else goto flush
+significand at flipExponent do flipped
+significand at flipExponent set exponent negated
+significand at flipExponent goto flush
+significand at flush do partCheck
+significand at flush branch if part goto flushPart else goto stickyCheck
+significand at flushPart do scalePart
+significand at flushPart do addPart
+significand at flushPart goto stickyCheck
+significand at stickyCheck do lessFraction
+significand at stickyCheck do withDropped
+significand at stickyCheck set power powerOf
+significand at stickyCheck branch if sticky goto addSticky else goto finish
+significand at addSticky do scaleSticky
+significand at addSticky do addOne
+significand at addSticky do keptSticky
+significand at addSticky set kept keptWithSticky
+significand at addSticky do lowerPower
+significand at addSticky set power stickyPower
+significand at addSticky goto finish
+significand at finish do storeKept
+significand at finish return ok power
+
+clearNumber is call
+clearNumber in significand
+clearNumber invokes bignum.setSmall
+clearNumber argument number machine.Address number copy
+clearNumber argument value UInt64 zeroWide copy
+clearNumber result none
+clearNumber ownedBy none
+clearNumber cleanedBy none
+clearNumber borrows none
+clearNumber catch none
+clearNumber suppresses none
+
+minusCheck is call
+minusCheck in significand
+minusCheck invokes byteIs
+minusCheck argument text machine.Address text copy
+minusCheck argument bytes Int64 bytes copy
+minusCheck argument at Int64 zero copy
+minusCheck argument wanted Byte minusByte copy
+minusCheck result minus Bool
+minusCheck ownedBy none
+minusCheck cleanedBy none
+minusCheck borrows none
+minusCheck catch none
+minusCheck suppresses none
+
+endCheck is call
+endCheck in significand
+endCheck invokes compare.greaterOrEqualInt64
+endCheck argument left Int64 at copy
+endCheck argument right Int64 bytes copy
+endCheck result atEnd Bool
+endCheck ownedBy none
+endCheck cleanedBy none
+endCheck borrows none
+endCheck catch none
+endCheck suppresses none
+
+findByte is call
+findByte in significand
+findByte invokes machine.offset
+findByte argument address machine.Address text copy
+findByte argument bytes Int64 at copy
+findByte result place machine.Address
+findByte ownedBy none
+findByte cleanedBy none
+findByte borrows none
+findByte catch none
+findByte suppresses none
+
+loadIt is call
+loadIt in significand
+loadIt invokes machine.loadByte
+loadIt argument address machine.Address place copy
+loadIt result byte Byte
+loadIt ownedBy none
+loadIt cleanedBy none
+loadIt borrows none
+loadIt catch none
+loadIt suppresses none
+
+dotCheck is call
+dotCheck in significand
+dotCheck invokes compare.equalByte
+dotCheck argument left Byte byte copy
+dotCheck argument right Byte dotByte copy
+dotCheck result dot Bool
+dotCheck ownedBy none
+dotCheck cleanedBy none
+dotCheck borrows none
+dotCheck catch none
+dotCheck suppresses none
+
+isDigitCheck is call
+isDigitCheck in significand
+isDigitCheck invokes isDigitByte
+isDigitCheck argument value Byte byte copy
+isDigitCheck result digit Bool
+isDigitCheck ownedBy none
+isDigitCheck cleanedBy none
+isDigitCheck borrows none
+isDigitCheck catch none
+isDigitCheck suppresses none
+
+moreFraction is call
+moreFraction in significand
+moreFraction invokes math.addInt64
+moreFraction argument left Int64 fractionDigits copy
+moreFraction argument right Int64 one copy
+moreFraction result fractionMore Int64
+moreFraction ownedBy none
+moreFraction cleanedBy none
+moreFraction borrows none
+moreFraction catch none
+moreFraction suppresses none
+
+valueOf is call
+valueOf in significand
+valueOf invokes math.subtractByte
+valueOf argument left Byte byte copy
+valueOf argument right Byte zeroCharacter copy
+valueOf result digitByte Byte
+valueOf ownedBy none
+valueOf cleanedBy none
+valueOf borrows none
+valueOf catch none
+valueOf suppresses none
+
+widenDigit is call
+widenDigit in significand
+widenDigit invokes convert.byteToUInt64
+widenDigit argument value Byte digitByte copy
+widenDigit result digitValue UInt64
+widenDigit ownedBy none
+widenDigit cleanedBy none
+widenDigit borrows none
+widenDigit catch none
+widenDigit suppresses none
+
+noneKept is call
+noneKept in significand
+noneKept invokes compare.equalInt64
+noneKept argument left Int64 kept copy
+noneKept argument right Int64 zero copy
+noneKept result noneYet Bool
+noneKept ownedBy none
+noneKept cleanedBy none
+noneKept borrows none
+noneKept catch none
+noneKept suppresses none
+
+zeroDigitCheck is call
+zeroDigitCheck in significand
+zeroDigitCheck invokes compare.equalUInt64
+zeroDigitCheck argument left UInt64 digitValue copy
+zeroDigitCheck argument right UInt64 zeroWide copy
+zeroDigitCheck result zeroDigit Bool
+zeroDigitCheck ownedBy none
+zeroDigitCheck cleanedBy none
+zeroDigitCheck borrows none
+zeroDigitCheck catch none
+zeroDigitCheck suppresses none
+
+leadingCheck is call
+leadingCheck in significand
+leadingCheck invokes logic.and
+leadingCheck argument left Bool noneYet copy
+leadingCheck argument right Bool zeroDigit copy
+leadingCheck result leading Bool
+leadingCheck ownedBy none
+leadingCheck cleanedBy none
+leadingCheck borrows none
+leadingCheck catch none
+leadingCheck suppresses none
+
+roomOf is call
+roomOf in significand
+roomOf invokes compare.lessThanInt64
+roomOf argument left Int64 kept copy
+roomOf argument right Int64 mostKept copy
+roomOf result room Bool
+roomOf ownedBy none
+roomOf cleanedBy none
+roomOf borrows none
+roomOf catch none
+roomOf suppresses none
+
+shiftChunk is call
+shiftChunk in significand
+shiftChunk invokes math.multiplyUInt64
+shiftChunk argument left UInt64 chunk copy
+shiftChunk argument right UInt64 tenWide copy
+shiftChunk result shiftedChunk UInt64
+shiftChunk ownedBy none
+shiftChunk cleanedBy none
+shiftChunk borrows none
+shiftChunk catch none
+shiftChunk suppresses none
+
+addDigit is call
+addDigit in significand
+addDigit invokes math.addUInt64
+addDigit argument left UInt64 shiftedChunk copy
+addDigit argument right UInt64 digitValue copy
+addDigit result grownChunk UInt64
+addDigit ownedBy none
+addDigit cleanedBy none
+addDigit borrows none
+addDigit catch none
+addDigit suppresses none
+
+moreChunk is call
+moreChunk in significand
+moreChunk invokes math.addInt64
+moreChunk argument left Int64 chunkDigits copy
+moreChunk argument right Int64 one copy
+moreChunk result chunkMore Int64
+moreChunk ownedBy none
+moreChunk cleanedBy none
+moreChunk borrows none
+moreChunk catch none
+moreChunk suppresses none
+
+moreKept is call
+moreKept in significand
+moreKept invokes math.addInt64
+moreKept argument left Int64 kept copy
+moreKept argument right Int64 one copy
+moreKept result keptMore Int64
+moreKept ownedBy none
+moreKept cleanedBy none
+moreKept borrows none
+moreKept catch none
+moreKept suppresses none
+
+fullCheck is call
+fullCheck in significand
+fullCheck invokes compare.equalInt64
+fullCheck argument left Int64 chunkMore copy
+fullCheck argument right Int64 nine copy
+fullCheck result full Bool
+fullCheck ownedBy none
+fullCheck cleanedBy none
+fullCheck borrows none
+fullCheck catch none
+fullCheck suppresses none
+
+scaleChunk is call
+scaleChunk in significand
+scaleChunk invokes bignum.multiplyPowerOfTen
+scaleChunk argument number machine.Address number copy
+scaleChunk argument power Int64 nine copy
+scaleChunk result none
+scaleChunk ownedBy none
+scaleChunk cleanedBy none
+scaleChunk borrows none
+scaleChunk catch none
+scaleChunk suppresses none
+
+addChunk is call
+addChunk in significand
+addChunk invokes bignum.addSmall
+addChunk argument number machine.Address number copy
+addChunk argument value UInt64 chunk copy
+addChunk result none
+addChunk ownedBy none
+addChunk cleanedBy none
+addChunk borrows none
+addChunk catch none
+addChunk suppresses none
+
+moreDropped is call
+moreDropped in significand
+moreDropped invokes math.addInt64
+moreDropped argument left Int64 dropped copy
+moreDropped argument right Int64 one copy
+moreDropped result droppedMore Int64
+moreDropped ownedBy none
+moreDropped cleanedBy none
+moreDropped borrows none
+moreDropped catch none
+moreDropped suppresses none
+
+advance is call
+advance in significand
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 one copy
+advance result after Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+afterE is call
+afterE in significand
+afterE invokes math.addInt64
+afterE argument left Int64 at copy
+afterE argument right Int64 one copy
+afterE result signAt Int64
+afterE ownedBy none
+afterE cleanedBy none
+afterE borrows none
+afterE catch none
+afterE suppresses none
+
+negativeCheck is call
+negativeCheck in significand
+negativeCheck invokes byteIs
+negativeCheck argument text machine.Address text copy
+negativeCheck argument bytes Int64 bytes copy
+negativeCheck argument at Int64 signAt copy
+negativeCheck argument wanted Byte minusByte copy
+negativeCheck result negativeSign Bool
+negativeCheck ownedBy none
+negativeCheck cleanedBy none
+negativeCheck borrows none
+negativeCheck catch none
+negativeCheck suppresses none
+
+plusCheck is call
+plusCheck in significand
+plusCheck invokes byteIs
+plusCheck argument text machine.Address text copy
+plusCheck argument bytes Int64 bytes copy
+plusCheck argument at Int64 signAt copy
+plusCheck argument wanted Byte plusByte copy
+plusCheck result plusSign Bool
+plusCheck ownedBy none
+plusCheck cleanedBy none
+plusCheck borrows none
+plusCheck catch none
+plusCheck suppresses none
+
+skipNegative is call
+skipNegative in significand
+skipNegative invokes math.addInt64
+skipNegative argument left Int64 signAt copy
+skipNegative argument right Int64 one copy
+skipNegative result afterNegative Int64
+skipNegative ownedBy none
+skipNegative cleanedBy none
+skipNegative borrows none
+skipNegative catch none
+skipNegative suppresses none
+
+skipPlusSign is call
+skipPlusSign in significand
+skipPlusSign invokes math.addInt64
+skipPlusSign argument left Int64 signAt copy
+skipPlusSign argument right Int64 one copy
+skipPlusSign result afterPlus Int64
+skipPlusSign ownedBy none
+skipPlusSign cleanedBy none
+skipPlusSign borrows none
+skipPlusSign catch none
+skipPlusSign suppresses none
+
+exponentEnd is call
+exponentEnd in significand
+exponentEnd invokes compare.greaterOrEqualInt64
+exponentEnd argument left Int64 at copy
+exponentEnd argument right Int64 bytes copy
+exponentEnd result exponentDone Bool
+exponentEnd ownedBy none
+exponentEnd cleanedBy none
+exponentEnd borrows none
+exponentEnd catch none
+exponentEnd suppresses none
+
+findExponentByte is call
+findExponentByte in significand
+findExponentByte invokes machine.offset
+findExponentByte argument address machine.Address text copy
+findExponentByte argument bytes Int64 at copy
+findExponentByte result exponentPlace machine.Address
+findExponentByte ownedBy none
+findExponentByte cleanedBy none
+findExponentByte borrows none
+findExponentByte catch none
+findExponentByte suppresses none
+
+loadExponentByte is call
+loadExponentByte in significand
+loadExponentByte invokes machine.loadByte
+loadExponentByte argument address machine.Address exponentPlace copy
+loadExponentByte result exponentByte Byte
+loadExponentByte ownedBy none
+loadExponentByte cleanedBy none
+loadExponentByte borrows none
+loadExponentByte catch none
+loadExponentByte suppresses none
+
+exponentValueOf is call
+exponentValueOf in significand
+exponentValueOf invokes math.subtractByte
+exponentValueOf argument left Byte exponentByte copy
+exponentValueOf argument right Byte zeroCharacter copy
+exponentValueOf result exponentDigitByte Byte
+exponentValueOf ownedBy none
+exponentValueOf cleanedBy none
+exponentValueOf borrows none
+exponentValueOf catch none
+exponentValueOf suppresses none
+
+widenExponent is call
+widenExponent in significand
+widenExponent invokes convert.byteToInt64
+widenExponent argument value Byte exponentDigitByte copy
+widenExponent result exponentDigitValue Int64
+widenExponent ownedBy none
+widenExponent cleanedBy none
+widenExponent borrows none
+widenExponent catch none
+widenExponent suppresses none
+
+saturationCheck is call
+saturationCheck in significand
+saturationCheck invokes compare.lessThanInt64
+saturationCheck argument left Int64 exponent copy
+saturationCheck argument right Int64 saturated copy
+saturationCheck result below Bool
+saturationCheck ownedBy none
+saturationCheck cleanedBy none
+saturationCheck borrows none
+saturationCheck catch none
+saturationCheck suppresses none
+
+shiftExponent is call
+shiftExponent in significand
+shiftExponent invokes math.multiplyInt64
+shiftExponent argument left Int64 exponent copy
+shiftExponent argument right Int64 ten copy
+shiftExponent result shiftedExponent Int64
+shiftExponent ownedBy none
+shiftExponent cleanedBy none
+shiftExponent borrows none
+shiftExponent catch none
+shiftExponent suppresses none
+
+addExponent is call
+addExponent in significand
+addExponent invokes math.addInt64
+addExponent argument left Int64 shiftedExponent copy
+addExponent argument right Int64 exponentDigitValue copy
+addExponent result grownExponent Int64
+addExponent ownedBy none
+addExponent cleanedBy none
+addExponent borrows none
+addExponent catch none
+addExponent suppresses none
+
+advanceExponent is call
+advanceExponent in significand
+advanceExponent invokes math.addInt64
+advanceExponent argument left Int64 at copy
+advanceExponent argument right Int64 one copy
+advanceExponent result afterExponent Int64
+advanceExponent ownedBy none
+advanceExponent cleanedBy none
+advanceExponent borrows none
+advanceExponent catch none
+advanceExponent suppresses none
+
+flipped is call
+flipped in significand
+flipped invokes math.negateInt64
+flipped argument value Int64 exponent copy
+flipped result negated Int64
+flipped ownedBy none
+flipped cleanedBy none
+flipped borrows none
+flipped catch none
+flipped suppresses none
+
+partCheck is call
+partCheck in significand
+partCheck invokes compare.greaterThanInt64
+partCheck argument left Int64 chunkDigits copy
+partCheck argument right Int64 zero copy
+partCheck result part Bool
+partCheck ownedBy none
+partCheck cleanedBy none
+partCheck borrows none
+partCheck catch none
+partCheck suppresses none
+
+scalePart is call
+scalePart in significand
+scalePart invokes bignum.multiplyPowerOfTen
+scalePart argument number machine.Address number copy
+scalePart argument power Int64 chunkDigits copy
+scalePart result none
+scalePart ownedBy none
+scalePart cleanedBy none
+scalePart borrows none
+scalePart catch none
+scalePart suppresses none
+
+addPart is call
+addPart in significand
+addPart invokes bignum.addSmall
+addPart argument number machine.Address number copy
+addPart argument value UInt64 chunk copy
+addPart result none
+addPart ownedBy none
+addPart cleanedBy none
+addPart borrows none
+addPart catch none
+addPart suppresses none
+
+lessFraction is call
+lessFraction in significand
+lessFraction invokes math.subtractInt64
+lessFraction argument left Int64 exponent copy
+lessFraction argument right Int64 fractionDigits copy
+lessFraction result withoutFraction Int64
+lessFraction ownedBy none
+lessFraction cleanedBy none
+lessFraction borrows none
+lessFraction catch none
+lessFraction suppresses none
+
+withDropped is call
+withDropped in significand
+withDropped invokes math.addInt64
+withDropped argument left Int64 withoutFraction copy
+withDropped argument right Int64 dropped copy
+withDropped result powerOf Int64
+withDropped ownedBy none
+withDropped cleanedBy none
+withDropped borrows none
+withDropped catch none
+withDropped suppresses none
+
+scaleSticky is call
+scaleSticky in significand
+scaleSticky invokes bignum.multiplySmall
+scaleSticky argument number machine.Address number copy
+scaleSticky argument factor UInt64 tenWide copy
+scaleSticky result none
+scaleSticky ownedBy none
+scaleSticky cleanedBy none
+scaleSticky borrows none
+scaleSticky catch none
+scaleSticky suppresses none
+
+addOne is call
+addOne in significand
+addOne invokes bignum.addSmall
+addOne argument number machine.Address number copy
+addOne argument value UInt64 oneWide copy
+addOne result none
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+addOne suppresses none
+
+keptSticky is call
+keptSticky in significand
+keptSticky invokes math.addInt64
+keptSticky argument left Int64 kept copy
+keptSticky argument right Int64 one copy
+keptSticky result keptWithSticky Int64
+keptSticky ownedBy none
+keptSticky cleanedBy none
+keptSticky borrows none
+keptSticky catch none
+keptSticky suppresses none
+
+lowerPower is call
+lowerPower in significand
+lowerPower invokes math.subtractInt64
+lowerPower argument left Int64 power copy
+lowerPower argument right Int64 one copy
+lowerPower result stickyPower Int64
+lowerPower ownedBy none
+lowerPower cleanedBy none
+lowerPower borrows none
+lowerPower catch none
+lowerPower suppresses none
+
+storeKept is call
+storeKept in significand
+storeKept invokes machine.storeInt64
+storeKept argument address machine.Address keptTarget copy
+storeKept argument value Int64 kept copy
+storeKept result none
+storeKept ownedBy none
+storeKept cleanedBy none
+storeKept borrows none
+storeKept catch none
+storeKept suppresses none
+
+toBits is operation
+toBits purpose "The bits of the double nearest the number in the module's first number times 10 to a power, ties to even, signed; 0 when it is a double, 2 when it is too large for one; the bits are stored at an address"
+toBits invariant none
+toBits typeParameter none
+toBits input negative Bool copied
+toBits input kept Int64 copied
+toBits input power Int64 copied
+toBits input bitsTarget machine.Address copied
+toBits output Int32
+toBits outputOwnedBy none
+toBits raises none
+toBits effect use machine.memory
+toBits effect use system.calls
+toBits uses memoryAccess
+toBits uses systemCalls
+toBits memoryHeap false
+toBits async false
+toBits maxRecursion none
+toBits label begin loopKind none
+toBits label begin within none
+toBits label magnitude loopKind none
+toBits label magnitude within none
+toBits label tinyCheck loopKind none
+toBits label tinyCheck within none
+toBits label ratio loopKind none
+toBits label ratio within none
+toBits label scaleNumber loopKind none
+toBits label scaleNumber within none
+toBits label scaleDenominator loopKind none
+toBits label scaleDenominator within none
+toBits label estimate loopKind none
+toBits label estimate within none
+toBits label lowerShift loopKind none
+toBits label lowerShift within none
+toBits label exponentOf loopKind none
+toBits label exponentOf within none
+toBits label underflowCheck loopKind none
+toBits label underflowCheck within none
+toBits label makeSubnormal loopKind none
+toBits label makeSubnormal within none
+toBits label divide loopKind none
+toBits label divide within none
+toBits label eachBit loopKind while
+toBits label eachBit within none
+toBits label eachBit maxIterations fiftyFour
+toBits label nextBit loopKind none
+toBits label nextBit within eachBit
+toBits label takeDivisor loopKind none
+toBits label takeDivisor within eachBit
+toBits label halveDivisor loopKind none
+toBits label halveDivisor within eachBit
+toBits label rounding loopKind none
+toBits label rounding within none
+toBits label roundUp loopKind none
+toBits label roundUp within none
+toBits label encode loopKind none
+toBits label encode within none
+toBits label encodeSubnormal loopKind none
+toBits label encodeSubnormal within none
+toBits label carryCheck loopKind none
+toBits label carryCheck within none
+toBits label renormalize loopKind none
+toBits label renormalize within none
+toBits label encodeNormal loopKind none
+toBits label encodeNormal within none
+toBits label sign loopKind none
+toBits label sign within none
+toBits label addSign loopKind none
+toBits label addSign within none
+toBits label store loopKind none
+toBits label store within none
+toBits label signedZero loopKind none
+toBits label signedZero within none
+toBits label negativeZero loopKind none
+toBits label negativeZero within none
+toBits label positiveZero loopKind none
+toBits label positiveZero within none
+toBits label overflow loopKind none
+toBits label overflow within none
+toBits let shift Int64 0 mutable
+toBits let quotient UInt64 0 mutable
+toBits let mantissa UInt64 0 mutable
+toBits let exponent Int64 0 mutable
+toBits let result UInt64 0 mutable
+toBits let subnormal Bool false mutable
+toBits let yes Bool true immutable
+toBits let round Int64 0 mutable
+toBits let parsed Int32 0 immutable
+toBits let tooLarge Int32 2 immutable
+toBits let signBit UInt64 9223372036854775808 immutable
+toBits let hiddenBit UInt64 4503599627370496 immutable
+toBits let carried UInt64 9007199254740992 immutable
+toBits let largest Int64 1023 immutable
+toBits let smallest Int64 -1022 immutable
+toBits let subnormalShift Int64 1075 immutable
+toBits let fiftyFour Int64 54 immutable
+toBits let zeroWide UInt64 0 immutable
+toBits let zero Int64 0 immutable
+toBits let one Int64 1 immutable
+toBits let two Int64 2 immutable
+toBits let three Int64 3 immutable
+toBits let threeTen Int64 310 immutable
+toBits let minusThreeTwentyFour Int64 -324 immutable
+toBits let oneWide UInt64 1 immutable
+toBits let fiftyThree Int64 53 immutable
+toBits let minusOne Int64 -1 immutable
+toBits let fiftyTwo Int64 52 immutable
+toBits at begin do numberOf
+toBits at begin do denominatorOf
+toBits at begin do workOf
+toBits at begin do divisorOf
+toBits at begin do emptyCheck
+toBits at begin branch if empty goto signedZero else goto magnitude
+toBits at magnitude do magnitudeOf
+toBits at magnitude do hugeCheck
+toBits at magnitude branch if huge goto overflow else goto tinyCheck
+toBits at tinyCheck do checkTiny
+toBits at tinyCheck branch if tiny goto signedZero else goto ratio
+toBits at ratio do setDenominator
+toBits at ratio do positiveCheck
+toBits at ratio branch if positivePower goto scaleNumber else goto scaleDenominator
+toBits at scaleNumber do multiplyNumber
+toBits at scaleNumber goto estimate
+toBits at scaleDenominator do negatePower
+toBits at scaleDenominator do multiplyDenominator
+toBits at scaleDenominator goto estimate
+toBits at estimate do numberWidth
+toBits at estimate do denominatorWidth
+toBits at estimate do widthGap
+toBits at estimate do firstShift
+toBits at estimate set shift guess
+toBits at estimate do shapeWork
+toBits at estimate do orderCheck
+toBits at estimate do tooBig
+toBits at estimate branch if over goto lowerShift else goto exponentOf
+toBits at lowerShift do lessShift
+toBits at lowerShift set shift lowered
+toBits at lowerShift goto exponentOf
+toBits at exponentOf do exponentValue
+toBits at exponentOf set exponent binary
+toBits at exponentOf do overflowCheck
+toBits at exponentOf branch if overflowing goto overflow else goto underflowCheck
+toBits at underflowCheck do belowCheck
+toBits at underflowCheck branch if belowNormal goto makeSubnormal else goto divide
+toBits at makeSubnormal set subnormal yes
+toBits at makeSubnormal set shift subnormalShift
+toBits at makeSubnormal goto divide
+toBits at divide do shapeFinal
+toBits at divide set quotient zeroWide
+toBits at divide goto eachBit
+toBits at eachBit do bitsDone
+toBits at eachBit branch if doneBits goto rounding else goto nextBit
+toBits at nextBit do doubleQuotient
+toBits at nextBit set quotient doubled
+toBits at nextBit do bitOrder
+toBits at nextBit do bitCheck
+toBits at nextBit branch if setBit goto takeDivisor else goto halveDivisor
+toBits at takeDivisor do subtractDivisor
+toBits at takeDivisor do addBit
+toBits at takeDivisor set quotient withBit
+toBits at takeDivisor goto halveDivisor
+toBits at halveDivisor do halve
+toBits at halveDivisor do countBit
+toBits at halveDivisor set round roundNext
+toBits at halveDivisor goto eachBit
+toBits at rounding do mantissaOf
+toBits at rounding set mantissa half
+toBits at rounding do roundBitOf
+toBits at rounding do roundCheck
+toBits at rounding do restCheck
+toBits at rounding do stickyOf
+toBits at rounding do lowBitOf
+toBits at rounding do oddCheck
+toBits at rounding do eitherCheck
+toBits at rounding do upCheck
+toBits at rounding branch if up goto roundUp else goto encode
+toBits at roundUp do bump
+toBits at roundUp set mantissa bumped
+toBits at roundUp goto encode
+toBits at encode branch if subnormal goto encodeSubnormal else goto carryCheck
+toBits at encodeSubnormal set result mantissa
+toBits at encodeSubnormal goto sign
+toBits at carryCheck do carryOf
+toBits at carryCheck branch if carriedOver goto renormalize else goto encodeNormal
+toBits at renormalize set mantissa hiddenBit
+toBits at renormalize do higher
+toBits at renormalize set exponent raised
+toBits at renormalize do raisedCheck
+toBits at renormalize branch if raisedOverflow goto overflow else goto encodeNormal
+toBits at encodeNormal do biasOf
+toBits at encodeNormal do biasWide
+toBits at encodeNormal do fieldOf
+toBits at encodeNormal do fractionOf
+toBits at encodeNormal do joinField
+toBits at encodeNormal set result joined
+toBits at encodeNormal goto sign
+toBits at sign branch if negative goto addSign else goto store
+toBits at addSign do withSign
+toBits at addSign set result signed
+toBits at addSign goto store
+toBits at store do storeBits
+toBits at store return ok parsed
+toBits at signedZero branch if negative goto negativeZero else goto positiveZero
+toBits at negativeZero do storeNegative
+toBits at negativeZero return ok parsed
+toBits at positiveZero do storePositive
+toBits at positiveZero return ok parsed
+toBits at overflow return ok tooLarge
+
+numberOf is call
+numberOf in toBits
+numberOf invokes numberAt
+numberOf argument slot Int64 zero copy
+numberOf result number machine.Address
+numberOf ownedBy none
+numberOf cleanedBy none
+numberOf borrows none
+numberOf catch none
+numberOf suppresses none
+
+denominatorOf is call
+denominatorOf in toBits
+denominatorOf invokes numberAt
+denominatorOf argument slot Int64 one copy
+denominatorOf result denominator machine.Address
+denominatorOf ownedBy none
+denominatorOf cleanedBy none
+denominatorOf borrows none
+denominatorOf catch none
+denominatorOf suppresses none
+
+workOf is call
+workOf in toBits
+workOf invokes numberAt
+workOf argument slot Int64 two copy
+workOf result work machine.Address
+workOf ownedBy none
+workOf cleanedBy none
+workOf borrows none
+workOf catch none
+workOf suppresses none
+
+divisorOf is call
+divisorOf in toBits
+divisorOf invokes numberAt
+divisorOf argument slot Int64 three copy
+divisorOf result divisor machine.Address
+divisorOf ownedBy none
+divisorOf cleanedBy none
+divisorOf borrows none
+divisorOf catch none
+divisorOf suppresses none
+
+emptyCheck is call
+emptyCheck in toBits
+emptyCheck invokes compare.equalInt64
+emptyCheck argument left Int64 kept copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+magnitudeOf is call
+magnitudeOf in toBits
+magnitudeOf invokes math.addInt64
+magnitudeOf argument left Int64 kept copy
+magnitudeOf argument right Int64 power copy
+magnitudeOf result digitsPower Int64
+magnitudeOf ownedBy none
+magnitudeOf cleanedBy none
+magnitudeOf borrows none
+magnitudeOf catch none
+magnitudeOf suppresses none
+
+hugeCheck is call
+hugeCheck in toBits
+hugeCheck invokes compare.greaterThanInt64
+hugeCheck argument left Int64 digitsPower copy
+hugeCheck argument right Int64 threeTen copy
+hugeCheck result huge Bool
+hugeCheck ownedBy none
+hugeCheck cleanedBy none
+hugeCheck borrows none
+hugeCheck catch none
+hugeCheck suppresses none
+
+checkTiny is call
+checkTiny in toBits
+checkTiny invokes compare.lessThanInt64
+checkTiny argument left Int64 digitsPower copy
+checkTiny argument right Int64 minusThreeTwentyFour copy
+checkTiny result tiny Bool
+checkTiny ownedBy none
+checkTiny cleanedBy none
+checkTiny borrows none
+checkTiny catch none
+checkTiny suppresses none
+
+setDenominator is call
+setDenominator in toBits
+setDenominator invokes bignum.setSmall
+setDenominator argument number machine.Address denominator copy
+setDenominator argument value UInt64 oneWide copy
+setDenominator result none
+setDenominator ownedBy none
+setDenominator cleanedBy none
+setDenominator borrows none
+setDenominator catch none
+setDenominator suppresses none
+
+positiveCheck is call
+positiveCheck in toBits
+positiveCheck invokes compare.greaterOrEqualInt64
+positiveCheck argument left Int64 power copy
+positiveCheck argument right Int64 zero copy
+positiveCheck result positivePower Bool
+positiveCheck ownedBy none
+positiveCheck cleanedBy none
+positiveCheck borrows none
+positiveCheck catch none
+positiveCheck suppresses none
+
+multiplyNumber is call
+multiplyNumber in toBits
+multiplyNumber invokes bignum.multiplyPowerOfTen
+multiplyNumber argument number machine.Address number copy
+multiplyNumber argument power Int64 power copy
+multiplyNumber result none
+multiplyNumber ownedBy none
+multiplyNumber cleanedBy none
+multiplyNumber borrows none
+multiplyNumber catch none
+multiplyNumber suppresses none
+
+negatePower is call
+negatePower in toBits
+negatePower invokes math.negateInt64
+negatePower argument value Int64 power copy
+negatePower result inverse Int64
+negatePower ownedBy none
+negatePower cleanedBy none
+negatePower borrows none
+negatePower catch none
+negatePower suppresses none
+
+multiplyDenominator is call
+multiplyDenominator in toBits
+multiplyDenominator invokes bignum.multiplyPowerOfTen
+multiplyDenominator argument number machine.Address denominator copy
+multiplyDenominator argument power Int64 inverse copy
+multiplyDenominator result none
+multiplyDenominator ownedBy none
+multiplyDenominator cleanedBy none
+multiplyDenominator borrows none
+multiplyDenominator catch none
+multiplyDenominator suppresses none
+
+numberWidth is call
+numberWidth in toBits
+numberWidth invokes bignum.bitLength
+numberWidth argument number machine.Address number copy
+numberWidth result a Int64
+numberWidth ownedBy none
+numberWidth cleanedBy none
+numberWidth borrows none
+numberWidth catch none
+numberWidth suppresses none
+
+denominatorWidth is call
+denominatorWidth in toBits
+denominatorWidth invokes bignum.bitLength
+denominatorWidth argument number machine.Address denominator copy
+denominatorWidth result b Int64
+denominatorWidth ownedBy none
+denominatorWidth cleanedBy none
+denominatorWidth borrows none
+denominatorWidth catch none
+denominatorWidth suppresses none
+
+widthGap is call
+widthGap in toBits
+widthGap invokes math.subtractInt64
+widthGap argument left Int64 a copy
+widthGap argument right Int64 b copy
+widthGap result gap Int64
+widthGap ownedBy none
+widthGap cleanedBy none
+widthGap borrows none
+widthGap catch none
+widthGap suppresses none
+
+firstShift is call
+firstShift in toBits
+firstShift invokes math.subtractInt64
+firstShift argument left Int64 fiftyFour copy
+firstShift argument right Int64 gap copy
+firstShift result guess Int64
+firstShift ownedBy none
+firstShift cleanedBy none
+firstShift borrows none
+firstShift catch none
+firstShift suppresses none
+
+shapeWork is call
+shapeWork in toBits
+shapeWork invokes shapeQuotient
+shapeWork argument number machine.Address number copy
+shapeWork argument denominator machine.Address denominator copy
+shapeWork argument work machine.Address work copy
+shapeWork argument divisor machine.Address divisor copy
+shapeWork argument shift Int64 guess copy
+shapeWork argument last Int64 zero copy
+shapeWork result none
+shapeWork ownedBy none
+shapeWork cleanedBy none
+shapeWork borrows none
+shapeWork catch none
+shapeWork suppresses none
+
+orderCheck is call
+orderCheck in toBits
+orderCheck invokes bignum.compareNumbers
+orderCheck argument left machine.Address work copy
+orderCheck argument right machine.Address divisor copy
+orderCheck result order Int64
+orderCheck ownedBy none
+orderCheck cleanedBy none
+orderCheck borrows none
+orderCheck catch none
+orderCheck suppresses none
+
+tooBig is call
+tooBig in toBits
+tooBig invokes compare.greaterOrEqualInt64
+tooBig argument left Int64 order copy
+tooBig argument right Int64 zero copy
+tooBig result over Bool
+tooBig ownedBy none
+tooBig cleanedBy none
+tooBig borrows none
+tooBig catch none
+tooBig suppresses none
+
+lessShift is call
+lessShift in toBits
+lessShift invokes math.subtractInt64
+lessShift argument left Int64 shift copy
+lessShift argument right Int64 one copy
+lessShift result lowered Int64
+lessShift ownedBy none
+lessShift cleanedBy none
+lessShift borrows none
+lessShift catch none
+lessShift suppresses none
+
+exponentValue is call
+exponentValue in toBits
+exponentValue invokes math.subtractInt64
+exponentValue argument left Int64 fiftyThree copy
+exponentValue argument right Int64 shift copy
+exponentValue result binary Int64
+exponentValue ownedBy none
+exponentValue cleanedBy none
+exponentValue borrows none
+exponentValue catch none
+exponentValue suppresses none
+
+overflowCheck is call
+overflowCheck in toBits
+overflowCheck invokes compare.greaterThanInt64
+overflowCheck argument left Int64 binary copy
+overflowCheck argument right Int64 largest copy
+overflowCheck result overflowing Bool
+overflowCheck ownedBy none
+overflowCheck cleanedBy none
+overflowCheck borrows none
+overflowCheck catch none
+overflowCheck suppresses none
+
+belowCheck is call
+belowCheck in toBits
+belowCheck invokes compare.lessThanInt64
+belowCheck argument left Int64 binary copy
+belowCheck argument right Int64 smallest copy
+belowCheck result belowNormal Bool
+belowCheck ownedBy none
+belowCheck cleanedBy none
+belowCheck borrows none
+belowCheck catch none
+belowCheck suppresses none
+
+shapeFinal is call
+shapeFinal in toBits
+shapeFinal invokes shapeQuotient
+shapeFinal argument number machine.Address number copy
+shapeFinal argument denominator machine.Address denominator copy
+shapeFinal argument work machine.Address work copy
+shapeFinal argument divisor machine.Address divisor copy
+shapeFinal argument shift Int64 shift copy
+shapeFinal argument last Int64 minusOne copy
+shapeFinal result none
+shapeFinal ownedBy none
+shapeFinal cleanedBy none
+shapeFinal borrows none
+shapeFinal catch none
+shapeFinal suppresses none
+
+bitsDone is call
+bitsDone in toBits
+bitsDone invokes compare.greaterOrEqualInt64
+bitsDone argument left Int64 round copy
+bitsDone argument right Int64 fiftyFour copy
+bitsDone result doneBits Bool
+bitsDone ownedBy none
+bitsDone cleanedBy none
+bitsDone borrows none
+bitsDone catch none
+bitsDone suppresses none
+
+doubleQuotient is call
+doubleQuotient in toBits
+doubleQuotient invokes bits.shiftLeftUInt64
+doubleQuotient argument value UInt64 quotient copy
+doubleQuotient argument amount Int64 one copy
+doubleQuotient result doubled UInt64
+doubleQuotient ownedBy none
+doubleQuotient cleanedBy none
+doubleQuotient borrows none
+doubleQuotient catch none
+doubleQuotient suppresses none
+
+bitOrder is call
+bitOrder in toBits
+bitOrder invokes bignum.compareNumbers
+bitOrder argument left machine.Address work copy
+bitOrder argument right machine.Address divisor copy
+bitOrder result bitCompare Int64
+bitOrder ownedBy none
+bitOrder cleanedBy none
+bitOrder borrows none
+bitOrder catch none
+bitOrder suppresses none
+
+bitCheck is call
+bitCheck in toBits
+bitCheck invokes compare.greaterOrEqualInt64
+bitCheck argument left Int64 bitCompare copy
+bitCheck argument right Int64 zero copy
+bitCheck result setBit Bool
+bitCheck ownedBy none
+bitCheck cleanedBy none
+bitCheck borrows none
+bitCheck catch none
+bitCheck suppresses none
+
+subtractDivisor is call
+subtractDivisor in toBits
+subtractDivisor invokes bignum.subtractNumber
+subtractDivisor argument target machine.Address work copy
+subtractDivisor argument subtrahend machine.Address divisor copy
+subtractDivisor result none
+subtractDivisor ownedBy none
+subtractDivisor cleanedBy none
+subtractDivisor borrows none
+subtractDivisor catch none
+subtractDivisor suppresses none
+
+addBit is call
+addBit in toBits
+addBit invokes bits.orUInt64
+addBit argument left UInt64 quotient copy
+addBit argument right UInt64 oneWide copy
+addBit result withBit UInt64
+addBit ownedBy none
+addBit cleanedBy none
+addBit borrows none
+addBit catch none
+addBit suppresses none
+
+halve is call
+halve in toBits
+halve invokes bignum.shiftRightOne
+halve argument number machine.Address divisor copy
+halve result none
+halve ownedBy none
+halve cleanedBy none
+halve borrows none
+halve catch none
+halve suppresses none
+
+countBit is call
+countBit in toBits
+countBit invokes math.addInt64
+countBit argument left Int64 round copy
+countBit argument right Int64 one copy
+countBit result roundNext Int64
+countBit ownedBy none
+countBit cleanedBy none
+countBit borrows none
+countBit catch none
+countBit suppresses none
+
+mantissaOf is call
+mantissaOf in toBits
+mantissaOf invokes bits.shiftRightUInt64
+mantissaOf argument value UInt64 quotient copy
+mantissaOf argument amount Int64 one copy
+mantissaOf result half UInt64
+mantissaOf ownedBy none
+mantissaOf cleanedBy none
+mantissaOf borrows none
+mantissaOf catch none
+mantissaOf suppresses none
+
+roundBitOf is call
+roundBitOf in toBits
+roundBitOf invokes bits.andUInt64
+roundBitOf argument left UInt64 quotient copy
+roundBitOf argument right UInt64 oneWide copy
+roundBitOf result roundBit UInt64
+roundBitOf ownedBy none
+roundBitOf cleanedBy none
+roundBitOf borrows none
+roundBitOf catch none
+roundBitOf suppresses none
+
+roundCheck is call
+roundCheck in toBits
+roundCheck invokes compare.equalUInt64
+roundCheck argument left UInt64 roundBit copy
+roundCheck argument right UInt64 oneWide copy
+roundCheck result roundSet Bool
+roundCheck ownedBy none
+roundCheck cleanedBy none
+roundCheck borrows none
+roundCheck catch none
+roundCheck suppresses none
+
+restCheck is call
+restCheck in toBits
+restCheck invokes bignum.isZero
+restCheck argument number machine.Address work copy
+restCheck result restZero Bool
+restCheck ownedBy none
+restCheck cleanedBy none
+restCheck borrows none
+restCheck catch none
+restCheck suppresses none
+
+stickyOf is call
+stickyOf in toBits
+stickyOf invokes logic.not
+stickyOf argument value Bool restZero copy
+stickyOf result sticky Bool
+stickyOf ownedBy none
+stickyOf cleanedBy none
+stickyOf borrows none
+stickyOf catch none
+stickyOf suppresses none
+
+lowBitOf is call
+lowBitOf in toBits
+lowBitOf invokes bits.andUInt64
+lowBitOf argument left UInt64 half copy
+lowBitOf argument right UInt64 oneWide copy
+lowBitOf result lowBit UInt64
+lowBitOf ownedBy none
+lowBitOf cleanedBy none
+lowBitOf borrows none
+lowBitOf catch none
+lowBitOf suppresses none
+
+oddCheck is call
+oddCheck in toBits
+oddCheck invokes compare.equalUInt64
+oddCheck argument left UInt64 lowBit copy
+oddCheck argument right UInt64 oneWide copy
+oddCheck result odd Bool
+oddCheck ownedBy none
+oddCheck cleanedBy none
+oddCheck borrows none
+oddCheck catch none
+oddCheck suppresses none
+
+eitherCheck is call
+eitherCheck in toBits
+eitherCheck invokes logic.or
+eitherCheck argument left Bool sticky copy
+eitherCheck argument right Bool odd copy
+eitherCheck result tieBreak Bool
+eitherCheck ownedBy none
+eitherCheck cleanedBy none
+eitherCheck borrows none
+eitherCheck catch none
+eitherCheck suppresses none
+
+upCheck is call
+upCheck in toBits
+upCheck invokes logic.and
+upCheck argument left Bool roundSet copy
+upCheck argument right Bool tieBreak copy
+upCheck result up Bool
+upCheck ownedBy none
+upCheck cleanedBy none
+upCheck borrows none
+upCheck catch none
+upCheck suppresses none
+
+bump is call
+bump in toBits
+bump invokes math.addUInt64
+bump argument left UInt64 half copy
+bump argument right UInt64 oneWide copy
+bump result bumped UInt64
+bump ownedBy none
+bump cleanedBy none
+bump borrows none
+bump catch none
+bump suppresses none
+
+carryOf is call
+carryOf in toBits
+carryOf invokes compare.equalUInt64
+carryOf argument left UInt64 mantissa copy
+carryOf argument right UInt64 carried copy
+carryOf result carriedOver Bool
+carryOf ownedBy none
+carryOf cleanedBy none
+carryOf borrows none
+carryOf catch none
+carryOf suppresses none
+
+higher is call
+higher in toBits
+higher invokes math.addInt64
+higher argument left Int64 exponent copy
+higher argument right Int64 one copy
+higher result raised Int64
+higher ownedBy none
+higher cleanedBy none
+higher borrows none
+higher catch none
+higher suppresses none
+
+raisedCheck is call
+raisedCheck in toBits
+raisedCheck invokes compare.greaterThanInt64
+raisedCheck argument left Int64 raised copy
+raisedCheck argument right Int64 largest copy
+raisedCheck result raisedOverflow Bool
+raisedCheck ownedBy none
+raisedCheck cleanedBy none
+raisedCheck borrows none
+raisedCheck catch none
+raisedCheck suppresses none
+
+biasOf is call
+biasOf in toBits
+biasOf invokes math.addInt64
+biasOf argument left Int64 exponent copy
+biasOf argument right Int64 largest copy
+biasOf result biased Int64
+biasOf ownedBy none
+biasOf cleanedBy none
+biasOf borrows none
+biasOf catch none
+biasOf suppresses none
+
+biasWide is call
+biasWide in toBits
+biasWide invokes convert.int64ToUInt64
+biasWide argument value Int64 biased copy
+biasWide result biasedWide UInt64
+biasWide ownedBy none
+biasWide cleanedBy none
+biasWide borrows none
+biasWide catch none
+biasWide suppresses none
+
+fieldOf is call
+fieldOf in toBits
+fieldOf invokes bits.shiftLeftUInt64
+fieldOf argument value UInt64 biasedWide copy
+fieldOf argument amount Int64 fiftyTwo copy
+fieldOf result field UInt64
+fieldOf ownedBy none
+fieldOf cleanedBy none
+fieldOf borrows none
+fieldOf catch none
+fieldOf suppresses none
+
+fractionOf is call
+fractionOf in toBits
+fractionOf invokes math.subtractUInt64
+fractionOf argument left UInt64 mantissa copy
+fractionOf argument right UInt64 hiddenBit copy
+fractionOf result fraction UInt64
+fractionOf ownedBy none
+fractionOf cleanedBy none
+fractionOf borrows none
+fractionOf catch none
+fractionOf suppresses none
+
+joinField is call
+joinField in toBits
+joinField invokes bits.orUInt64
+joinField argument left UInt64 field copy
+joinField argument right UInt64 fraction copy
+joinField result joined UInt64
+joinField ownedBy none
+joinField cleanedBy none
+joinField borrows none
+joinField catch none
+joinField suppresses none
+
+withSign is call
+withSign in toBits
+withSign invokes bits.orUInt64
+withSign argument left UInt64 result copy
+withSign argument right UInt64 signBit copy
+withSign result signed UInt64
+withSign ownedBy none
+withSign cleanedBy none
+withSign borrows none
+withSign catch none
+withSign suppresses none
+
+storeBits is call
+storeBits in toBits
+storeBits invokes machine.storeUInt64
+storeBits argument address machine.Address bitsTarget copy
+storeBits argument value UInt64 result copy
+storeBits result none
+storeBits ownedBy none
+storeBits cleanedBy none
+storeBits borrows none
+storeBits catch none
+storeBits suppresses none
+
+storeNegative is call
+storeNegative in toBits
+storeNegative invokes machine.storeUInt64
+storeNegative argument address machine.Address bitsTarget copy
+storeNegative argument value UInt64 signBit copy
+storeNegative result none
+storeNegative ownedBy none
+storeNegative cleanedBy none
+storeNegative borrows none
+storeNegative catch none
+storeNegative suppresses none
+
+storePositive is call
+storePositive in toBits
+storePositive invokes machine.storeUInt64
+storePositive argument address machine.Address bitsTarget copy
+storePositive argument value UInt64 zeroWide copy
+storePositive result none
+storePositive ownedBy none
+storePositive cleanedBy none
+storePositive borrows none
+storePositive catch none
+storePositive suppresses none
+
+shapeQuotient is operation
+shapeQuotient purpose "Set up a division: the work number is the number times 2^shift when shift is 0 or more, and the divisor the denominator times 2^-shift otherwise, then times 2^54 (for the check) or 2^53 (for the division, `last` -1)"
+shapeQuotient invariant none
+shapeQuotient typeParameter none
+shapeQuotient input number machine.Address copied
+shapeQuotient input denominator machine.Address copied
+shapeQuotient input work machine.Address copied
+shapeQuotient input divisor machine.Address copied
+shapeQuotient input shift Int64 copied
+shapeQuotient input last Int64 copied
+shapeQuotient output none
+shapeQuotient outputOwnedBy none
+shapeQuotient raises none
+shapeQuotient effect use machine.memory
+shapeQuotient effect use system.calls
+shapeQuotient uses memoryAccess
+shapeQuotient uses systemCalls
+shapeQuotient memoryHeap false
+shapeQuotient async false
+shapeQuotient maxRecursion none
+shapeQuotient label begin loopKind none
+shapeQuotient label begin within none
+shapeQuotient label divisionShift loopKind none
+shapeQuotient label divisionShift within none
+shapeQuotient label signCheck loopKind none
+shapeQuotient label signCheck within none
+shapeQuotient label shiftWork loopKind none
+shapeQuotient label shiftWork within none
+shapeQuotient label shiftDivisor loopKind none
+shapeQuotient label shiftDivisor within none
+shapeQuotient label scaleDivisor loopKind none
+shapeQuotient label scaleDivisor within none
+shapeQuotient let divisorShift Int64 54 mutable
+shapeQuotient let fiftyThree Int64 53 immutable
+shapeQuotient let zero Int64 0 immutable
+shapeQuotient at begin do copyWork
+shapeQuotient at begin do copyDivisor
+shapeQuotient at begin do lastCheck
+shapeQuotient at begin branch if forDivision goto divisionShift else goto signCheck
+shapeQuotient at divisionShift set divisorShift fiftyThree
+shapeQuotient at divisionShift goto signCheck
+shapeQuotient at signCheck do upCheck
+shapeQuotient at signCheck branch if up goto shiftWork else goto shiftDivisor
+shapeQuotient at shiftWork do workShift
+shapeQuotient at shiftWork goto scaleDivisor
+shapeQuotient at shiftDivisor do flip
+shapeQuotient at shiftDivisor do addInverse
+shapeQuotient at shiftDivisor set divisorShift total
+shapeQuotient at shiftDivisor goto scaleDivisor
+shapeQuotient at scaleDivisor do divisorScale
+shapeQuotient at scaleDivisor return ok none
+
+copyWork is call
+copyWork in shapeQuotient
+copyWork invokes bignum.copyNumber
+copyWork argument target machine.Address work copy
+copyWork argument source machine.Address number copy
+copyWork result none
+copyWork ownedBy none
+copyWork cleanedBy none
+copyWork borrows none
+copyWork catch none
+copyWork suppresses none
+
+copyDivisor is call
+copyDivisor in shapeQuotient
+copyDivisor invokes bignum.copyNumber
+copyDivisor argument target machine.Address divisor copy
+copyDivisor argument source machine.Address denominator copy
+copyDivisor result none
+copyDivisor ownedBy none
+copyDivisor cleanedBy none
+copyDivisor borrows none
+copyDivisor catch none
+copyDivisor suppresses none
+
+lastCheck is call
+lastCheck in shapeQuotient
+lastCheck invokes compare.lessThanInt64
+lastCheck argument left Int64 last copy
+lastCheck argument right Int64 zero copy
+lastCheck result forDivision Bool
+lastCheck ownedBy none
+lastCheck cleanedBy none
+lastCheck borrows none
+lastCheck catch none
+lastCheck suppresses none
+
+upCheck is call
+upCheck in shapeQuotient
+upCheck invokes compare.greaterOrEqualInt64
+upCheck argument left Int64 shift copy
+upCheck argument right Int64 zero copy
+upCheck result up Bool
+upCheck ownedBy none
+upCheck cleanedBy none
+upCheck borrows none
+upCheck catch none
+upCheck suppresses none
+
+workShift is call
+workShift in shapeQuotient
+workShift invokes bignum.shiftLeft
+workShift argument number machine.Address work copy
+workShift argument amount Int64 shift copy
+workShift result none
+workShift ownedBy none
+workShift cleanedBy none
+workShift borrows none
+workShift catch none
+workShift suppresses none
+
+flip is call
+flip in shapeQuotient
+flip invokes math.negateInt64
+flip argument value Int64 shift copy
+flip result inverse Int64
+flip ownedBy none
+flip cleanedBy none
+flip borrows none
+flip catch none
+flip suppresses none
+
+addInverse is call
+addInverse in shapeQuotient
+addInverse invokes math.addInt64
+addInverse argument left Int64 divisorShift copy
+addInverse argument right Int64 inverse copy
+addInverse result total Int64
+addInverse ownedBy none
+addInverse cleanedBy none
+addInverse borrows none
+addInverse catch none
+addInverse suppresses none
+
+divisorScale is call
+divisorScale in shapeQuotient
+divisorScale invokes bignum.shiftLeft
+divisorScale argument number machine.Address divisor copy
+divisorScale argument amount Int64 divisorShift copy
+divisorScale result none
+divisorScale ownedBy none
+divisorScale cleanedBy none
+divisorScale borrows none
+divisorScale catch none
+divisorScale suppresses none
+
+parseFloat is operation
+parseFloat purpose "Read text as a Float64 as `refined run` reads it into an address: 0 when it is a number, 1 when it is not, 2 when it is too large for a Float64; the value stored is 0 unless it is read: refined_parse_float"
+parseFloat invariant readsCorrectlyRounded "\"Accepts `-`? digits (`.` digits)? ([eE] [+-]? digits)? only, and reads it as the nearest Float64, ties to even; past the largest Float64 is too large, below the smallest rounds to zero\""
+parseFloat typeParameter none
+parseFloat input text machine.Address copied
+parseFloat input bytes Int64 copied
+parseFloat input out machine.Address copied
+parseFloat output Int32
+parseFloat outputOwnedBy none
+parseFloat raises none
+parseFloat effect use machine.memory
+parseFloat effect use system.calls
+parseFloat uses memoryAccess
+parseFloat uses systemCalls
+parseFloat memoryHeap false
+parseFloat async false
+parseFloat maxRecursion none
+parseFloat abi c "refined_parse_float"
+parseFloat label begin loopKind none
+parseFloat label begin within none
+parseFloat label refuse loopKind none
+parseFloat label refuse within none
+parseFloat label read loopKind none
+parseFloat label read within none
+parseFloat label failed loopKind none
+parseFloat label failed within none
+parseFloat label store loopKind none
+parseFloat label store within none
+parseFloat let notNumber Int32 1 immutable
+parseFloat let parsed Int32 0 immutable
+parseFloat let zeroWide UInt64 0 immutable
+parseFloat let zero Int64 0 immutable
+parseFloat let minusByte Byte 45 immutable
+parseFloat at begin do zeroBits
+parseFloat at begin do clear
+parseFloat at begin do validCheck
+parseFloat at begin branch if valid goto read else goto refuse
+parseFloat at refuse return ok notNumber
+parseFloat at read do negativeCheck
+parseFloat at read do findNumber
+parseFloat at read do findKept
+parseFloat at read do readSignificand
+parseFloat at read do readKept
+parseFloat at read do findBits
+parseFloat at read do convertIt
+parseFloat at read do okCheck
+parseFloat at read branch if ok goto store else goto failed
+parseFloat at failed return ok status
+parseFloat at store do readBits
+parseFloat at store do asFloat
+parseFloat at store do storeValue
+parseFloat at store return ok parsed
+
+zeroBits is call
+zeroBits in parseFloat
+zeroBits invokes convert.uint64BitsToFloat64
+zeroBits argument value UInt64 zeroWide copy
+zeroBits result zeroValue Float64
+zeroBits ownedBy none
+zeroBits cleanedBy none
+zeroBits borrows none
+zeroBits catch none
+zeroBits suppresses none
+
+clear is call
+clear in parseFloat
+clear invokes machine.storeFloat64
+clear argument address machine.Address out copy
+clear argument value Float64 zeroValue copy
+clear result none
+clear ownedBy none
+clear cleanedBy none
+clear borrows none
+clear catch none
+clear suppresses none
+
+validCheck is call
+validCheck in parseFloat
+validCheck invokes validText
+validCheck argument text machine.Address text copy
+validCheck argument bytes Int64 bytes copy
+validCheck result valid Bool
+validCheck ownedBy none
+validCheck cleanedBy none
+validCheck borrows none
+validCheck catch none
+validCheck suppresses none
+
+negativeCheck is call
+negativeCheck in parseFloat
+negativeCheck invokes byteIs
+negativeCheck argument text machine.Address text copy
+negativeCheck argument bytes Int64 bytes copy
+negativeCheck argument at Int64 zero copy
+negativeCheck argument wanted Byte minusByte copy
+negativeCheck result negative Bool
+negativeCheck ownedBy none
+negativeCheck cleanedBy none
+negativeCheck borrows none
+negativeCheck catch none
+negativeCheck suppresses none
+
+findNumber is call
+findNumber in parseFloat
+findNumber invokes numberAt
+findNumber argument slot Int64 zero copy
+findNumber result number machine.Address
+findNumber ownedBy none
+findNumber cleanedBy none
+findNumber borrows none
+findNumber catch none
+findNumber suppresses none
+
+findKept is call
+findKept in parseFloat
+findKept invokes stateAt
+findKept argument offset Int64 keptAt copy
+findKept result keptPlace machine.Address
+findKept ownedBy none
+findKept cleanedBy none
+findKept borrows none
+findKept catch none
+findKept suppresses none
+
+readSignificand is call
+readSignificand in parseFloat
+readSignificand invokes significand
+readSignificand argument text machine.Address text copy
+readSignificand argument bytes Int64 bytes copy
+readSignificand argument number machine.Address number copy
+readSignificand argument keptTarget machine.Address keptPlace copy
+readSignificand result power Int64
+readSignificand ownedBy none
+readSignificand cleanedBy none
+readSignificand borrows none
+readSignificand catch none
+readSignificand suppresses none
+
+readKept is call
+readKept in parseFloat
+readKept invokes machine.loadInt64
+readKept argument address machine.Address keptPlace copy
+readKept result kept Int64
+readKept ownedBy none
+readKept cleanedBy none
+readKept borrows none
+readKept catch none
+readKept suppresses none
+
+findBits is call
+findBits in parseFloat
+findBits invokes stateAt
+findBits argument offset Int64 bitsAt copy
+findBits result bitsPlace machine.Address
+findBits ownedBy none
+findBits cleanedBy none
+findBits borrows none
+findBits catch none
+findBits suppresses none
+
+convertIt is call
+convertIt in parseFloat
+convertIt invokes toBits
+convertIt argument negative Bool negative copy
+convertIt argument kept Int64 kept copy
+convertIt argument power Int64 power copy
+convertIt argument bitsTarget machine.Address bitsPlace copy
+convertIt result status Int32
+convertIt ownedBy none
+convertIt cleanedBy none
+convertIt borrows none
+convertIt catch none
+convertIt suppresses none
+
+okCheck is call
+okCheck in parseFloat
+okCheck invokes compare.equalInt32
+okCheck argument left Int32 status copy
+okCheck argument right Int32 parsed copy
+okCheck result ok Bool
+okCheck ownedBy none
+okCheck cleanedBy none
+okCheck borrows none
+okCheck catch none
+okCheck suppresses none
+
+readBits is call
+readBits in parseFloat
+readBits invokes machine.loadUInt64
+readBits argument address machine.Address bitsPlace copy
+readBits result resultBits UInt64
+readBits ownedBy none
+readBits cleanedBy none
+readBits borrows none
+readBits catch none
+readBits suppresses none
+
+asFloat is call
+asFloat in parseFloat
+asFloat invokes convert.uint64BitsToFloat64
+asFloat argument value UInt64 resultBits copy
+asFloat result value Float64
+asFloat ownedBy none
+asFloat cleanedBy none
+asFloat borrows none
+asFloat catch none
+asFloat suppresses none
+
+storeValue is call
+storeValue in parseFloat
+storeValue invokes machine.storeFloat64
+storeValue argument address machine.Address out copy
+storeValue argument value Float64 value copy
+storeValue result none
+storeValue ownedBy none
+storeValue cleanedBy none
+storeValue borrows none
+storeValue catch none
+storeValue suppresses none

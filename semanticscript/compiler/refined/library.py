@@ -166,6 +166,9 @@ def _conversions() -> dict:
     out = {conversion_name(s, t): _un(s, t) for s, t in pairs}
     out["int64BitsToUInt64"] = _un("Int64", "UInt64")
     out["uint64BitsToInt64"] = _un("UInt64", "Int64")
+    # D-127: a Float64's IEEE 754 bits as a UInt64 and back, unchanged (a NaN keeps its payload)
+    out["float64BitsToUInt64"] = _un("Float64", "UInt64")
+    out["uint64BitsToFloat64"] = _un("UInt64", "Float64")
     return out
 
 
@@ -270,6 +273,13 @@ SYSTEM_CALLS: dict[str, tuple[str, Sig]] = {
                                        "Int32", effects=_SYS)),
     "getCommandLineW": ("GetCommandLineW", Sig((), _A, effects=_SYS)),
     "getLastError": ("GetLastError", Sig((), "Int32", effects=_SYS)),
+    # D-128: the process heap, for the runtime's memory that grows and is given back piece by piece (host objects)
+    "getProcessHeap": ("GetProcessHeap", Sig((), _A, effects=_SYS)),
+    "heapAlloc": ("HeapAlloc", Sig((_at("heap"), P("flags", "Int32", "copied"), P("bytes", "Int64", "copied")), _A,
+                                   effects=_SYS)),
+    "heapReAlloc": ("HeapReAlloc", Sig((_at("heap"), P("flags", "Int32", "copied"), _at("memory"),
+                                        P("bytes", "Int64", "copied")), _A, effects=_SYS)),
+    "heapFree": ("HeapFree", Sig((_at("heap"), P("flags", "Int32", "copied"), _at("memory")), "Int32", effects=_SYS)),
 }
 
 LIBRARY: dict[str, dict] = {

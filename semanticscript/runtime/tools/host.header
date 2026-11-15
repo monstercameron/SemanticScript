@@ -1,0 +1,7 @@
+# The host library of a standalone executable: refined_host, which compiled code calls for every
+# host target with a key `<target>|<slots per parameter>|<result slots>`, and the targets this
+# runtime implements (the hostTargets table): byte buffers, maps (insertion order, text keys and
+# values copied into the map's region), sets, string.fromBytes, and log lines, each as host.py
+# and the C runtime do them.
+#
+# This module is generated from tools/host.dsl by tools/build.py.

@@ -2414,6 +2414,69 @@ text, regions, recursion, and traps. Decided by delegation:
   (`semanticscript/runtime/tools`) that stage0's generator expands into the
   `.sem` modules, which are what `refined check` and `refined test` read.
 
+## The runtime in SemanticScript, stage 2 (2026-11-14)
+
+Stage 2 of `docs/runtime-in-semanticscript.md` moved floating-point text and
+the host library's buffers, maps, sets, `string.fromBytes`, and log lines into
+`semanticscript/runtime`, as six new modules (`heap`, `tables`, `handles`,
+`bignum`, `floats`, `host`). Decided by delegation:
+
+- **D-126** `refined_host` dispatches by branching on a target's number, the
+  row of the runtime's `hostTargets` table that names it, not through a table
+  of function addresses. So the language gains no call through an address
+  with several arguments and no address of an `abi c` operation. Each target
+  is an ordinary operation that the checker sees whole (signature, effects,
+  capabilities), where an indirect call through an address is the one
+  primitive that could jump anywhere. A key's shape is worked out once and
+  kept by the key's address, as the C runtime does, so a call costs one
+  lookup and at most one comparison per target (25 today). The same table
+  is what native.py reads to refuse a program that calls any other target
+  (R901). Task thunks, whose addresses come from the compiler, keep
+  `machine.callWithAddress` (stage 4); if a later stage needs more indirect
+  calls, they come with it.
+- **D-127** `convert.float64BitsToUInt64` and `convert.uint64BitsToFloat64`
+  read a Float64's IEEE 754 bits as a UInt64 and back, unchanged (a NaN
+  keeps its payload); they never trap. They are conversions of a value, not
+  memory, so they need no capability, and they replace stage 1's round trip
+  through `machine.state`.
+- **D-128** The runtime's memory that grows and is given back piece by piece
+  (buffers, the rows and indexes of maps and sets, the handle table, call
+  shapes, trap messages) comes from the process heap: `system` rows for
+  `GetProcessHeap`, `HeapAlloc`, `HeapReAlloc`, and `HeapFree`, always with
+  `HEAP_ZERO_MEMORY`, behind the `heap` module's `take`, `resize`, and
+  `give`. Regions keep their VirtualAlloc chunks. These are kernel32's own
+  functions, so the executable still imports KERNEL32.dll alone.
+- **D-129** Floating-point text is exactly what `refined run` writes and
+  reads, which is Python's: a Float64 is written as `repr` writes it, the
+  fewest significant digits that read back as it, the nearest of those to it,
+  an exact tie to the even digit, with an exponent (`1e+16`, `1.5e-07`) when
+  the decimal point is 4 or more places left of the first digit or more than
+  16 right of it and otherwise with a point and a digit after it (`100.0`),
+  and `nan`, `inf`, `-inf`; text is read correctly rounded, ties to even.
+  This refines D-125, whose `%g`-style layout was the C runtime's, and the C
+  runtime was wrong: it wrote `100.0` as `1e+02`, `1e15` as `1e+15`, NaN as
+  `-nan(ind)`, and 17 digits where repr writes 16 next to some powers of
+  two (220 of the 15,722 lines of the test's table). native_runtime.c now
+  writes repr too. In SemanticScript the digits come from Steele and White's
+  free-format method as Burger and Dybvig give it, and reading divides the
+  significand (800 digits kept exactly, and a final 1 standing for any
+  dropped that are not zero) by a power of ten to 54 bits and a remainder,
+  all with the `bignum` module's exact arithmetic (6,400-bit numbers in
+  `machine.state`). `tests/floattable.py` checks thousands of values of every
+  kind against Python in both runtimes.
+- **D-130** The host's objects are kept as the C runtime keeps them: a handle
+  is a number from 1, never reused, naming a kind and an object, so one used
+  after it was closed or after its region was released traps naming its
+  kind; a region's header lists the handles it owns, and releasing it drops
+  them; maps and sets are tables of rows in first-put order found through an
+  open-addressing index (`tables`), with a text key copied into the region
+  once, a text value at every `put`, and text inside a stored record moved by
+  the compiler through `refined_handle_region` (D-107). native.py refuses
+  (R901) a program that calls a host target outside `hostTargets`, naming it,
+  and now reads target names with digits in them (`buffer.appendInt64` was
+  invisible to both runtimes' checks). Channels are not in the C runtime's
+  table either; the programs that use them also need tasks (stage 4).
+
 ## Data structures for self-hosting (2026-11-14)
 
 A compiler written in the language needs tokens and AST nodes (records and
@@ -2906,6 +2969,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-119 | 1.0: the language compiles its own compiler to a fixed point |
 | 2026-11-14 | D-114 to D-118 | stage0 compiles itself: projects of several modules, `string.Position` as a declared record, maps through the host, standard errors passed on, operation references and scoped host targets in C (by delegation) |
 | 2026-11-14 | D-120 to D-124 | The runtime in SemanticScript, stage 1: the `use` effect for `machine.memory` and `system.calls`, the `machine` and `system` modules, `abi c` exports, executables linked with no C library (by delegation) |
+| 2026-11-14 | D-126 to D-130 | The runtime in SemanticScript, stage 2: host dispatch by target number, Float64 bit conversions, the process heap, floating-point text as `refined run` writes it (C runtime fixed), host objects and R901 for host targets (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

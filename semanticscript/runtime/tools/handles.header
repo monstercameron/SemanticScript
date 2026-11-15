@@ -1,0 +1,6 @@
+# Handles: the small numbers a program holds for the host's objects (buffers, maps, sets; files and
+# listings in stage 3), numbered from 1 and never reused, so a handle used after it was closed or
+# after its region was released traps naming its kind, as `refined run` does. A region lists the
+# handles it owns and closes them when it is released.
+#
+# This module is generated from tools/handles.dsl by tools/build.py.

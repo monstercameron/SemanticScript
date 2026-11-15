@@ -19,6 +19,12 @@ runtime includesModule memory
 runtime includesModule numbers
 runtime includesModule output
 runtime includesModule frames
+runtime includesModule heap
+runtime includesModule tables
+runtime includesModule handles
 runtime includesModule regions
+runtime includesModule bignum
+runtime includesModule floats
+runtime includesModule host
 runtime includesModule start
 runtime entry none

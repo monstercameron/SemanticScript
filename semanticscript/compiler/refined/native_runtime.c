@@ -167,16 +167,87 @@ int32_t refined_write_int(int32_t fd, int64_t v, int32_t newline) {
     return fprintf(f, newline ? "%lld\n" : "%lld", (long long)v) < 0;
 }
 
+/* D-129: a double as `refined run` writes it, Python's repr: the fewest significant digits that read back as it,
+   the nearest such digits to it, laid out with an exponent when the decimal point is 4 or more places left of the
+   first digit or more than 16 right of it, otherwise with a point and a digit after it; `nan`, `inf`, `-inf`.
+   Gives the text's length (at most 24). */
+static int float_text(double v, char *out) {
+    if (v != v) return (int)strlen(strcpy(out, "nan"));
+    if (v > 1.7976931348623157e308) return (int)strlen(strcpy(out, "inf"));
+    if (v < -1.7976931348623157e308) return (int)strlen(strcpy(out, "-inf"));
+    char sci[40], digits[24];
+    int n = 0, exp10 = 0, at = 0;
+    double magnitude = v < 0 ? -v : v;
+    if (v < 0 || (v == 0 && 1 / v < 0)) out[at++] = '-';
+    if (v == 0) return at + (int)strlen(strcpy(out + at, "0.0"));
+    for (int count = 1; count <= 17; count++) {
+        /* the nearest digits of this count; when they do not read back, the digits one unit the other side of the
+           value may (next to a power of two the values that read back reach further above it than below) */
+        snprintf(sci, sizeof sci, "%.*e", count - 1, magnitude);
+        double read = strtod(sci, NULL);
+        int found = read == magnitude;
+        n = 0;
+        for (char *q = sci; *q && *q != 'e'; q++)
+            if (*q >= '0' && *q <= '9') digits[n++] = *q;
+        exp10 = atoi(strchr(sci, 'e') + 1);
+        if (!found) {
+            int up = read < magnitude, i = n - 1, other_exp = exp10;
+            char other[24], text[48];
+            memcpy(other, digits, (size_t)n);
+            while (i >= 0 && other[i] == (up ? '9' : '0')) other[i--] = up ? '0' : '9';
+            if (i >= 0) other[i] = (char)(other[i] + (up ? 1 : -1));
+            else if (up) { other[0] = '1'; other_exp++; }
+            if ((i >= 0 || up) && other[0] != '0') {
+                snprintf(text, sizeof text, "%.*se%d", n, other, other_exp - (n - 1));
+                if (strtod(text, NULL) == magnitude) {
+                    memcpy(digits, other, (size_t)n);
+                    exp10 = other_exp;
+                    found = 1;
+                }
+            }
+        }
+        if (found) break;
+    }
+    while (n > 1 && digits[n - 1] == '0') n--;
+    int point = exp10 + 1;  /* where the decimal point is, counted from the first digit */
+    if (point <= -4 || point > 16) {
+        out[at++] = digits[0];
+        if (n > 1) {
+            out[at++] = '.';
+            memcpy(out + at, digits + 1, (size_t)(n - 1));
+            at += n - 1;
+        }
+        return at + sprintf(out + at, "e%c%02d", exp10 < 0 ? '-' : '+', exp10 < 0 ? -exp10 : exp10);
+    }
+    if (point <= 0) {
+        out[at++] = '0';
+        out[at++] = '.';
+        for (int i = 0; i < -point; i++) out[at++] = '0';
+        memcpy(out + at, digits, (size_t)n);
+        return at + n;
+    }
+    if (point < n) {
+        memcpy(out + at, digits, (size_t)point);
+        at += point;
+        out[at++] = '.';
+        memcpy(out + at, digits + point, (size_t)(n - point));
+        return at + n - point;
+    }
+    memcpy(out + at, digits, (size_t)n);
+    at += n;
+    for (int i = n; i < point; i++) out[at++] = '0';
+    out[at++] = '.';
+    out[at++] = '0';
+    return at;
+}
+
 int32_t refined_write_float(int32_t fd, double v, int32_t newline) {
     FILE *f = fd == 2 ? stderr : stdout;
     char buf[64];
-    /* shortest text that reads back as the same double, as the JIT runtime prints it */
-    for (int digits = 1; digits <= 17; digits++) {
-        snprintf(buf, sizeof buf, "%.*g", digits, v);
-        if (strtod(buf, NULL) == v) break;
-    }
-    if (!strchr(buf, '.') && !strchr(buf, 'e') && !strchr(buf, 'n') && !strchr(buf, 'i')) strcat(buf, ".0");
-    return fprintf(f, newline ? "%s\n" : "%s", buf) < 0;
+    int n = float_text(v, buf);
+    if (newline) buf[n++] = '\n';
+    if (fd == 2) fflush(stdout);
+    return fwrite(buf, 1, (size_t)n, f) != (size_t)n;
 }
 
 int32_t refined_bytes_equal(const char *a, int64_t an, const char *b, int64_t bn) {
@@ -310,15 +381,10 @@ int32_t refined_parse_int(const char *p, int64_t n, int64_t *out) {
     return 0;
 }
 
-/* D-91: a Float64 as the shortest text that reads back as it (as refined_write_float prints it) */
+/* D-91, D-129: a Float64 as `refined run` writes it (as refined_write_float writes it) */
 void *refined_format_float(double v, void *region, int64_t *out_len) {
     char buf[64];
-    for (int digits = 1; digits <= 17; digits++) {
-        snprintf(buf, sizeof buf, "%.*g", digits, v);
-        if (strtod(buf, NULL) == v) break;
-    }
-    if (!strchr(buf, '.') && !strchr(buf, 'e') && !strchr(buf, 'n') && !strchr(buf, 'i')) strcat(buf, ".0");
-    int64_t n = (int64_t)strlen(buf);
+    int64_t n = float_text(v, buf);
     char *p = refined_region_alloc(region, n);
     memcpy(p, buf, (size_t)n);
     *out_len = n;

@@ -58,21 +58,23 @@ No other program can reach them.
   and calls `ExitProcess`; libraries `kernel32` (and the compiler's own
   support library for stack probes, which is not libc).
 
-## Conversions (D-125)
+## Conversions (D-125, D-129)
 
-Floating-point text matches `refined run` exactly: the shortest `%g`-style
-digits that read back to the same value, and correctly rounded parsing,
-both computed exactly with arbitrary-precision integers written in
-SemanticScript.
+Floating-point text matches `refined run` exactly, which is Python's: a
+Float64 is written as `repr` writes it (the fewest digits that read back as
+the same value, the nearest of them, `100.0`, `1e+16`, `5e-324`, `nan`), and
+text is read correctly rounded, both computed exactly with arbitrary-precision
+integers written in SemanticScript. (D-125 first named the C runtime's `%g`
+layout, which was wrong for values like `100.0`; D-129 corrects both.)
 
 ## Stages
 
 | Stage | Work | State |
 | --- | --- | --- |
 | 1 | The primitive layer in the compiler; a runtime slice (entry, write, trap, exit, regions) that links `hello` with no libc | Done |
-| 2 | Text, numbers, bytes, buffers; maps, sets, channels; the host dispatch | Planned |
+| 2 | Text, numbers, bytes, buffers; maps, sets; the host dispatch | Done |
 | 3 | Files, identity and claims, directories, processes and pipes, environment, arguments, time | Planned |
-| 4 | Tasks, groups, recursion depth, frames and stack traces, test assertions | Planned |
+| 4 | Tasks, groups, channels, test assertions | Planned |
 | 5 | Switch every executable to the new runtime; delete `native_runtime.c`; stage0 links it | Planned |
 
 ## Stage 1 (done)
@@ -105,14 +107,61 @@ suite's 76 running programs link this way and behave exactly as under
 when built, naming what they need (tests/test_runtime_nolibc.py). `hello`
 is a 34 KB executable that imports from KERNEL32.dll alone.
 
-What stage 2 needs from the compiler: nothing new for text, numbers, and
-bytes (`machine` and `abi c` cover them). The host dispatch
-(`refined_host`) takes a key and slot arrays, which an `abi c` operation
-already receives as addresses; its many targets want a table from key to
-operation, so either an operation reference (D-118) that may be stored and
-called with addresses, or a `machine` target that calls an address with
-several arguments. Floating-point text (D-125) needs `Float64` bits as
-`UInt64` (`machine.storeFloat64` then `loadUInt64` does it today, through
-`machine.state`). Stage 3 adds `system` rows for each kernel32 function the
-plan lists; stage 4 calls task thunks with `machine.callWithAddress`.
+## Stage 2 (done)
 
+Six more modules (D-126 to D-130), generated from their DSL like the rest:
+
+| Module | Provides |
+| --- | --- |
+| `heap` | memory from the process heap (`take`, `resize`, `give`) and trap messages put together from parts |
+| `tables` | rows in first-put order found through an open-addressing index by a hash of the key: maps and sets |
+| `handles` | the handle table (numbered from 1, never reused, use after close traps naming the kind), each region's list of the objects it owns, `refined_handle_region` |
+| `bignum` | whole numbers of up to 6,400 bits: compare, add, subtract, multiply by a small factor or a power of ten, shift |
+| `floats` | `refined_write_float`, `refined_format_float`, `refined_parse_float`: shortest repr digits (Steele and White, Burger and Dybvig) and correctly rounded reading, exactly |
+| `host` | `refined_host`: a key's shape worked out once and kept by its address, then a branch on the target's number to buffers, maps, sets, `string.fromBytes`, and log lines (the `hostTargets` table) |
+
+`regions` now drops the host objects a region owns when it is released. The
+compiler gained `convert.float64BitsToUInt64` and `uint64BitsToFloat64`
+(D-127) and `system` rows for the process heap (D-128); the dispatch needs
+no call through an address (D-126). native.py reads `hostTargets` and
+refuses (R901) a program that calls any other host target.
+
+49 of the suite's 76 running programs now link with no C library and behave
+exactly as under `refined run`: stage 1's 42 and `02-types/floats`,
+`03-operators/integer-types`, `08-strings-collections/text-and-bytes`,
+`collections`, `text-sets`, `trees`, and `19-stdlib/log`. tests/floattable.py
+writes and reads back a table of thousands of doubles and texts (random bits,
+subnormals, powers of two and ten, exact halfway points and texts a hair off
+them, long significands) and the executable prints exactly what Python
+prints; tests/hosttour.py uses every target and prints exactly what
+`refined run` prints. The runtime's own tests number 41. `hello` is now a
+145 KB executable (34 KB at stage 1): the runtime is one object and the
+linker keeps all of it, which separate function sections would fix.
+
+Writing this showed the C runtime was wrong about floating-point text
+(D-129); it now writes what `refined run` writes. Channels are not in the C
+runtime's table either, and the programs that use them need tasks, so they
+move to stage 4.
+
+What stage 3 needs: `system` rows for `CreateFileW`, `CloseHandle`,
+`SetFilePointerEx`, `GetFileInformationByHandle`, `GetFullPathNameW`,
+`GetFinalPathNameByHandleW`, `FindFirstFileW`, `FindNextFileW`, `FindClose`,
+`CreateDirectoryW`, `RemoveDirectoryW`, `DeleteFileW`, `LockFileEx`,
+`UnlockFileEx`, `GetEnvironmentVariableW`, `CreateProcessW`, `CreatePipe`,
+`PeekNamedPipe`, `WaitForSingleObject`, `GetExitCodeProcess`,
+`TerminateProcess`, `GetTickCount64`, `GetSystemTimeAsFileTime`, and `Sleep`;
+UTF-8 to UTF-16 and back (in SemanticScript, or `MultiByteToWideChar`), the
+command line split into arguments in SemanticScript (`CommandLineToArgvW` is
+shell32's, not kernel32's) and lower-casing paths without user32
+(`CharLowerBuffW`) for the scope checks; the scope check of D-38 in
+`refined_host` (the `scoped` column is there, all -1 today), the claims of
+D-52 and D-109, Windows errors mapped as Python maps them, and the release of
+open files at a trap (D-51), which `frames` reaches before `host` exists, so
+through a count in `machine.state` or a module above both.
+
+What stage 4 needs: the task and group functions (a task runs when started,
+through `machine.callWithAddress`, with its own frame base and depth
+counters, which live in `machine.state` and must be saved and restored or
+moved per task), a group's first error copied out at `join`, channels as
+host targets, and the test assertions (`refined_assert_*`, `refined_fail`)
+and `refined_block` for instrumented builds.

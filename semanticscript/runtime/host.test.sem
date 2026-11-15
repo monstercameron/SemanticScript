@@ -1,0 +1,3496 @@
+# Tests of the `host` module; generated from tools/host.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests keep a call's slots in the last 4 KiB of machine.state: its arguments from byte 61440, its results from
+# 61568, its error's payload at 61632, and bytes to read from 61696. Each key is a constant of the test, so its
+# address names it as a compiled program's keys do.
+slotAt is operation
+slotAt purpose "The address of a slot of the tests' scratch: arguments from 0, results from 16, the payload at 24, bytes from 32"
+slotAt invariant none
+slotAt typeParameter none
+slotAt input slot Int64 copied
+slotAt output machine.Address
+slotAt outputOwnedBy none
+slotAt raises none
+slotAt effect use machine.memory
+slotAt uses memoryAccess
+slotAt memoryHeap false
+slotAt async false
+slotAt maxRecursion none
+slotAt label begin loopKind none
+slotAt label begin within none
+slotAt let eight Int64 8 immutable
+slotAt let scratchAt Int64 61440 immutable
+slotAt at begin do findState
+slotAt at begin do slotBytes
+slotAt at begin do startOf
+slotAt at begin do findSlot
+slotAt at begin return ok place
+
+findState is call
+findState in slotAt
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+slotBytes is call
+slotBytes in slotAt
+slotBytes invokes math.multiplyInt64
+slotBytes argument left Int64 slot copy
+slotBytes argument right Int64 eight copy
+slotBytes result offset Int64
+slotBytes ownedBy none
+slotBytes cleanedBy none
+slotBytes borrows none
+slotBytes catch none
+slotBytes suppresses none
+
+startOf is call
+startOf in slotAt
+startOf invokes math.addInt64
+startOf argument left Int64 offset copy
+startOf argument right Int64 scratchAt copy
+startOf result start Int64
+startOf ownedBy none
+startOf cleanedBy none
+startOf borrows none
+startOf catch none
+startOf suppresses none
+
+findSlot is call
+findSlot in slotAt
+findSlot invokes machine.offset
+findSlot argument address machine.Address state copy
+findSlot argument bytes Int64 start copy
+findSlot result place machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+setArgument is operation
+setArgument purpose "Set an argument slot of the tests' call"
+setArgument invariant none
+setArgument typeParameter none
+setArgument input slot Int64 copied
+setArgument input value Int64 copied
+setArgument output none
+setArgument outputOwnedBy none
+setArgument raises none
+setArgument effect use machine.memory
+setArgument uses memoryAccess
+setArgument memoryHeap false
+setArgument async false
+setArgument maxRecursion none
+setArgument label begin loopKind none
+setArgument label begin within none
+setArgument let none
+setArgument at begin do findSlot
+setArgument at begin do storeIt
+setArgument at begin return ok none
+
+findSlot is call
+findSlot in setArgument
+findSlot invokes slotAt
+findSlot argument slot Int64 slot copy
+findSlot result place machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeIt is call
+storeIt in setArgument
+storeIt invokes machine.storeInt64
+storeIt argument address machine.Address place copy
+storeIt argument value Int64 value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+setAddress is operation
+setAddress purpose "Set an argument slot of the tests' call to an address"
+setAddress invariant none
+setAddress typeParameter none
+setAddress input slot Int64 copied
+setAddress input value machine.Address copied
+setAddress output none
+setAddress outputOwnedBy none
+setAddress raises none
+setAddress effect use machine.memory
+setAddress uses memoryAccess
+setAddress memoryHeap false
+setAddress async false
+setAddress maxRecursion none
+setAddress label begin loopKind none
+setAddress label begin within none
+setAddress let none
+setAddress at begin do findSlot
+setAddress at begin do storeIt
+setAddress at begin return ok none
+
+findSlot is call
+findSlot in setAddress
+findSlot invokes slotAt
+findSlot argument slot Int64 slot copy
+findSlot result place machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+storeIt is call
+storeIt in setAddress
+storeIt invokes machine.storeAddress
+storeIt argument address machine.Address place copy
+storeIt argument value machine.Address value copy
+storeIt result none
+storeIt ownedBy none
+storeIt cleanedBy none
+storeIt borrows none
+storeIt catch none
+storeIt suppresses none
+
+readResult is operation
+readResult purpose "A result slot of the tests' call"
+readResult invariant none
+readResult typeParameter none
+readResult input slot Int64 copied
+readResult output Int64
+readResult outputOwnedBy none
+readResult raises none
+readResult effect use machine.memory
+readResult uses memoryAccess
+readResult memoryHeap false
+readResult async false
+readResult maxRecursion none
+readResult label begin loopKind none
+readResult label begin within none
+readResult let sixteen Int64 16 immutable
+readResult at begin do resultSlot
+readResult at begin do findSlot
+readResult at begin do readIt
+readResult at begin return ok value
+
+resultSlot is call
+resultSlot in readResult
+resultSlot invokes math.addInt64
+resultSlot argument left Int64 slot copy
+resultSlot argument right Int64 sixteen copy
+resultSlot result index Int64
+resultSlot ownedBy none
+resultSlot cleanedBy none
+resultSlot borrows none
+resultSlot catch none
+resultSlot suppresses none
+
+findSlot is call
+findSlot in readResult
+findSlot invokes slotAt
+findSlot argument slot Int64 index copy
+findSlot result place machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readIt is call
+readIt in readResult
+readIt invokes machine.loadInt64
+readIt argument address machine.Address place copy
+readIt result value Int64
+readIt ownedBy none
+readIt cleanedBy none
+readIt borrows none
+readIt catch none
+readIt suppresses none
+
+call is operation
+call purpose "Call a host target with the tests' slots and give its status"
+call invariant none
+call typeParameter none
+call input key String borrowed
+call output Int64
+call outputOwnedBy none
+call raises none
+call effect use machine.memory
+call effect use system.calls
+call uses memoryAccess
+call uses systemCalls
+call memoryHeap false
+call async false
+call maxRecursion none
+call label begin loopKind none
+call label begin within none
+call let zero Int64 0 immutable
+call let sixteen Int64 16 immutable
+call let twentyFour Int64 24 immutable
+call at begin do findKey
+call at begin do keyLength
+call at begin do findArgs
+call at begin do findResults
+call at begin do findPayload
+call at begin do run
+call at begin do widen
+call at begin return ok wide
+
+findKey is call
+findKey in call
+findKey invokes machine.addressOfString
+findKey argument text String key lend
+findKey result keyAt machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+keyLength is call
+keyLength in call
+keyLength invokes string.byteLength
+keyLength argument text String key lend
+keyLength result bytes Int64
+keyLength ownedBy none
+keyLength cleanedBy none
+keyLength borrows none
+keyLength catch none
+keyLength suppresses none
+
+findArgs is call
+findArgs in call
+findArgs invokes slotAt
+findArgs argument slot Int64 zero copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in call
+findResults invokes slotAt
+findResults argument slot Int64 sixteen copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in call
+findPayload invokes slotAt
+findPayload argument slot Int64 twentyFour copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+run is call
+run in call
+run invokes hostCall
+run argument key machine.Address keyAt copy
+run argument bytes Int64 bytes copy
+run argument args machine.Address args copy
+run argument results machine.Address results copy
+run argument payload machine.Address payload copy
+run result status Int32
+run ownedBy none
+run cleanedBy none
+run borrows none
+run catch none
+run suppresses none
+
+widen is call
+widen in call
+widen invokes convert.int32ToInt64
+widen argument value Int32 status copy
+widen result wide Int64
+widen ownedBy none
+widen cleanedBy none
+widen borrows none
+widen catch none
+widen suppresses none
+
+expectCall is operation
+expectCall purpose "Call a host target and compare its status and first result slot with what is expected"
+expectCall invariant none
+expectCall typeParameter none
+expectCall input key String borrowed
+expectCall input status Int64 copied
+expectCall input value Int64 copied
+expectCall output none
+expectCall outputOwnedBy none
+expectCall raises none
+expectCall effect use machine.memory
+expectCall effect use system.calls
+expectCall uses memoryAccess
+expectCall uses systemCalls
+expectCall memoryHeap false
+expectCall async false
+expectCall maxRecursion none
+expectCall label begin loopKind none
+expectCall label begin within none
+expectCall let zero Int64 0 immutable
+expectCall at begin do run
+expectCall at begin do expectStatus
+expectCall at begin do readValue
+expectCall at begin do expectValue
+expectCall at begin return ok none
+
+run is call
+run in expectCall
+run invokes call
+run argument key String key lend
+run result got Int64
+run ownedBy none
+run cleanedBy none
+run borrows none
+run catch none
+run suppresses none
+
+expectStatus is call
+expectStatus in expectCall
+expectStatus invokes test.assertEqualInt64
+expectStatus argument expected Int64 status copy
+expectStatus argument actual Int64 got copy
+expectStatus result none
+expectStatus ownedBy none
+expectStatus cleanedBy none
+expectStatus borrows none
+expectStatus catch none
+expectStatus suppresses none
+
+readValue is call
+readValue in expectCall
+readValue invokes readResult
+readValue argument slot Int64 zero copy
+readValue result first Int64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+expectValue is call
+expectValue in expectCall
+expectValue invokes test.assertEqualInt64
+expectValue argument expected Int64 value copy
+expectValue argument actual Int64 first copy
+expectValue result none
+expectValue ownedBy none
+expectValue cleanedBy none
+expectValue borrows none
+expectValue catch none
+expectValue suppresses none
+
+expectOk is operation
+expectOk purpose "Call a host target that gives no result and check that it succeeds"
+expectOk invariant none
+expectOk typeParameter none
+expectOk input key String borrowed
+expectOk output none
+expectOk outputOwnedBy none
+expectOk raises none
+expectOk effect use machine.memory
+expectOk effect use system.calls
+expectOk uses memoryAccess
+expectOk uses systemCalls
+expectOk memoryHeap false
+expectOk async false
+expectOk maxRecursion none
+expectOk label begin loopKind none
+expectOk label begin within none
+expectOk let zero Int64 0 immutable
+expectOk at begin do run
+expectOk at begin do expectStatus
+expectOk at begin return ok none
+
+run is call
+run in expectOk
+run invokes call
+run argument key String key lend
+run result got Int64
+run ownedBy none
+run cleanedBy none
+run borrows none
+run catch none
+run suppresses none
+
+expectStatus is call
+expectStatus in expectOk
+expectStatus invokes test.assertEqualInt64
+expectStatus argument expected Int64 zero copy
+expectStatus argument actual Int64 got copy
+expectStatus result none
+expectStatus ownedBy none
+expectStatus cleanedBy none
+expectStatus borrows none
+expectStatus catch none
+expectStatus suppresses none
+
+shapeTest is test
+shapeTest purpose "A key gives its target's number, its parameters' slots and where they start, and its result slots, once per key"
+shapeTest verifies targetNumber findsTarget
+shapeTest verifies parseShape readsKey
+shapeTest verifies shapeOf keepsShapes
+shapeTest typeParameter none
+shapeTest input none
+shapeTest output none
+shapeTest outputOwnedBy none
+shapeTest raises none
+shapeTest effect use machine.memory
+shapeTest effect use system.calls
+shapeTest uses memoryAccess
+shapeTest uses systemCalls
+shapeTest memoryHeap false
+shapeTest async false
+shapeTest maxRecursion none
+shapeTest label begin loopKind none
+shapeTest label begin within none
+shapeTest let key String "map.Map.put|2,1|0" immutable
+shapeTest let logKey String "log.info|2|0" immutable
+shapeTest let stranger String "nothing.here" immutable
+shapeTest let eleven Int64 11 immutable
+shapeTest let seventeen Int64 17 immutable
+shapeTest let eight Int64 8 immutable
+shapeTest let ten Int64 10 immutable
+shapeTest let twelve Int64 12 immutable
+shapeTest let zero Int64 0 immutable
+shapeTest let sixteen Int64 16 immutable
+shapeTest let twentyFour Int64 24 immutable
+shapeTest let two Int64 2 immutable
+shapeTest let thirtyTwo Int64 32 immutable
+shapeTest let one Int64 1 immutable
+shapeTest let twoForty Int64 240 immutable
+shapeTest at begin do findKey
+shapeTest at begin do keyLength
+shapeTest at begin do findTarget
+shapeTest at begin do expectNumber
+shapeTest at begin do findLog
+shapeTest at begin do findLogTarget
+shapeTest at begin do expectLog
+shapeTest at begin do findStranger
+shapeTest at begin do findNone
+shapeTest at begin do expectNone
+shapeTest at begin do parse
+shapeTest at begin do readNumber
+shapeTest at begin do expectShapeNumber
+shapeTest at begin do readParams
+shapeTest at begin do expectParams
+shapeTest at begin do readResults
+shapeTest at begin do expectResults
+shapeTest at begin do readKeyCount
+shapeTest at begin do expectKeyCount
+shapeTest at begin do readValueCount
+shapeTest at begin do expectValueCount
+shapeTest at begin do readValueStart
+shapeTest at begin do expectValueStart
+shapeTest at begin do giveShape
+shapeTest at begin do keep
+shapeTest at begin do keepAgain
+shapeTest at begin do sameCheck
+shapeTest at begin do expectSame
+shapeTest at begin return ok none
+
+findKey is call
+findKey in shapeTest
+findKey invokes machine.addressOfString
+findKey argument text String key lend
+findKey result keyAt machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+keyLength is call
+keyLength in shapeTest
+keyLength invokes string.byteLength
+keyLength argument text String key lend
+keyLength result bytes Int64
+keyLength ownedBy none
+keyLength cleanedBy none
+keyLength borrows none
+keyLength catch none
+keyLength suppresses none
+
+findTarget is call
+findTarget in shapeTest
+findTarget invokes targetNumber
+findTarget argument key machine.Address keyAt copy
+findTarget argument nameBytes Int64 eleven copy
+findTarget result number Int64
+findTarget ownedBy none
+findTarget cleanedBy none
+findTarget borrows none
+findTarget catch none
+findTarget suppresses none
+
+expectNumber is call
+expectNumber in shapeTest
+expectNumber invokes test.assertEqualInt64
+expectNumber argument expected Int64 seventeen copy
+expectNumber argument actual Int64 number copy
+expectNumber result none
+expectNumber ownedBy none
+expectNumber cleanedBy none
+expectNumber borrows none
+expectNumber catch none
+expectNumber suppresses none
+
+findLog is call
+findLog in shapeTest
+findLog invokes machine.addressOfString
+findLog argument text String logKey lend
+findLog result logAt machine.Address
+findLog ownedBy none
+findLog cleanedBy none
+findLog borrows none
+findLog catch none
+findLog suppresses none
+
+findLogTarget is call
+findLogTarget in shapeTest
+findLogTarget invokes targetNumber
+findLogTarget argument key machine.Address logAt copy
+findLogTarget argument nameBytes Int64 eight copy
+findLogTarget result logNumber Int64
+findLogTarget ownedBy none
+findLogTarget cleanedBy none
+findLogTarget borrows none
+findLogTarget catch none
+findLogTarget suppresses none
+
+expectLog is call
+expectLog in shapeTest
+expectLog invokes test.assertEqualInt64
+expectLog argument expected Int64 ten copy
+expectLog argument actual Int64 logNumber copy
+expectLog result none
+expectLog ownedBy none
+expectLog cleanedBy none
+expectLog borrows none
+expectLog catch none
+expectLog suppresses none
+
+findStranger is call
+findStranger in shapeTest
+findStranger invokes machine.addressOfString
+findStranger argument text String stranger lend
+findStranger result strangerAt machine.Address
+findStranger ownedBy none
+findStranger cleanedBy none
+findStranger borrows none
+findStranger catch none
+findStranger suppresses none
+
+findNone is call
+findNone in shapeTest
+findNone invokes targetNumber
+findNone argument key machine.Address strangerAt copy
+findNone argument nameBytes Int64 twelve copy
+findNone result noNumber Int64
+findNone ownedBy none
+findNone cleanedBy none
+findNone borrows none
+findNone catch none
+findNone suppresses none
+
+expectNone is call
+expectNone in shapeTest
+expectNone invokes test.assertEqualInt64
+expectNone argument expected Int64 zero copy
+expectNone argument actual Int64 noNumber copy
+expectNone result none
+expectNone ownedBy none
+expectNone cleanedBy none
+expectNone borrows none
+expectNone catch none
+expectNone suppresses none
+
+parse is call
+parse in shapeTest
+parse invokes parseShape
+parse argument key machine.Address keyAt copy
+parse argument bytes Int64 bytes copy
+parse result shape machine.Address
+parse ownedBy none
+parse cleanedBy none
+parse borrows none
+parse catch none
+parse suppresses none
+
+readNumber is call
+readNumber in shapeTest
+readNumber invokes shapeField
+readNumber argument shape machine.Address shape copy
+readNumber argument offset Int64 sixteen copy
+readNumber result shapeNumber Int64
+readNumber ownedBy none
+readNumber cleanedBy none
+readNumber borrows none
+readNumber catch none
+readNumber suppresses none
+
+expectShapeNumber is call
+expectShapeNumber in shapeTest
+expectShapeNumber invokes test.assertEqualInt64
+expectShapeNumber argument expected Int64 seventeen copy
+expectShapeNumber argument actual Int64 shapeNumber copy
+expectShapeNumber result none
+expectShapeNumber ownedBy none
+expectShapeNumber cleanedBy none
+expectShapeNumber borrows none
+expectShapeNumber catch none
+expectShapeNumber suppresses none
+
+readParams is call
+readParams in shapeTest
+readParams invokes shapeField
+readParams argument shape machine.Address shape copy
+readParams argument offset Int64 twentyFour copy
+readParams result params Int64
+readParams ownedBy none
+readParams cleanedBy none
+readParams borrows none
+readParams catch none
+readParams suppresses none
+
+expectParams is call
+expectParams in shapeTest
+expectParams invokes test.assertEqualInt64
+expectParams argument expected Int64 two copy
+expectParams argument actual Int64 params copy
+expectParams result none
+expectParams ownedBy none
+expectParams cleanedBy none
+expectParams borrows none
+expectParams catch none
+expectParams suppresses none
+
+readResults is call
+readResults in shapeTest
+readResults invokes shapeField
+readResults argument shape machine.Address shape copy
+readResults argument offset Int64 thirtyTwo copy
+readResults result resultSlots Int64
+readResults ownedBy none
+readResults cleanedBy none
+readResults borrows none
+readResults catch none
+readResults suppresses none
+
+expectResults is call
+expectResults in shapeTest
+expectResults invokes test.assertEqualInt64
+expectResults argument expected Int64 zero copy
+expectResults argument actual Int64 resultSlots copy
+expectResults result none
+expectResults ownedBy none
+expectResults cleanedBy none
+expectResults borrows none
+expectResults catch none
+expectResults suppresses none
+
+readKeyCount is call
+readKeyCount in shapeTest
+readKeyCount invokes countOf
+readKeyCount argument shape machine.Address shape copy
+readKeyCount argument parameter Int64 zero copy
+readKeyCount result keyCount Int64
+readKeyCount ownedBy none
+readKeyCount cleanedBy none
+readKeyCount borrows none
+readKeyCount catch none
+readKeyCount suppresses none
+
+expectKeyCount is call
+expectKeyCount in shapeTest
+expectKeyCount invokes test.assertEqualInt64
+expectKeyCount argument expected Int64 two copy
+expectKeyCount argument actual Int64 keyCount copy
+expectKeyCount result none
+expectKeyCount ownedBy none
+expectKeyCount cleanedBy none
+expectKeyCount borrows none
+expectKeyCount catch none
+expectKeyCount suppresses none
+
+readValueCount is call
+readValueCount in shapeTest
+readValueCount invokes countOf
+readValueCount argument shape machine.Address shape copy
+readValueCount argument parameter Int64 one copy
+readValueCount result valueCount Int64
+readValueCount ownedBy none
+readValueCount cleanedBy none
+readValueCount borrows none
+readValueCount catch none
+readValueCount suppresses none
+
+expectValueCount is call
+expectValueCount in shapeTest
+expectValueCount invokes test.assertEqualInt64
+expectValueCount argument expected Int64 one copy
+expectValueCount argument actual Int64 valueCount copy
+expectValueCount result none
+expectValueCount ownedBy none
+expectValueCount cleanedBy none
+expectValueCount borrows none
+expectValueCount catch none
+expectValueCount suppresses none
+
+readValueStart is call
+readValueStart in shapeTest
+readValueStart invokes shapeField
+readValueStart argument shape machine.Address shape copy
+readValueStart argument offset Int64 twoForty copy
+readValueStart result valueStart Int64
+readValueStart ownedBy none
+readValueStart cleanedBy none
+readValueStart borrows none
+readValueStart catch none
+readValueStart suppresses none
+
+expectValueStart is call
+expectValueStart in shapeTest
+expectValueStart invokes test.assertEqualInt64
+expectValueStart argument expected Int64 two copy
+expectValueStart argument actual Int64 valueStart copy
+expectValueStart result none
+expectValueStart ownedBy none
+expectValueStart cleanedBy none
+expectValueStart borrows none
+expectValueStart catch none
+expectValueStart suppresses none
+
+giveShape is call
+giveShape in shapeTest
+giveShape invokes heap.give
+giveShape argument block machine.Address shape copy
+giveShape result none
+giveShape ownedBy none
+giveShape cleanedBy none
+giveShape borrows none
+giveShape catch none
+giveShape suppresses none
+
+keep is call
+keep in shapeTest
+keep invokes shapeOf
+keep argument key machine.Address keyAt copy
+keep argument bytes Int64 bytes copy
+keep result kept machine.Address
+keep ownedBy none
+keep cleanedBy none
+keep borrows none
+keep catch none
+keep suppresses none
+
+keepAgain is call
+keepAgain in shapeTest
+keepAgain invokes shapeOf
+keepAgain argument key machine.Address keyAt copy
+keepAgain argument bytes Int64 bytes copy
+keepAgain result again machine.Address
+keepAgain ownedBy none
+keepAgain cleanedBy none
+keepAgain borrows none
+keepAgain catch none
+keepAgain suppresses none
+
+sameCheck is call
+sameCheck in shapeTest
+sameCheck invokes machine.equal
+sameCheck argument left machine.Address kept copy
+sameCheck argument right machine.Address again copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+expectSame is call
+expectSame in shapeTest
+expectSame invokes test.assertTrue
+expectSame argument value Bool same copy
+expectSame result none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none
+expectSame suppresses none
+
+putBytes is operation
+putBytes purpose "Put bytes in the tests' scratch from slot 32, one byte per value given, and give their address"
+putBytes invariant none
+putBytes typeParameter none
+putBytes input first Int64 copied
+putBytes input second Int64 copied
+putBytes input third Int64 copied
+putBytes input fourth Int64 copied
+putBytes output machine.Address
+putBytes outputOwnedBy none
+putBytes raises none
+putBytes effect use machine.memory
+putBytes uses memoryAccess
+putBytes memoryHeap false
+putBytes async false
+putBytes maxRecursion none
+putBytes label begin loopKind none
+putBytes label begin within none
+putBytes let thirtyTwo Int64 32 immutable
+putBytes let one Int64 1 immutable
+putBytes let two Int64 2 immutable
+putBytes let three Int64 3 immutable
+putBytes at begin do findBytes
+putBytes at begin do narrowFirst
+putBytes at begin do storeFirst
+putBytes at begin do findSecond
+putBytes at begin do narrowSecond
+putBytes at begin do storeSecond
+putBytes at begin do findThird
+putBytes at begin do narrowThird
+putBytes at begin do storeThird
+putBytes at begin do findFourth
+putBytes at begin do narrowFourth
+putBytes at begin do storeFourth
+putBytes at begin return ok place
+
+findBytes is call
+findBytes in putBytes
+findBytes invokes slotAt
+findBytes argument slot Int64 thirtyTwo copy
+findBytes result place machine.Address
+findBytes ownedBy none
+findBytes cleanedBy none
+findBytes borrows none
+findBytes catch none
+findBytes suppresses none
+
+narrowFirst is call
+narrowFirst in putBytes
+narrowFirst invokes convert.int64ToByte
+narrowFirst argument value Int64 first copy
+narrowFirst result firstByte Byte
+narrowFirst ownedBy none
+narrowFirst cleanedBy none
+narrowFirst borrows none
+narrowFirst catch none
+narrowFirst suppresses none
+
+storeFirst is call
+storeFirst in putBytes
+storeFirst invokes machine.storeByte
+storeFirst argument address machine.Address place copy
+storeFirst argument value Byte firstByte copy
+storeFirst result none
+storeFirst ownedBy none
+storeFirst cleanedBy none
+storeFirst borrows none
+storeFirst catch none
+storeFirst suppresses none
+
+findSecond is call
+findSecond in putBytes
+findSecond invokes machine.offset
+findSecond argument address machine.Address place copy
+findSecond argument bytes Int64 one copy
+findSecond result secondAt machine.Address
+findSecond ownedBy none
+findSecond cleanedBy none
+findSecond borrows none
+findSecond catch none
+findSecond suppresses none
+
+narrowSecond is call
+narrowSecond in putBytes
+narrowSecond invokes convert.int64ToByte
+narrowSecond argument value Int64 second copy
+narrowSecond result secondByte Byte
+narrowSecond ownedBy none
+narrowSecond cleanedBy none
+narrowSecond borrows none
+narrowSecond catch none
+narrowSecond suppresses none
+
+storeSecond is call
+storeSecond in putBytes
+storeSecond invokes machine.storeByte
+storeSecond argument address machine.Address secondAt copy
+storeSecond argument value Byte secondByte copy
+storeSecond result none
+storeSecond ownedBy none
+storeSecond cleanedBy none
+storeSecond borrows none
+storeSecond catch none
+storeSecond suppresses none
+
+findThird is call
+findThird in putBytes
+findThird invokes machine.offset
+findThird argument address machine.Address place copy
+findThird argument bytes Int64 two copy
+findThird result thirdAt machine.Address
+findThird ownedBy none
+findThird cleanedBy none
+findThird borrows none
+findThird catch none
+findThird suppresses none
+
+narrowThird is call
+narrowThird in putBytes
+narrowThird invokes convert.int64ToByte
+narrowThird argument value Int64 third copy
+narrowThird result thirdByte Byte
+narrowThird ownedBy none
+narrowThird cleanedBy none
+narrowThird borrows none
+narrowThird catch none
+narrowThird suppresses none
+
+storeThird is call
+storeThird in putBytes
+storeThird invokes machine.storeByte
+storeThird argument address machine.Address thirdAt copy
+storeThird argument value Byte thirdByte copy
+storeThird result none
+storeThird ownedBy none
+storeThird cleanedBy none
+storeThird borrows none
+storeThird catch none
+storeThird suppresses none
+
+findFourth is call
+findFourth in putBytes
+findFourth invokes machine.offset
+findFourth argument address machine.Address place copy
+findFourth argument bytes Int64 three copy
+findFourth result fourthAt machine.Address
+findFourth ownedBy none
+findFourth cleanedBy none
+findFourth borrows none
+findFourth catch none
+findFourth suppresses none
+
+narrowFourth is call
+narrowFourth in putBytes
+narrowFourth invokes convert.int64ToByte
+narrowFourth argument value Int64 fourth copy
+narrowFourth result fourthByte Byte
+narrowFourth ownedBy none
+narrowFourth cleanedBy none
+narrowFourth borrows none
+narrowFourth catch none
+narrowFourth suppresses none
+
+storeFourth is call
+storeFourth in putBytes
+storeFourth invokes machine.storeByte
+storeFourth argument address machine.Address fourthAt copy
+storeFourth argument value Byte fourthByte copy
+storeFourth result none
+storeFourth ownedBy none
+storeFourth cleanedBy none
+storeFourth borrows none
+storeFourth catch none
+storeFourth suppresses none
+
+expectInvalid is operation
+expectInvalid purpose "Put four bytes in the scratch and compare where the first `length` of them stop being valid UTF-8 with what is expected"
+expectInvalid invariant none
+expectInvalid typeParameter none
+expectInvalid input first Int64 copied
+expectInvalid input second Int64 copied
+expectInvalid input third Int64 copied
+expectInvalid input fourth Int64 copied
+expectInvalid input length Int64 copied
+expectInvalid input expected Int64 copied
+expectInvalid output none
+expectInvalid outputOwnedBy none
+expectInvalid raises none
+expectInvalid effect use machine.memory
+expectInvalid uses memoryAccess
+expectInvalid memoryHeap false
+expectInvalid async false
+expectInvalid maxRecursion none
+expectInvalid label begin loopKind none
+expectInvalid label begin within none
+expectInvalid let none
+expectInvalid at begin do place
+expectInvalid at begin do check
+expectInvalid at begin do expectBad
+expectInvalid at begin return ok none
+
+place is call
+place in expectInvalid
+place invokes putBytes
+place argument first Int64 first copy
+place argument second Int64 second copy
+place argument third Int64 third copy
+place argument fourth Int64 fourth copy
+place result data machine.Address
+place ownedBy none
+place cleanedBy none
+place borrows none
+place catch none
+place suppresses none
+
+check is call
+check in expectInvalid
+check invokes utf8InvalidAt
+check argument data machine.Address data copy
+check argument bytes Int64 length copy
+check result bad Int64
+check ownedBy none
+check cleanedBy none
+check borrows none
+check catch none
+check suppresses none
+
+expectBad is call
+expectBad in expectInvalid
+expectBad invokes test.assertEqualInt64
+expectBad argument expected Int64 expected copy
+expectBad argument actual Int64 bad copy
+expectBad result none
+expectBad ownedBy none
+expectBad cleanedBy none
+expectBad borrows none
+expectBad catch none
+expectBad suppresses none
+
+utf8Test is test
+utf8Test purpose "UTF-8 is checked as Python's decoder checks it"
+utf8Test verifies utf8InvalidAt findsInvalid
+utf8Test typeParameter none
+utf8Test input none
+utf8Test output none
+utf8Test outputOwnedBy none
+utf8Test raises none
+utf8Test effect use machine.memory
+utf8Test uses memoryAccess
+utf8Test memoryHeap false
+utf8Test async false
+utf8Test maxRecursion none
+utf8Test label begin loopKind none
+utf8Test label begin within none
+utf8Test let a Int64 97 immutable
+utf8Test let b Int64 98 immutable
+utf8Test let eAcute1 Int64 195 immutable
+utf8Test let eAcute2 Int64 169 immutable
+utf8Test let four Int64 4 immutable
+utf8Test let minusOne Int64 -1 immutable
+utf8Test let three Int64 3 immutable
+utf8Test let two Int64 2 immutable
+utf8Test let e0 Int64 224 immutable
+utf8Test let x80 Int64 128 immutable
+utf8Test let zero Int64 0 immutable
+utf8Test let ed Int64 237 immutable
+utf8Test let xa0 Int64 160 immutable
+utf8Test let one Int64 1 immutable
+utf8Test let f4 Int64 244 immutable
+utf8Test let x90 Int64 144 immutable
+utf8Test let f0 Int64 240 immutable
+utf8Test let x9f Int64 159 immutable
+utf8Test let x98 Int64 152 immutable
+utf8Test let c0 Int64 192 immutable
+utf8Test at begin do place
+utf8Test at begin do check
+utf8Test at begin do expectValid
+utf8Test at begin do truncated
+utf8Test at begin do overlong
+utf8Test at begin do surrogate
+utf8Test at begin do beyond
+utf8Test at begin do lone
+utf8Test at begin do fourByte
+utf8Test at begin do invalidLead
+utf8Test at begin return ok none
+
+place is call
+place in utf8Test
+place invokes putBytes
+place argument first Int64 a copy
+place argument second Int64 b copy
+place argument third Int64 eAcute1 copy
+place argument fourth Int64 eAcute2 copy
+place result data machine.Address
+place ownedBy none
+place cleanedBy none
+place borrows none
+place catch none
+place suppresses none
+
+check is call
+check in utf8Test
+check invokes utf8InvalidAt
+check argument data machine.Address data copy
+check argument bytes Int64 four copy
+check result bad Int64
+check ownedBy none
+check cleanedBy none
+check borrows none
+check catch none
+check suppresses none
+
+expectValid is call
+expectValid in utf8Test
+expectValid invokes test.assertEqualInt64
+expectValid argument expected Int64 minusOne copy
+expectValid argument actual Int64 bad copy
+expectValid result none
+expectValid ownedBy none
+expectValid cleanedBy none
+expectValid borrows none
+expectValid catch none
+expectValid suppresses none
+
+truncated is call
+truncated in utf8Test
+truncated invokes expectInvalid
+truncated argument first Int64 a copy
+truncated argument second Int64 b copy
+truncated argument third Int64 eAcute1 copy
+truncated argument fourth Int64 eAcute2 copy
+truncated argument length Int64 three copy
+truncated argument expected Int64 two copy
+truncated result none
+truncated ownedBy none
+truncated cleanedBy none
+truncated borrows none
+truncated catch none
+truncated suppresses none
+
+overlong is call
+overlong in utf8Test
+overlong invokes expectInvalid
+overlong argument first Int64 e0 copy
+overlong argument second Int64 x80 copy
+overlong argument third Int64 x80 copy
+overlong argument fourth Int64 a copy
+overlong argument length Int64 four copy
+overlong argument expected Int64 zero copy
+overlong result none
+overlong ownedBy none
+overlong cleanedBy none
+overlong borrows none
+overlong catch none
+overlong suppresses none
+
+surrogate is call
+surrogate in utf8Test
+surrogate invokes expectInvalid
+surrogate argument first Int64 a copy
+surrogate argument second Int64 ed copy
+surrogate argument third Int64 xa0 copy
+surrogate argument fourth Int64 x80 copy
+surrogate argument length Int64 four copy
+surrogate argument expected Int64 one copy
+surrogate result none
+surrogate ownedBy none
+surrogate cleanedBy none
+surrogate borrows none
+surrogate catch none
+surrogate suppresses none
+
+beyond is call
+beyond in utf8Test
+beyond invokes expectInvalid
+beyond argument first Int64 f4 copy
+beyond argument second Int64 x90 copy
+beyond argument third Int64 x80 copy
+beyond argument fourth Int64 x80 copy
+beyond argument length Int64 four copy
+beyond argument expected Int64 zero copy
+beyond result none
+beyond ownedBy none
+beyond cleanedBy none
+beyond borrows none
+beyond catch none
+beyond suppresses none
+
+lone is call
+lone in utf8Test
+lone invokes expectInvalid
+lone argument first Int64 a copy
+lone argument second Int64 x80 copy
+lone argument third Int64 a copy
+lone argument fourth Int64 a copy
+lone argument length Int64 four copy
+lone argument expected Int64 one copy
+lone result none
+lone ownedBy none
+lone cleanedBy none
+lone borrows none
+lone catch none
+lone suppresses none
+
+fourByte is call
+fourByte in utf8Test
+fourByte invokes expectInvalid
+fourByte argument first Int64 f0 copy
+fourByte argument second Int64 x9f copy
+fourByte argument third Int64 x98 copy
+fourByte argument fourth Int64 x80 copy
+fourByte argument length Int64 four copy
+fourByte argument expected Int64 minusOne copy
+fourByte result none
+fourByte ownedBy none
+fourByte cleanedBy none
+fourByte borrows none
+fourByte catch none
+fourByte suppresses none
+
+invalidLead is call
+invalidLead in utf8Test
+invalidLead invokes expectInvalid
+invalidLead argument first Int64 a copy
+invalidLead argument second Int64 b copy
+invalidLead argument third Int64 c0 copy
+invalidLead argument fourth Int64 x80 copy
+invalidLead argument length Int64 four copy
+invalidLead argument expected Int64 two copy
+invalidLead result none
+invalidLead ownedBy none
+invalidLead cleanedBy none
+invalidLead borrows none
+invalidLead catch none
+invalidLead suppresses none
+
+mapTest is test
+mapTest purpose "A map keeps its keys in the order they were first put, updates, reports missing keys, and is closed with its region"
+mapTest verifies hostCall runsTargets
+mapTest typeParameter none
+mapTest input none
+mapTest output none
+mapTest outputOwnedBy none
+mapTest raises none
+mapTest effect use machine.memory
+mapTest effect use system.calls
+mapTest uses memoryAccess
+mapTest uses systemCalls
+mapTest memoryHeap false
+mapTest async false
+mapTest maxRecursion none
+mapTest label begin loopKind none
+mapTest label begin within none
+mapTest let label String "region `scratch` of `mapTest`" immutable
+mapTest let capacity Int64 4096 immutable
+mapTest let zero Int64 0 immutable
+mapTest let one Int64 1 immutable
+mapTest let two Int64 2 immutable
+mapTest let sixteen Int64 16 immutable
+mapTest let twentyFour Int64 24 immutable
+mapTest let newKey String "map.Map.new|1,1,1|1" immutable
+mapTest let seven Int64 7 immutable
+mapTest let seventy Int64 70 immutable
+mapTest let putKey String "map.Map.put|1,1,1|0" immutable
+mapTest let three Int64 3 immutable
+mapTest let thirty Int64 30 immutable
+mapTest let seventySeven Int64 77 immutable
+mapTest let getKey String "map.Map.get|1,1|1" immutable
+mapTest let nine Int64 9 immutable
+mapTest let lengthKey String "map.Map.length|1|1" immutable
+mapTest let keyAtKey String "map.Map.keyAt|1,1|1" immutable
+mapTest let removeKey String "map.Map.remove|1,1|0" immutable
+mapTest let containsKey String "map.Map.contains|1,1|1" immutable
+mapTest at begin do findLabel
+mapTest at begin do labelLength
+mapTest at begin do make
+mapTest at begin do setRegion
+mapTest at begin do setPlainKeys
+mapTest at begin do setPlainValues
+mapTest at begin do findArgs
+mapTest at begin do findResults
+mapTest at begin do findPayload
+mapTest at begin do findNewKey
+mapTest at begin do measureNewKey
+mapTest at begin do makeMap
+mapTest at begin do widenMade
+mapTest at begin do expectMade
+mapTest at begin do readHandle
+mapTest at begin do setMap
+mapTest at begin do setSeven
+mapTest at begin do setSeventy
+mapTest at begin do putSeven
+mapTest at begin do setThree
+mapTest at begin do setThirty
+mapTest at begin do putThree
+mapTest at begin do setSevenAgain
+mapTest at begin do setUpdate
+mapTest at begin do putAgain
+mapTest at begin do getSeven
+mapTest at begin do setMissing
+mapTest at begin do getMissing
+mapTest at begin do expectMissing
+mapTest at begin do countKeys
+mapTest at begin do setFirst
+mapTest at begin do firstKey
+mapTest at begin do setSecond
+mapTest at begin do secondKey
+mapTest at begin do setRemoved
+mapTest at begin do removeSeven
+mapTest at begin do removeAgain
+mapTest at begin do expectGone
+mapTest at begin do setThreeAgain
+mapTest at begin do hasThree
+mapTest at begin do setNowFirst
+mapTest at begin do nowFirst
+mapTest at begin do free
+mapTest at begin do readClosed
+mapTest at begin do expectClosed
+mapTest at begin return ok none
+
+findLabel is call
+findLabel in mapTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in mapTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in mapTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+setRegion is call
+setRegion in mapTest
+setRegion invokes setAddress
+setRegion argument slot Int64 zero copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+setPlainKeys is call
+setPlainKeys in mapTest
+setPlainKeys invokes setArgument
+setPlainKeys argument slot Int64 one copy
+setPlainKeys argument value Int64 zero copy
+setPlainKeys result none
+setPlainKeys ownedBy none
+setPlainKeys cleanedBy none
+setPlainKeys borrows none
+setPlainKeys catch none
+setPlainKeys suppresses none
+
+setPlainValues is call
+setPlainValues in mapTest
+setPlainValues invokes setArgument
+setPlainValues argument slot Int64 two copy
+setPlainValues argument value Int64 zero copy
+setPlainValues result none
+setPlainValues ownedBy none
+setPlainValues cleanedBy none
+setPlainValues borrows none
+setPlainValues catch none
+setPlainValues suppresses none
+
+findArgs is call
+findArgs in mapTest
+findArgs invokes slotAt
+findArgs argument slot Int64 zero copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in mapTest
+findResults invokes slotAt
+findResults argument slot Int64 sixteen copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in mapTest
+findPayload invokes slotAt
+findPayload argument slot Int64 twentyFour copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+findNewKey is call
+findNewKey in mapTest
+findNewKey invokes machine.addressOfString
+findNewKey argument text String newKey lend
+findNewKey result newKeyAt machine.Address
+findNewKey ownedBy none
+findNewKey cleanedBy none
+findNewKey borrows none
+findNewKey catch none
+findNewKey suppresses none
+
+measureNewKey is call
+measureNewKey in mapTest
+measureNewKey invokes string.byteLength
+measureNewKey argument text String newKey lend
+measureNewKey result newKeyBytes Int64
+measureNewKey ownedBy none
+measureNewKey cleanedBy none
+measureNewKey borrows none
+measureNewKey catch none
+measureNewKey suppresses none
+
+makeMap is call
+makeMap in mapTest
+makeMap invokes hostCall
+makeMap argument key machine.Address newKeyAt copy
+makeMap argument bytes Int64 newKeyBytes copy
+makeMap argument args machine.Address args copy
+makeMap argument results machine.Address results copy
+makeMap argument payload machine.Address payload copy
+makeMap result madeStatus Int32
+makeMap ownedBy none
+makeMap cleanedBy none
+makeMap borrows none
+makeMap catch none
+makeMap suppresses none
+
+widenMade is call
+widenMade in mapTest
+widenMade invokes convert.int32ToInt64
+widenMade argument value Int32 madeStatus copy
+widenMade result made Int64
+widenMade ownedBy none
+widenMade cleanedBy none
+widenMade borrows none
+widenMade catch none
+widenMade suppresses none
+
+expectMade is call
+expectMade in mapTest
+expectMade invokes test.assertEqualInt64
+expectMade argument expected Int64 zero copy
+expectMade argument actual Int64 made copy
+expectMade result none
+expectMade ownedBy none
+expectMade cleanedBy none
+expectMade borrows none
+expectMade catch none
+expectMade suppresses none
+
+readHandle is call
+readHandle in mapTest
+readHandle invokes readResult
+readHandle argument slot Int64 zero copy
+readHandle result map Int64
+readHandle ownedBy none
+readHandle cleanedBy none
+readHandle borrows none
+readHandle catch none
+readHandle suppresses none
+
+setMap is call
+setMap in mapTest
+setMap invokes setArgument
+setMap argument slot Int64 zero copy
+setMap argument value Int64 map copy
+setMap result none
+setMap ownedBy none
+setMap cleanedBy none
+setMap borrows none
+setMap catch none
+setMap suppresses none
+
+setSeven is call
+setSeven in mapTest
+setSeven invokes setArgument
+setSeven argument slot Int64 one copy
+setSeven argument value Int64 seven copy
+setSeven result none
+setSeven ownedBy none
+setSeven cleanedBy none
+setSeven borrows none
+setSeven catch none
+setSeven suppresses none
+
+setSeventy is call
+setSeventy in mapTest
+setSeventy invokes setArgument
+setSeventy argument slot Int64 two copy
+setSeventy argument value Int64 seventy copy
+setSeventy result none
+setSeventy ownedBy none
+setSeventy cleanedBy none
+setSeventy borrows none
+setSeventy catch none
+setSeventy suppresses none
+
+putSeven is call
+putSeven in mapTest
+putSeven invokes expectOk
+putSeven argument key String putKey lend
+putSeven result none
+putSeven ownedBy none
+putSeven cleanedBy none
+putSeven borrows none
+putSeven catch none
+putSeven suppresses none
+
+setThree is call
+setThree in mapTest
+setThree invokes setArgument
+setThree argument slot Int64 one copy
+setThree argument value Int64 three copy
+setThree result none
+setThree ownedBy none
+setThree cleanedBy none
+setThree borrows none
+setThree catch none
+setThree suppresses none
+
+setThirty is call
+setThirty in mapTest
+setThirty invokes setArgument
+setThirty argument slot Int64 two copy
+setThirty argument value Int64 thirty copy
+setThirty result none
+setThirty ownedBy none
+setThirty cleanedBy none
+setThirty borrows none
+setThirty catch none
+setThirty suppresses none
+
+putThree is call
+putThree in mapTest
+putThree invokes expectOk
+putThree argument key String putKey lend
+putThree result none
+putThree ownedBy none
+putThree cleanedBy none
+putThree borrows none
+putThree catch none
+putThree suppresses none
+
+setSevenAgain is call
+setSevenAgain in mapTest
+setSevenAgain invokes setArgument
+setSevenAgain argument slot Int64 one copy
+setSevenAgain argument value Int64 seven copy
+setSevenAgain result none
+setSevenAgain ownedBy none
+setSevenAgain cleanedBy none
+setSevenAgain borrows none
+setSevenAgain catch none
+setSevenAgain suppresses none
+
+setUpdate is call
+setUpdate in mapTest
+setUpdate invokes setArgument
+setUpdate argument slot Int64 two copy
+setUpdate argument value Int64 seventySeven copy
+setUpdate result none
+setUpdate ownedBy none
+setUpdate cleanedBy none
+setUpdate borrows none
+setUpdate catch none
+setUpdate suppresses none
+
+putAgain is call
+putAgain in mapTest
+putAgain invokes expectOk
+putAgain argument key String putKey lend
+putAgain result none
+putAgain ownedBy none
+putAgain cleanedBy none
+putAgain borrows none
+putAgain catch none
+putAgain suppresses none
+
+getSeven is call
+getSeven in mapTest
+getSeven invokes expectCall
+getSeven argument key String getKey lend
+getSeven argument status Int64 zero copy
+getSeven argument value Int64 seventySeven copy
+getSeven result none
+getSeven ownedBy none
+getSeven cleanedBy none
+getSeven borrows none
+getSeven catch none
+getSeven suppresses none
+
+setMissing is call
+setMissing in mapTest
+setMissing invokes setArgument
+setMissing argument slot Int64 one copy
+setMissing argument value Int64 nine copy
+setMissing result none
+setMissing ownedBy none
+setMissing cleanedBy none
+setMissing borrows none
+setMissing catch none
+setMissing suppresses none
+
+getMissing is call
+getMissing in mapTest
+getMissing invokes call
+getMissing argument key String getKey lend
+getMissing result missingStatus Int64
+getMissing ownedBy none
+getMissing cleanedBy none
+getMissing borrows none
+getMissing catch none
+getMissing suppresses none
+
+expectMissing is call
+expectMissing in mapTest
+expectMissing invokes test.assertEqualInt64
+expectMissing argument expected Int64 one copy
+expectMissing argument actual Int64 missingStatus copy
+expectMissing result none
+expectMissing ownedBy none
+expectMissing cleanedBy none
+expectMissing borrows none
+expectMissing catch none
+expectMissing suppresses none
+
+countKeys is call
+countKeys in mapTest
+countKeys invokes expectCall
+countKeys argument key String lengthKey lend
+countKeys argument status Int64 zero copy
+countKeys argument value Int64 two copy
+countKeys result none
+countKeys ownedBy none
+countKeys cleanedBy none
+countKeys borrows none
+countKeys catch none
+countKeys suppresses none
+
+setFirst is call
+setFirst in mapTest
+setFirst invokes setArgument
+setFirst argument slot Int64 one copy
+setFirst argument value Int64 zero copy
+setFirst result none
+setFirst ownedBy none
+setFirst cleanedBy none
+setFirst borrows none
+setFirst catch none
+setFirst suppresses none
+
+firstKey is call
+firstKey in mapTest
+firstKey invokes expectCall
+firstKey argument key String keyAtKey lend
+firstKey argument status Int64 zero copy
+firstKey argument value Int64 seven copy
+firstKey result none
+firstKey ownedBy none
+firstKey cleanedBy none
+firstKey borrows none
+firstKey catch none
+firstKey suppresses none
+
+setSecond is call
+setSecond in mapTest
+setSecond invokes setArgument
+setSecond argument slot Int64 one copy
+setSecond argument value Int64 one copy
+setSecond result none
+setSecond ownedBy none
+setSecond cleanedBy none
+setSecond borrows none
+setSecond catch none
+setSecond suppresses none
+
+secondKey is call
+secondKey in mapTest
+secondKey invokes expectCall
+secondKey argument key String keyAtKey lend
+secondKey argument status Int64 zero copy
+secondKey argument value Int64 three copy
+secondKey result none
+secondKey ownedBy none
+secondKey cleanedBy none
+secondKey borrows none
+secondKey catch none
+secondKey suppresses none
+
+setRemoved is call
+setRemoved in mapTest
+setRemoved invokes setArgument
+setRemoved argument slot Int64 one copy
+setRemoved argument value Int64 seven copy
+setRemoved result none
+setRemoved ownedBy none
+setRemoved cleanedBy none
+setRemoved borrows none
+setRemoved catch none
+setRemoved suppresses none
+
+removeSeven is call
+removeSeven in mapTest
+removeSeven invokes expectOk
+removeSeven argument key String removeKey lend
+removeSeven result none
+removeSeven ownedBy none
+removeSeven cleanedBy none
+removeSeven borrows none
+removeSeven catch none
+removeSeven suppresses none
+
+removeAgain is call
+removeAgain in mapTest
+removeAgain invokes call
+removeAgain argument key String removeKey lend
+removeAgain result againStatus Int64
+removeAgain ownedBy none
+removeAgain cleanedBy none
+removeAgain borrows none
+removeAgain catch none
+removeAgain suppresses none
+
+expectGone is call
+expectGone in mapTest
+expectGone invokes test.assertEqualInt64
+expectGone argument expected Int64 one copy
+expectGone argument actual Int64 againStatus copy
+expectGone result none
+expectGone ownedBy none
+expectGone cleanedBy none
+expectGone borrows none
+expectGone catch none
+expectGone suppresses none
+
+setThreeAgain is call
+setThreeAgain in mapTest
+setThreeAgain invokes setArgument
+setThreeAgain argument slot Int64 one copy
+setThreeAgain argument value Int64 three copy
+setThreeAgain result none
+setThreeAgain ownedBy none
+setThreeAgain cleanedBy none
+setThreeAgain borrows none
+setThreeAgain catch none
+setThreeAgain suppresses none
+
+hasThree is call
+hasThree in mapTest
+hasThree invokes expectCall
+hasThree argument key String containsKey lend
+hasThree argument status Int64 zero copy
+hasThree argument value Int64 one copy
+hasThree result none
+hasThree ownedBy none
+hasThree cleanedBy none
+hasThree borrows none
+hasThree catch none
+hasThree suppresses none
+
+setNowFirst is call
+setNowFirst in mapTest
+setNowFirst invokes setArgument
+setNowFirst argument slot Int64 one copy
+setNowFirst argument value Int64 zero copy
+setNowFirst result none
+setNowFirst ownedBy none
+setNowFirst cleanedBy none
+setNowFirst borrows none
+setNowFirst catch none
+setNowFirst suppresses none
+
+nowFirst is call
+nowFirst in mapTest
+nowFirst invokes expectCall
+nowFirst argument key String keyAtKey lend
+nowFirst argument status Int64 zero copy
+nowFirst argument value Int64 three copy
+nowFirst result none
+nowFirst ownedBy none
+nowFirst cleanedBy none
+nowFirst borrows none
+nowFirst catch none
+nowFirst suppresses none
+
+free is call
+free in mapTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none
+
+readClosed is call
+readClosed in mapTest
+readClosed invokes handles.kindOf
+readClosed argument handle Int64 map copy
+readClosed result closed Int64
+readClosed ownedBy none
+readClosed cleanedBy none
+readClosed borrows none
+readClosed catch none
+readClosed suppresses none
+
+expectClosed is call
+expectClosed in mapTest
+expectClosed invokes test.assertEqualInt64
+expectClosed argument expected Int64 zero copy
+expectClosed argument actual Int64 closed copy
+expectClosed result none
+expectClosed ownedBy none
+expectClosed cleanedBy none
+expectClosed borrows none
+expectClosed catch none
+expectClosed suppresses none
+
+textMapTest is test
+textMapTest purpose "A map with text keys and values finds keys by their bytes and keeps its own copies of keys and values in its region"
+textMapTest verifies hostCall runsTargets
+textMapTest typeParameter none
+textMapTest input none
+textMapTest output none
+textMapTest outputOwnedBy none
+textMapTest raises none
+textMapTest effect use machine.memory
+textMapTest effect use system.calls
+textMapTest uses memoryAccess
+textMapTest uses systemCalls
+textMapTest memoryHeap false
+textMapTest async false
+textMapTest maxRecursion none
+textMapTest label begin loopKind none
+textMapTest label begin within none
+textMapTest let label String "region `scratch` of `textMapTest`" immutable
+textMapTest let key String "alpha" immutable
+textMapTest let otherKey String "xalpha" immutable
+textMapTest let value String "first" immutable
+textMapTest let capacity Int64 4096 immutable
+textMapTest let zero Int64 0 immutable
+textMapTest let one Int64 1 immutable
+textMapTest let two Int64 2 immutable
+textMapTest let sixteen Int64 16 immutable
+textMapTest let twentyFour Int64 24 immutable
+textMapTest let newKey String "map.Map.new|1,1,1|1" immutable
+textMapTest let five Int64 5 immutable
+textMapTest let three Int64 3 immutable
+textMapTest let four Int64 4 immutable
+textMapTest let putKey String "map.Map.put|1,2,2|0" immutable
+textMapTest let fourThousandEightySix Int64 4086 immutable
+textMapTest let getKey String "map.Map.get|1,2|2" immutable
+textMapTest let fourThousandEightyOne Int64 4081 immutable
+textMapTest at begin do findLabel
+textMapTest at begin do labelLength
+textMapTest at begin do make
+textMapTest at begin do setRegion
+textMapTest at begin do setTextKeys
+textMapTest at begin do setTextValues
+textMapTest at begin do findArgs
+textMapTest at begin do findResults
+textMapTest at begin do findPayload
+textMapTest at begin do findNewKey
+textMapTest at begin do measureNewKey
+textMapTest at begin do makeMap
+textMapTest at begin do widenMade
+textMapTest at begin do expectMadeText
+textMapTest at begin do readHandle
+textMapTest at begin do setMap
+textMapTest at begin do findKey
+textMapTest at begin do setKey
+textMapTest at begin do setKeyLength
+textMapTest at begin do findValue
+textMapTest at begin do setValue
+textMapTest at begin do setValueLength
+textMapTest at begin do putIt
+textMapTest at begin do readUsed
+textMapTest at begin do expectCopied
+textMapTest at begin do findOther
+textMapTest at begin do findInside
+textMapTest at begin do setOther
+textMapTest at begin do getIt
+textMapTest at begin do expectFound
+textMapTest at begin do readCopy
+textMapTest at begin do asAddress
+textMapTest at begin do movedCheck
+textMapTest at begin do notSame
+textMapTest at begin do expectMoved
+textMapTest at begin do readCopyLength
+textMapTest at begin do viewCopy
+textMapTest at begin do expectText
+textMapTest at begin do putAgain
+textMapTest at begin do readUsedAgain
+textMapTest at begin do expectOnlyValue
+textMapTest at begin do free
+textMapTest at begin return ok none
+
+findLabel is call
+findLabel in textMapTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in textMapTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in textMapTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+setRegion is call
+setRegion in textMapTest
+setRegion invokes setAddress
+setRegion argument slot Int64 zero copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+setTextKeys is call
+setTextKeys in textMapTest
+setTextKeys invokes setArgument
+setTextKeys argument slot Int64 one copy
+setTextKeys argument value Int64 one copy
+setTextKeys result none
+setTextKeys ownedBy none
+setTextKeys cleanedBy none
+setTextKeys borrows none
+setTextKeys catch none
+setTextKeys suppresses none
+
+setTextValues is call
+setTextValues in textMapTest
+setTextValues invokes setArgument
+setTextValues argument slot Int64 two copy
+setTextValues argument value Int64 one copy
+setTextValues result none
+setTextValues ownedBy none
+setTextValues cleanedBy none
+setTextValues borrows none
+setTextValues catch none
+setTextValues suppresses none
+
+findArgs is call
+findArgs in textMapTest
+findArgs invokes slotAt
+findArgs argument slot Int64 zero copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in textMapTest
+findResults invokes slotAt
+findResults argument slot Int64 sixteen copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in textMapTest
+findPayload invokes slotAt
+findPayload argument slot Int64 twentyFour copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+findNewKey is call
+findNewKey in textMapTest
+findNewKey invokes machine.addressOfString
+findNewKey argument text String newKey lend
+findNewKey result newKeyAt machine.Address
+findNewKey ownedBy none
+findNewKey cleanedBy none
+findNewKey borrows none
+findNewKey catch none
+findNewKey suppresses none
+
+measureNewKey is call
+measureNewKey in textMapTest
+measureNewKey invokes string.byteLength
+measureNewKey argument text String newKey lend
+measureNewKey result newKeyBytes Int64
+measureNewKey ownedBy none
+measureNewKey cleanedBy none
+measureNewKey borrows none
+measureNewKey catch none
+measureNewKey suppresses none
+
+makeMap is call
+makeMap in textMapTest
+makeMap invokes hostCall
+makeMap argument key machine.Address newKeyAt copy
+makeMap argument bytes Int64 newKeyBytes copy
+makeMap argument args machine.Address args copy
+makeMap argument results machine.Address results copy
+makeMap argument payload machine.Address payload copy
+makeMap result madeStatus Int32
+makeMap ownedBy none
+makeMap cleanedBy none
+makeMap borrows none
+makeMap catch none
+makeMap suppresses none
+
+widenMade is call
+widenMade in textMapTest
+widenMade invokes convert.int32ToInt64
+widenMade argument value Int32 madeStatus copy
+widenMade result made Int64
+widenMade ownedBy none
+widenMade cleanedBy none
+widenMade borrows none
+widenMade catch none
+widenMade suppresses none
+
+expectMadeText is call
+expectMadeText in textMapTest
+expectMadeText invokes test.assertEqualInt64
+expectMadeText argument expected Int64 zero copy
+expectMadeText argument actual Int64 made copy
+expectMadeText result none
+expectMadeText ownedBy none
+expectMadeText cleanedBy none
+expectMadeText borrows none
+expectMadeText catch none
+expectMadeText suppresses none
+
+readHandle is call
+readHandle in textMapTest
+readHandle invokes readResult
+readHandle argument slot Int64 zero copy
+readHandle result map Int64
+readHandle ownedBy none
+readHandle cleanedBy none
+readHandle borrows none
+readHandle catch none
+readHandle suppresses none
+
+setMap is call
+setMap in textMapTest
+setMap invokes setArgument
+setMap argument slot Int64 zero copy
+setMap argument value Int64 map copy
+setMap result none
+setMap ownedBy none
+setMap cleanedBy none
+setMap borrows none
+setMap catch none
+setMap suppresses none
+
+findKey is call
+findKey in textMapTest
+findKey invokes machine.addressOfString
+findKey argument text String key lend
+findKey result keyAt machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+setKey is call
+setKey in textMapTest
+setKey invokes setAddress
+setKey argument slot Int64 one copy
+setKey argument value machine.Address keyAt copy
+setKey result none
+setKey ownedBy none
+setKey cleanedBy none
+setKey borrows none
+setKey catch none
+setKey suppresses none
+
+setKeyLength is call
+setKeyLength in textMapTest
+setKeyLength invokes setArgument
+setKeyLength argument slot Int64 two copy
+setKeyLength argument value Int64 five copy
+setKeyLength result none
+setKeyLength ownedBy none
+setKeyLength cleanedBy none
+setKeyLength borrows none
+setKeyLength catch none
+setKeyLength suppresses none
+
+findValue is call
+findValue in textMapTest
+findValue invokes machine.addressOfString
+findValue argument text String value lend
+findValue result valueAt machine.Address
+findValue ownedBy none
+findValue cleanedBy none
+findValue borrows none
+findValue catch none
+findValue suppresses none
+
+setValue is call
+setValue in textMapTest
+setValue invokes setAddress
+setValue argument slot Int64 three copy
+setValue argument value machine.Address valueAt copy
+setValue result none
+setValue ownedBy none
+setValue cleanedBy none
+setValue borrows none
+setValue catch none
+setValue suppresses none
+
+setValueLength is call
+setValueLength in textMapTest
+setValueLength invokes setArgument
+setValueLength argument slot Int64 four copy
+setValueLength argument value Int64 five copy
+setValueLength result none
+setValueLength ownedBy none
+setValueLength cleanedBy none
+setValueLength borrows none
+setValueLength catch none
+setValueLength suppresses none
+
+putIt is call
+putIt in textMapTest
+putIt invokes expectOk
+putIt argument key String putKey lend
+putIt result none
+putIt ownedBy none
+putIt cleanedBy none
+putIt borrows none
+putIt catch none
+putIt suppresses none
+
+readUsed is call
+readUsed in textMapTest
+readUsed invokes regions.remaining
+readUsed argument region machine.Address region copy
+readUsed result left Int64
+readUsed ownedBy none
+readUsed cleanedBy none
+readUsed borrows none
+readUsed catch none
+readUsed suppresses none
+
+expectCopied is call
+expectCopied in textMapTest
+expectCopied invokes test.assertEqualInt64
+expectCopied argument expected Int64 fourThousandEightySix copy
+expectCopied argument actual Int64 left copy
+expectCopied result none
+expectCopied ownedBy none
+expectCopied cleanedBy none
+expectCopied borrows none
+expectCopied catch none
+expectCopied suppresses none
+
+findOther is call
+findOther in textMapTest
+findOther invokes machine.addressOfString
+findOther argument text String otherKey lend
+findOther result otherAt machine.Address
+findOther ownedBy none
+findOther cleanedBy none
+findOther borrows none
+findOther catch none
+findOther suppresses none
+
+findInside is call
+findInside in textMapTest
+findInside invokes machine.offset
+findInside argument address machine.Address otherAt copy
+findInside argument bytes Int64 one copy
+findInside result insideAt machine.Address
+findInside ownedBy none
+findInside cleanedBy none
+findInside borrows none
+findInside catch none
+findInside suppresses none
+
+setOther is call
+setOther in textMapTest
+setOther invokes setAddress
+setOther argument slot Int64 one copy
+setOther argument value machine.Address insideAt copy
+setOther result none
+setOther ownedBy none
+setOther cleanedBy none
+setOther borrows none
+setOther catch none
+setOther suppresses none
+
+getIt is call
+getIt in textMapTest
+getIt invokes call
+getIt argument key String getKey lend
+getIt result got Int64
+getIt ownedBy none
+getIt cleanedBy none
+getIt borrows none
+getIt catch none
+getIt suppresses none
+
+expectFound is call
+expectFound in textMapTest
+expectFound invokes test.assertEqualInt64
+expectFound argument expected Int64 zero copy
+expectFound argument actual Int64 got copy
+expectFound result none
+expectFound ownedBy none
+expectFound cleanedBy none
+expectFound borrows none
+expectFound catch none
+expectFound suppresses none
+
+readCopy is call
+readCopy in textMapTest
+readCopy invokes readResult
+readCopy argument slot Int64 zero copy
+readCopy result copyValue Int64
+readCopy ownedBy none
+readCopy cleanedBy none
+readCopy borrows none
+readCopy catch none
+readCopy suppresses none
+
+asAddress is call
+asAddress in textMapTest
+asAddress invokes machine.fromInt64
+asAddress argument value Int64 copyValue copy
+asAddress result copyAt machine.Address
+asAddress ownedBy none
+asAddress cleanedBy none
+asAddress borrows none
+asAddress catch none
+asAddress suppresses none
+
+movedCheck is call
+movedCheck in textMapTest
+movedCheck invokes machine.equal
+movedCheck argument left machine.Address copyAt copy
+movedCheck argument right machine.Address valueAt copy
+movedCheck result same Bool
+movedCheck ownedBy none
+movedCheck cleanedBy none
+movedCheck borrows none
+movedCheck catch none
+movedCheck suppresses none
+
+notSame is call
+notSame in textMapTest
+notSame invokes logic.not
+notSame argument value Bool same copy
+notSame result moved Bool
+notSame ownedBy none
+notSame cleanedBy none
+notSame borrows none
+notSame catch none
+notSame suppresses none
+
+expectMoved is call
+expectMoved in textMapTest
+expectMoved invokes test.assertTrue
+expectMoved argument value Bool moved copy
+expectMoved result none
+expectMoved ownedBy none
+expectMoved cleanedBy none
+expectMoved borrows none
+expectMoved catch none
+expectMoved suppresses none
+
+readCopyLength is call
+readCopyLength in textMapTest
+readCopyLength invokes readResult
+readCopyLength argument slot Int64 one copy
+readCopyLength result copyLength Int64
+readCopyLength ownedBy none
+readCopyLength cleanedBy none
+readCopyLength borrows none
+readCopyLength catch none
+readCopyLength suppresses none
+
+viewCopy is call
+viewCopy in textMapTest
+viewCopy invokes machine.stringAt
+viewCopy argument address machine.Address copyAt copy
+viewCopy argument bytes Int64 copyLength copy
+viewCopy result shown String
+viewCopy ownedBy none
+viewCopy cleanedBy none
+viewCopy borrows none
+viewCopy catch none
+viewCopy suppresses none
+
+expectText is call
+expectText in textMapTest
+expectText invokes test.assertEqualString
+expectText argument expected String value lend
+expectText argument actual String shown lend
+expectText result none
+expectText ownedBy none
+expectText cleanedBy none
+expectText borrows none
+expectText catch none
+expectText suppresses none
+
+putAgain is call
+putAgain in textMapTest
+putAgain invokes expectOk
+putAgain argument key String putKey lend
+putAgain result none
+putAgain ownedBy none
+putAgain cleanedBy none
+putAgain borrows none
+putAgain catch none
+putAgain suppresses none
+
+readUsedAgain is call
+readUsedAgain in textMapTest
+readUsedAgain invokes regions.remaining
+readUsedAgain argument region machine.Address region copy
+readUsedAgain result leftAgain Int64
+readUsedAgain ownedBy none
+readUsedAgain cleanedBy none
+readUsedAgain borrows none
+readUsedAgain catch none
+readUsedAgain suppresses none
+
+expectOnlyValue is call
+expectOnlyValue in textMapTest
+expectOnlyValue invokes test.assertEqualInt64
+expectOnlyValue argument expected Int64 fourThousandEightyOne copy
+expectOnlyValue argument actual Int64 leftAgain copy
+expectOnlyValue result none
+expectOnlyValue ownedBy none
+expectOnlyValue cleanedBy none
+expectOnlyValue borrows none
+expectOnlyValue catch none
+expectOnlyValue suppresses none
+
+free is call
+free in textMapTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none
+
+setAndBufferTest is test
+setAndBufferTest purpose "A set adds each item once and reads them in order; a buffer appends text, numbers, and bytes and gives them back as text"
+setAndBufferTest verifies hostCall runsTargets
+setAndBufferTest typeParameter none
+setAndBufferTest input none
+setAndBufferTest output none
+setAndBufferTest outputOwnedBy none
+setAndBufferTest raises none
+setAndBufferTest effect use machine.memory
+setAndBufferTest effect use system.calls
+setAndBufferTest uses memoryAccess
+setAndBufferTest uses systemCalls
+setAndBufferTest memoryHeap false
+setAndBufferTest async false
+setAndBufferTest maxRecursion none
+setAndBufferTest label begin loopKind none
+setAndBufferTest label begin within none
+setAndBufferTest let label String "region `scratch` of `setAndBufferTest`" immutable
+setAndBufferTest let text String "ab" immutable
+setAndBufferTest let expected String "ab-42!" immutable
+setAndBufferTest let capacity Int64 4096 immutable
+setAndBufferTest let zero Int64 0 immutable
+setAndBufferTest let one Int64 1 immutable
+setAndBufferTest let sixteen Int64 16 immutable
+setAndBufferTest let twentyFour Int64 24 immutable
+setAndBufferTest let newKey String "set.Set.new|1,1|1" immutable
+setAndBufferTest let five Int64 5 immutable
+setAndBufferTest let addKey String "set.Set.add|1,1|0" immutable
+setAndBufferTest let two Int64 2 immutable
+setAndBufferTest let lengthKey String "set.Set.length|1|1" immutable
+setAndBufferTest let itemAtKey String "set.Set.itemAt|1,1|1" immutable
+setAndBufferTest let removeKey String "set.Set.remove|1,1|0" immutable
+setAndBufferTest let containsKey String "set.Set.contains|1,1|1" immutable
+setAndBufferTest let bufferKey String "buffer.new|1|1" immutable
+setAndBufferTest let appendStringKey String "buffer.appendString|1,2|0" immutable
+setAndBufferTest let minusFortyTwo Int64 -42 immutable
+setAndBufferTest let appendIntKey String "buffer.appendInt64|1,1|0" immutable
+setAndBufferTest let bang Int64 289 immutable
+setAndBufferTest let appendByteKey String "buffer.appendByte|1,1|0" immutable
+setAndBufferTest let bufferLengthKey String "buffer.length|1|1" immutable
+setAndBufferTest let six Int64 6 immutable
+setAndBufferTest let toStringKey String "buffer.toString|1,1|2" immutable
+setAndBufferTest at begin do findLabel
+setAndBufferTest at begin do labelLength
+setAndBufferTest at begin do make
+setAndBufferTest at begin do setRegion
+setAndBufferTest at begin do setPlain
+setAndBufferTest at begin do findArgs
+setAndBufferTest at begin do findResults
+setAndBufferTest at begin do findPayload
+setAndBufferTest at begin do findNewKey
+setAndBufferTest at begin do measureNewKey
+setAndBufferTest at begin do makeSet
+setAndBufferTest at begin do widenMade
+setAndBufferTest at begin do expectMadeSet
+setAndBufferTest at begin do readSet
+setAndBufferTest at begin do setSet
+setAndBufferTest at begin do setFive
+setAndBufferTest at begin do addFive
+setAndBufferTest at begin do setTwo
+setAndBufferTest at begin do addTwo
+setAndBufferTest at begin do setFiveAgain
+setAndBufferTest at begin do addAgain
+setAndBufferTest at begin do countItems
+setAndBufferTest at begin do setPosition
+setAndBufferTest at begin do secondItem
+setAndBufferTest at begin do setRemoved
+setAndBufferTest at begin do removeFive
+setAndBufferTest at begin do hasFive
+setAndBufferTest at begin do setBufferRegion
+setAndBufferTest at begin do makeBuffer
+setAndBufferTest at begin do readBuffer
+setAndBufferTest at begin do setBuffer
+setAndBufferTest at begin do findText
+setAndBufferTest at begin do setText
+setAndBufferTest at begin do setTextLength
+setAndBufferTest at begin do appendText
+setAndBufferTest at begin do setNumber
+setAndBufferTest at begin do appendNumber
+setAndBufferTest at begin do setByte
+setAndBufferTest at begin do appendByte
+setAndBufferTest at begin do countBytes
+setAndBufferTest at begin do setTarget
+setAndBufferTest at begin do toText
+setAndBufferTest at begin do expectText
+setAndBufferTest at begin do readText
+setAndBufferTest at begin do asAddress
+setAndBufferTest at begin do readLength
+setAndBufferTest at begin do viewText
+setAndBufferTest at begin do expectShown
+setAndBufferTest at begin do free
+setAndBufferTest at begin do readClosed
+setAndBufferTest at begin do expectClosed
+setAndBufferTest at begin return ok none
+
+findLabel is call
+findLabel in setAndBufferTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in setAndBufferTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in setAndBufferTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+setRegion is call
+setRegion in setAndBufferTest
+setRegion invokes setAddress
+setRegion argument slot Int64 zero copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+setPlain is call
+setPlain in setAndBufferTest
+setPlain invokes setArgument
+setPlain argument slot Int64 one copy
+setPlain argument value Int64 zero copy
+setPlain result none
+setPlain ownedBy none
+setPlain cleanedBy none
+setPlain borrows none
+setPlain catch none
+setPlain suppresses none
+
+findArgs is call
+findArgs in setAndBufferTest
+findArgs invokes slotAt
+findArgs argument slot Int64 zero copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in setAndBufferTest
+findResults invokes slotAt
+findResults argument slot Int64 sixteen copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in setAndBufferTest
+findPayload invokes slotAt
+findPayload argument slot Int64 twentyFour copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+findNewKey is call
+findNewKey in setAndBufferTest
+findNewKey invokes machine.addressOfString
+findNewKey argument text String newKey lend
+findNewKey result newKeyAt machine.Address
+findNewKey ownedBy none
+findNewKey cleanedBy none
+findNewKey borrows none
+findNewKey catch none
+findNewKey suppresses none
+
+measureNewKey is call
+measureNewKey in setAndBufferTest
+measureNewKey invokes string.byteLength
+measureNewKey argument text String newKey lend
+measureNewKey result newKeyBytes Int64
+measureNewKey ownedBy none
+measureNewKey cleanedBy none
+measureNewKey borrows none
+measureNewKey catch none
+measureNewKey suppresses none
+
+makeSet is call
+makeSet in setAndBufferTest
+makeSet invokes hostCall
+makeSet argument key machine.Address newKeyAt copy
+makeSet argument bytes Int64 newKeyBytes copy
+makeSet argument args machine.Address args copy
+makeSet argument results machine.Address results copy
+makeSet argument payload machine.Address payload copy
+makeSet result madeStatus Int32
+makeSet ownedBy none
+makeSet cleanedBy none
+makeSet borrows none
+makeSet catch none
+makeSet suppresses none
+
+widenMade is call
+widenMade in setAndBufferTest
+widenMade invokes convert.int32ToInt64
+widenMade argument value Int32 madeStatus copy
+widenMade result made Int64
+widenMade ownedBy none
+widenMade cleanedBy none
+widenMade borrows none
+widenMade catch none
+widenMade suppresses none
+
+expectMadeSet is call
+expectMadeSet in setAndBufferTest
+expectMadeSet invokes test.assertEqualInt64
+expectMadeSet argument expected Int64 zero copy
+expectMadeSet argument actual Int64 made copy
+expectMadeSet result none
+expectMadeSet ownedBy none
+expectMadeSet cleanedBy none
+expectMadeSet borrows none
+expectMadeSet catch none
+expectMadeSet suppresses none
+
+readSet is call
+readSet in setAndBufferTest
+readSet invokes readResult
+readSet argument slot Int64 zero copy
+readSet result items Int64
+readSet ownedBy none
+readSet cleanedBy none
+readSet borrows none
+readSet catch none
+readSet suppresses none
+
+setSet is call
+setSet in setAndBufferTest
+setSet invokes setArgument
+setSet argument slot Int64 zero copy
+setSet argument value Int64 items copy
+setSet result none
+setSet ownedBy none
+setSet cleanedBy none
+setSet borrows none
+setSet catch none
+setSet suppresses none
+
+setFive is call
+setFive in setAndBufferTest
+setFive invokes setArgument
+setFive argument slot Int64 one copy
+setFive argument value Int64 five copy
+setFive result none
+setFive ownedBy none
+setFive cleanedBy none
+setFive borrows none
+setFive catch none
+setFive suppresses none
+
+addFive is call
+addFive in setAndBufferTest
+addFive invokes expectOk
+addFive argument key String addKey lend
+addFive result none
+addFive ownedBy none
+addFive cleanedBy none
+addFive borrows none
+addFive catch none
+addFive suppresses none
+
+setTwo is call
+setTwo in setAndBufferTest
+setTwo invokes setArgument
+setTwo argument slot Int64 one copy
+setTwo argument value Int64 two copy
+setTwo result none
+setTwo ownedBy none
+setTwo cleanedBy none
+setTwo borrows none
+setTwo catch none
+setTwo suppresses none
+
+addTwo is call
+addTwo in setAndBufferTest
+addTwo invokes expectOk
+addTwo argument key String addKey lend
+addTwo result none
+addTwo ownedBy none
+addTwo cleanedBy none
+addTwo borrows none
+addTwo catch none
+addTwo suppresses none
+
+setFiveAgain is call
+setFiveAgain in setAndBufferTest
+setFiveAgain invokes setArgument
+setFiveAgain argument slot Int64 one copy
+setFiveAgain argument value Int64 five copy
+setFiveAgain result none
+setFiveAgain ownedBy none
+setFiveAgain cleanedBy none
+setFiveAgain borrows none
+setFiveAgain catch none
+setFiveAgain suppresses none
+
+addAgain is call
+addAgain in setAndBufferTest
+addAgain invokes expectOk
+addAgain argument key String addKey lend
+addAgain result none
+addAgain ownedBy none
+addAgain cleanedBy none
+addAgain borrows none
+addAgain catch none
+addAgain suppresses none
+
+countItems is call
+countItems in setAndBufferTest
+countItems invokes expectCall
+countItems argument key String lengthKey lend
+countItems argument status Int64 zero copy
+countItems argument value Int64 two copy
+countItems result none
+countItems ownedBy none
+countItems cleanedBy none
+countItems borrows none
+countItems catch none
+countItems suppresses none
+
+setPosition is call
+setPosition in setAndBufferTest
+setPosition invokes setArgument
+setPosition argument slot Int64 one copy
+setPosition argument value Int64 one copy
+setPosition result none
+setPosition ownedBy none
+setPosition cleanedBy none
+setPosition borrows none
+setPosition catch none
+setPosition suppresses none
+
+secondItem is call
+secondItem in setAndBufferTest
+secondItem invokes expectCall
+secondItem argument key String itemAtKey lend
+secondItem argument status Int64 zero copy
+secondItem argument value Int64 two copy
+secondItem result none
+secondItem ownedBy none
+secondItem cleanedBy none
+secondItem borrows none
+secondItem catch none
+secondItem suppresses none
+
+setRemoved is call
+setRemoved in setAndBufferTest
+setRemoved invokes setArgument
+setRemoved argument slot Int64 one copy
+setRemoved argument value Int64 five copy
+setRemoved result none
+setRemoved ownedBy none
+setRemoved cleanedBy none
+setRemoved borrows none
+setRemoved catch none
+setRemoved suppresses none
+
+removeFive is call
+removeFive in setAndBufferTest
+removeFive invokes expectOk
+removeFive argument key String removeKey lend
+removeFive result none
+removeFive ownedBy none
+removeFive cleanedBy none
+removeFive borrows none
+removeFive catch none
+removeFive suppresses none
+
+hasFive is call
+hasFive in setAndBufferTest
+hasFive invokes expectCall
+hasFive argument key String containsKey lend
+hasFive argument status Int64 zero copy
+hasFive argument value Int64 zero copy
+hasFive result none
+hasFive ownedBy none
+hasFive cleanedBy none
+hasFive borrows none
+hasFive catch none
+hasFive suppresses none
+
+setBufferRegion is call
+setBufferRegion in setAndBufferTest
+setBufferRegion invokes setAddress
+setBufferRegion argument slot Int64 zero copy
+setBufferRegion argument value machine.Address region copy
+setBufferRegion result none
+setBufferRegion ownedBy none
+setBufferRegion cleanedBy none
+setBufferRegion borrows none
+setBufferRegion catch none
+setBufferRegion suppresses none
+
+makeBuffer is call
+makeBuffer in setAndBufferTest
+makeBuffer invokes call
+makeBuffer argument key String bufferKey lend
+makeBuffer result bufferMade Int64
+makeBuffer ownedBy none
+makeBuffer cleanedBy none
+makeBuffer borrows none
+makeBuffer catch none
+makeBuffer suppresses none
+
+readBuffer is call
+readBuffer in setAndBufferTest
+readBuffer invokes readResult
+readBuffer argument slot Int64 zero copy
+readBuffer result buffer Int64
+readBuffer ownedBy none
+readBuffer cleanedBy none
+readBuffer borrows none
+readBuffer catch none
+readBuffer suppresses none
+
+setBuffer is call
+setBuffer in setAndBufferTest
+setBuffer invokes setArgument
+setBuffer argument slot Int64 zero copy
+setBuffer argument value Int64 buffer copy
+setBuffer result none
+setBuffer ownedBy none
+setBuffer cleanedBy none
+setBuffer borrows none
+setBuffer catch none
+setBuffer suppresses none
+
+findText is call
+findText in setAndBufferTest
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+setText is call
+setText in setAndBufferTest
+setText invokes setAddress
+setText argument slot Int64 one copy
+setText argument value machine.Address textAt copy
+setText result none
+setText ownedBy none
+setText cleanedBy none
+setText borrows none
+setText catch none
+setText suppresses none
+
+setTextLength is call
+setTextLength in setAndBufferTest
+setTextLength invokes setArgument
+setTextLength argument slot Int64 two copy
+setTextLength argument value Int64 two copy
+setTextLength result none
+setTextLength ownedBy none
+setTextLength cleanedBy none
+setTextLength borrows none
+setTextLength catch none
+setTextLength suppresses none
+
+appendText is call
+appendText in setAndBufferTest
+appendText invokes expectOk
+appendText argument key String appendStringKey lend
+appendText result none
+appendText ownedBy none
+appendText cleanedBy none
+appendText borrows none
+appendText catch none
+appendText suppresses none
+
+setNumber is call
+setNumber in setAndBufferTest
+setNumber invokes setArgument
+setNumber argument slot Int64 one copy
+setNumber argument value Int64 minusFortyTwo copy
+setNumber result none
+setNumber ownedBy none
+setNumber cleanedBy none
+setNumber borrows none
+setNumber catch none
+setNumber suppresses none
+
+appendNumber is call
+appendNumber in setAndBufferTest
+appendNumber invokes expectOk
+appendNumber argument key String appendIntKey lend
+appendNumber result none
+appendNumber ownedBy none
+appendNumber cleanedBy none
+appendNumber borrows none
+appendNumber catch none
+appendNumber suppresses none
+
+setByte is call
+setByte in setAndBufferTest
+setByte invokes setArgument
+setByte argument slot Int64 one copy
+setByte argument value Int64 bang copy
+setByte result none
+setByte ownedBy none
+setByte cleanedBy none
+setByte borrows none
+setByte catch none
+setByte suppresses none
+
+appendByte is call
+appendByte in setAndBufferTest
+appendByte invokes expectOk
+appendByte argument key String appendByteKey lend
+appendByte result none
+appendByte ownedBy none
+appendByte cleanedBy none
+appendByte borrows none
+appendByte catch none
+appendByte suppresses none
+
+countBytes is call
+countBytes in setAndBufferTest
+countBytes invokes expectCall
+countBytes argument key String bufferLengthKey lend
+countBytes argument status Int64 zero copy
+countBytes argument value Int64 six copy
+countBytes result none
+countBytes ownedBy none
+countBytes cleanedBy none
+countBytes borrows none
+countBytes catch none
+countBytes suppresses none
+
+setTarget is call
+setTarget in setAndBufferTest
+setTarget invokes setAddress
+setTarget argument slot Int64 one copy
+setTarget argument value machine.Address region copy
+setTarget result none
+setTarget ownedBy none
+setTarget cleanedBy none
+setTarget borrows none
+setTarget catch none
+setTarget suppresses none
+
+toText is call
+toText in setAndBufferTest
+toText invokes call
+toText argument key String toStringKey lend
+toText result textStatus Int64
+toText ownedBy none
+toText cleanedBy none
+toText borrows none
+toText catch none
+toText suppresses none
+
+expectText is call
+expectText in setAndBufferTest
+expectText invokes test.assertEqualInt64
+expectText argument expected Int64 zero copy
+expectText argument actual Int64 textStatus copy
+expectText result none
+expectText ownedBy none
+expectText cleanedBy none
+expectText borrows none
+expectText catch none
+expectText suppresses none
+
+readText is call
+readText in setAndBufferTest
+readText invokes readResult
+readText argument slot Int64 zero copy
+readText result textValue Int64
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+asAddress is call
+asAddress in setAndBufferTest
+asAddress invokes machine.fromInt64
+asAddress argument value Int64 textValue copy
+asAddress result shownAt machine.Address
+asAddress ownedBy none
+asAddress cleanedBy none
+asAddress borrows none
+asAddress catch none
+asAddress suppresses none
+
+readLength is call
+readLength in setAndBufferTest
+readLength invokes readResult
+readLength argument slot Int64 one copy
+readLength result shownLength Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+viewText is call
+viewText in setAndBufferTest
+viewText invokes machine.stringAt
+viewText argument address machine.Address shownAt copy
+viewText argument bytes Int64 shownLength copy
+viewText result shown String
+viewText ownedBy none
+viewText cleanedBy none
+viewText borrows none
+viewText catch none
+viewText suppresses none
+
+expectShown is call
+expectShown in setAndBufferTest
+expectShown invokes test.assertEqualString
+expectShown argument expected String expected lend
+expectShown argument actual String shown lend
+expectShown result none
+expectShown ownedBy none
+expectShown cleanedBy none
+expectShown borrows none
+expectShown catch none
+expectShown suppresses none
+
+free is call
+free in setAndBufferTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none
+
+readClosed is call
+readClosed in setAndBufferTest
+readClosed invokes handles.kindOf
+readClosed argument handle Int64 buffer copy
+readClosed result closed Int64
+readClosed ownedBy none
+readClosed cleanedBy none
+readClosed borrows none
+readClosed catch none
+readClosed suppresses none
+
+expectClosed is call
+expectClosed in setAndBufferTest
+expectClosed invokes test.assertEqualInt64
+expectClosed argument expected Int64 zero copy
+expectClosed argument actual Int64 closed copy
+expectClosed result none
+expectClosed ownedBy none
+expectClosed cleanedBy none
+expectClosed borrows none
+expectClosed catch none
+expectClosed suppresses none
+
+fromBytesTest is test
+fromBytesTest purpose "Bytes become text when they are valid UTF-8, and string.Utf8Error.invalidAt names the first offset that is not"
+fromBytesTest verifies hostCall runsTargets
+fromBytesTest typeParameter none
+fromBytesTest input none
+fromBytesTest output none
+fromBytesTest outputOwnedBy none
+fromBytesTest raises none
+fromBytesTest effect use machine.memory
+fromBytesTest effect use system.calls
+fromBytesTest uses memoryAccess
+fromBytesTest uses systemCalls
+fromBytesTest memoryHeap false
+fromBytesTest async false
+fromBytesTest maxRecursion none
+fromBytesTest label begin loopKind none
+fromBytesTest label begin within none
+fromBytesTest let label String "region `scratch` of `fromBytesTest`" immutable
+fromBytesTest let capacity Int64 64 immutable
+fromBytesTest let a Int64 97 immutable
+fromBytesTest let b Int64 98 immutable
+fromBytesTest let bad Int64 255 immutable
+fromBytesTest let c Int64 99 immutable
+fromBytesTest let zero Int64 0 immutable
+fromBytesTest let one Int64 1 immutable
+fromBytesTest let two Int64 2 immutable
+fromBytesTest let sixteen Int64 16 immutable
+fromBytesTest let twentyFour Int64 24 immutable
+fromBytesTest let goodKey String "string.fromBytes|2,1|2" immutable
+fromBytesTest let fromBytesKey String "string.fromBytes|2,1|2" immutable
+fromBytesTest let four Int64 4 immutable
+fromBytesTest at begin do findLabel
+fromBytesTest at begin do labelLength
+fromBytesTest at begin do make
+fromBytesTest at begin do place
+fromBytesTest at begin do setData
+fromBytesTest at begin do setByteCount
+fromBytesTest at begin do setRegion
+fromBytesTest at begin do findArgs
+fromBytesTest at begin do findResults
+fromBytesTest at begin do findPayload
+fromBytesTest at begin do findGoodKey
+fromBytesTest at begin do measureGoodKey
+fromBytesTest at begin do goodText
+fromBytesTest at begin do widenGood
+fromBytesTest at begin do readFromBytesKey
+fromBytesTest at begin do expectGood
+fromBytesTest at begin do readGoodLength
+fromBytesTest at begin do expectGoodLength
+fromBytesTest at begin do setAll
+fromBytesTest at begin do badText
+fromBytesTest at begin do expectBad
+fromBytesTest at begin do findPayloadSlot
+fromBytesTest at begin do readPayload
+fromBytesTest at begin do expectOffset
+fromBytesTest at begin do free
+fromBytesTest at begin return ok none
+
+findLabel is call
+findLabel in fromBytesTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in fromBytesTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in fromBytesTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+place is call
+place in fromBytesTest
+place invokes putBytes
+place argument first Int64 a copy
+place argument second Int64 b copy
+place argument third Int64 bad copy
+place argument fourth Int64 c copy
+place result data machine.Address
+place ownedBy none
+place cleanedBy none
+place borrows none
+place catch none
+place suppresses none
+
+setData is call
+setData in fromBytesTest
+setData invokes setAddress
+setData argument slot Int64 zero copy
+setData argument value machine.Address data copy
+setData result none
+setData ownedBy none
+setData cleanedBy none
+setData borrows none
+setData catch none
+setData suppresses none
+
+setByteCount is call
+setByteCount in fromBytesTest
+setByteCount invokes setArgument
+setByteCount argument slot Int64 one copy
+setByteCount argument value Int64 two copy
+setByteCount result none
+setByteCount ownedBy none
+setByteCount cleanedBy none
+setByteCount borrows none
+setByteCount catch none
+setByteCount suppresses none
+
+setRegion is call
+setRegion in fromBytesTest
+setRegion invokes setAddress
+setRegion argument slot Int64 two copy
+setRegion argument value machine.Address region copy
+setRegion result none
+setRegion ownedBy none
+setRegion cleanedBy none
+setRegion borrows none
+setRegion catch none
+setRegion suppresses none
+
+findArgs is call
+findArgs in fromBytesTest
+findArgs invokes slotAt
+findArgs argument slot Int64 zero copy
+findArgs result args machine.Address
+findArgs ownedBy none
+findArgs cleanedBy none
+findArgs borrows none
+findArgs catch none
+findArgs suppresses none
+
+findResults is call
+findResults in fromBytesTest
+findResults invokes slotAt
+findResults argument slot Int64 sixteen copy
+findResults result results machine.Address
+findResults ownedBy none
+findResults cleanedBy none
+findResults borrows none
+findResults catch none
+findResults suppresses none
+
+findPayload is call
+findPayload in fromBytesTest
+findPayload invokes slotAt
+findPayload argument slot Int64 twentyFour copy
+findPayload result payload machine.Address
+findPayload ownedBy none
+findPayload cleanedBy none
+findPayload borrows none
+findPayload catch none
+findPayload suppresses none
+
+findGoodKey is call
+findGoodKey in fromBytesTest
+findGoodKey invokes machine.addressOfString
+findGoodKey argument text String goodKey lend
+findGoodKey result goodKeyAt machine.Address
+findGoodKey ownedBy none
+findGoodKey cleanedBy none
+findGoodKey borrows none
+findGoodKey catch none
+findGoodKey suppresses none
+
+measureGoodKey is call
+measureGoodKey in fromBytesTest
+measureGoodKey invokes string.byteLength
+measureGoodKey argument text String goodKey lend
+measureGoodKey result goodKeyBytes Int64
+measureGoodKey ownedBy none
+measureGoodKey cleanedBy none
+measureGoodKey borrows none
+measureGoodKey catch none
+measureGoodKey suppresses none
+
+goodText is call
+goodText in fromBytesTest
+goodText invokes hostCall
+goodText argument key machine.Address goodKeyAt copy
+goodText argument bytes Int64 goodKeyBytes copy
+goodText argument args machine.Address args copy
+goodText argument results machine.Address results copy
+goodText argument payload machine.Address payload copy
+goodText result goodRaw Int32
+goodText ownedBy none
+goodText cleanedBy none
+goodText borrows none
+goodText catch none
+goodText suppresses none
+
+widenGood is call
+widenGood in fromBytesTest
+widenGood invokes convert.int32ToInt64
+widenGood argument value Int32 goodRaw copy
+widenGood result goodStatus Int64
+widenGood ownedBy none
+widenGood cleanedBy none
+widenGood borrows none
+widenGood catch none
+widenGood suppresses none
+
+readFromBytesKey is call
+readFromBytesKey in fromBytesTest
+readFromBytesKey invokes string.byteLength
+readFromBytesKey argument text String fromBytesKey lend
+readFromBytesKey result fromBytesLength Int64
+readFromBytesKey ownedBy none
+readFromBytesKey cleanedBy none
+readFromBytesKey borrows none
+readFromBytesKey catch none
+readFromBytesKey suppresses none
+
+expectGood is call
+expectGood in fromBytesTest
+expectGood invokes test.assertEqualInt64
+expectGood argument expected Int64 zero copy
+expectGood argument actual Int64 goodStatus copy
+expectGood result none
+expectGood ownedBy none
+expectGood cleanedBy none
+expectGood borrows none
+expectGood catch none
+expectGood suppresses none
+
+readGoodLength is call
+readGoodLength in fromBytesTest
+readGoodLength invokes readResult
+readGoodLength argument slot Int64 one copy
+readGoodLength result goodLength Int64
+readGoodLength ownedBy none
+readGoodLength cleanedBy none
+readGoodLength borrows none
+readGoodLength catch none
+readGoodLength suppresses none
+
+expectGoodLength is call
+expectGoodLength in fromBytesTest
+expectGoodLength invokes test.assertEqualInt64
+expectGoodLength argument expected Int64 two copy
+expectGoodLength argument actual Int64 goodLength copy
+expectGoodLength result none
+expectGoodLength ownedBy none
+expectGoodLength cleanedBy none
+expectGoodLength borrows none
+expectGoodLength catch none
+expectGoodLength suppresses none
+
+setAll is call
+setAll in fromBytesTest
+setAll invokes setArgument
+setAll argument slot Int64 one copy
+setAll argument value Int64 four copy
+setAll result none
+setAll ownedBy none
+setAll cleanedBy none
+setAll borrows none
+setAll catch none
+setAll suppresses none
+
+badText is call
+badText in fromBytesTest
+badText invokes call
+badText argument key String fromBytesKey lend
+badText result badStatus Int64
+badText ownedBy none
+badText cleanedBy none
+badText borrows none
+badText catch none
+badText suppresses none
+
+expectBad is call
+expectBad in fromBytesTest
+expectBad invokes test.assertEqualInt64
+expectBad argument expected Int64 one copy
+expectBad argument actual Int64 badStatus copy
+expectBad result none
+expectBad ownedBy none
+expectBad cleanedBy none
+expectBad borrows none
+expectBad catch none
+expectBad suppresses none
+
+findPayloadSlot is call
+findPayloadSlot in fromBytesTest
+findPayloadSlot invokes slotAt
+findPayloadSlot argument slot Int64 twentyFour copy
+findPayloadSlot result payloadAt machine.Address
+findPayloadSlot ownedBy none
+findPayloadSlot cleanedBy none
+findPayloadSlot borrows none
+findPayloadSlot catch none
+findPayloadSlot suppresses none
+
+readPayload is call
+readPayload in fromBytesTest
+readPayload invokes machine.loadInt64
+readPayload argument address machine.Address payloadAt copy
+readPayload result payloadValue Int64
+readPayload ownedBy none
+readPayload cleanedBy none
+readPayload borrows none
+readPayload catch none
+readPayload suppresses none
+
+expectOffset is call
+expectOffset in fromBytesTest
+expectOffset invokes test.assertEqualInt64
+expectOffset argument expected Int64 two copy
+expectOffset argument actual Int64 payloadValue copy
+expectOffset result none
+expectOffset ownedBy none
+expectOffset cleanedBy none
+expectOffset borrows none
+expectOffset catch none
+expectOffset suppresses none
+
+free is call
+free in fromBytesTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none

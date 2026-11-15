@@ -1,0 +1,873 @@
+# Tests of the `bignum` module; generated from tools/bignum.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests keep their numbers in the last 4 KiB of machine.state, from byte 61440 (two numbers of 1,608 bytes).
+expectNumber is operation
+expectNumber purpose "A number's lowest 64 bits and its length are what is expected"
+expectNumber invariant none
+expectNumber typeParameter none
+expectNumber input number machine.Address copied
+expectNumber input value UInt64 copied
+expectNumber input limbs Int64 copied
+expectNumber output none
+expectNumber outputOwnedBy none
+expectNumber raises none
+expectNumber effect use machine.memory
+expectNumber uses memoryAccess
+expectNumber memoryHeap false
+expectNumber async false
+expectNumber maxRecursion none
+expectNumber label begin loopKind none
+expectNumber label begin within none
+expectNumber let none
+expectNumber at begin do readValue
+expectNumber at begin do sameCheck
+expectNumber at begin do expectValue
+expectNumber at begin do readLength
+expectNumber at begin do expectLength
+expectNumber at begin return ok none
+
+readValue is call
+readValue in expectNumber
+readValue invokes lowLimbs
+readValue argument number machine.Address number copy
+readValue result low UInt64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+sameCheck is call
+sameCheck in expectNumber
+sameCheck invokes compare.equalUInt64
+sameCheck argument left UInt64 low copy
+sameCheck argument right UInt64 value copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+expectValue is call
+expectValue in expectNumber
+expectValue invokes test.assertTrue
+expectValue argument value Bool same copy
+expectValue result none
+expectValue ownedBy none
+expectValue cleanedBy none
+expectValue borrows none
+expectValue catch none
+expectValue suppresses none
+
+readLength is call
+readLength in expectNumber
+readLength invokes machine.loadInt64
+readLength argument address machine.Address number copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+expectLength is call
+expectLength in expectNumber
+expectLength invokes test.assertEqualInt64
+expectLength argument expected Int64 limbs copy
+expectLength argument actual Int64 length copy
+expectLength result none
+expectLength ownedBy none
+expectLength cleanedBy none
+expectLength borrows none
+expectLength catch none
+expectLength suppresses none
+
+arithmeticTest is test
+arithmeticTest purpose "Small values are set, added, subtracted, multiplied, shifted, compared, and measured exactly"
+arithmeticTest verifies setSmall holdsValue
+arithmeticTest verifies copyNumber copiesValue
+arithmeticTest verifies isZero zeroHasNoLimbs
+arithmeticTest verifies compareNumbers ordersNumbers
+arithmeticTest verifies addNumber addsExactly
+arithmeticTest verifies subtractNumber subtractsExactly
+arithmeticTest verifies multiplySmall multipliesExactly
+arithmeticTest verifies addSmall addsSmall
+arithmeticTest verifies shiftLeft shiftsLeft
+arithmeticTest verifies shiftRightOne halves
+arithmeticTest verifies bitLength countsBits
+arithmeticTest verifies multiplyPowerOfTen scalesByTen
+arithmeticTest verifies lowLimbs readsLow
+arithmeticTest typeParameter none
+arithmeticTest input none
+arithmeticTest output none
+arithmeticTest outputOwnedBy none
+arithmeticTest raises none
+arithmeticTest effect use machine.memory
+arithmeticTest effect use system.calls
+arithmeticTest uses memoryAccess
+arithmeticTest uses systemCalls
+arithmeticTest memoryHeap false
+arithmeticTest async false
+arithmeticTest maxRecursion none
+arithmeticTest label begin loopKind none
+arithmeticTest label begin within none
+arithmeticTest let leftAt Int64 61440 immutable
+arithmeticTest let rightAt Int64 63048 immutable
+arithmeticTest let big UInt64 18446744073709551615 immutable
+arithmeticTest let two Int64 2 immutable
+arithmeticTest let oneWide UInt64 1 immutable
+arithmeticTest let zeroWide UInt64 0 immutable
+arithmeticTest let three Int64 3 immutable
+arithmeticTest let sixtyFive Int64 65 immutable
+arithmeticTest let one Int64 1 immutable
+arithmeticTest let minusOne Int64 -1 immutable
+arithmeticTest let zero Int64 0 immutable
+arithmeticTest let tenWide UInt64 10 immutable
+arithmeticTest let eighteen Int64 18 immutable
+arithmeticTest let nineteenZeros UInt64 10000000000000000000 immutable
+arithmeticTest let threeWide UInt64 3 immutable
+arithmeticTest let sevenWide UInt64 7 immutable
+arithmeticTest let hundred Int64 100 immutable
+arithmeticTest let hundredThree Int64 103 immutable
+arithmeticTest let hundredTwo Int64 102 immutable
+arithmeticTest let nineWide UInt64 9 immutable
+arithmeticTest let fourBillion UInt64 4294967295 immutable
+arithmeticTest let sumWide UInt64 4294967304 immutable
+arithmeticTest at begin do findState
+arithmeticTest at begin do findLeft
+arithmeticTest at begin do findRight
+arithmeticTest at begin do setLeft
+arithmeticTest at begin do expectBig
+arithmeticTest at begin do setRight
+arithmeticTest at begin do addOne
+arithmeticTest at begin do expectCarried
+arithmeticTest at begin do readBits
+arithmeticTest at begin do expectWidth
+arithmeticTest at begin do orderCheck
+arithmeticTest at begin do expectLarger
+arithmeticTest at begin do backOrder
+arithmeticTest at begin do expectSmaller
+arithmeticTest at begin do takeOne
+arithmeticTest at begin do expectBack
+arithmeticTest at begin do copyBack
+arithmeticTest at begin do sameOrder
+arithmeticTest at begin do expectSame
+arithmeticTest at begin do subtractAll
+arithmeticTest at begin do zeroCheck
+arithmeticTest at begin do expectZero
+arithmeticTest at begin do setTen
+arithmeticTest at begin do scale
+arithmeticTest at begin do expectScaled
+arithmeticTest at begin do timesThree
+arithmeticTest at begin do readTripled
+arithmeticTest at begin do expectTripledWidth
+arithmeticTest at begin do setSeven
+arithmeticTest at begin do shiftUp
+arithmeticTest at begin do readShifted
+arithmeticTest at begin do expectShiftedWidth
+arithmeticTest at begin do halve
+arithmeticTest at begin do readHalved
+arithmeticTest at begin do expectHalvedWidth
+arithmeticTest at begin do setNine
+arithmeticTest at begin do addSome
+arithmeticTest at begin do expectAdded
+arithmeticTest at begin do readLow
+arithmeticTest at begin do lowCheck
+arithmeticTest at begin do expectLow
+arithmeticTest at begin return ok none
+
+findState is call
+findState in arithmeticTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findLeft is call
+findLeft in arithmeticTest
+findLeft invokes machine.offset
+findLeft argument address machine.Address state copy
+findLeft argument bytes Int64 leftAt copy
+findLeft result left machine.Address
+findLeft ownedBy none
+findLeft cleanedBy none
+findLeft borrows none
+findLeft catch none
+findLeft suppresses none
+
+findRight is call
+findRight in arithmeticTest
+findRight invokes machine.offset
+findRight argument address machine.Address state copy
+findRight argument bytes Int64 rightAt copy
+findRight result right machine.Address
+findRight ownedBy none
+findRight cleanedBy none
+findRight borrows none
+findRight catch none
+findRight suppresses none
+
+setLeft is call
+setLeft in arithmeticTest
+setLeft invokes setSmall
+setLeft argument number machine.Address left copy
+setLeft argument value UInt64 big copy
+setLeft result none
+setLeft ownedBy none
+setLeft cleanedBy none
+setLeft borrows none
+setLeft catch none
+setLeft suppresses none
+
+expectBig is call
+expectBig in arithmeticTest
+expectBig invokes expectNumber
+expectBig argument number machine.Address left copy
+expectBig argument value UInt64 big copy
+expectBig argument limbs Int64 two copy
+expectBig result none
+expectBig ownedBy none
+expectBig cleanedBy none
+expectBig borrows none
+expectBig catch none
+expectBig suppresses none
+
+setRight is call
+setRight in arithmeticTest
+setRight invokes setSmall
+setRight argument number machine.Address right copy
+setRight argument value UInt64 oneWide copy
+setRight result none
+setRight ownedBy none
+setRight cleanedBy none
+setRight borrows none
+setRight catch none
+setRight suppresses none
+
+addOne is call
+addOne in arithmeticTest
+addOne invokes addNumber
+addOne argument target machine.Address left copy
+addOne argument addend machine.Address right copy
+addOne result none
+addOne ownedBy none
+addOne cleanedBy none
+addOne borrows none
+addOne catch none
+addOne suppresses none
+
+expectCarried is call
+expectCarried in arithmeticTest
+expectCarried invokes expectNumber
+expectCarried argument number machine.Address left copy
+expectCarried argument value UInt64 zeroWide copy
+expectCarried argument limbs Int64 three copy
+expectCarried result none
+expectCarried ownedBy none
+expectCarried cleanedBy none
+expectCarried borrows none
+expectCarried catch none
+expectCarried suppresses none
+
+readBits is call
+readBits in arithmeticTest
+readBits invokes bitLength
+readBits argument number machine.Address left copy
+readBits result width Int64
+readBits ownedBy none
+readBits cleanedBy none
+readBits borrows none
+readBits catch none
+readBits suppresses none
+
+expectWidth is call
+expectWidth in arithmeticTest
+expectWidth invokes test.assertEqualInt64
+expectWidth argument expected Int64 sixtyFive copy
+expectWidth argument actual Int64 width copy
+expectWidth result none
+expectWidth ownedBy none
+expectWidth cleanedBy none
+expectWidth borrows none
+expectWidth catch none
+expectWidth suppresses none
+
+orderCheck is call
+orderCheck in arithmeticTest
+orderCheck invokes compareNumbers
+orderCheck argument left machine.Address left copy
+orderCheck argument right machine.Address right copy
+orderCheck result order Int64
+orderCheck ownedBy none
+orderCheck cleanedBy none
+orderCheck borrows none
+orderCheck catch none
+orderCheck suppresses none
+
+expectLarger is call
+expectLarger in arithmeticTest
+expectLarger invokes test.assertEqualInt64
+expectLarger argument expected Int64 one copy
+expectLarger argument actual Int64 order copy
+expectLarger result none
+expectLarger ownedBy none
+expectLarger cleanedBy none
+expectLarger borrows none
+expectLarger catch none
+expectLarger suppresses none
+
+backOrder is call
+backOrder in arithmeticTest
+backOrder invokes compareNumbers
+backOrder argument left machine.Address right copy
+backOrder argument right machine.Address left copy
+backOrder result reverse Int64
+backOrder ownedBy none
+backOrder cleanedBy none
+backOrder borrows none
+backOrder catch none
+backOrder suppresses none
+
+expectSmaller is call
+expectSmaller in arithmeticTest
+expectSmaller invokes test.assertEqualInt64
+expectSmaller argument expected Int64 minusOne copy
+expectSmaller argument actual Int64 reverse copy
+expectSmaller result none
+expectSmaller ownedBy none
+expectSmaller cleanedBy none
+expectSmaller borrows none
+expectSmaller catch none
+expectSmaller suppresses none
+
+takeOne is call
+takeOne in arithmeticTest
+takeOne invokes subtractNumber
+takeOne argument target machine.Address left copy
+takeOne argument subtrahend machine.Address right copy
+takeOne result none
+takeOne ownedBy none
+takeOne cleanedBy none
+takeOne borrows none
+takeOne catch none
+takeOne suppresses none
+
+expectBack is call
+expectBack in arithmeticTest
+expectBack invokes expectNumber
+expectBack argument number machine.Address left copy
+expectBack argument value UInt64 big copy
+expectBack argument limbs Int64 two copy
+expectBack result none
+expectBack ownedBy none
+expectBack cleanedBy none
+expectBack borrows none
+expectBack catch none
+expectBack suppresses none
+
+copyBack is call
+copyBack in arithmeticTest
+copyBack invokes copyNumber
+copyBack argument target machine.Address right copy
+copyBack argument source machine.Address left copy
+copyBack result none
+copyBack ownedBy none
+copyBack cleanedBy none
+copyBack borrows none
+copyBack catch none
+copyBack suppresses none
+
+sameOrder is call
+sameOrder in arithmeticTest
+sameOrder invokes compareNumbers
+sameOrder argument left machine.Address right copy
+sameOrder argument right machine.Address left copy
+sameOrder result same Int64
+sameOrder ownedBy none
+sameOrder cleanedBy none
+sameOrder borrows none
+sameOrder catch none
+sameOrder suppresses none
+
+expectSame is call
+expectSame in arithmeticTest
+expectSame invokes test.assertEqualInt64
+expectSame argument expected Int64 zero copy
+expectSame argument actual Int64 same copy
+expectSame result none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none
+expectSame suppresses none
+
+subtractAll is call
+subtractAll in arithmeticTest
+subtractAll invokes subtractNumber
+subtractAll argument target machine.Address left copy
+subtractAll argument subtrahend machine.Address right copy
+subtractAll result none
+subtractAll ownedBy none
+subtractAll cleanedBy none
+subtractAll borrows none
+subtractAll catch none
+subtractAll suppresses none
+
+zeroCheck is call
+zeroCheck in arithmeticTest
+zeroCheck invokes isZero
+zeroCheck argument number machine.Address left copy
+zeroCheck result empty Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+expectZero is call
+expectZero in arithmeticTest
+expectZero invokes test.assertTrue
+expectZero argument value Bool empty copy
+expectZero result none
+expectZero ownedBy none
+expectZero cleanedBy none
+expectZero borrows none
+expectZero catch none
+expectZero suppresses none
+
+setTen is call
+setTen in arithmeticTest
+setTen invokes setSmall
+setTen argument number machine.Address left copy
+setTen argument value UInt64 tenWide copy
+setTen result none
+setTen ownedBy none
+setTen cleanedBy none
+setTen borrows none
+setTen catch none
+setTen suppresses none
+
+scale is call
+scale in arithmeticTest
+scale invokes multiplyPowerOfTen
+scale argument number machine.Address left copy
+scale argument power Int64 eighteen copy
+scale result none
+scale ownedBy none
+scale cleanedBy none
+scale borrows none
+scale catch none
+scale suppresses none
+
+expectScaled is call
+expectScaled in arithmeticTest
+expectScaled invokes expectNumber
+expectScaled argument number machine.Address left copy
+expectScaled argument value UInt64 nineteenZeros copy
+expectScaled argument limbs Int64 two copy
+expectScaled result none
+expectScaled ownedBy none
+expectScaled cleanedBy none
+expectScaled borrows none
+expectScaled catch none
+expectScaled suppresses none
+
+timesThree is call
+timesThree in arithmeticTest
+timesThree invokes multiplySmall
+timesThree argument number machine.Address left copy
+timesThree argument factor UInt64 threeWide copy
+timesThree result none
+timesThree ownedBy none
+timesThree cleanedBy none
+timesThree borrows none
+timesThree catch none
+timesThree suppresses none
+
+readTripled is call
+readTripled in arithmeticTest
+readTripled invokes bitLength
+readTripled argument number machine.Address left copy
+readTripled result tripledWidth Int64
+readTripled ownedBy none
+readTripled cleanedBy none
+readTripled borrows none
+readTripled catch none
+readTripled suppresses none
+
+expectTripledWidth is call
+expectTripledWidth in arithmeticTest
+expectTripledWidth invokes test.assertEqualInt64
+expectTripledWidth argument expected Int64 sixtyFive copy
+expectTripledWidth argument actual Int64 tripledWidth copy
+expectTripledWidth result none
+expectTripledWidth ownedBy none
+expectTripledWidth cleanedBy none
+expectTripledWidth borrows none
+expectTripledWidth catch none
+expectTripledWidth suppresses none
+
+setSeven is call
+setSeven in arithmeticTest
+setSeven invokes setSmall
+setSeven argument number machine.Address right copy
+setSeven argument value UInt64 sevenWide copy
+setSeven result none
+setSeven ownedBy none
+setSeven cleanedBy none
+setSeven borrows none
+setSeven catch none
+setSeven suppresses none
+
+shiftUp is call
+shiftUp in arithmeticTest
+shiftUp invokes shiftLeft
+shiftUp argument number machine.Address right copy
+shiftUp argument amount Int64 hundred copy
+shiftUp result none
+shiftUp ownedBy none
+shiftUp cleanedBy none
+shiftUp borrows none
+shiftUp catch none
+shiftUp suppresses none
+
+readShifted is call
+readShifted in arithmeticTest
+readShifted invokes bitLength
+readShifted argument number machine.Address right copy
+readShifted result shiftedWidth Int64
+readShifted ownedBy none
+readShifted cleanedBy none
+readShifted borrows none
+readShifted catch none
+readShifted suppresses none
+
+expectShiftedWidth is call
+expectShiftedWidth in arithmeticTest
+expectShiftedWidth invokes test.assertEqualInt64
+expectShiftedWidth argument expected Int64 hundredThree copy
+expectShiftedWidth argument actual Int64 shiftedWidth copy
+expectShiftedWidth result none
+expectShiftedWidth ownedBy none
+expectShiftedWidth cleanedBy none
+expectShiftedWidth borrows none
+expectShiftedWidth catch none
+expectShiftedWidth suppresses none
+
+halve is call
+halve in arithmeticTest
+halve invokes shiftRightOne
+halve argument number machine.Address right copy
+halve result none
+halve ownedBy none
+halve cleanedBy none
+halve borrows none
+halve catch none
+halve suppresses none
+
+readHalved is call
+readHalved in arithmeticTest
+readHalved invokes bitLength
+readHalved argument number machine.Address right copy
+readHalved result halvedWidth Int64
+readHalved ownedBy none
+readHalved cleanedBy none
+readHalved borrows none
+readHalved catch none
+readHalved suppresses none
+
+expectHalvedWidth is call
+expectHalvedWidth in arithmeticTest
+expectHalvedWidth invokes test.assertEqualInt64
+expectHalvedWidth argument expected Int64 hundredTwo copy
+expectHalvedWidth argument actual Int64 halvedWidth copy
+expectHalvedWidth result none
+expectHalvedWidth ownedBy none
+expectHalvedWidth cleanedBy none
+expectHalvedWidth borrows none
+expectHalvedWidth catch none
+expectHalvedWidth suppresses none
+
+setNine is call
+setNine in arithmeticTest
+setNine invokes setSmall
+setNine argument number machine.Address left copy
+setNine argument value UInt64 nineWide copy
+setNine result none
+setNine ownedBy none
+setNine cleanedBy none
+setNine borrows none
+setNine catch none
+setNine suppresses none
+
+addSome is call
+addSome in arithmeticTest
+addSome invokes addSmall
+addSome argument number machine.Address left copy
+addSome argument value UInt64 fourBillion copy
+addSome result none
+addSome ownedBy none
+addSome cleanedBy none
+addSome borrows none
+addSome catch none
+addSome suppresses none
+
+expectAdded is call
+expectAdded in arithmeticTest
+expectAdded invokes expectNumber
+expectAdded argument number machine.Address left copy
+expectAdded argument value UInt64 sumWide copy
+expectAdded argument limbs Int64 two copy
+expectAdded result none
+expectAdded ownedBy none
+expectAdded cleanedBy none
+expectAdded borrows none
+expectAdded catch none
+expectAdded suppresses none
+
+readLow is call
+readLow in arithmeticTest
+readLow invokes lowLimbs
+readLow argument number machine.Address left copy
+readLow result low UInt64
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+lowCheck is call
+lowCheck in arithmeticTest
+lowCheck invokes compare.equalUInt64
+lowCheck argument left UInt64 low copy
+lowCheck argument right UInt64 sumWide copy
+lowCheck result lowSame Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+expectLow is call
+expectLow in arithmeticTest
+expectLow invokes test.assertTrue
+expectLow argument value Bool lowSame copy
+expectLow result none
+expectLow ownedBy none
+expectLow cleanedBy none
+expectLow borrows none
+expectLow catch none
+expectLow suppresses none
+
+powerTest is test
+powerTest purpose "10^30 less 1 is thirty nines: carries and borrows run through every limb"
+powerTest verifies multiplyPowerOfTen scalesByTen
+powerTest verifies subtractNumber subtractsExactly
+powerTest verifies addSmall addsSmall
+powerTest typeParameter none
+powerTest input none
+powerTest output none
+powerTest outputOwnedBy none
+powerTest raises none
+powerTest effect use machine.memory
+powerTest effect use system.calls
+powerTest uses memoryAccess
+powerTest uses systemCalls
+powerTest memoryHeap false
+powerTest async false
+powerTest maxRecursion none
+powerTest label begin loopKind none
+powerTest label begin within none
+powerTest let leftAt Int64 61440 immutable
+powerTest let rightAt Int64 63048 immutable
+powerTest let oneWide UInt64 1 immutable
+powerTest let thirty Int64 30 immutable
+powerTest let hundred Int64 100 immutable
+powerTest let zero Int64 0 immutable
+powerTest at begin do findState
+powerTest at begin do findLeft
+powerTest at begin do findRight
+powerTest at begin do setOne
+powerTest at begin do scale
+powerTest at begin do setUnit
+powerTest at begin do takeUnit
+powerTest at begin do readWidth
+powerTest at begin do expectWidth
+powerTest at begin do addBack
+powerTest at begin do setPower
+powerTest at begin do shiftPower
+powerTest at begin do compareBack
+powerTest at begin do expectEqual
+powerTest at begin return ok none
+
+findState is call
+findState in powerTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findLeft is call
+findLeft in powerTest
+findLeft invokes machine.offset
+findLeft argument address machine.Address state copy
+findLeft argument bytes Int64 leftAt copy
+findLeft result left machine.Address
+findLeft ownedBy none
+findLeft cleanedBy none
+findLeft borrows none
+findLeft catch none
+findLeft suppresses none
+
+findRight is call
+findRight in powerTest
+findRight invokes machine.offset
+findRight argument address machine.Address state copy
+findRight argument bytes Int64 rightAt copy
+findRight result right machine.Address
+findRight ownedBy none
+findRight cleanedBy none
+findRight borrows none
+findRight catch none
+findRight suppresses none
+
+setOne is call
+setOne in powerTest
+setOne invokes setSmall
+setOne argument number machine.Address left copy
+setOne argument value UInt64 oneWide copy
+setOne result none
+setOne ownedBy none
+setOne cleanedBy none
+setOne borrows none
+setOne catch none
+setOne suppresses none
+
+scale is call
+scale in powerTest
+scale invokes multiplyPowerOfTen
+scale argument number machine.Address left copy
+scale argument power Int64 thirty copy
+scale result none
+scale ownedBy none
+scale cleanedBy none
+scale borrows none
+scale catch none
+scale suppresses none
+
+setUnit is call
+setUnit in powerTest
+setUnit invokes setSmall
+setUnit argument number machine.Address right copy
+setUnit argument value UInt64 oneWide copy
+setUnit result none
+setUnit ownedBy none
+setUnit cleanedBy none
+setUnit borrows none
+setUnit catch none
+setUnit suppresses none
+
+takeUnit is call
+takeUnit in powerTest
+takeUnit invokes subtractNumber
+takeUnit argument target machine.Address left copy
+takeUnit argument subtrahend machine.Address right copy
+takeUnit result none
+takeUnit ownedBy none
+takeUnit cleanedBy none
+takeUnit borrows none
+takeUnit catch none
+takeUnit suppresses none
+
+readWidth is call
+readWidth in powerTest
+readWidth invokes bitLength
+readWidth argument number machine.Address left copy
+readWidth result width Int64
+readWidth ownedBy none
+readWidth cleanedBy none
+readWidth borrows none
+readWidth catch none
+readWidth suppresses none
+
+expectWidth is call
+expectWidth in powerTest
+expectWidth invokes test.assertEqualInt64
+expectWidth argument expected Int64 hundred copy
+expectWidth argument actual Int64 width copy
+expectWidth result none
+expectWidth ownedBy none
+expectWidth cleanedBy none
+expectWidth borrows none
+expectWidth catch none
+expectWidth suppresses none
+
+addBack is call
+addBack in powerTest
+addBack invokes addSmall
+addBack argument number machine.Address left copy
+addBack argument value UInt64 oneWide copy
+addBack result none
+addBack ownedBy none
+addBack cleanedBy none
+addBack borrows none
+addBack catch none
+addBack suppresses none
+
+setPower is call
+setPower in powerTest
+setPower invokes setSmall
+setPower argument number machine.Address right copy
+setPower argument value UInt64 oneWide copy
+setPower result none
+setPower ownedBy none
+setPower cleanedBy none
+setPower borrows none
+setPower catch none
+setPower suppresses none
+
+shiftPower is call
+shiftPower in powerTest
+shiftPower invokes multiplyPowerOfTen
+shiftPower argument number machine.Address right copy
+shiftPower argument power Int64 thirty copy
+shiftPower result none
+shiftPower ownedBy none
+shiftPower cleanedBy none
+shiftPower borrows none
+shiftPower catch none
+shiftPower suppresses none
+
+compareBack is call
+compareBack in powerTest
+compareBack invokes compareNumbers
+compareBack argument left machine.Address left copy
+compareBack argument right machine.Address right copy
+compareBack result order Int64
+compareBack ownedBy none
+compareBack cleanedBy none
+compareBack borrows none
+compareBack catch none
+compareBack suppresses none
+
+expectEqual is call
+expectEqual in powerTest
+expectEqual invokes test.assertEqualInt64
+expectEqual argument expected Int64 zero copy
+expectEqual argument actual Int64 order copy
+expectEqual result none
+expectEqual ownedBy none
+expectEqual cleanedBy none
+expectEqual borrows none
+expectEqual catch none
+expectEqual suppresses none

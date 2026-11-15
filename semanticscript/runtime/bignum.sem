@@ -1,0 +1,2702 @@
+# Whole numbers of any size (up to 6,400 bits) in memory, with exact arithmetic: set, copy,
+# compare, add, subtract, multiply by a small factor or a power of ten, and shift. Floating-point
+# text is computed with them, exactly (D-125).
+#
+# This module is generated from tools/bignum.dsl by tools/build.py.
+
+bignum is module
+bignum purpose "Whole numbers of any size up to 6,400 bits, in memory, with exact arithmetic: what floating-point text is computed with (D-125)"
+bignum path bignum
+bignum imports standard.machine
+bignum imports standard.system
+bignum imports standard.string
+bignum imports standard.math
+bignum imports standard.compare
+bignum imports standard.bits
+bignum imports standard.logic
+bignum imports standard.test
+bignum imports frames
+bignum exports setSmall
+bignum exports copyNumber
+bignum exports isZero
+bignum exports compareNumbers
+bignum exports addNumber
+bignum exports subtractNumber
+bignum exports multiplySmall
+bignum exports addSmall
+bignum exports shiftLeft
+bignum exports shiftRightOne
+bignum exports bitLength
+bignum exports multiplyPowerOfTen
+bignum exports lowLimbs
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep numbers in memory by address"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to end the process when a number would not fit"
+systemCalls grants use system.calls none
+
+# A number is a block of numberBytes: at 0 how many 32-bit limbs it uses (0 for zero; the highest used limb is
+# never 0), then the limbs from the lowest, each in 8 bytes as a UInt64 below 2^32, so a limb times a limb plus a
+# carry fits in 64 bits. The caller gives the block; nothing here allocates.
+limbCapacity is constant
+limbCapacity purpose "How many limbs a number holds"
+limbCapacity type Int64
+limbCapacity value 200
+
+numberBytes is constant
+numberBytes purpose "The bytes of a number's block: its length and its limbs"
+numberBytes type Int64
+numberBytes value 1608
+
+limbMask is constant
+limbMask purpose "The bits of one limb"
+limbMask type UInt64
+limbMask value 4294967295
+
+# ---------------------------------------------------------------- limbs
+limbAddress is operation
+limbAddress purpose "The address of a number's limb, by its position from the lowest"
+limbAddress invariant none
+limbAddress typeParameter none
+limbAddress input number machine.Address copied
+limbAddress input position Int64 copied
+limbAddress output machine.Address
+limbAddress outputOwnedBy none
+limbAddress raises none
+limbAddress effect use machine.memory
+limbAddress uses memoryAccess
+limbAddress memoryHeap false
+limbAddress async false
+limbAddress maxRecursion none
+limbAddress label begin loopKind none
+limbAddress label begin within none
+limbAddress let one Int64 1 immutable
+limbAddress let eight Int64 8 immutable
+limbAddress at begin do slotOf
+limbAddress at begin do bytesOf
+limbAddress at begin do findLimb
+limbAddress at begin return ok at
+
+slotOf is call
+slotOf in limbAddress
+slotOf invokes math.addInt64
+slotOf argument left Int64 position copy
+slotOf argument right Int64 one copy
+slotOf result slot Int64
+slotOf ownedBy none
+slotOf cleanedBy none
+slotOf borrows none
+slotOf catch none
+slotOf suppresses none
+
+bytesOf is call
+bytesOf in limbAddress
+bytesOf invokes math.multiplyInt64
+bytesOf argument left Int64 slot copy
+bytesOf argument right Int64 eight copy
+bytesOf result offset Int64
+bytesOf ownedBy none
+bytesOf cleanedBy none
+bytesOf borrows none
+bytesOf catch none
+bytesOf suppresses none
+
+findLimb is call
+findLimb in limbAddress
+findLimb invokes machine.offset
+findLimb argument address machine.Address number copy
+findLimb argument bytes Int64 offset copy
+findLimb result at machine.Address
+findLimb ownedBy none
+findLimb cleanedBy none
+findLimb borrows none
+findLimb catch none
+findLimb suppresses none
+
+readLimb is operation
+readLimb purpose "A number's limb at a position, 0 past its length or below 0"
+readLimb invariant none
+readLimb typeParameter none
+readLimb input number machine.Address copied
+readLimb input position Int64 copied
+readLimb output UInt64
+readLimb outputOwnedBy none
+readLimb raises none
+readLimb effect use machine.memory
+readLimb uses memoryAccess
+readLimb memoryHeap false
+readLimb async false
+readLimb maxRecursion none
+readLimb label begin loopKind none
+readLimb label begin within none
+readLimb label giveZero loopKind none
+readLimb label giveZero within none
+readLimb label read loopKind none
+readLimb label read within none
+readLimb let zeroWide UInt64 0 immutable
+readLimb let zero Int64 0 immutable
+readLimb at begin do readLength
+readLimb at begin do lowCheck
+readLimb at begin do highCheck
+readLimb at begin do outsideCheck
+readLimb at begin branch if outside goto giveZero else goto read
+readLimb at giveZero return ok zeroWide
+readLimb at read do findLimb
+readLimb at read do readValue
+readLimb at read return ok value
+
+readLength is call
+readLength in readLimb
+readLength invokes machine.loadInt64
+readLength argument address machine.Address number copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+lowCheck is call
+lowCheck in readLimb
+lowCheck invokes compare.lessThanInt64
+lowCheck argument left Int64 position copy
+lowCheck argument right Int64 zero copy
+lowCheck result below Bool
+lowCheck ownedBy none
+lowCheck cleanedBy none
+lowCheck borrows none
+lowCheck catch none
+lowCheck suppresses none
+
+highCheck is call
+highCheck in readLimb
+highCheck invokes compare.greaterOrEqualInt64
+highCheck argument left Int64 position copy
+highCheck argument right Int64 length copy
+highCheck result above Bool
+highCheck ownedBy none
+highCheck cleanedBy none
+highCheck borrows none
+highCheck catch none
+highCheck suppresses none
+
+outsideCheck is call
+outsideCheck in readLimb
+outsideCheck invokes logic.or
+outsideCheck argument left Bool below copy
+outsideCheck argument right Bool above copy
+outsideCheck result outside Bool
+outsideCheck ownedBy none
+outsideCheck cleanedBy none
+outsideCheck borrows none
+outsideCheck catch none
+outsideCheck suppresses none
+
+findLimb is call
+findLimb in readLimb
+findLimb invokes limbAddress
+findLimb argument number machine.Address number copy
+findLimb argument position Int64 position copy
+findLimb result at machine.Address
+findLimb ownedBy none
+findLimb cleanedBy none
+findLimb borrows none
+findLimb catch none
+findLimb suppresses none
+
+readValue is call
+readValue in readLimb
+readValue invokes machine.loadUInt64
+readValue argument address machine.Address at copy
+readValue result value UInt64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+writeLimb is operation
+writeLimb purpose "Set a number's limb at a position, which is below its capacity"
+writeLimb invariant none
+writeLimb typeParameter none
+writeLimb input number machine.Address copied
+writeLimb input position Int64 copied
+writeLimb input value UInt64 copied
+writeLimb output none
+writeLimb outputOwnedBy none
+writeLimb raises none
+writeLimb effect use machine.memory
+writeLimb uses memoryAccess
+writeLimb memoryHeap false
+writeLimb async false
+writeLimb maxRecursion none
+writeLimb label begin loopKind none
+writeLimb label begin within none
+writeLimb let none
+writeLimb at begin do findLimb
+writeLimb at begin do storeValue
+writeLimb at begin return ok none
+
+findLimb is call
+findLimb in writeLimb
+findLimb invokes limbAddress
+findLimb argument number machine.Address number copy
+findLimb argument position Int64 position copy
+findLimb result at machine.Address
+findLimb ownedBy none
+findLimb cleanedBy none
+findLimb borrows none
+findLimb catch none
+findLimb suppresses none
+
+storeValue is call
+storeValue in writeLimb
+storeValue invokes machine.storeUInt64
+storeValue argument address machine.Address at copy
+storeValue argument value UInt64 value copy
+storeValue result none
+storeValue ownedBy none
+storeValue cleanedBy none
+storeValue borrows none
+storeValue catch none
+storeValue suppresses none
+
+fits is operation
+fits purpose "Trap unless a number of limbs fits a number's block (the runtime's arithmetic never needs more)"
+fits invariant none
+fits typeParameter none
+fits input length Int64 copied
+fits output none
+fits outputOwnedBy none
+fits raises none
+fits effect use machine.memory
+fits effect use system.calls
+fits uses memoryAccess
+fits uses systemCalls
+fits memoryHeap false
+fits async false
+fits maxRecursion none
+fits label begin loopKind none
+fits label begin within none
+fits label done loopKind none
+fits label done within none
+fits label tooLong loopKind none
+fits label tooLong within none
+fits let message String "a number is too long for the runtime's arithmetic" immutable
+fits let trapCode Int32 70 immutable
+fits at begin do fitCheck
+fits at begin branch if fitting goto done else goto tooLong
+fits at done return ok none
+fits at tooLong do findText
+fits at tooLong do textLength
+fits at tooLong do writeReport
+fits at tooLong do exit
+fits at tooLong return ok none
+
+fitCheck is call
+fitCheck in fits
+fitCheck invokes compare.lessOrEqualInt64
+fitCheck argument left Int64 length copy
+fitCheck argument right Int64 limbCapacity copy
+fitCheck result fitting Bool
+fitCheck ownedBy none
+fitCheck cleanedBy none
+fitCheck borrows none
+fitCheck catch none
+fitCheck suppresses none
+
+findText is call
+findText in fits
+findText invokes machine.addressOfString
+findText argument text String message lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in fits
+textLength invokes string.byteLength
+textLength argument text String message lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+writeReport is call
+writeReport in fits
+writeReport invokes frames.report
+writeReport argument text machine.Address textAt copy
+writeReport argument bytes Int64 bytes copy
+writeReport result status Int32
+writeReport ownedBy none
+writeReport cleanedBy none
+writeReport borrows none
+writeReport catch none
+writeReport suppresses none
+
+exit is call
+exit in fits
+exit invokes system.exitProcess
+exit argument code Int32 trapCode copy
+exit result none
+exit ownedBy none
+exit cleanedBy none
+exit borrows none
+exit catch none
+exit suppresses none
+
+trim is operation
+trim purpose "Drop a number's highest limbs while they are 0, so its length counts only what is used"
+trim invariant none
+trim typeParameter none
+trim input number machine.Address copied
+trim input length Int64 copied
+trim output none
+trim outputOwnedBy none
+trim raises none
+trim effect use machine.memory
+trim uses memoryAccess
+trim memoryHeap false
+trim async false
+trim maxRecursion none
+trim label begin loopKind none
+trim label begin within none
+trim label eachLimb loopKind while
+trim label eachLimb within none
+trim label eachLimb maxIterations length
+trim label checkTop loopKind none
+trim label checkTop within eachLimb
+trim label shorten loopKind none
+trim label shorten within eachLimb
+trim label store loopKind none
+trim label store within none
+trim let used Int64 0 mutable
+trim let zero Int64 0 immutable
+trim let one Int64 1 immutable
+trim let zeroWide UInt64 0 immutable
+trim at begin set used length
+trim at begin goto eachLimb
+trim at eachLimb do emptyCheck
+trim at eachLimb branch if empty goto store else goto checkTop
+trim at checkTop do topOf
+trim at checkTop do readTop
+trim at checkTop do zeroCheck
+trim at checkTop branch if isZeroLimb goto shorten else goto store
+trim at shorten set used top
+trim at shorten goto eachLimb
+trim at store do storeLength
+trim at store return ok none
+
+emptyCheck is call
+emptyCheck in trim
+emptyCheck invokes compare.lessOrEqualInt64
+emptyCheck argument left Int64 used copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+topOf is call
+topOf in trim
+topOf invokes math.subtractInt64
+topOf argument left Int64 used copy
+topOf argument right Int64 one copy
+topOf result top Int64
+topOf ownedBy none
+topOf cleanedBy none
+topOf borrows none
+topOf catch none
+topOf suppresses none
+
+readTop is call
+readTop in trim
+readTop invokes readLimbRaw
+readTop argument number machine.Address number copy
+readTop argument position Int64 top copy
+readTop result topValue UInt64
+readTop ownedBy none
+readTop cleanedBy none
+readTop borrows none
+readTop catch none
+readTop suppresses none
+
+zeroCheck is call
+zeroCheck in trim
+zeroCheck invokes compare.equalUInt64
+zeroCheck argument left UInt64 topValue copy
+zeroCheck argument right UInt64 zeroWide copy
+zeroCheck result isZeroLimb Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+storeLength is call
+storeLength in trim
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address number copy
+storeLength argument value Int64 used copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+readLimbRaw is operation
+readLimbRaw purpose "A number's limb at a position below its capacity, whatever its length says"
+readLimbRaw invariant none
+readLimbRaw typeParameter none
+readLimbRaw input number machine.Address copied
+readLimbRaw input position Int64 copied
+readLimbRaw output UInt64
+readLimbRaw outputOwnedBy none
+readLimbRaw raises none
+readLimbRaw effect use machine.memory
+readLimbRaw uses memoryAccess
+readLimbRaw memoryHeap false
+readLimbRaw async false
+readLimbRaw maxRecursion none
+readLimbRaw label begin loopKind none
+readLimbRaw label begin within none
+readLimbRaw let none
+readLimbRaw at begin do findLimb
+readLimbRaw at begin do readValue
+readLimbRaw at begin return ok value
+
+findLimb is call
+findLimb in readLimbRaw
+findLimb invokes limbAddress
+findLimb argument number machine.Address number copy
+findLimb argument position Int64 position copy
+findLimb result at machine.Address
+findLimb ownedBy none
+findLimb cleanedBy none
+findLimb borrows none
+findLimb catch none
+findLimb suppresses none
+
+readValue is call
+readValue in readLimbRaw
+readValue invokes machine.loadUInt64
+readValue argument address machine.Address at copy
+readValue result value UInt64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+# ---------------------------------------------------------------- setting and comparing
+setSmall is operation
+setSmall purpose "Set a number to a 64-bit value"
+setSmall invariant holdsValue "\"The number is the value given: one or two limbs, or none for 0\""
+setSmall typeParameter none
+setSmall input number machine.Address copied
+setSmall input value UInt64 copied
+setSmall output none
+setSmall outputOwnedBy none
+setSmall raises none
+setSmall effect use machine.memory
+setSmall uses memoryAccess
+setSmall memoryHeap false
+setSmall async false
+setSmall maxRecursion none
+setSmall label begin loopKind none
+setSmall label begin within none
+setSmall let thirtyTwo Int64 32 immutable
+setSmall let zero Int64 0 immutable
+setSmall let one Int64 1 immutable
+setSmall let two Int64 2 immutable
+setSmall at begin do lowOf
+setSmall at begin do highOf
+setSmall at begin do writeLow
+setSmall at begin do writeHigh
+setSmall at begin do trimIt
+setSmall at begin return ok none
+
+lowOf is call
+lowOf in setSmall
+lowOf invokes bits.andUInt64
+lowOf argument left UInt64 value copy
+lowOf argument right UInt64 limbMask copy
+lowOf result low UInt64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+highOf is call
+highOf in setSmall
+highOf invokes bits.shiftRightUInt64
+highOf argument value UInt64 value copy
+highOf argument amount Int64 thirtyTwo copy
+highOf result high UInt64
+highOf ownedBy none
+highOf cleanedBy none
+highOf borrows none
+highOf catch none
+highOf suppresses none
+
+writeLow is call
+writeLow in setSmall
+writeLow invokes writeLimb
+writeLow argument number machine.Address number copy
+writeLow argument position Int64 zero copy
+writeLow argument value UInt64 low copy
+writeLow result none
+writeLow ownedBy none
+writeLow cleanedBy none
+writeLow borrows none
+writeLow catch none
+writeLow suppresses none
+
+writeHigh is call
+writeHigh in setSmall
+writeHigh invokes writeLimb
+writeHigh argument number machine.Address number copy
+writeHigh argument position Int64 one copy
+writeHigh argument value UInt64 high copy
+writeHigh result none
+writeHigh ownedBy none
+writeHigh cleanedBy none
+writeHigh borrows none
+writeHigh catch none
+writeHigh suppresses none
+
+trimIt is call
+trimIt in setSmall
+trimIt invokes trim
+trimIt argument number machine.Address number copy
+trimIt argument length Int64 two copy
+trimIt result none
+trimIt ownedBy none
+trimIt cleanedBy none
+trimIt borrows none
+trimIt catch none
+trimIt suppresses none
+
+copyNumber is operation
+copyNumber purpose "Make a number the same as another"
+copyNumber invariant copiesValue "\"The target holds the source's value\""
+copyNumber typeParameter none
+copyNumber input target machine.Address copied
+copyNumber input source machine.Address copied
+copyNumber output none
+copyNumber outputOwnedBy none
+copyNumber raises none
+copyNumber effect use machine.memory
+copyNumber uses memoryAccess
+copyNumber memoryHeap false
+copyNumber async false
+copyNumber maxRecursion none
+copyNumber label begin loopKind none
+copyNumber label begin within none
+copyNumber let one Int64 1 immutable
+copyNumber let eight Int64 8 immutable
+copyNumber at begin do readLength
+copyNumber at begin do slotsOf
+copyNumber at begin do bytesOf
+copyNumber at begin do copyAll
+copyNumber at begin return ok none
+
+readLength is call
+readLength in copyNumber
+readLength invokes machine.loadInt64
+readLength argument address machine.Address source copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+slotsOf is call
+slotsOf in copyNumber
+slotsOf invokes math.addInt64
+slotsOf argument left Int64 length copy
+slotsOf argument right Int64 one copy
+slotsOf result slots Int64
+slotsOf ownedBy none
+slotsOf cleanedBy none
+slotsOf borrows none
+slotsOf catch none
+slotsOf suppresses none
+
+bytesOf is call
+bytesOf in copyNumber
+bytesOf invokes math.multiplyInt64
+bytesOf argument left Int64 slots copy
+bytesOf argument right Int64 eight copy
+bytesOf result bytes Int64
+bytesOf ownedBy none
+bytesOf cleanedBy none
+bytesOf borrows none
+bytesOf catch none
+bytesOf suppresses none
+
+copyAll is call
+copyAll in copyNumber
+copyAll invokes machine.copy
+copyAll argument target machine.Address target copy
+copyAll argument source machine.Address source copy
+copyAll argument bytes Int64 bytes copy
+copyAll result none
+copyAll ownedBy none
+copyAll cleanedBy none
+copyAll borrows none
+copyAll catch none
+copyAll suppresses none
+
+isZero is operation
+isZero purpose "Whether a number is 0"
+isZero invariant zeroHasNoLimbs "\"A number is 0 exactly when it uses no limbs\""
+isZero typeParameter none
+isZero input number machine.Address copied
+isZero output Bool
+isZero outputOwnedBy none
+isZero raises none
+isZero effect use machine.memory
+isZero uses memoryAccess
+isZero memoryHeap false
+isZero async false
+isZero maxRecursion none
+isZero label begin loopKind none
+isZero label begin within none
+isZero let zero Int64 0 immutable
+isZero at begin do readLength
+isZero at begin do zeroCheck
+isZero at begin return ok zeroValue
+
+readLength is call
+readLength in isZero
+readLength invokes machine.loadInt64
+readLength argument address machine.Address number copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+zeroCheck is call
+zeroCheck in isZero
+zeroCheck invokes compare.equalInt64
+zeroCheck argument left Int64 length copy
+zeroCheck argument right Int64 zero copy
+zeroCheck result zeroValue Bool
+zeroCheck ownedBy none
+zeroCheck cleanedBy none
+zeroCheck borrows none
+zeroCheck catch none
+zeroCheck suppresses none
+
+compareNumbers is operation
+compareNumbers purpose "How one number compares with another: -1 when it is smaller, 0 when they are equal, 1 when it is larger"
+compareNumbers invariant ordersNumbers "\"Orders numbers by value: by their lengths, then by their limbs from the highest\""
+compareNumbers typeParameter none
+compareNumbers input left machine.Address copied
+compareNumbers input right machine.Address copied
+compareNumbers output Int64
+compareNumbers outputOwnedBy none
+compareNumbers raises none
+compareNumbers effect use machine.memory
+compareNumbers uses memoryAccess
+compareNumbers memoryHeap false
+compareNumbers async false
+compareNumbers maxRecursion none
+compareNumbers label begin loopKind none
+compareNumbers label begin within none
+compareNumbers label longerCheck loopKind none
+compareNumbers label longerCheck within none
+compareNumbers label limbs loopKind none
+compareNumbers label limbs within none
+compareNumbers label eachLimb loopKind while
+compareNumbers label eachLimb within none
+compareNumbers label eachLimb maxIterations leftLength
+compareNumbers label compareLimb loopKind none
+compareNumbers label compareLimb within eachLimb
+compareNumbers label greaterCheck loopKind none
+compareNumbers label greaterCheck within eachLimb
+compareNumbers label nextLimb loopKind none
+compareNumbers label nextLimb within eachLimb
+compareNumbers label giveLess loopKind none
+compareNumbers label giveLess within none
+compareNumbers label giveMore loopKind none
+compareNumbers label giveMore within none
+compareNumbers label giveSame loopKind none
+compareNumbers label giveSame within none
+compareNumbers let at Int64 0 mutable
+compareNumbers let less Int64 -1 immutable
+compareNumbers let same Int64 0 immutable
+compareNumbers let more Int64 1 immutable
+compareNumbers at begin do readLeft
+compareNumbers at begin do readRight
+compareNumbers at begin do shorterCheck
+compareNumbers at begin branch if shorter goto giveLess else goto longerCheck
+compareNumbers at longerCheck do checkLonger
+compareNumbers at longerCheck branch if longer goto giveMore else goto limbs
+compareNumbers at limbs set at leftLength
+compareNumbers at limbs goto eachLimb
+compareNumbers at eachLimb do doneCheck
+compareNumbers at eachLimb branch if done goto giveSame else goto compareLimb
+compareNumbers at compareLimb do downOne
+compareNumbers at compareLimb do readLeftLimb
+compareNumbers at compareLimb do readRightLimb
+compareNumbers at compareLimb do lessCheck
+compareNumbers at compareLimb branch if smaller goto giveLess else goto greaterCheck
+compareNumbers at greaterCheck do checkGreater
+compareNumbers at greaterCheck branch if larger goto giveMore else goto nextLimb
+compareNumbers at nextLimb set at below
+compareNumbers at nextLimb goto eachLimb
+compareNumbers at giveLess return ok less
+compareNumbers at giveMore return ok more
+compareNumbers at giveSame return ok same
+
+readLeft is call
+readLeft in compareNumbers
+readLeft invokes machine.loadInt64
+readLeft argument address machine.Address left copy
+readLeft result leftLength Int64
+readLeft ownedBy none
+readLeft cleanedBy none
+readLeft borrows none
+readLeft catch none
+readLeft suppresses none
+
+readRight is call
+readRight in compareNumbers
+readRight invokes machine.loadInt64
+readRight argument address machine.Address right copy
+readRight result rightLength Int64
+readRight ownedBy none
+readRight cleanedBy none
+readRight borrows none
+readRight catch none
+readRight suppresses none
+
+shorterCheck is call
+shorterCheck in compareNumbers
+shorterCheck invokes compare.lessThanInt64
+shorterCheck argument left Int64 leftLength copy
+shorterCheck argument right Int64 rightLength copy
+shorterCheck result shorter Bool
+shorterCheck ownedBy none
+shorterCheck cleanedBy none
+shorterCheck borrows none
+shorterCheck catch none
+shorterCheck suppresses none
+
+checkLonger is call
+checkLonger in compareNumbers
+checkLonger invokes compare.greaterThanInt64
+checkLonger argument left Int64 leftLength copy
+checkLonger argument right Int64 rightLength copy
+checkLonger result longer Bool
+checkLonger ownedBy none
+checkLonger cleanedBy none
+checkLonger borrows none
+checkLonger catch none
+checkLonger suppresses none
+
+doneCheck is call
+doneCheck in compareNumbers
+doneCheck invokes compare.lessOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 same copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+downOne is call
+downOne in compareNumbers
+downOne invokes math.subtractInt64
+downOne argument left Int64 at copy
+downOne argument right Int64 more copy
+downOne result below Int64
+downOne ownedBy none
+downOne cleanedBy none
+downOne borrows none
+downOne catch none
+downOne suppresses none
+
+readLeftLimb is call
+readLeftLimb in compareNumbers
+readLeftLimb invokes readLimbRaw
+readLeftLimb argument number machine.Address left copy
+readLeftLimb argument position Int64 below copy
+readLeftLimb result leftLimb UInt64
+readLeftLimb ownedBy none
+readLeftLimb cleanedBy none
+readLeftLimb borrows none
+readLeftLimb catch none
+readLeftLimb suppresses none
+
+readRightLimb is call
+readRightLimb in compareNumbers
+readRightLimb invokes readLimbRaw
+readRightLimb argument number machine.Address right copy
+readRightLimb argument position Int64 below copy
+readRightLimb result rightLimb UInt64
+readRightLimb ownedBy none
+readRightLimb cleanedBy none
+readRightLimb borrows none
+readRightLimb catch none
+readRightLimb suppresses none
+
+lessCheck is call
+lessCheck in compareNumbers
+lessCheck invokes compare.lessThanUInt64
+lessCheck argument left UInt64 leftLimb copy
+lessCheck argument right UInt64 rightLimb copy
+lessCheck result smaller Bool
+lessCheck ownedBy none
+lessCheck cleanedBy none
+lessCheck borrows none
+lessCheck catch none
+lessCheck suppresses none
+
+checkGreater is call
+checkGreater in compareNumbers
+checkGreater invokes compare.greaterThanUInt64
+checkGreater argument left UInt64 leftLimb copy
+checkGreater argument right UInt64 rightLimb copy
+checkGreater result larger Bool
+checkGreater ownedBy none
+checkGreater cleanedBy none
+checkGreater borrows none
+checkGreater catch none
+checkGreater suppresses none
+
+# ---------------------------------------------------------------- arithmetic
+addNumber is operation
+addNumber purpose "Add a number to another in place: target becomes target plus addend"
+addNumber invariant addsExactly "\"The target becomes the exact sum, carrying into a new limb when it must\""
+addNumber typeParameter none
+addNumber input target machine.Address copied
+addNumber input addend machine.Address copied
+addNumber output none
+addNumber outputOwnedBy none
+addNumber raises none
+addNumber effect use machine.memory
+addNumber effect use system.calls
+addNumber uses memoryAccess
+addNumber uses systemCalls
+addNumber memoryHeap false
+addNumber async false
+addNumber maxRecursion none
+addNumber label begin loopKind none
+addNumber label begin within none
+addNumber label useAddend loopKind none
+addNumber label useAddend within none
+addNumber label sum loopKind none
+addNumber label sum within none
+addNumber label eachLimb loopKind while
+addNumber label eachLimb within none
+addNumber label eachLimb maxIterations span
+addNumber label addLimb loopKind none
+addNumber label addLimb within eachLimb
+addNumber label finish loopKind none
+addNumber label finish within none
+addNumber label extend loopKind none
+addNumber label extend within none
+addNumber label store loopKind none
+addNumber label store within none
+addNumber let at Int64 0 mutable
+addNumber let carry UInt64 0 mutable
+addNumber let length Int64 0 mutable
+addNumber let zero Int64 0 immutable
+addNumber let thirtyTwo Int64 32 immutable
+addNumber let one Int64 1 immutable
+addNumber let zeroWide UInt64 0 immutable
+addNumber at begin do readTarget
+addNumber at begin do readAddend
+addNumber at begin set length targetLength
+addNumber at begin do longerCheck
+addNumber at begin branch if longer goto useAddend else goto sum
+addNumber at useAddend set length addendLength
+addNumber at useAddend goto sum
+addNumber at sum do spanOf
+addNumber at sum goto eachLimb
+addNumber at eachLimb do doneCheck
+addNumber at eachLimb branch if done goto finish else goto addLimb
+addNumber at addLimb do readTargetLimb
+addNumber at addLimb do readAddendLimb
+addNumber at addLimb do sumLimbs
+addNumber at addLimb do sumCarry
+addNumber at addLimb do lowOf
+addNumber at addLimb do writeSum
+addNumber at addLimb do carryOf
+addNumber at addLimb set carry nextCarry
+addNumber at addLimb do advance
+addNumber at addLimb set at nextAt
+addNumber at addLimb goto eachLimb
+addNumber at finish do carryCheck
+addNumber at finish branch if carried goto extend else goto store
+addNumber at extend do longerLength
+addNumber at extend do roomCheck
+addNumber at extend do writeCarry
+addNumber at extend set length extended
+addNumber at extend goto store
+addNumber at store do storeLength
+addNumber at store return ok none
+
+readTarget is call
+readTarget in addNumber
+readTarget invokes machine.loadInt64
+readTarget argument address machine.Address target copy
+readTarget result targetLength Int64
+readTarget ownedBy none
+readTarget cleanedBy none
+readTarget borrows none
+readTarget catch none
+readTarget suppresses none
+
+readAddend is call
+readAddend in addNumber
+readAddend invokes machine.loadInt64
+readAddend argument address machine.Address addend copy
+readAddend result addendLength Int64
+readAddend ownedBy none
+readAddend cleanedBy none
+readAddend borrows none
+readAddend catch none
+readAddend suppresses none
+
+longerCheck is call
+longerCheck in addNumber
+longerCheck invokes compare.greaterThanInt64
+longerCheck argument left Int64 addendLength copy
+longerCheck argument right Int64 targetLength copy
+longerCheck result longer Bool
+longerCheck ownedBy none
+longerCheck cleanedBy none
+longerCheck borrows none
+longerCheck catch none
+longerCheck suppresses none
+
+spanOf is call
+spanOf in addNumber
+spanOf invokes math.addInt64
+spanOf argument left Int64 length copy
+spanOf argument right Int64 zero copy
+spanOf result span Int64
+spanOf ownedBy none
+spanOf cleanedBy none
+spanOf borrows none
+spanOf catch none
+spanOf suppresses none
+
+doneCheck is call
+doneCheck in addNumber
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 length copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+readTargetLimb is call
+readTargetLimb in addNumber
+readTargetLimb invokes readLimb
+readTargetLimb argument number machine.Address target copy
+readTargetLimb argument position Int64 at copy
+readTargetLimb result targetLimb UInt64
+readTargetLimb ownedBy none
+readTargetLimb cleanedBy none
+readTargetLimb borrows none
+readTargetLimb catch none
+readTargetLimb suppresses none
+
+readAddendLimb is call
+readAddendLimb in addNumber
+readAddendLimb invokes readLimb
+readAddendLimb argument number machine.Address addend copy
+readAddendLimb argument position Int64 at copy
+readAddendLimb result addendLimb UInt64
+readAddendLimb ownedBy none
+readAddendLimb cleanedBy none
+readAddendLimb borrows none
+readAddendLimb catch none
+readAddendLimb suppresses none
+
+sumLimbs is call
+sumLimbs in addNumber
+sumLimbs invokes math.addUInt64
+sumLimbs argument left UInt64 targetLimb copy
+sumLimbs argument right UInt64 addendLimb copy
+sumLimbs result limbSum UInt64
+sumLimbs ownedBy none
+sumLimbs cleanedBy none
+sumLimbs borrows none
+sumLimbs catch none
+sumLimbs suppresses none
+
+sumCarry is call
+sumCarry in addNumber
+sumCarry invokes math.addUInt64
+sumCarry argument left UInt64 limbSum copy
+sumCarry argument right UInt64 carry copy
+sumCarry result total UInt64
+sumCarry ownedBy none
+sumCarry cleanedBy none
+sumCarry borrows none
+sumCarry catch none
+sumCarry suppresses none
+
+lowOf is call
+lowOf in addNumber
+lowOf invokes bits.andUInt64
+lowOf argument left UInt64 total copy
+lowOf argument right UInt64 limbMask copy
+lowOf result low UInt64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+writeSum is call
+writeSum in addNumber
+writeSum invokes writeLimb
+writeSum argument number machine.Address target copy
+writeSum argument position Int64 at copy
+writeSum argument value UInt64 low copy
+writeSum result none
+writeSum ownedBy none
+writeSum cleanedBy none
+writeSum borrows none
+writeSum catch none
+writeSum suppresses none
+
+carryOf is call
+carryOf in addNumber
+carryOf invokes bits.shiftRightUInt64
+carryOf argument value UInt64 total copy
+carryOf argument amount Int64 thirtyTwo copy
+carryOf result nextCarry UInt64
+carryOf ownedBy none
+carryOf cleanedBy none
+carryOf borrows none
+carryOf catch none
+carryOf suppresses none
+
+advance is call
+advance in addNumber
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 one copy
+advance result nextAt Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+carryCheck is call
+carryCheck in addNumber
+carryCheck invokes compare.notEqualUInt64
+carryCheck argument left UInt64 carry copy
+carryCheck argument right UInt64 zeroWide copy
+carryCheck result carried Bool
+carryCheck ownedBy none
+carryCheck cleanedBy none
+carryCheck borrows none
+carryCheck catch none
+carryCheck suppresses none
+
+longerLength is call
+longerLength in addNumber
+longerLength invokes math.addInt64
+longerLength argument left Int64 length copy
+longerLength argument right Int64 one copy
+longerLength result extended Int64
+longerLength ownedBy none
+longerLength cleanedBy none
+longerLength borrows none
+longerLength catch none
+longerLength suppresses none
+
+roomCheck is call
+roomCheck in addNumber
+roomCheck invokes fits
+roomCheck argument length Int64 extended copy
+roomCheck result none
+roomCheck ownedBy none
+roomCheck cleanedBy none
+roomCheck borrows none
+roomCheck catch none
+roomCheck suppresses none
+
+writeCarry is call
+writeCarry in addNumber
+writeCarry invokes writeLimb
+writeCarry argument number machine.Address target copy
+writeCarry argument position Int64 length copy
+writeCarry argument value UInt64 carry copy
+writeCarry result none
+writeCarry ownedBy none
+writeCarry cleanedBy none
+writeCarry borrows none
+writeCarry catch none
+writeCarry suppresses none
+
+storeLength is call
+storeLength in addNumber
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address target copy
+storeLength argument value Int64 length copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+subtractNumber is operation
+subtractNumber purpose "Subtract a number from another in place: target becomes target less subtrahend, which is not larger"
+subtractNumber invariant subtractsExactly "\"The target becomes the exact difference when the subtrahend is not larger than it\""
+subtractNumber typeParameter none
+subtractNumber input target machine.Address copied
+subtractNumber input subtrahend machine.Address copied
+subtractNumber output none
+subtractNumber outputOwnedBy none
+subtractNumber raises none
+subtractNumber effect use machine.memory
+subtractNumber uses memoryAccess
+subtractNumber memoryHeap false
+subtractNumber async false
+subtractNumber maxRecursion none
+subtractNumber label begin loopKind none
+subtractNumber label begin within none
+subtractNumber label eachLimb loopKind while
+subtractNumber label eachLimb within none
+subtractNumber label eachLimb maxIterations length
+subtractNumber label subtractLimb loopKind none
+subtractNumber label subtractLimb within eachLimb
+subtractNumber label plain loopKind none
+subtractNumber label plain within eachLimb
+subtractNumber label borrowed loopKind none
+subtractNumber label borrowed within eachLimb
+subtractNumber label nextLimb loopKind none
+subtractNumber label nextLimb within eachLimb
+subtractNumber label finish loopKind none
+subtractNumber label finish within none
+subtractNumber let at Int64 0 mutable
+subtractNumber let borrow UInt64 0 mutable
+subtractNumber let base UInt64 4294967296 immutable
+subtractNumber let zeroWide UInt64 0 immutable
+subtractNumber let oneWide UInt64 1 immutable
+subtractNumber let one Int64 1 immutable
+subtractNumber at begin do readTarget
+subtractNumber at begin goto eachLimb
+subtractNumber at eachLimb do doneCheck
+subtractNumber at eachLimb branch if done goto finish else goto subtractLimb
+subtractNumber at subtractLimb do readTargetLimb
+subtractNumber at subtractLimb do readOther
+subtractNumber at subtractLimb do takeAway
+subtractNumber at subtractLimb do enoughCheck
+subtractNumber at subtractLimb branch if enough goto plain else goto borrowed
+subtractNumber at plain do difference
+subtractNumber at plain do writePlain
+subtractNumber at plain set borrow zeroWide
+subtractNumber at plain goto nextLimb
+subtractNumber at borrowed do lifted
+subtractNumber at borrowed do borrowedDifference
+subtractNumber at borrowed do writeBorrowed
+subtractNumber at borrowed set borrow oneWide
+subtractNumber at borrowed goto nextLimb
+subtractNumber at nextLimb do advance
+subtractNumber at nextLimb set at nextAt
+subtractNumber at nextLimb goto eachLimb
+subtractNumber at finish do trimIt
+subtractNumber at finish return ok none
+
+readTarget is call
+readTarget in subtractNumber
+readTarget invokes machine.loadInt64
+readTarget argument address machine.Address target copy
+readTarget result length Int64
+readTarget ownedBy none
+readTarget cleanedBy none
+readTarget borrows none
+readTarget catch none
+readTarget suppresses none
+
+doneCheck is call
+doneCheck in subtractNumber
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 length copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+readTargetLimb is call
+readTargetLimb in subtractNumber
+readTargetLimb invokes readLimbRaw
+readTargetLimb argument number machine.Address target copy
+readTargetLimb argument position Int64 at copy
+readTargetLimb result targetLimb UInt64
+readTargetLimb ownedBy none
+readTargetLimb cleanedBy none
+readTargetLimb borrows none
+readTargetLimb catch none
+readTargetLimb suppresses none
+
+readOther is call
+readOther in subtractNumber
+readOther invokes readLimb
+readOther argument number machine.Address subtrahend copy
+readOther argument position Int64 at copy
+readOther result otherLimb UInt64
+readOther ownedBy none
+readOther cleanedBy none
+readOther borrows none
+readOther catch none
+readOther suppresses none
+
+takeAway is call
+takeAway in subtractNumber
+takeAway invokes math.addUInt64
+takeAway argument left UInt64 otherLimb copy
+takeAway argument right UInt64 borrow copy
+takeAway result owed UInt64
+takeAway ownedBy none
+takeAway cleanedBy none
+takeAway borrows none
+takeAway catch none
+takeAway suppresses none
+
+enoughCheck is call
+enoughCheck in subtractNumber
+enoughCheck invokes compare.greaterOrEqualUInt64
+enoughCheck argument left UInt64 targetLimb copy
+enoughCheck argument right UInt64 owed copy
+enoughCheck result enough Bool
+enoughCheck ownedBy none
+enoughCheck cleanedBy none
+enoughCheck borrows none
+enoughCheck catch none
+enoughCheck suppresses none
+
+difference is call
+difference in subtractNumber
+difference invokes math.subtractUInt64
+difference argument left UInt64 targetLimb copy
+difference argument right UInt64 owed copy
+difference result plainLimb UInt64
+difference ownedBy none
+difference cleanedBy none
+difference borrows none
+difference catch none
+difference suppresses none
+
+writePlain is call
+writePlain in subtractNumber
+writePlain invokes writeLimb
+writePlain argument number machine.Address target copy
+writePlain argument position Int64 at copy
+writePlain argument value UInt64 plainLimb copy
+writePlain result none
+writePlain ownedBy none
+writePlain cleanedBy none
+writePlain borrows none
+writePlain catch none
+writePlain suppresses none
+
+lifted is call
+lifted in subtractNumber
+lifted invokes math.addUInt64
+lifted argument left UInt64 targetLimb copy
+lifted argument right UInt64 base copy
+lifted result liftedLimb UInt64
+lifted ownedBy none
+lifted cleanedBy none
+lifted borrows none
+lifted catch none
+lifted suppresses none
+
+borrowedDifference is call
+borrowedDifference in subtractNumber
+borrowedDifference invokes math.subtractUInt64
+borrowedDifference argument left UInt64 liftedLimb copy
+borrowedDifference argument right UInt64 owed copy
+borrowedDifference result borrowedLimb UInt64
+borrowedDifference ownedBy none
+borrowedDifference cleanedBy none
+borrowedDifference borrows none
+borrowedDifference catch none
+borrowedDifference suppresses none
+
+writeBorrowed is call
+writeBorrowed in subtractNumber
+writeBorrowed invokes writeLimb
+writeBorrowed argument number machine.Address target copy
+writeBorrowed argument position Int64 at copy
+writeBorrowed argument value UInt64 borrowedLimb copy
+writeBorrowed result none
+writeBorrowed ownedBy none
+writeBorrowed cleanedBy none
+writeBorrowed borrows none
+writeBorrowed catch none
+writeBorrowed suppresses none
+
+advance is call
+advance in subtractNumber
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 one copy
+advance result nextAt Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+trimIt is call
+trimIt in subtractNumber
+trimIt invokes trim
+trimIt argument number machine.Address target copy
+trimIt argument length Int64 length copy
+trimIt result none
+trimIt ownedBy none
+trimIt cleanedBy none
+trimIt borrows none
+trimIt catch none
+trimIt suppresses none
+
+multiplySmall is operation
+multiplySmall purpose "Multiply a number in place by a factor below 2^32"
+multiplySmall invariant multipliesExactly "\"The number becomes the exact product, carrying into a new limb when it must\""
+multiplySmall typeParameter none
+multiplySmall input number machine.Address copied
+multiplySmall input factor UInt64 copied
+multiplySmall output none
+multiplySmall outputOwnedBy none
+multiplySmall raises none
+multiplySmall effect use machine.memory
+multiplySmall effect use system.calls
+multiplySmall uses memoryAccess
+multiplySmall uses systemCalls
+multiplySmall memoryHeap false
+multiplySmall async false
+multiplySmall maxRecursion none
+multiplySmall label begin loopKind none
+multiplySmall label begin within none
+multiplySmall label eachLimb loopKind while
+multiplySmall label eachLimb within none
+multiplySmall label eachLimb maxIterations length
+multiplySmall label multiplyLimb loopKind none
+multiplySmall label multiplyLimb within eachLimb
+multiplySmall label finish loopKind none
+multiplySmall label finish within none
+multiplySmall label extend loopKind none
+multiplySmall label extend within none
+multiplySmall label settle loopKind none
+multiplySmall label settle within none
+multiplySmall let at Int64 0 mutable
+multiplySmall let carry UInt64 0 mutable
+multiplySmall let thirtyTwo Int64 32 immutable
+multiplySmall let one Int64 1 immutable
+multiplySmall let zeroWide UInt64 0 immutable
+multiplySmall at begin do readLength
+multiplySmall at begin goto eachLimb
+multiplySmall at eachLimb do doneCheck
+multiplySmall at eachLimb branch if done goto finish else goto multiplyLimb
+multiplySmall at multiplyLimb do readNumberLimb
+multiplySmall at multiplyLimb do product
+multiplySmall at multiplyLimb do withCarry
+multiplySmall at multiplyLimb do lowOf
+multiplySmall at multiplyLimb do writeProduct
+multiplySmall at multiplyLimb do carryOf
+multiplySmall at multiplyLimb set carry nextCarry
+multiplySmall at multiplyLimb do advance
+multiplySmall at multiplyLimb set at nextAt
+multiplySmall at multiplyLimb goto eachLimb
+multiplySmall at finish do carryCheck
+multiplySmall at finish branch if carried goto extend else goto settle
+multiplySmall at extend do longerLength
+multiplySmall at extend do roomCheck
+multiplySmall at extend do writeCarry
+multiplySmall at extend do storeLength
+multiplySmall at extend return ok none
+multiplySmall at settle do trimIt
+multiplySmall at settle return ok none
+
+readLength is call
+readLength in multiplySmall
+readLength invokes machine.loadInt64
+readLength argument address machine.Address number copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+doneCheck is call
+doneCheck in multiplySmall
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 length copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+readNumberLimb is call
+readNumberLimb in multiplySmall
+readNumberLimb invokes readLimbRaw
+readNumberLimb argument number machine.Address number copy
+readNumberLimb argument position Int64 at copy
+readNumberLimb result limb UInt64
+readNumberLimb ownedBy none
+readNumberLimb cleanedBy none
+readNumberLimb borrows none
+readNumberLimb catch none
+readNumberLimb suppresses none
+
+product is call
+product in multiplySmall
+product invokes math.multiplyUInt64
+product argument left UInt64 limb copy
+product argument right UInt64 factor copy
+product result limbProduct UInt64
+product ownedBy none
+product cleanedBy none
+product borrows none
+product catch none
+product suppresses none
+
+withCarry is call
+withCarry in multiplySmall
+withCarry invokes math.addUInt64
+withCarry argument left UInt64 limbProduct copy
+withCarry argument right UInt64 carry copy
+withCarry result total UInt64
+withCarry ownedBy none
+withCarry cleanedBy none
+withCarry borrows none
+withCarry catch none
+withCarry suppresses none
+
+lowOf is call
+lowOf in multiplySmall
+lowOf invokes bits.andUInt64
+lowOf argument left UInt64 total copy
+lowOf argument right UInt64 limbMask copy
+lowOf result low UInt64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+writeProduct is call
+writeProduct in multiplySmall
+writeProduct invokes writeLimb
+writeProduct argument number machine.Address number copy
+writeProduct argument position Int64 at copy
+writeProduct argument value UInt64 low copy
+writeProduct result none
+writeProduct ownedBy none
+writeProduct cleanedBy none
+writeProduct borrows none
+writeProduct catch none
+writeProduct suppresses none
+
+carryOf is call
+carryOf in multiplySmall
+carryOf invokes bits.shiftRightUInt64
+carryOf argument value UInt64 total copy
+carryOf argument amount Int64 thirtyTwo copy
+carryOf result nextCarry UInt64
+carryOf ownedBy none
+carryOf cleanedBy none
+carryOf borrows none
+carryOf catch none
+carryOf suppresses none
+
+advance is call
+advance in multiplySmall
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 one copy
+advance result nextAt Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+carryCheck is call
+carryCheck in multiplySmall
+carryCheck invokes compare.notEqualUInt64
+carryCheck argument left UInt64 carry copy
+carryCheck argument right UInt64 zeroWide copy
+carryCheck result carried Bool
+carryCheck ownedBy none
+carryCheck cleanedBy none
+carryCheck borrows none
+carryCheck catch none
+carryCheck suppresses none
+
+longerLength is call
+longerLength in multiplySmall
+longerLength invokes math.addInt64
+longerLength argument left Int64 length copy
+longerLength argument right Int64 one copy
+longerLength result extended Int64
+longerLength ownedBy none
+longerLength cleanedBy none
+longerLength borrows none
+longerLength catch none
+longerLength suppresses none
+
+roomCheck is call
+roomCheck in multiplySmall
+roomCheck invokes fits
+roomCheck argument length Int64 extended copy
+roomCheck result none
+roomCheck ownedBy none
+roomCheck cleanedBy none
+roomCheck borrows none
+roomCheck catch none
+roomCheck suppresses none
+
+writeCarry is call
+writeCarry in multiplySmall
+writeCarry invokes writeLimb
+writeCarry argument number machine.Address number copy
+writeCarry argument position Int64 length copy
+writeCarry argument value UInt64 carry copy
+writeCarry result none
+writeCarry ownedBy none
+writeCarry cleanedBy none
+writeCarry borrows none
+writeCarry catch none
+writeCarry suppresses none
+
+storeLength is call
+storeLength in multiplySmall
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address number copy
+storeLength argument value Int64 extended copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+trimIt is call
+trimIt in multiplySmall
+trimIt invokes trim
+trimIt argument number machine.Address number copy
+trimIt argument length Int64 length copy
+trimIt result none
+trimIt ownedBy none
+trimIt cleanedBy none
+trimIt borrows none
+trimIt catch none
+trimIt suppresses none
+
+addSmall is operation
+addSmall purpose "Add a value below 2^32 to a number in place"
+addSmall invariant addsSmall "\"The number becomes the exact sum\""
+addSmall typeParameter none
+addSmall input number machine.Address copied
+addSmall input value UInt64 copied
+addSmall output none
+addSmall outputOwnedBy none
+addSmall raises none
+addSmall effect use machine.memory
+addSmall effect use system.calls
+addSmall uses memoryAccess
+addSmall uses systemCalls
+addSmall memoryHeap false
+addSmall async false
+addSmall maxRecursion none
+addSmall label begin loopKind none
+addSmall label begin within none
+addSmall label eachLimb loopKind while
+addSmall label eachLimb within none
+addSmall label eachLimb maxIterations length
+addSmall label addLimb loopKind none
+addSmall label addLimb within eachLimb
+addSmall label finish loopKind none
+addSmall label finish within none
+addSmall label extend loopKind none
+addSmall label extend within none
+addSmall label done loopKind none
+addSmall label done within none
+addSmall let at Int64 0 mutable
+addSmall let carry UInt64 0 mutable
+addSmall let zeroWide UInt64 0 immutable
+addSmall let thirtyTwo Int64 32 immutable
+addSmall let one Int64 1 immutable
+addSmall at begin set carry value
+addSmall at begin do readLength
+addSmall at begin goto eachLimb
+addSmall at eachLimb do carryCheck
+addSmall at eachLimb do doneCheck
+addSmall at eachLimb do stopCheck
+addSmall at eachLimb branch if stop goto finish else goto addLimb
+addSmall at addLimb do readNumberLimb
+addSmall at addLimb do sumLimb
+addSmall at addLimb do lowOf
+addSmall at addLimb do writeSum
+addSmall at addLimb do carryOf
+addSmall at addLimb set carry nextCarry
+addSmall at addLimb do advance
+addSmall at addLimb set at nextAt
+addSmall at addLimb goto eachLimb
+addSmall at finish do leftCheck
+addSmall at finish branch if carried goto extend else goto done
+addSmall at extend do longerLength
+addSmall at extend do roomCheck
+addSmall at extend do writeCarry
+addSmall at extend do storeLength
+addSmall at extend return ok none
+addSmall at done return ok none
+
+readLength is call
+readLength in addSmall
+readLength invokes machine.loadInt64
+readLength argument address machine.Address number copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+carryCheck is call
+carryCheck in addSmall
+carryCheck invokes compare.equalUInt64
+carryCheck argument left UInt64 carry copy
+carryCheck argument right UInt64 zeroWide copy
+carryCheck result noCarry Bool
+carryCheck ownedBy none
+carryCheck cleanedBy none
+carryCheck borrows none
+carryCheck catch none
+carryCheck suppresses none
+
+doneCheck is call
+doneCheck in addSmall
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 length copy
+doneCheck result atEnd Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+stopCheck is call
+stopCheck in addSmall
+stopCheck invokes logic.or
+stopCheck argument left Bool noCarry copy
+stopCheck argument right Bool atEnd copy
+stopCheck result stop Bool
+stopCheck ownedBy none
+stopCheck cleanedBy none
+stopCheck borrows none
+stopCheck catch none
+stopCheck suppresses none
+
+readNumberLimb is call
+readNumberLimb in addSmall
+readNumberLimb invokes readLimbRaw
+readNumberLimb argument number machine.Address number copy
+readNumberLimb argument position Int64 at copy
+readNumberLimb result limb UInt64
+readNumberLimb ownedBy none
+readNumberLimb cleanedBy none
+readNumberLimb borrows none
+readNumberLimb catch none
+readNumberLimb suppresses none
+
+sumLimb is call
+sumLimb in addSmall
+sumLimb invokes math.addUInt64
+sumLimb argument left UInt64 limb copy
+sumLimb argument right UInt64 carry copy
+sumLimb result total UInt64
+sumLimb ownedBy none
+sumLimb cleanedBy none
+sumLimb borrows none
+sumLimb catch none
+sumLimb suppresses none
+
+lowOf is call
+lowOf in addSmall
+lowOf invokes bits.andUInt64
+lowOf argument left UInt64 total copy
+lowOf argument right UInt64 limbMask copy
+lowOf result low UInt64
+lowOf ownedBy none
+lowOf cleanedBy none
+lowOf borrows none
+lowOf catch none
+lowOf suppresses none
+
+writeSum is call
+writeSum in addSmall
+writeSum invokes writeLimb
+writeSum argument number machine.Address number copy
+writeSum argument position Int64 at copy
+writeSum argument value UInt64 low copy
+writeSum result none
+writeSum ownedBy none
+writeSum cleanedBy none
+writeSum borrows none
+writeSum catch none
+writeSum suppresses none
+
+carryOf is call
+carryOf in addSmall
+carryOf invokes bits.shiftRightUInt64
+carryOf argument value UInt64 total copy
+carryOf argument amount Int64 thirtyTwo copy
+carryOf result nextCarry UInt64
+carryOf ownedBy none
+carryOf cleanedBy none
+carryOf borrows none
+carryOf catch none
+carryOf suppresses none
+
+advance is call
+advance in addSmall
+advance invokes math.addInt64
+advance argument left Int64 at copy
+advance argument right Int64 one copy
+advance result nextAt Int64
+advance ownedBy none
+advance cleanedBy none
+advance borrows none
+advance catch none
+advance suppresses none
+
+leftCheck is call
+leftCheck in addSmall
+leftCheck invokes compare.notEqualUInt64
+leftCheck argument left UInt64 carry copy
+leftCheck argument right UInt64 zeroWide copy
+leftCheck result carried Bool
+leftCheck ownedBy none
+leftCheck cleanedBy none
+leftCheck borrows none
+leftCheck catch none
+leftCheck suppresses none
+
+longerLength is call
+longerLength in addSmall
+longerLength invokes math.addInt64
+longerLength argument left Int64 length copy
+longerLength argument right Int64 one copy
+longerLength result extended Int64
+longerLength ownedBy none
+longerLength cleanedBy none
+longerLength borrows none
+longerLength catch none
+longerLength suppresses none
+
+roomCheck is call
+roomCheck in addSmall
+roomCheck invokes fits
+roomCheck argument length Int64 extended copy
+roomCheck result none
+roomCheck ownedBy none
+roomCheck cleanedBy none
+roomCheck borrows none
+roomCheck catch none
+roomCheck suppresses none
+
+writeCarry is call
+writeCarry in addSmall
+writeCarry invokes writeLimb
+writeCarry argument number machine.Address number copy
+writeCarry argument position Int64 length copy
+writeCarry argument value UInt64 carry copy
+writeCarry result none
+writeCarry ownedBy none
+writeCarry cleanedBy none
+writeCarry borrows none
+writeCarry catch none
+writeCarry suppresses none
+
+storeLength is call
+storeLength in addSmall
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address number copy
+storeLength argument value Int64 extended copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+shiftLeft is operation
+shiftLeft purpose "Multiply a number in place by 2 to a power of bits, 0 or more"
+shiftLeft invariant shiftsLeft "\"The number becomes itself times 2 to the amount\""
+shiftLeft typeParameter none
+shiftLeft input number machine.Address copied
+shiftLeft input amount Int64 copied
+shiftLeft output none
+shiftLeft outputOwnedBy none
+shiftLeft raises none
+shiftLeft effect use machine.memory
+shiftLeft effect use system.calls
+shiftLeft uses memoryAccess
+shiftLeft uses systemCalls
+shiftLeft memoryHeap false
+shiftLeft async false
+shiftLeft maxRecursion none
+shiftLeft label begin loopKind none
+shiftLeft label begin within none
+shiftLeft label shift loopKind none
+shiftLeft label shift within none
+shiftLeft label eachLimb loopKind while
+shiftLeft label eachLimb within none
+shiftLeft label eachLimb maxIterations newLength
+shiftLeft label moveLimb loopKind none
+shiftLeft label moveLimb within eachLimb
+shiftLeft label settle loopKind none
+shiftLeft label settle within none
+shiftLeft label done loopKind none
+shiftLeft label done within none
+shiftLeft let at Int64 0 mutable
+shiftLeft let zero Int64 0 immutable
+shiftLeft let thirtyTwo Int64 32 immutable
+shiftLeft let one Int64 1 immutable
+shiftLeft at begin do readLength
+shiftLeft at begin do emptyCheck
+shiftLeft at begin branch if empty goto done else goto shift
+shiftLeft at shift do limbsOf
+shiftLeft at shift do bitsOf
+shiftLeft at shift do otherOf
+shiftLeft at shift do growOf
+shiftLeft at shift do newOf
+shiftLeft at shift do roomCheck
+shiftLeft at shift set at newLength
+shiftLeft at shift goto eachLimb
+shiftLeft at eachLimb do doneCheck
+shiftLeft at eachLimb branch if finished goto settle else goto moveLimb
+shiftLeft at moveLimb do downOne
+shiftLeft at moveLimb do highFrom
+shiftLeft at moveLimb do lowFrom
+shiftLeft at moveLimb do readHigh
+shiftLeft at moveLimb do readLow
+shiftLeft at moveLimb do shiftHigh
+shiftLeft at moveLimb do shiftLow
+shiftLeft at moveLimb do joinParts
+shiftLeft at moveLimb do maskOf
+shiftLeft at moveLimb do writeMoved
+shiftLeft at moveLimb set at target
+shiftLeft at moveLimb goto eachLimb
+shiftLeft at settle do trimIt
+shiftLeft at settle goto done
+shiftLeft at done return ok none
+
+readLength is call
+readLength in shiftLeft
+readLength invokes machine.loadInt64
+readLength argument address machine.Address number copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+emptyCheck is call
+emptyCheck in shiftLeft
+emptyCheck invokes compare.equalInt64
+emptyCheck argument left Int64 length copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+limbsOf is call
+limbsOf in shiftLeft
+limbsOf invokes math.divideInt64
+limbsOf argument left Int64 amount copy
+limbsOf argument right Int64 thirtyTwo copy
+limbsOf result limbShift Int64
+limbsOf ownedBy none
+limbsOf cleanedBy none
+limbsOf borrows none
+limbsOf catch none
+limbsOf suppresses none
+
+bitsOf is call
+bitsOf in shiftLeft
+bitsOf invokes math.remainderInt64
+bitsOf argument left Int64 amount copy
+bitsOf argument right Int64 thirtyTwo copy
+bitsOf result bitShift Int64
+bitsOf ownedBy none
+bitsOf cleanedBy none
+bitsOf borrows none
+bitsOf catch none
+bitsOf suppresses none
+
+otherOf is call
+otherOf in shiftLeft
+otherOf invokes math.subtractInt64
+otherOf argument left Int64 thirtyTwo copy
+otherOf argument right Int64 bitShift copy
+otherOf result otherShift Int64
+otherOf ownedBy none
+otherOf cleanedBy none
+otherOf borrows none
+otherOf catch none
+otherOf suppresses none
+
+growOf is call
+growOf in shiftLeft
+growOf invokes math.addInt64
+growOf argument left Int64 length copy
+growOf argument right Int64 limbShift copy
+growOf result grown Int64
+growOf ownedBy none
+growOf cleanedBy none
+growOf borrows none
+growOf catch none
+growOf suppresses none
+
+newOf is call
+newOf in shiftLeft
+newOf invokes math.addInt64
+newOf argument left Int64 grown copy
+newOf argument right Int64 one copy
+newOf result newLength Int64
+newOf ownedBy none
+newOf cleanedBy none
+newOf borrows none
+newOf catch none
+newOf suppresses none
+
+roomCheck is call
+roomCheck in shiftLeft
+roomCheck invokes fits
+roomCheck argument length Int64 newLength copy
+roomCheck result none
+roomCheck ownedBy none
+roomCheck cleanedBy none
+roomCheck borrows none
+roomCheck catch none
+roomCheck suppresses none
+
+doneCheck is call
+doneCheck in shiftLeft
+doneCheck invokes compare.lessOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 zero copy
+doneCheck result finished Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+downOne is call
+downOne in shiftLeft
+downOne invokes math.subtractInt64
+downOne argument left Int64 at copy
+downOne argument right Int64 one copy
+downOne result target Int64
+downOne ownedBy none
+downOne cleanedBy none
+downOne borrows none
+downOne catch none
+downOne suppresses none
+
+highFrom is call
+highFrom in shiftLeft
+highFrom invokes math.subtractInt64
+highFrom argument left Int64 target copy
+highFrom argument right Int64 limbShift copy
+highFrom result highPosition Int64
+highFrom ownedBy none
+highFrom cleanedBy none
+highFrom borrows none
+highFrom catch none
+highFrom suppresses none
+
+lowFrom is call
+lowFrom in shiftLeft
+lowFrom invokes math.subtractInt64
+lowFrom argument left Int64 highPosition copy
+lowFrom argument right Int64 one copy
+lowFrom result lowPosition Int64
+lowFrom ownedBy none
+lowFrom cleanedBy none
+lowFrom borrows none
+lowFrom catch none
+lowFrom suppresses none
+
+readHigh is call
+readHigh in shiftLeft
+readHigh invokes readLimb
+readHigh argument number machine.Address number copy
+readHigh argument position Int64 highPosition copy
+readHigh result highLimb UInt64
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+readLow is call
+readLow in shiftLeft
+readLow invokes readLimb
+readLow argument number machine.Address number copy
+readLow argument position Int64 lowPosition copy
+readLow result lowLimb UInt64
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+shiftHigh is call
+shiftHigh in shiftLeft
+shiftHigh invokes bits.shiftLeftUInt64
+shiftHigh argument value UInt64 highLimb copy
+shiftHigh argument amount Int64 bitShift copy
+shiftHigh result highPart UInt64
+shiftHigh ownedBy none
+shiftHigh cleanedBy none
+shiftHigh borrows none
+shiftHigh catch none
+shiftHigh suppresses none
+
+shiftLow is call
+shiftLow in shiftLeft
+shiftLow invokes bits.shiftRightUInt64
+shiftLow argument value UInt64 lowLimb copy
+shiftLow argument amount Int64 otherShift copy
+shiftLow result lowPart UInt64
+shiftLow ownedBy none
+shiftLow cleanedBy none
+shiftLow borrows none
+shiftLow catch none
+shiftLow suppresses none
+
+joinParts is call
+joinParts in shiftLeft
+joinParts invokes bits.orUInt64
+joinParts argument left UInt64 highPart copy
+joinParts argument right UInt64 lowPart copy
+joinParts result joined UInt64
+joinParts ownedBy none
+joinParts cleanedBy none
+joinParts borrows none
+joinParts catch none
+joinParts suppresses none
+
+maskOf is call
+maskOf in shiftLeft
+maskOf invokes bits.andUInt64
+maskOf argument left UInt64 joined copy
+maskOf argument right UInt64 limbMask copy
+maskOf result limb UInt64
+maskOf ownedBy none
+maskOf cleanedBy none
+maskOf borrows none
+maskOf catch none
+maskOf suppresses none
+
+writeMoved is call
+writeMoved in shiftLeft
+writeMoved invokes writeLimb
+writeMoved argument number machine.Address number copy
+writeMoved argument position Int64 target copy
+writeMoved argument value UInt64 limb copy
+writeMoved result none
+writeMoved ownedBy none
+writeMoved cleanedBy none
+writeMoved borrows none
+writeMoved catch none
+writeMoved suppresses none
+
+trimIt is call
+trimIt in shiftLeft
+trimIt invokes trim
+trimIt argument number machine.Address number copy
+trimIt argument length Int64 newLength copy
+trimIt result none
+trimIt ownedBy none
+trimIt cleanedBy none
+trimIt borrows none
+trimIt catch none
+trimIt suppresses none
+
+shiftRightOne is operation
+shiftRightOne purpose "Halve a number in place, dropping the bit it loses"
+shiftRightOne invariant halves "\"The number becomes itself divided by 2, rounded down\""
+shiftRightOne typeParameter none
+shiftRightOne input number machine.Address copied
+shiftRightOne output none
+shiftRightOne outputOwnedBy none
+shiftRightOne raises none
+shiftRightOne effect use machine.memory
+shiftRightOne uses memoryAccess
+shiftRightOne memoryHeap false
+shiftRightOne async false
+shiftRightOne maxRecursion none
+shiftRightOne label begin loopKind none
+shiftRightOne label begin within none
+shiftRightOne label eachLimb loopKind while
+shiftRightOne label eachLimb within none
+shiftRightOne label eachLimb maxIterations length
+shiftRightOne label moveLimb loopKind none
+shiftRightOne label moveLimb within eachLimb
+shiftRightOne label finish loopKind none
+shiftRightOne label finish within none
+shiftRightOne let at Int64 0 mutable
+shiftRightOne let one Int64 1 immutable
+shiftRightOne let oneWide UInt64 1 immutable
+shiftRightOne let thirtyOne Int64 31 immutable
+shiftRightOne at begin do readLength
+shiftRightOne at begin goto eachLimb
+shiftRightOne at eachLimb do doneCheck
+shiftRightOne at eachLimb branch if done goto finish else goto moveLimb
+shiftRightOne at moveLimb do readHere
+shiftRightOne at moveLimb do nextOf
+shiftRightOne at moveLimb do readNext
+shiftRightOne at moveLimb do halfOf
+shiftRightOne at moveLimb do carryBit
+shiftRightOne at moveLimb do carryUp
+shiftRightOne at moveLimb do joinParts
+shiftRightOne at moveLimb do writeHalf
+shiftRightOne at moveLimb set at nextPosition
+shiftRightOne at moveLimb goto eachLimb
+shiftRightOne at finish do trimIt
+shiftRightOne at finish return ok none
+
+readLength is call
+readLength in shiftRightOne
+readLength invokes machine.loadInt64
+readLength argument address machine.Address number copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+doneCheck is call
+doneCheck in shiftRightOne
+doneCheck invokes compare.greaterOrEqualInt64
+doneCheck argument left Int64 at copy
+doneCheck argument right Int64 length copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+readHere is call
+readHere in shiftRightOne
+readHere invokes readLimbRaw
+readHere argument number machine.Address number copy
+readHere argument position Int64 at copy
+readHere result limb UInt64
+readHere ownedBy none
+readHere cleanedBy none
+readHere borrows none
+readHere catch none
+readHere suppresses none
+
+nextOf is call
+nextOf in shiftRightOne
+nextOf invokes math.addInt64
+nextOf argument left Int64 at copy
+nextOf argument right Int64 one copy
+nextOf result nextPosition Int64
+nextOf ownedBy none
+nextOf cleanedBy none
+nextOf borrows none
+nextOf catch none
+nextOf suppresses none
+
+readNext is call
+readNext in shiftRightOne
+readNext invokes readLimb
+readNext argument number machine.Address number copy
+readNext argument position Int64 nextPosition copy
+readNext result nextLimb UInt64
+readNext ownedBy none
+readNext cleanedBy none
+readNext borrows none
+readNext catch none
+readNext suppresses none
+
+halfOf is call
+halfOf in shiftRightOne
+halfOf invokes bits.shiftRightUInt64
+halfOf argument value UInt64 limb copy
+halfOf argument amount Int64 one copy
+halfOf result half UInt64
+halfOf ownedBy none
+halfOf cleanedBy none
+halfOf borrows none
+halfOf catch none
+halfOf suppresses none
+
+carryBit is call
+carryBit in shiftRightOne
+carryBit invokes bits.andUInt64
+carryBit argument left UInt64 nextLimb copy
+carryBit argument right UInt64 oneWide copy
+carryBit result lowBit UInt64
+carryBit ownedBy none
+carryBit cleanedBy none
+carryBit borrows none
+carryBit catch none
+carryBit suppresses none
+
+carryUp is call
+carryUp in shiftRightOne
+carryUp invokes bits.shiftLeftUInt64
+carryUp argument value UInt64 lowBit copy
+carryUp argument amount Int64 thirtyOne copy
+carryUp result carried UInt64
+carryUp ownedBy none
+carryUp cleanedBy none
+carryUp borrows none
+carryUp catch none
+carryUp suppresses none
+
+joinParts is call
+joinParts in shiftRightOne
+joinParts invokes bits.orUInt64
+joinParts argument left UInt64 half copy
+joinParts argument right UInt64 carried copy
+joinParts result joined UInt64
+joinParts ownedBy none
+joinParts cleanedBy none
+joinParts borrows none
+joinParts catch none
+joinParts suppresses none
+
+writeHalf is call
+writeHalf in shiftRightOne
+writeHalf invokes writeLimb
+writeHalf argument number machine.Address number copy
+writeHalf argument position Int64 at copy
+writeHalf argument value UInt64 joined copy
+writeHalf result none
+writeHalf ownedBy none
+writeHalf cleanedBy none
+writeHalf borrows none
+writeHalf catch none
+writeHalf suppresses none
+
+trimIt is call
+trimIt in shiftRightOne
+trimIt invokes trim
+trimIt argument number machine.Address number copy
+trimIt argument length Int64 length copy
+trimIt result none
+trimIt ownedBy none
+trimIt cleanedBy none
+trimIt borrows none
+trimIt catch none
+trimIt suppresses none
+
+bitLength is operation
+bitLength purpose "How many bits a number takes: 0 for 0, otherwise one more than the position of its highest set bit"
+bitLength invariant countsBits "\"A number of n bits is at least 2^(n-1) and below 2^n\""
+bitLength typeParameter none
+bitLength input number machine.Address copied
+bitLength output Int64
+bitLength outputOwnedBy none
+bitLength raises none
+bitLength effect use machine.memory
+bitLength uses memoryAccess
+bitLength memoryHeap false
+bitLength async false
+bitLength maxRecursion none
+bitLength label begin loopKind none
+bitLength label begin within none
+bitLength label giveZero loopKind none
+bitLength label giveZero within none
+bitLength label measure loopKind none
+bitLength label measure within none
+bitLength label eachBit loopKind while
+bitLength label eachBit within none
+bitLength label eachBit maxIterations thirtyTwo
+bitLength label countBit loopKind none
+bitLength label countBit within eachBit
+bitLength label finish loopKind none
+bitLength label finish within none
+bitLength let count Int64 0 mutable
+bitLength let top UInt64 0 mutable
+bitLength let zero Int64 0 immutable
+bitLength let one Int64 1 immutable
+bitLength let thirtyTwo Int64 32 immutable
+bitLength let zeroWide UInt64 0 immutable
+bitLength at begin do readLength
+bitLength at begin do emptyCheck
+bitLength at begin branch if empty goto giveZero else goto measure
+bitLength at giveZero return ok zero
+bitLength at measure do topOf
+bitLength at measure do readTop
+bitLength at measure set top topLimb
+bitLength at measure do lowerBits
+bitLength at measure set count lower
+bitLength at measure goto eachBit
+bitLength at eachBit do doneCheck
+bitLength at eachBit branch if done goto finish else goto countBit
+bitLength at countBit do halve
+bitLength at countBit set top halved
+bitLength at countBit do addBit
+bitLength at countBit set count counted
+bitLength at countBit goto eachBit
+bitLength at finish return ok count
+
+readLength is call
+readLength in bitLength
+readLength invokes machine.loadInt64
+readLength argument address machine.Address number copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+emptyCheck is call
+emptyCheck in bitLength
+emptyCheck invokes compare.equalInt64
+emptyCheck argument left Int64 length copy
+emptyCheck argument right Int64 zero copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+topOf is call
+topOf in bitLength
+topOf invokes math.subtractInt64
+topOf argument left Int64 length copy
+topOf argument right Int64 one copy
+topOf result topPosition Int64
+topOf ownedBy none
+topOf cleanedBy none
+topOf borrows none
+topOf catch none
+topOf suppresses none
+
+readTop is call
+readTop in bitLength
+readTop invokes readLimbRaw
+readTop argument number machine.Address number copy
+readTop argument position Int64 topPosition copy
+readTop result topLimb UInt64
+readTop ownedBy none
+readTop cleanedBy none
+readTop borrows none
+readTop catch none
+readTop suppresses none
+
+lowerBits is call
+lowerBits in bitLength
+lowerBits invokes math.multiplyInt64
+lowerBits argument left Int64 topPosition copy
+lowerBits argument right Int64 thirtyTwo copy
+lowerBits result lower Int64
+lowerBits ownedBy none
+lowerBits cleanedBy none
+lowerBits borrows none
+lowerBits catch none
+lowerBits suppresses none
+
+doneCheck is call
+doneCheck in bitLength
+doneCheck invokes compare.equalUInt64
+doneCheck argument left UInt64 top copy
+doneCheck argument right UInt64 zeroWide copy
+doneCheck result done Bool
+doneCheck ownedBy none
+doneCheck cleanedBy none
+doneCheck borrows none
+doneCheck catch none
+doneCheck suppresses none
+
+halve is call
+halve in bitLength
+halve invokes bits.shiftRightUInt64
+halve argument value UInt64 top copy
+halve argument amount Int64 one copy
+halve result halved UInt64
+halve ownedBy none
+halve cleanedBy none
+halve borrows none
+halve catch none
+halve suppresses none
+
+addBit is call
+addBit in bitLength
+addBit invokes math.addInt64
+addBit argument left Int64 count copy
+addBit argument right Int64 one copy
+addBit result counted Int64
+addBit ownedBy none
+addBit cleanedBy none
+addBit borrows none
+addBit catch none
+addBit suppresses none
+
+multiplyPowerOfTen is operation
+multiplyPowerOfTen purpose "Multiply a number in place by 10 to a power, 0 or more"
+multiplyPowerOfTen invariant scalesByTen "\"The number becomes itself times 10^power\""
+multiplyPowerOfTen typeParameter none
+multiplyPowerOfTen input number machine.Address copied
+multiplyPowerOfTen input power Int64 copied
+multiplyPowerOfTen output none
+multiplyPowerOfTen outputOwnedBy none
+multiplyPowerOfTen raises none
+multiplyPowerOfTen effect use machine.memory
+multiplyPowerOfTen effect use system.calls
+multiplyPowerOfTen uses memoryAccess
+multiplyPowerOfTen uses systemCalls
+multiplyPowerOfTen memoryHeap false
+multiplyPowerOfTen async false
+multiplyPowerOfTen maxRecursion none
+multiplyPowerOfTen label begin loopKind none
+multiplyPowerOfTen label begin within none
+multiplyPowerOfTen label eachBillion loopKind while
+multiplyPowerOfTen label eachBillion within none
+multiplyPowerOfTen label eachBillion maxIterations power
+multiplyPowerOfTen label byBillion loopKind none
+multiplyPowerOfTen label byBillion within eachBillion
+multiplyPowerOfTen label rest loopKind none
+multiplyPowerOfTen label rest within none
+multiplyPowerOfTen label eachTen loopKind while
+multiplyPowerOfTen label eachTen within none
+multiplyPowerOfTen label eachTen maxIterations nine
+multiplyPowerOfTen label byTen loopKind none
+multiplyPowerOfTen label byTen within eachTen
+multiplyPowerOfTen label finish loopKind none
+multiplyPowerOfTen label finish within none
+multiplyPowerOfTen let left Int64 0 mutable
+multiplyPowerOfTen let factor UInt64 1 mutable
+multiplyPowerOfTen let billion UInt64 1000000000 immutable
+multiplyPowerOfTen let ten UInt64 10 immutable
+multiplyPowerOfTen let nine Int64 9 immutable
+multiplyPowerOfTen let zero Int64 0 immutable
+multiplyPowerOfTen let one Int64 1 immutable
+multiplyPowerOfTen at begin set left power
+multiplyPowerOfTen at begin goto eachBillion
+multiplyPowerOfTen at eachBillion do bigCheck
+multiplyPowerOfTen at eachBillion branch if big goto byBillion else goto rest
+multiplyPowerOfTen at byBillion do multiplyBillion
+multiplyPowerOfTen at byBillion do lessLeft
+multiplyPowerOfTen at byBillion set left fewer
+multiplyPowerOfTen at byBillion goto eachBillion
+multiplyPowerOfTen at rest goto eachTen
+multiplyPowerOfTen at eachTen do restCheck
+multiplyPowerOfTen at eachTen branch if more goto byTen else goto finish
+multiplyPowerOfTen at byTen do tenTimes
+multiplyPowerOfTen at byTen set factor larger
+multiplyPowerOfTen at byTen do lessTen
+multiplyPowerOfTen at byTen set left fewerTens
+multiplyPowerOfTen at byTen goto eachTen
+multiplyPowerOfTen at finish do multiplyRest
+multiplyPowerOfTen at finish return ok none
+
+bigCheck is call
+bigCheck in multiplyPowerOfTen
+bigCheck invokes compare.greaterOrEqualInt64
+bigCheck argument left Int64 left copy
+bigCheck argument right Int64 nine copy
+bigCheck result big Bool
+bigCheck ownedBy none
+bigCheck cleanedBy none
+bigCheck borrows none
+bigCheck catch none
+bigCheck suppresses none
+
+multiplyBillion is call
+multiplyBillion in multiplyPowerOfTen
+multiplyBillion invokes multiplySmall
+multiplyBillion argument number machine.Address number copy
+multiplyBillion argument factor UInt64 billion copy
+multiplyBillion result none
+multiplyBillion ownedBy none
+multiplyBillion cleanedBy none
+multiplyBillion borrows none
+multiplyBillion catch none
+multiplyBillion suppresses none
+
+lessLeft is call
+lessLeft in multiplyPowerOfTen
+lessLeft invokes math.subtractInt64
+lessLeft argument left Int64 left copy
+lessLeft argument right Int64 nine copy
+lessLeft result fewer Int64
+lessLeft ownedBy none
+lessLeft cleanedBy none
+lessLeft borrows none
+lessLeft catch none
+lessLeft suppresses none
+
+restCheck is call
+restCheck in multiplyPowerOfTen
+restCheck invokes compare.greaterThanInt64
+restCheck argument left Int64 left copy
+restCheck argument right Int64 zero copy
+restCheck result more Bool
+restCheck ownedBy none
+restCheck cleanedBy none
+restCheck borrows none
+restCheck catch none
+restCheck suppresses none
+
+tenTimes is call
+tenTimes in multiplyPowerOfTen
+tenTimes invokes math.multiplyUInt64
+tenTimes argument left UInt64 factor copy
+tenTimes argument right UInt64 ten copy
+tenTimes result larger UInt64
+tenTimes ownedBy none
+tenTimes cleanedBy none
+tenTimes borrows none
+tenTimes catch none
+tenTimes suppresses none
+
+lessTen is call
+lessTen in multiplyPowerOfTen
+lessTen invokes math.subtractInt64
+lessTen argument left Int64 left copy
+lessTen argument right Int64 one copy
+lessTen result fewerTens Int64
+lessTen ownedBy none
+lessTen cleanedBy none
+lessTen borrows none
+lessTen catch none
+lessTen suppresses none
+
+multiplyRest is call
+multiplyRest in multiplyPowerOfTen
+multiplyRest invokes multiplySmall
+multiplyRest argument number machine.Address number copy
+multiplyRest argument factor UInt64 factor copy
+multiplyRest result none
+multiplyRest ownedBy none
+multiplyRest cleanedBy none
+multiplyRest borrows none
+multiplyRest catch none
+multiplyRest suppresses none
+
+lowLimbs is operation
+lowLimbs purpose "A number's lowest 64 bits"
+lowLimbs invariant readsLow "\"Gives the number itself when it is below 2^64\""
+lowLimbs typeParameter none
+lowLimbs input number machine.Address copied
+lowLimbs output UInt64
+lowLimbs outputOwnedBy none
+lowLimbs raises none
+lowLimbs effect use machine.memory
+lowLimbs uses memoryAccess
+lowLimbs memoryHeap false
+lowLimbs async false
+lowLimbs maxRecursion none
+lowLimbs label begin loopKind none
+lowLimbs label begin within none
+lowLimbs let zero Int64 0 immutable
+lowLimbs let one Int64 1 immutable
+lowLimbs let thirtyTwo Int64 32 immutable
+lowLimbs at begin do readLow
+lowLimbs at begin do readHigh
+lowLimbs at begin do shiftHigh
+lowLimbs at begin do joinParts
+lowLimbs at begin return ok joined
+
+readLow is call
+readLow in lowLimbs
+readLow invokes readLimb
+readLow argument number machine.Address number copy
+readLow argument position Int64 zero copy
+readLow result low UInt64
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+readHigh is call
+readHigh in lowLimbs
+readHigh invokes readLimb
+readHigh argument number machine.Address number copy
+readHigh argument position Int64 one copy
+readHigh result high UInt64
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+shiftHigh is call
+shiftHigh in lowLimbs
+shiftHigh invokes bits.shiftLeftUInt64
+shiftHigh argument value UInt64 high copy
+shiftHigh argument amount Int64 thirtyTwo copy
+shiftHigh result highPart UInt64
+shiftHigh ownedBy none
+shiftHigh cleanedBy none
+shiftHigh borrows none
+shiftHigh catch none
+shiftHigh suppresses none
+
+joinParts is call
+joinParts in lowLimbs
+joinParts invokes bits.orUInt64
+joinParts argument left UInt64 highPart copy
+joinParts argument right UInt64 low copy
+joinParts result joined UInt64
+joinParts ownedBy none
+joinParts cleanedBy none
+joinParts borrows none
+joinParts catch none
+joinParts suppresses none

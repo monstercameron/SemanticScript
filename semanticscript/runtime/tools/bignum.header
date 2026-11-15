@@ -1,0 +1,5 @@
+# Whole numbers of any size (up to 6,400 bits) in memory, with exact arithmetic: set, copy,
+# compare, add, subtract, multiply by a small factor or a power of ten, and shift. Floating-point
+# text is computed with them, exactly (D-125).
+#
+# This module is generated from tools/bignum.dsl by tools/build.py.

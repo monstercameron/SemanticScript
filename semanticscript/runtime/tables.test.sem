@@ -1,0 +1,1402 @@
+# Tests of the `tables` module; generated from tools/tables.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests keep their table in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state never
+# reaches, and their keys after it, from byte 61568.
+putNumber is operation
+putNumber purpose "Insert a one-slot key into the test table unless it is there, and give its row"
+putNumber invariant none
+putNumber typeParameter none
+putNumber input table machine.Address copied
+putNumber input number Int64 copied
+putNumber output Int64
+putNumber outputOwnedBy none
+putNumber raises none
+putNumber effect use machine.memory
+putNumber effect use system.calls
+putNumber uses memoryAccess
+putNumber uses systemCalls
+putNumber memoryHeap false
+putNumber async false
+putNumber maxRecursion none
+putNumber label begin loopKind none
+putNumber label begin within none
+putNumber label add loopKind none
+putNumber label add within none
+putNumber label known loopKind none
+putNumber label known within none
+putNumber let keyScratch Int64 61568 immutable
+putNumber let zero Int64 0 immutable
+putNumber let one Int64 1 immutable
+putNumber at begin do findState
+putNumber at begin do findKey
+putNumber at begin do storeKey
+putNumber at begin do hashOf
+putNumber at begin do findRow
+putNumber at begin do missingCheck
+putNumber at begin branch if missing goto add else goto known
+putNumber at add do addRow
+putNumber at add do countOf
+putNumber at add do lastOf
+putNumber at add return ok last
+putNumber at known return ok row
+
+findState is call
+findState in putNumber
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findKey is call
+findKey in putNumber
+findKey invokes machine.offset
+findKey argument address machine.Address state copy
+findKey argument bytes Int64 keyScratch copy
+findKey result key machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+storeKey is call
+storeKey in putNumber
+storeKey invokes machine.storeInt64
+storeKey argument address machine.Address key copy
+storeKey argument value Int64 number copy
+storeKey result none
+storeKey ownedBy none
+storeKey cleanedBy none
+storeKey borrows none
+storeKey catch none
+storeKey suppresses none
+
+hashOf is call
+hashOf in putNumber
+hashOf invokes hashKey
+hashOf argument table machine.Address table copy
+hashOf argument key machine.Address key copy
+hashOf result hash UInt64
+hashOf ownedBy none
+hashOf cleanedBy none
+hashOf borrows none
+hashOf catch none
+hashOf suppresses none
+
+findRow is call
+findRow in putNumber
+findRow invokes find
+findRow argument table machine.Address table copy
+findRow argument key machine.Address key copy
+findRow argument hash UInt64 hash copy
+findRow result row Int64
+findRow ownedBy none
+findRow cleanedBy none
+findRow borrows none
+findRow catch none
+findRow suppresses none
+
+missingCheck is call
+missingCheck in putNumber
+missingCheck invokes compare.lessThanInt64
+missingCheck argument left Int64 row copy
+missingCheck argument right Int64 zero copy
+missingCheck result missing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+addRow is call
+addRow in putNumber
+addRow invokes insert
+addRow argument table machine.Address table copy
+addRow argument key machine.Address key copy
+addRow argument hash UInt64 hash copy
+addRow result rowAt machine.Address
+addRow ownedBy none
+addRow cleanedBy none
+addRow borrows none
+addRow catch none
+addRow suppresses none
+
+countOf is call
+countOf in putNumber
+countOf invokes live
+countOf argument table machine.Address table copy
+countOf result count Int64
+countOf ownedBy none
+countOf cleanedBy none
+countOf borrows none
+countOf catch none
+countOf suppresses none
+
+lastOf is call
+lastOf in putNumber
+lastOf invokes math.subtractInt64
+lastOf argument left Int64 count copy
+lastOf argument right Int64 one copy
+lastOf result last Int64
+lastOf ownedBy none
+lastOf cleanedBy none
+lastOf borrows none
+lastOf catch none
+lastOf suppresses none
+
+findNumber is operation
+findNumber purpose "The row of a one-slot key in the test table, or -1"
+findNumber invariant none
+findNumber typeParameter none
+findNumber input table machine.Address copied
+findNumber input number Int64 copied
+findNumber output Int64
+findNumber outputOwnedBy none
+findNumber raises none
+findNumber effect use machine.memory
+findNumber uses memoryAccess
+findNumber memoryHeap false
+findNumber async false
+findNumber maxRecursion none
+findNumber label begin loopKind none
+findNumber label begin within none
+findNumber let keyScratch Int64 61568 immutable
+findNumber at begin do findState
+findNumber at begin do findKey
+findNumber at begin do storeKey
+findNumber at begin do hashOf
+findNumber at begin do findRow
+findNumber at begin return ok row
+
+findState is call
+findState in findNumber
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findKey is call
+findKey in findNumber
+findKey invokes machine.offset
+findKey argument address machine.Address state copy
+findKey argument bytes Int64 keyScratch copy
+findKey result key machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+storeKey is call
+storeKey in findNumber
+storeKey invokes machine.storeInt64
+storeKey argument address machine.Address key copy
+storeKey argument value Int64 number copy
+storeKey result none
+storeKey ownedBy none
+storeKey cleanedBy none
+storeKey borrows none
+storeKey catch none
+storeKey suppresses none
+
+hashOf is call
+hashOf in findNumber
+hashOf invokes hashKey
+hashOf argument table machine.Address table copy
+hashOf argument key machine.Address key copy
+hashOf result hash UInt64
+hashOf ownedBy none
+hashOf cleanedBy none
+hashOf borrows none
+hashOf catch none
+hashOf suppresses none
+
+findRow is call
+findRow in findNumber
+findRow invokes find
+findRow argument table machine.Address table copy
+findRow argument key machine.Address key copy
+findRow argument hash UInt64 hash copy
+findRow result row Int64
+findRow ownedBy none
+findRow cleanedBy none
+findRow borrows none
+findRow catch none
+findRow suppresses none
+
+keyNumber is operation
+keyNumber purpose "The one-slot key at a position of the test table"
+keyNumber invariant none
+keyNumber typeParameter none
+keyNumber input table machine.Address copied
+keyNumber input position Int64 copied
+keyNumber output Int64
+keyNumber outputOwnedBy none
+keyNumber raises none
+keyNumber effect use machine.memory
+keyNumber effect use system.calls
+keyNumber uses memoryAccess
+keyNumber uses systemCalls
+keyNumber memoryHeap false
+keyNumber async false
+keyNumber maxRecursion none
+keyNumber label begin loopKind none
+keyNumber label begin within none
+keyNumber let none
+keyNumber at begin do findKey
+keyNumber at begin do readKey
+keyNumber at begin return ok number
+
+findKey is call
+findKey in keyNumber
+findKey invokes keyAt
+findKey argument table machine.Address table copy
+findKey argument position Int64 position copy
+findKey result key machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+readKey is call
+readKey in keyNumber
+readKey invokes machine.loadInt64
+readKey argument address machine.Address key copy
+readKey result number Int64
+readKey ownedBy none
+readKey cleanedBy none
+readKey borrows none
+readKey catch none
+readKey suppresses none
+
+numberTableTest is test
+numberTableTest purpose "Keys are found after they are inserted and not after they are removed, read back in the order they were first inserted, and survive the index growing"
+numberTableTest verifies prepare startsEmpty
+numberTableTest verifies shape learnsOnce
+numberTableTest verifies rowAddress findsRow
+numberTableTest verifies hashKey hashesContent
+numberTableTest verifies find findsLive
+numberTableTest verifies insert insertsLast
+numberTableTest verifies remove removesRow
+numberTableTest verifies live countsLive
+numberTableTest verifies keyAt keysInOrder
+numberTableTest verifies release givesBack
+numberTableTest typeParameter none
+numberTableTest input none
+numberTableTest output none
+numberTableTest outputOwnedBy none
+numberTableTest raises none
+numberTableTest effect use machine.memory
+numberTableTest effect use system.calls
+numberTableTest uses memoryAccess
+numberTableTest uses systemCalls
+numberTableTest memoryHeap false
+numberTableTest async false
+numberTableTest maxRecursion none
+numberTableTest label begin loopKind none
+numberTableTest label begin within none
+numberTableTest label eachPut loopKind while
+numberTableTest label eachPut within none
+numberTableTest label eachPut maxIterations hundred
+numberTableTest label putOne loopKind none
+numberTableTest label putOne within eachPut
+numberTableTest label checkPuts loopKind none
+numberTableTest label checkPuts within none
+numberTableTest let n Int64 0 mutable
+numberTableTest let hundred Int64 100 immutable
+numberTableTest let tableAt Int64 61440 immutable
+numberTableTest let zeroByte Byte 0 immutable
+numberTableTest let zero Int64 0 immutable
+numberTableTest let minusOne Int64 -1 immutable
+numberTableTest let one Int64 1 immutable
+numberTableTest let two Int64 2 immutable
+numberTableTest let twentyFour Int64 24 immutable
+numberTableTest let three Int64 3 immutable
+numberTableTest let seven Int64 7 immutable
+numberTableTest let fourteen Int64 14 immutable
+numberTableTest let fifteen Int64 15 immutable
+numberTableTest let seventy Int64 70 immutable
+numberTableTest let ten Int64 10 immutable
+numberTableTest let ninetyNine Int64 99 immutable
+numberTableTest let seventySeven Int64 77 immutable
+numberTableTest let nine Int64 9 immutable
+numberTableTest let sixtyThree Int64 63 immutable
+numberTableTest let keyScratch Int64 61568 immutable
+numberTableTest let fiveHundred Int64 500 immutable
+numberTableTest at begin do findState
+numberTableTest at begin do findTable
+numberTableTest at begin do clearTable
+numberTableTest at begin do start
+numberTableTest at begin do learn
+numberTableTest at begin do learnAgain
+numberTableTest at begin do findStride
+numberTableTest at begin do readStride
+numberTableTest at begin do expectStride
+numberTableTest at begin goto eachPut
+numberTableTest at eachPut do putsDone
+numberTableTest at eachPut branch if donePuts goto checkPuts else goto putOne
+numberTableTest at putOne do timesSeven
+numberTableTest at putOne do putKey
+numberTableTest at putOne do expectRow
+numberTableTest at putOne do nextPut
+numberTableTest at putOne set n afterPut
+numberTableTest at putOne goto eachPut
+numberTableTest at checkPuts do countPuts
+numberTableTest at checkPuts do expectCount
+numberTableTest at checkPuts do putAgain
+numberTableTest at checkPuts do expectSame
+numberTableTest at checkPuts do findMissing
+numberTableTest at checkPuts do expectMissing
+numberTableTest at checkPuts do findSeventy
+numberTableTest at checkPuts do expectSeventy
+numberTableTest at checkPuts do dropSeventy
+numberTableTest at checkPuts do findGone
+numberTableTest at checkPuts do expectGone
+numberTableTest at checkPuts do countLeft
+numberTableTest at checkPuts do expectLeft
+numberTableTest at checkPuts do readTenth
+numberTableTest at checkPuts do expectTenth
+numberTableTest at checkPuts do readNinth
+numberTableTest at checkPuts do expectNinth
+numberTableTest at checkPuts do putBack
+numberTableTest at checkPuts do expectBackLast
+numberTableTest at checkPuts do readLast
+numberTableTest at checkPuts do expectLast
+numberTableTest at checkPuts do findFourteen
+numberTableTest at checkPuts do expectFourteen
+numberTableTest at checkPuts do findKey
+numberTableTest at checkPuts do storeKey
+numberTableTest at checkPuts do hashOf
+numberTableTest at checkPuts do findNone
+numberTableTest at checkPuts do expectNone
+numberTableTest at checkPuts do addRow
+numberTableTest at checkPuts do findAdded
+numberTableTest at checkPuts do expectAdded
+numberTableTest at checkPuts do findRowAt
+numberTableTest at checkPuts do sameCheck
+numberTableTest at checkPuts do expectSameRow
+numberTableTest at checkPuts do findFirstKey
+numberTableTest at checkPuts do readFirstKey
+numberTableTest at checkPuts do expectFirstKey
+numberTableTest at checkPuts do free
+numberTableTest at checkPuts do countFreed
+numberTableTest at checkPuts do expectFreed
+numberTableTest at checkPuts return ok none
+
+findState is call
+findState in numberTableTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findTable is call
+findTable in numberTableTest
+findTable invokes machine.offset
+findTable argument address machine.Address state copy
+findTable argument bytes Int64 tableAt copy
+findTable result table machine.Address
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch none
+findTable suppresses none
+
+clearTable is call
+clearTable in numberTableTest
+clearTable invokes machine.fill
+clearTable argument target machine.Address table copy
+clearTable argument value Byte zeroByte copy
+clearTable argument bytes Int64 tableBytes copy
+clearTable result none
+clearTable ownedBy none
+clearTable cleanedBy none
+clearTable borrows none
+clearTable catch none
+clearTable suppresses none
+
+start is call
+start in numberTableTest
+start invokes prepare
+start argument table machine.Address table copy
+start argument text Int64 zero copy
+start argument keySlots Int64 minusOne copy
+start argument valueSlots Int64 zero copy
+start result none
+start ownedBy none
+start cleanedBy none
+start borrows none
+start catch none
+start suppresses none
+
+learn is call
+learn in numberTableTest
+learn invokes shape
+learn argument table machine.Address table copy
+learn argument keySlots Int64 one copy
+learn argument valueSlots Int64 zero copy
+learn result none
+learn ownedBy none
+learn cleanedBy none
+learn borrows none
+learn catch none
+learn suppresses none
+
+learnAgain is call
+learnAgain in numberTableTest
+learnAgain invokes shape
+learnAgain argument table machine.Address table copy
+learnAgain argument keySlots Int64 two copy
+learnAgain argument valueSlots Int64 two copy
+learnAgain result none
+learnAgain ownedBy none
+learnAgain cleanedBy none
+learnAgain borrows none
+learnAgain catch none
+learnAgain suppresses none
+
+findStride is call
+findStride in numberTableTest
+findStride invokes machine.offset
+findStride argument address machine.Address table copy
+findStride argument bytes Int64 twentyFour copy
+findStride result strideSlot machine.Address
+findStride ownedBy none
+findStride cleanedBy none
+findStride borrows none
+findStride catch none
+findStride suppresses none
+
+readStride is call
+readStride in numberTableTest
+readStride invokes machine.loadInt64
+readStride argument address machine.Address strideSlot copy
+readStride result stride Int64
+readStride ownedBy none
+readStride cleanedBy none
+readStride borrows none
+readStride catch none
+readStride suppresses none
+
+expectStride is call
+expectStride in numberTableTest
+expectStride invokes test.assertEqualInt64
+expectStride argument expected Int64 three copy
+expectStride argument actual Int64 stride copy
+expectStride result none
+expectStride ownedBy none
+expectStride cleanedBy none
+expectStride borrows none
+expectStride catch none
+expectStride suppresses none
+
+putsDone is call
+putsDone in numberTableTest
+putsDone invokes compare.greaterOrEqualInt64
+putsDone argument left Int64 n copy
+putsDone argument right Int64 hundred copy
+putsDone result donePuts Bool
+putsDone ownedBy none
+putsDone cleanedBy none
+putsDone borrows none
+putsDone catch none
+putsDone suppresses none
+
+timesSeven is call
+timesSeven in numberTableTest
+timesSeven invokes math.multiplyInt64
+timesSeven argument left Int64 n copy
+timesSeven argument right Int64 seven copy
+timesSeven result seventh Int64
+timesSeven ownedBy none
+timesSeven cleanedBy none
+timesSeven borrows none
+timesSeven catch none
+timesSeven suppresses none
+
+putKey is call
+putKey in numberTableTest
+putKey invokes putNumber
+putKey argument table machine.Address table copy
+putKey argument number Int64 seventh copy
+putKey result row Int64
+putKey ownedBy none
+putKey cleanedBy none
+putKey borrows none
+putKey catch none
+putKey suppresses none
+
+expectRow is call
+expectRow in numberTableTest
+expectRow invokes test.assertEqualInt64
+expectRow argument expected Int64 n copy
+expectRow argument actual Int64 row copy
+expectRow result none
+expectRow ownedBy none
+expectRow cleanedBy none
+expectRow borrows none
+expectRow catch none
+expectRow suppresses none
+
+nextPut is call
+nextPut in numberTableTest
+nextPut invokes math.addInt64
+nextPut argument left Int64 n copy
+nextPut argument right Int64 one copy
+nextPut result afterPut Int64
+nextPut ownedBy none
+nextPut cleanedBy none
+nextPut borrows none
+nextPut catch none
+nextPut suppresses none
+
+countPuts is call
+countPuts in numberTableTest
+countPuts invokes live
+countPuts argument table machine.Address table copy
+countPuts result count Int64
+countPuts ownedBy none
+countPuts cleanedBy none
+countPuts borrows none
+countPuts catch none
+countPuts suppresses none
+
+expectCount is call
+expectCount in numberTableTest
+expectCount invokes test.assertEqualInt64
+expectCount argument expected Int64 hundred copy
+expectCount argument actual Int64 count copy
+expectCount result none
+expectCount ownedBy none
+expectCount cleanedBy none
+expectCount borrows none
+expectCount catch none
+expectCount suppresses none
+
+putAgain is call
+putAgain in numberTableTest
+putAgain invokes putNumber
+putAgain argument table machine.Address table copy
+putAgain argument number Int64 fourteen copy
+putAgain result againRow Int64
+putAgain ownedBy none
+putAgain cleanedBy none
+putAgain borrows none
+putAgain catch none
+putAgain suppresses none
+
+expectSame is call
+expectSame in numberTableTest
+expectSame invokes test.assertEqualInt64
+expectSame argument expected Int64 two copy
+expectSame argument actual Int64 againRow copy
+expectSame result none
+expectSame ownedBy none
+expectSame cleanedBy none
+expectSame borrows none
+expectSame catch none
+expectSame suppresses none
+
+findMissing is call
+findMissing in numberTableTest
+findMissing invokes findNumber
+findMissing argument table machine.Address table copy
+findMissing argument number Int64 fifteen copy
+findMissing result missingRow Int64
+findMissing ownedBy none
+findMissing cleanedBy none
+findMissing borrows none
+findMissing catch none
+findMissing suppresses none
+
+expectMissing is call
+expectMissing in numberTableTest
+expectMissing invokes test.assertEqualInt64
+expectMissing argument expected Int64 minusOne copy
+expectMissing argument actual Int64 missingRow copy
+expectMissing result none
+expectMissing ownedBy none
+expectMissing cleanedBy none
+expectMissing borrows none
+expectMissing catch none
+expectMissing suppresses none
+
+findSeventy is call
+findSeventy in numberTableTest
+findSeventy invokes findNumber
+findSeventy argument table machine.Address table copy
+findSeventy argument number Int64 seventy copy
+findSeventy result seventyRow Int64
+findSeventy ownedBy none
+findSeventy cleanedBy none
+findSeventy borrows none
+findSeventy catch none
+findSeventy suppresses none
+
+expectSeventy is call
+expectSeventy in numberTableTest
+expectSeventy invokes test.assertEqualInt64
+expectSeventy argument expected Int64 ten copy
+expectSeventy argument actual Int64 seventyRow copy
+expectSeventy result none
+expectSeventy ownedBy none
+expectSeventy cleanedBy none
+expectSeventy borrows none
+expectSeventy catch none
+expectSeventy suppresses none
+
+dropSeventy is call
+dropSeventy in numberTableTest
+dropSeventy invokes remove
+dropSeventy argument table machine.Address table copy
+dropSeventy argument row Int64 seventyRow copy
+dropSeventy result none
+dropSeventy ownedBy none
+dropSeventy cleanedBy none
+dropSeventy borrows none
+dropSeventy catch none
+dropSeventy suppresses none
+
+findGone is call
+findGone in numberTableTest
+findGone invokes findNumber
+findGone argument table machine.Address table copy
+findGone argument number Int64 seventy copy
+findGone result goneRow Int64
+findGone ownedBy none
+findGone cleanedBy none
+findGone borrows none
+findGone catch none
+findGone suppresses none
+
+expectGone is call
+expectGone in numberTableTest
+expectGone invokes test.assertEqualInt64
+expectGone argument expected Int64 minusOne copy
+expectGone argument actual Int64 goneRow copy
+expectGone result none
+expectGone ownedBy none
+expectGone cleanedBy none
+expectGone borrows none
+expectGone catch none
+expectGone suppresses none
+
+countLeft is call
+countLeft in numberTableTest
+countLeft invokes live
+countLeft argument table machine.Address table copy
+countLeft result left Int64
+countLeft ownedBy none
+countLeft cleanedBy none
+countLeft borrows none
+countLeft catch none
+countLeft suppresses none
+
+expectLeft is call
+expectLeft in numberTableTest
+expectLeft invokes test.assertEqualInt64
+expectLeft argument expected Int64 ninetyNine copy
+expectLeft argument actual Int64 left copy
+expectLeft result none
+expectLeft ownedBy none
+expectLeft cleanedBy none
+expectLeft borrows none
+expectLeft catch none
+expectLeft suppresses none
+
+readTenth is call
+readTenth in numberTableTest
+readTenth invokes keyNumber
+readTenth argument table machine.Address table copy
+readTenth argument position Int64 ten copy
+readTenth result tenth Int64
+readTenth ownedBy none
+readTenth cleanedBy none
+readTenth borrows none
+readTenth catch none
+readTenth suppresses none
+
+expectTenth is call
+expectTenth in numberTableTest
+expectTenth invokes test.assertEqualInt64
+expectTenth argument expected Int64 seventySeven copy
+expectTenth argument actual Int64 tenth copy
+expectTenth result none
+expectTenth ownedBy none
+expectTenth cleanedBy none
+expectTenth borrows none
+expectTenth catch none
+expectTenth suppresses none
+
+readNinth is call
+readNinth in numberTableTest
+readNinth invokes keyNumber
+readNinth argument table machine.Address table copy
+readNinth argument position Int64 nine copy
+readNinth result ninth Int64
+readNinth ownedBy none
+readNinth cleanedBy none
+readNinth borrows none
+readNinth catch none
+readNinth suppresses none
+
+expectNinth is call
+expectNinth in numberTableTest
+expectNinth invokes test.assertEqualInt64
+expectNinth argument expected Int64 sixtyThree copy
+expectNinth argument actual Int64 ninth copy
+expectNinth result none
+expectNinth ownedBy none
+expectNinth cleanedBy none
+expectNinth borrows none
+expectNinth catch none
+expectNinth suppresses none
+
+putBack is call
+putBack in numberTableTest
+putBack invokes putNumber
+putBack argument table machine.Address table copy
+putBack argument number Int64 seventy copy
+putBack result backRow Int64
+putBack ownedBy none
+putBack cleanedBy none
+putBack borrows none
+putBack catch none
+putBack suppresses none
+
+expectBackLast is call
+expectBackLast in numberTableTest
+expectBackLast invokes test.assertEqualInt64
+expectBackLast argument expected Int64 ninetyNine copy
+expectBackLast argument actual Int64 backRow copy
+expectBackLast result none
+expectBackLast ownedBy none
+expectBackLast cleanedBy none
+expectBackLast borrows none
+expectBackLast catch none
+expectBackLast suppresses none
+
+readLast is call
+readLast in numberTableTest
+readLast invokes keyNumber
+readLast argument table machine.Address table copy
+readLast argument position Int64 ninetyNine copy
+readLast result last Int64
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch none
+readLast suppresses none
+
+expectLast is call
+expectLast in numberTableTest
+expectLast invokes test.assertEqualInt64
+expectLast argument expected Int64 seventy copy
+expectLast argument actual Int64 last copy
+expectLast result none
+expectLast ownedBy none
+expectLast cleanedBy none
+expectLast borrows none
+expectLast catch none
+expectLast suppresses none
+
+findFourteen is call
+findFourteen in numberTableTest
+findFourteen invokes findNumber
+findFourteen argument table machine.Address table copy
+findFourteen argument number Int64 fourteen copy
+findFourteen result fourteenRow Int64
+findFourteen ownedBy none
+findFourteen cleanedBy none
+findFourteen borrows none
+findFourteen catch none
+findFourteen suppresses none
+
+expectFourteen is call
+expectFourteen in numberTableTest
+expectFourteen invokes test.assertEqualInt64
+expectFourteen argument expected Int64 two copy
+expectFourteen argument actual Int64 fourteenRow copy
+expectFourteen result none
+expectFourteen ownedBy none
+expectFourteen cleanedBy none
+expectFourteen borrows none
+expectFourteen catch none
+expectFourteen suppresses none
+
+findKey is call
+findKey in numberTableTest
+findKey invokes machine.offset
+findKey argument address machine.Address state copy
+findKey argument bytes Int64 keyScratch copy
+findKey result key machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+storeKey is call
+storeKey in numberTableTest
+storeKey invokes machine.storeInt64
+storeKey argument address machine.Address key copy
+storeKey argument value Int64 fiveHundred copy
+storeKey result none
+storeKey ownedBy none
+storeKey cleanedBy none
+storeKey borrows none
+storeKey catch none
+storeKey suppresses none
+
+hashOf is call
+hashOf in numberTableTest
+hashOf invokes hashKey
+hashOf argument table machine.Address table copy
+hashOf argument key machine.Address key copy
+hashOf result hash UInt64
+hashOf ownedBy none
+hashOf cleanedBy none
+hashOf borrows none
+hashOf catch none
+hashOf suppresses none
+
+findNone is call
+findNone in numberTableTest
+findNone invokes find
+findNone argument table machine.Address table copy
+findNone argument key machine.Address key copy
+findNone argument hash UInt64 hash copy
+findNone result noRow Int64
+findNone ownedBy none
+findNone cleanedBy none
+findNone borrows none
+findNone catch none
+findNone suppresses none
+
+expectNone is call
+expectNone in numberTableTest
+expectNone invokes test.assertEqualInt64
+expectNone argument expected Int64 minusOne copy
+expectNone argument actual Int64 noRow copy
+expectNone result none
+expectNone ownedBy none
+expectNone cleanedBy none
+expectNone borrows none
+expectNone catch none
+expectNone suppresses none
+
+addRow is call
+addRow in numberTableTest
+addRow invokes insert
+addRow argument table machine.Address table copy
+addRow argument key machine.Address key copy
+addRow argument hash UInt64 hash copy
+addRow result rowAt machine.Address
+addRow ownedBy none
+addRow cleanedBy none
+addRow borrows none
+addRow catch none
+addRow suppresses none
+
+findAdded is call
+findAdded in numberTableTest
+findAdded invokes find
+findAdded argument table machine.Address table copy
+findAdded argument key machine.Address key copy
+findAdded argument hash UInt64 hash copy
+findAdded result addedRow Int64
+findAdded ownedBy none
+findAdded cleanedBy none
+findAdded borrows none
+findAdded catch none
+findAdded suppresses none
+
+expectAdded is call
+expectAdded in numberTableTest
+expectAdded invokes test.assertEqualInt64
+expectAdded argument expected Int64 hundred copy
+expectAdded argument actual Int64 addedRow copy
+expectAdded result none
+expectAdded ownedBy none
+expectAdded cleanedBy none
+expectAdded borrows none
+expectAdded catch none
+expectAdded suppresses none
+
+findRowAt is call
+findRowAt in numberTableTest
+findRowAt invokes rowAddress
+findRowAt argument table machine.Address table copy
+findRowAt argument row Int64 addedRow copy
+findRowAt result sameAt machine.Address
+findRowAt ownedBy none
+findRowAt cleanedBy none
+findRowAt borrows none
+findRowAt catch none
+findRowAt suppresses none
+
+sameCheck is call
+sameCheck in numberTableTest
+sameCheck invokes machine.equal
+sameCheck argument left machine.Address rowAt copy
+sameCheck argument right machine.Address sameAt copy
+sameCheck result sameRow Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+expectSameRow is call
+expectSameRow in numberTableTest
+expectSameRow invokes test.assertTrue
+expectSameRow argument value Bool sameRow copy
+expectSameRow result none
+expectSameRow ownedBy none
+expectSameRow cleanedBy none
+expectSameRow borrows none
+expectSameRow catch none
+expectSameRow suppresses none
+
+findFirstKey is call
+findFirstKey in numberTableTest
+findFirstKey invokes keyAt
+findFirstKey argument table machine.Address table copy
+findFirstKey argument position Int64 zero copy
+findFirstKey result firstKey machine.Address
+findFirstKey ownedBy none
+findFirstKey cleanedBy none
+findFirstKey borrows none
+findFirstKey catch none
+findFirstKey suppresses none
+
+readFirstKey is call
+readFirstKey in numberTableTest
+readFirstKey invokes machine.loadInt64
+readFirstKey argument address machine.Address firstKey copy
+readFirstKey result firstNumber Int64
+readFirstKey ownedBy none
+readFirstKey cleanedBy none
+readFirstKey borrows none
+readFirstKey catch none
+readFirstKey suppresses none
+
+expectFirstKey is call
+expectFirstKey in numberTableTest
+expectFirstKey invokes test.assertEqualInt64
+expectFirstKey argument expected Int64 zero copy
+expectFirstKey argument actual Int64 firstNumber copy
+expectFirstKey result none
+expectFirstKey ownedBy none
+expectFirstKey cleanedBy none
+expectFirstKey borrows none
+expectFirstKey catch none
+expectFirstKey suppresses none
+
+free is call
+free in numberTableTest
+free invokes release
+free argument table machine.Address table copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none
+
+countFreed is call
+countFreed in numberTableTest
+countFreed invokes live
+countFreed argument table machine.Address table copy
+countFreed result freed Int64
+countFreed ownedBy none
+countFreed cleanedBy none
+countFreed borrows none
+countFreed catch none
+countFreed suppresses none
+
+expectFreed is call
+expectFreed in numberTableTest
+expectFreed invokes test.assertEqualInt64
+expectFreed argument expected Int64 zero copy
+expectFreed argument actual Int64 freed copy
+expectFreed result none
+expectFreed ownedBy none
+expectFreed cleanedBy none
+expectFreed borrows none
+expectFreed catch none
+expectFreed suppresses none
+
+textTableTest is test
+textTableTest purpose "Text keys are found by their bytes, wherever the text is"
+textTableTest verifies hashKey hashesContent
+textTableTest verifies find findsLive
+textTableTest typeParameter none
+textTableTest input none
+textTableTest output none
+textTableTest outputOwnedBy none
+textTableTest raises none
+textTableTest effect use machine.memory
+textTableTest effect use system.calls
+textTableTest uses memoryAccess
+textTableTest uses systemCalls
+textTableTest memoryHeap false
+textTableTest async false
+textTableTest maxRecursion none
+textTableTest label begin loopKind none
+textTableTest label begin within none
+textTableTest let first String "alpha" immutable
+textTableTest let again String "xalpha" immutable
+textTableTest let tableAt Int64 61440 immutable
+textTableTest let zeroByte Byte 0 immutable
+textTableTest let one Int64 1 immutable
+textTableTest let two Int64 2 immutable
+textTableTest let zero Int64 0 immutable
+textTableTest let keyScratch Int64 61568 immutable
+textTableTest let eight Int64 8 immutable
+textTableTest let five Int64 5 immutable
+textTableTest let otherAt Int64 61584 immutable
+textTableTest let four Int64 4 immutable
+textTableTest let minusOne Int64 -1 immutable
+textTableTest at begin do findState
+textTableTest at begin do findTable
+textTableTest at begin do clearTable
+textTableTest at begin do start
+textTableTest at begin do findKey
+textTableTest at begin do findText
+textTableTest at begin do storeText
+textTableTest at begin do findLength
+textTableTest at begin do storeLength
+textTableTest at begin do hashOf
+textTableTest at begin do addRow
+textTableTest at begin do findOther
+textTableTest at begin do findAgain
+textTableTest at begin do findInside
+textTableTest at begin do storeOther
+textTableTest at begin do findOtherLength
+textTableTest at begin do storeOtherLength
+textTableTest at begin do hashOther
+textTableTest at begin do findOtherRow
+textTableTest at begin do expectFound
+textTableTest at begin do storeShort
+textTableTest at begin do hashShort
+textTableTest at begin do findShort
+textTableTest at begin do expectShortMissing
+textTableTest at begin do free
+textTableTest at begin return ok none
+
+findState is call
+findState in textTableTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findTable is call
+findTable in textTableTest
+findTable invokes machine.offset
+findTable argument address machine.Address state copy
+findTable argument bytes Int64 tableAt copy
+findTable result table machine.Address
+findTable ownedBy none
+findTable cleanedBy none
+findTable borrows none
+findTable catch none
+findTable suppresses none
+
+clearTable is call
+clearTable in textTableTest
+clearTable invokes machine.fill
+clearTable argument target machine.Address table copy
+clearTable argument value Byte zeroByte copy
+clearTable argument bytes Int64 tableBytes copy
+clearTable result none
+clearTable ownedBy none
+clearTable cleanedBy none
+clearTable borrows none
+clearTable catch none
+clearTable suppresses none
+
+start is call
+start in textTableTest
+start invokes prepare
+start argument table machine.Address table copy
+start argument text Int64 one copy
+start argument keySlots Int64 two copy
+start argument valueSlots Int64 zero copy
+start result none
+start ownedBy none
+start cleanedBy none
+start borrows none
+start catch none
+start suppresses none
+
+findKey is call
+findKey in textTableTest
+findKey invokes machine.offset
+findKey argument address machine.Address state copy
+findKey argument bytes Int64 keyScratch copy
+findKey result key machine.Address
+findKey ownedBy none
+findKey cleanedBy none
+findKey borrows none
+findKey catch none
+findKey suppresses none
+
+findText is call
+findText in textTableTest
+findText invokes machine.addressOfString
+findText argument text String first lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+storeText is call
+storeText in textTableTest
+storeText invokes machine.storeAddress
+storeText argument address machine.Address key copy
+storeText argument value machine.Address textAt copy
+storeText result none
+storeText ownedBy none
+storeText cleanedBy none
+storeText borrows none
+storeText catch none
+storeText suppresses none
+
+findLength is call
+findLength in textTableTest
+findLength invokes machine.offset
+findLength argument address machine.Address key copy
+findLength argument bytes Int64 eight copy
+findLength result lengthSlot machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+storeLength is call
+storeLength in textTableTest
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthSlot copy
+storeLength argument value Int64 five copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none
+
+hashOf is call
+hashOf in textTableTest
+hashOf invokes hashKey
+hashOf argument table machine.Address table copy
+hashOf argument key machine.Address key copy
+hashOf result hash UInt64
+hashOf ownedBy none
+hashOf cleanedBy none
+hashOf borrows none
+hashOf catch none
+hashOf suppresses none
+
+addRow is call
+addRow in textTableTest
+addRow invokes insert
+addRow argument table machine.Address table copy
+addRow argument key machine.Address key copy
+addRow argument hash UInt64 hash copy
+addRow result rowAt machine.Address
+addRow ownedBy none
+addRow cleanedBy none
+addRow borrows none
+addRow catch none
+addRow suppresses none
+
+findOther is call
+findOther in textTableTest
+findOther invokes machine.offset
+findOther argument address machine.Address state copy
+findOther argument bytes Int64 otherAt copy
+findOther result otherKey machine.Address
+findOther ownedBy none
+findOther cleanedBy none
+findOther borrows none
+findOther catch none
+findOther suppresses none
+
+findAgain is call
+findAgain in textTableTest
+findAgain invokes machine.addressOfString
+findAgain argument text String again lend
+findAgain result againAt machine.Address
+findAgain ownedBy none
+findAgain cleanedBy none
+findAgain borrows none
+findAgain catch none
+findAgain suppresses none
+
+findInside is call
+findInside in textTableTest
+findInside invokes machine.offset
+findInside argument address machine.Address againAt copy
+findInside argument bytes Int64 one copy
+findInside result insideAt machine.Address
+findInside ownedBy none
+findInside cleanedBy none
+findInside borrows none
+findInside catch none
+findInside suppresses none
+
+storeOther is call
+storeOther in textTableTest
+storeOther invokes machine.storeAddress
+storeOther argument address machine.Address otherKey copy
+storeOther argument value machine.Address insideAt copy
+storeOther result none
+storeOther ownedBy none
+storeOther cleanedBy none
+storeOther borrows none
+storeOther catch none
+storeOther suppresses none
+
+findOtherLength is call
+findOtherLength in textTableTest
+findOtherLength invokes machine.offset
+findOtherLength argument address machine.Address otherKey copy
+findOtherLength argument bytes Int64 eight copy
+findOtherLength result otherLengthSlot machine.Address
+findOtherLength ownedBy none
+findOtherLength cleanedBy none
+findOtherLength borrows none
+findOtherLength catch none
+findOtherLength suppresses none
+
+storeOtherLength is call
+storeOtherLength in textTableTest
+storeOtherLength invokes machine.storeInt64
+storeOtherLength argument address machine.Address otherLengthSlot copy
+storeOtherLength argument value Int64 five copy
+storeOtherLength result none
+storeOtherLength ownedBy none
+storeOtherLength cleanedBy none
+storeOtherLength borrows none
+storeOtherLength catch none
+storeOtherLength suppresses none
+
+hashOther is call
+hashOther in textTableTest
+hashOther invokes hashKey
+hashOther argument table machine.Address table copy
+hashOther argument key machine.Address otherKey copy
+hashOther result otherHash UInt64
+hashOther ownedBy none
+hashOther cleanedBy none
+hashOther borrows none
+hashOther catch none
+hashOther suppresses none
+
+findOtherRow is call
+findOtherRow in textTableTest
+findOtherRow invokes find
+findOtherRow argument table machine.Address table copy
+findOtherRow argument key machine.Address otherKey copy
+findOtherRow argument hash UInt64 otherHash copy
+findOtherRow result row Int64
+findOtherRow ownedBy none
+findOtherRow cleanedBy none
+findOtherRow borrows none
+findOtherRow catch none
+findOtherRow suppresses none
+
+expectFound is call
+expectFound in textTableTest
+expectFound invokes test.assertEqualInt64
+expectFound argument expected Int64 zero copy
+expectFound argument actual Int64 row copy
+expectFound result none
+expectFound ownedBy none
+expectFound cleanedBy none
+expectFound borrows none
+expectFound catch none
+expectFound suppresses none
+
+storeShort is call
+storeShort in textTableTest
+storeShort invokes machine.storeInt64
+storeShort argument address machine.Address otherLengthSlot copy
+storeShort argument value Int64 four copy
+storeShort result none
+storeShort ownedBy none
+storeShort cleanedBy none
+storeShort borrows none
+storeShort catch none
+storeShort suppresses none
+
+hashShort is call
+hashShort in textTableTest
+hashShort invokes hashKey
+hashShort argument table machine.Address table copy
+hashShort argument key machine.Address otherKey copy
+hashShort result shortHash UInt64
+hashShort ownedBy none
+hashShort cleanedBy none
+hashShort borrows none
+hashShort catch none
+hashShort suppresses none
+
+findShort is call
+findShort in textTableTest
+findShort invokes find
+findShort argument table machine.Address table copy
+findShort argument key machine.Address otherKey copy
+findShort argument hash UInt64 shortHash copy
+findShort result shortRow Int64
+findShort ownedBy none
+findShort cleanedBy none
+findShort borrows none
+findShort catch none
+findShort suppresses none
+
+expectShortMissing is call
+expectShortMissing in textTableTest
+expectShortMissing invokes test.assertEqualInt64
+expectShortMissing argument expected Int64 minusOne copy
+expectShortMissing argument actual Int64 shortRow copy
+expectShortMissing result none
+expectShortMissing ownedBy none
+expectShortMissing cleanedBy none
+expectShortMissing borrows none
+expectShortMissing catch none
+expectShortMissing suppresses none
+
+free is call
+free in textTableTest
+free invokes release
+free argument table machine.Address table copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none

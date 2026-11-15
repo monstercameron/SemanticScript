@@ -1,0 +1,996 @@
+# Memory from the process heap (HeapAlloc, HeapReAlloc, HeapFree) for what grows and is given back
+# piece by piece: the runtime's host objects, its tables, and the messages of its traps. Traps whose
+# message is put together from parts end here too.
+#
+# This module is generated from tools/heap.dsl by tools/build.py.
+
+heap is module
+heap purpose "Memory that grows and is given back piece by piece, from the process heap, and traps whose message is put together from parts"
+heap path heap
+heap imports standard.machine
+heap imports standard.system
+heap imports standard.string
+heap imports standard.math
+heap imports standard.compare
+heap imports standard.convert
+heap imports standard.logic
+heap imports standard.test
+heap imports numbers
+heap imports frames
+heap exports take
+heap exports resize
+heap exports give
+heap exports joinMessage
+heap exports numbersMessage
+
+memoryAccess is capability
+memoryAccess purpose "Authority to keep the process heap's handle in machine.state and to put a trap's message together"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to take memory from the process heap, give it back, and end the process on a trap"
+systemCalls grants use system.calls none
+
+# machine.state bytes 192 to 255 belong to this module: 192 the process heap's handle (0 until it is first asked
+# for), 200 to 231 a number's digits.
+heapAt is constant
+heapAt purpose "Where the process heap's handle is kept, in machine.state"
+heapAt type Int64
+heapAt value 192
+
+digitsAt is constant
+digitsAt purpose "Where a number's digits are put together for a trap's message, in machine.state"
+digitsAt type Int64
+digitsAt value 200
+
+zeroMemory is constant
+zeroMemory purpose "HEAP_ZERO_MEMORY: what HeapAlloc and HeapReAlloc hand out is zeroed"
+zeroMemory type Int32
+zeroMemory value 8
+
+# ---------------------------------------------------------------- traps
+fail is operation
+fail purpose "Report a trap with a message and end the process with exit code 70"
+fail invariant none
+fail typeParameter none
+fail input text String borrowed
+fail output none
+fail outputOwnedBy none
+fail raises none
+fail effect use machine.memory
+fail effect use system.calls
+fail uses memoryAccess
+fail uses systemCalls
+fail memoryHeap false
+fail async false
+fail maxRecursion none
+fail label begin loopKind none
+fail label begin within none
+fail let trapCode Int32 70 immutable
+fail at begin do findText
+fail at begin do textLength
+fail at begin do writeReport
+fail at begin do exit
+fail at begin return ok none
+
+findText is call
+findText in fail
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textAt machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+textLength is call
+textLength in fail
+textLength invokes string.byteLength
+textLength argument text String text lend
+textLength result bytes Int64
+textLength ownedBy none
+textLength cleanedBy none
+textLength borrows none
+textLength catch none
+textLength suppresses none
+
+writeReport is call
+writeReport in fail
+writeReport invokes frames.report
+writeReport argument text machine.Address textAt copy
+writeReport argument bytes Int64 bytes copy
+writeReport result status Int32
+writeReport ownedBy none
+writeReport cleanedBy none
+writeReport borrows none
+writeReport catch none
+writeReport suppresses none
+
+exit is call
+exit in fail
+exit invokes system.exitProcess
+exit argument code Int32 trapCode copy
+exit result none
+exit ownedBy none
+exit cleanedBy none
+exit borrows none
+exit catch none
+exit suppresses none
+
+processHeap is operation
+processHeap purpose "The process heap's handle, asked of the operating system once and kept"
+processHeap invariant none
+processHeap typeParameter none
+processHeap input none
+processHeap output machine.Address
+processHeap outputOwnedBy none
+processHeap raises none
+processHeap effect use machine.memory
+processHeap effect use system.calls
+processHeap uses memoryAccess
+processHeap uses systemCalls
+processHeap memoryHeap false
+processHeap async false
+processHeap maxRecursion none
+processHeap label begin loopKind none
+processHeap label begin within none
+processHeap label ask loopKind none
+processHeap label ask within none
+processHeap label known loopKind none
+processHeap label known within none
+processHeap let none
+processHeap at begin do findState
+processHeap at begin do findSlot
+processHeap at begin do readKept
+processHeap at begin do nowhere
+processHeap at begin do missingCheck
+processHeap at begin branch if missing goto ask else goto known
+processHeap at ask do askSystem
+processHeap at ask do keep
+processHeap at ask return ok fresh
+processHeap at known return ok kept
+
+findState is call
+findState in processHeap
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findSlot is call
+findSlot in processHeap
+findSlot invokes machine.offset
+findSlot argument address machine.Address state copy
+findSlot argument bytes Int64 heapAt copy
+findSlot result slot machine.Address
+findSlot ownedBy none
+findSlot cleanedBy none
+findSlot borrows none
+findSlot catch none
+findSlot suppresses none
+
+readKept is call
+readKept in processHeap
+readKept invokes machine.loadAddress
+readKept argument address machine.Address slot copy
+readKept result kept machine.Address
+readKept ownedBy none
+readKept cleanedBy none
+readKept borrows none
+readKept catch none
+readKept suppresses none
+
+nowhere is call
+nowhere in processHeap
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+missingCheck is call
+missingCheck in processHeap
+missingCheck invokes machine.equal
+missingCheck argument left machine.Address kept copy
+missingCheck argument right machine.Address anywhere copy
+missingCheck result missing Bool
+missingCheck ownedBy none
+missingCheck cleanedBy none
+missingCheck borrows none
+missingCheck catch none
+missingCheck suppresses none
+
+askSystem is call
+askSystem in processHeap
+askSystem invokes system.getProcessHeap
+askSystem argument none
+askSystem result fresh machine.Address
+askSystem ownedBy none
+askSystem cleanedBy none
+askSystem borrows none
+askSystem catch none
+askSystem suppresses none
+
+keep is call
+keep in processHeap
+keep invokes machine.storeAddress
+keep argument address machine.Address slot copy
+keep argument value machine.Address fresh copy
+keep result none
+keep ownedBy none
+keep cleanedBy none
+keep borrows none
+keep catch none
+keep suppresses none
+
+take is operation
+take purpose "A zeroed block of memory of a number of bytes (at least one) from the process heap; no memory left traps"
+take invariant takesZeroed "\"Gives a block of at least the bytes asked, every byte zero; a block is never the address 0\""
+take typeParameter none
+take input bytes Int64 copied
+take output machine.Address
+take outputOwnedBy none
+take raises none
+take effect use machine.memory
+take effect use system.calls
+take uses memoryAccess
+take uses systemCalls
+take memoryHeap false
+take async false
+take maxRecursion none
+take label begin loopKind none
+take label begin within none
+take label useBytes loopKind none
+take label useBytes within none
+take label allocate loopKind none
+take label allocate within none
+take label done loopKind none
+take label done within none
+take label noMemory loopKind none
+take label noMemory within none
+take let size Int64 1 mutable
+take let one Int64 1 immutable
+take let outOfMemory String "out of memory in the runtime" immutable
+take at begin do bigCheck
+take at begin branch if big goto useBytes else goto allocate
+take at useBytes set size bytes
+take at useBytes goto allocate
+take at allocate do findHeap
+take at allocate do takeBlock
+take at allocate do nowhere
+take at allocate do failedCheck
+take at allocate branch if failed goto noMemory else goto done
+take at done return ok block
+take at noMemory do stopHere
+take at noMemory return ok anywhere
+
+bigCheck is call
+bigCheck in take
+bigCheck invokes compare.greaterThanInt64
+bigCheck argument left Int64 bytes copy
+bigCheck argument right Int64 one copy
+bigCheck result big Bool
+bigCheck ownedBy none
+bigCheck cleanedBy none
+bigCheck borrows none
+bigCheck catch none
+bigCheck suppresses none
+
+findHeap is call
+findHeap in take
+findHeap invokes processHeap
+findHeap argument none
+findHeap result heapHandle machine.Address
+findHeap ownedBy none
+findHeap cleanedBy none
+findHeap borrows none
+findHeap catch none
+findHeap suppresses none
+
+takeBlock is call
+takeBlock in take
+takeBlock invokes system.heapAlloc
+takeBlock argument heap machine.Address heapHandle copy
+takeBlock argument flags Int32 zeroMemory copy
+takeBlock argument bytes Int64 size copy
+takeBlock result block machine.Address
+takeBlock ownedBy none
+takeBlock cleanedBy none
+takeBlock borrows none
+takeBlock catch none
+takeBlock suppresses none
+
+nowhere is call
+nowhere in take
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+failedCheck is call
+failedCheck in take
+failedCheck invokes machine.equal
+failedCheck argument left machine.Address block copy
+failedCheck argument right machine.Address anywhere copy
+failedCheck result failed Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+stopHere is call
+stopHere in take
+stopHere invokes fail
+stopHere argument text String outOfMemory lend
+stopHere result none
+stopHere ownedBy none
+stopHere cleanedBy none
+stopHere borrows none
+stopHere catch none
+stopHere suppresses none
+
+resize is operation
+resize purpose "A block of memory grown or shrunk to a number of bytes, its old bytes kept and any new ones zeroed; the address 0 gives a new block"
+resize invariant keepsBytes "\"The block keeps its first bytes, up to the smaller of the two sizes; bytes past the old size are zero\""
+resize typeParameter none
+resize input block machine.Address copied
+resize input bytes Int64 copied
+resize output machine.Address
+resize outputOwnedBy none
+resize raises none
+resize effect use machine.memory
+resize effect use system.calls
+resize uses memoryAccess
+resize uses systemCalls
+resize memoryHeap false
+resize async false
+resize maxRecursion none
+resize label begin loopKind none
+resize label begin within none
+resize label takeFresh loopKind none
+resize label takeFresh within none
+resize label sizeCheck loopKind none
+resize label sizeCheck within none
+resize label useBytes loopKind none
+resize label useBytes within none
+resize label reallocate loopKind none
+resize label reallocate within none
+resize label done loopKind none
+resize label done within none
+resize label noMemory loopKind none
+resize label noMemory within none
+resize let size Int64 1 mutable
+resize let one Int64 1 immutable
+resize let outOfMemory String "out of memory in the runtime" immutable
+resize at begin do nowhere
+resize at begin do freshCheck
+resize at begin branch if fresh goto takeFresh else goto sizeCheck
+resize at takeFresh do takeBlock
+resize at takeFresh return ok made
+resize at sizeCheck do bigCheck
+resize at sizeCheck branch if big goto useBytes else goto reallocate
+resize at useBytes set size bytes
+resize at useBytes goto reallocate
+resize at reallocate do findHeap
+resize at reallocate do growBlock
+resize at reallocate do failedCheck
+resize at reallocate branch if failed goto noMemory else goto done
+resize at done return ok grown
+resize at noMemory do stopHere
+resize at noMemory return ok anywhere
+
+nowhere is call
+nowhere in resize
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+freshCheck is call
+freshCheck in resize
+freshCheck invokes machine.equal
+freshCheck argument left machine.Address block copy
+freshCheck argument right machine.Address anywhere copy
+freshCheck result fresh Bool
+freshCheck ownedBy none
+freshCheck cleanedBy none
+freshCheck borrows none
+freshCheck catch none
+freshCheck suppresses none
+
+takeBlock is call
+takeBlock in resize
+takeBlock invokes take
+takeBlock argument bytes Int64 bytes copy
+takeBlock result made machine.Address
+takeBlock ownedBy none
+takeBlock cleanedBy none
+takeBlock borrows none
+takeBlock catch none
+takeBlock suppresses none
+
+bigCheck is call
+bigCheck in resize
+bigCheck invokes compare.greaterThanInt64
+bigCheck argument left Int64 bytes copy
+bigCheck argument right Int64 one copy
+bigCheck result big Bool
+bigCheck ownedBy none
+bigCheck cleanedBy none
+bigCheck borrows none
+bigCheck catch none
+bigCheck suppresses none
+
+findHeap is call
+findHeap in resize
+findHeap invokes processHeap
+findHeap argument none
+findHeap result heapHandle machine.Address
+findHeap ownedBy none
+findHeap cleanedBy none
+findHeap borrows none
+findHeap catch none
+findHeap suppresses none
+
+growBlock is call
+growBlock in resize
+growBlock invokes system.heapReAlloc
+growBlock argument heap machine.Address heapHandle copy
+growBlock argument flags Int32 zeroMemory copy
+growBlock argument memory machine.Address block copy
+growBlock argument bytes Int64 size copy
+growBlock result grown machine.Address
+growBlock ownedBy none
+growBlock cleanedBy none
+growBlock borrows none
+growBlock catch none
+growBlock suppresses none
+
+failedCheck is call
+failedCheck in resize
+failedCheck invokes machine.equal
+failedCheck argument left machine.Address grown copy
+failedCheck argument right machine.Address anywhere copy
+failedCheck result failed Bool
+failedCheck ownedBy none
+failedCheck cleanedBy none
+failedCheck borrows none
+failedCheck catch none
+failedCheck suppresses none
+
+stopHere is call
+stopHere in resize
+stopHere invokes fail
+stopHere argument text String outOfMemory lend
+stopHere result none
+stopHere ownedBy none
+stopHere cleanedBy none
+stopHere borrows none
+stopHere catch none
+stopHere suppresses none
+
+give is operation
+give purpose "Give a block of memory back to the process heap; the address 0 is nothing to give"
+give invariant givesBack "\"A block taken with `take` or `resize` goes back to the heap; the address 0 is ignored\""
+give typeParameter none
+give input block machine.Address copied
+give output none
+give outputOwnedBy none
+give raises none
+give effect use machine.memory
+give effect use system.calls
+give uses memoryAccess
+give uses systemCalls
+give memoryHeap false
+give async false
+give maxRecursion none
+give label begin loopKind none
+give label begin within none
+give label free loopKind none
+give label free within none
+give label done loopKind none
+give label done within none
+give let flags Int32 0 immutable
+give at begin do nowhere
+give at begin do emptyCheck
+give at begin branch if empty goto done else goto free
+give at free do findHeap
+give at free do freeBlock
+give at free goto done
+give at done return ok none
+
+nowhere is call
+nowhere in give
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+emptyCheck is call
+emptyCheck in give
+emptyCheck invokes machine.equal
+emptyCheck argument left machine.Address block copy
+emptyCheck argument right machine.Address anywhere copy
+emptyCheck result empty Bool
+emptyCheck ownedBy none
+emptyCheck cleanedBy none
+emptyCheck borrows none
+emptyCheck catch none
+emptyCheck suppresses none
+
+findHeap is call
+findHeap in give
+findHeap invokes processHeap
+findHeap argument none
+findHeap result heapHandle machine.Address
+findHeap ownedBy none
+findHeap cleanedBy none
+findHeap borrows none
+findHeap catch none
+findHeap suppresses none
+
+freeBlock is call
+freeBlock in give
+freeBlock invokes system.heapFree
+freeBlock argument heap machine.Address heapHandle copy
+freeBlock argument flags Int32 flags copy
+freeBlock argument memory machine.Address block copy
+freeBlock result freed Int32
+freeBlock ownedBy none
+freeBlock cleanedBy none
+freeBlock borrows none
+freeBlock catch none
+freeBlock suppresses none
+
+joinMessage is operation
+joinMessage purpose "A trap's message put together in a new block from a text, a range of bytes, and another text, one after the other; its length is the three lengths added"
+joinMessage invariant joinsParts "\"The block holds the first text, the bytes, and the last text, one after the other\""
+joinMessage typeParameter none
+joinMessage input first String borrowed
+joinMessage input middle machine.Address copied
+joinMessage input middleBytes Int64 copied
+joinMessage input last String borrowed
+joinMessage output machine.Address
+joinMessage outputOwnedBy none
+joinMessage raises none
+joinMessage effect use machine.memory
+joinMessage effect use system.calls
+joinMessage uses memoryAccess
+joinMessage uses systemCalls
+joinMessage memoryHeap false
+joinMessage async false
+joinMessage maxRecursion none
+joinMessage label begin loopKind none
+joinMessage label begin within none
+joinMessage let none
+joinMessage at begin do findFirst
+joinMessage at begin do firstLength
+joinMessage at begin do findLast
+joinMessage at begin do lastLength
+joinMessage at begin do sumFirst
+joinMessage at begin do sumAll
+joinMessage at begin do takeMessage
+joinMessage at begin do copyFirst
+joinMessage at begin do findMiddle
+joinMessage at begin do copyMiddle
+joinMessage at begin do findTail
+joinMessage at begin do copyLast
+joinMessage at begin return ok message
+
+findFirst is call
+findFirst in joinMessage
+findFirst invokes machine.addressOfString
+findFirst argument text String first lend
+findFirst result firstAt machine.Address
+findFirst ownedBy none
+findFirst cleanedBy none
+findFirst borrows none
+findFirst catch none
+findFirst suppresses none
+
+firstLength is call
+firstLength in joinMessage
+firstLength invokes string.byteLength
+firstLength argument text String first lend
+firstLength result firstBytes Int64
+firstLength ownedBy none
+firstLength cleanedBy none
+firstLength borrows none
+firstLength catch none
+firstLength suppresses none
+
+findLast is call
+findLast in joinMessage
+findLast invokes machine.addressOfString
+findLast argument text String last lend
+findLast result lastAt machine.Address
+findLast ownedBy none
+findLast cleanedBy none
+findLast borrows none
+findLast catch none
+findLast suppresses none
+
+lastLength is call
+lastLength in joinMessage
+lastLength invokes string.byteLength
+lastLength argument text String last lend
+lastLength result lastBytes Int64
+lastLength ownedBy none
+lastLength cleanedBy none
+lastLength borrows none
+lastLength catch none
+lastLength suppresses none
+
+sumFirst is call
+sumFirst in joinMessage
+sumFirst invokes math.addInt64
+sumFirst argument left Int64 firstBytes copy
+sumFirst argument right Int64 middleBytes copy
+sumFirst result headBytes Int64
+sumFirst ownedBy none
+sumFirst cleanedBy none
+sumFirst borrows none
+sumFirst catch none
+sumFirst suppresses none
+
+sumAll is call
+sumAll in joinMessage
+sumAll invokes math.addInt64
+sumAll argument left Int64 headBytes copy
+sumAll argument right Int64 lastBytes copy
+sumAll result totalBytes Int64
+sumAll ownedBy none
+sumAll cleanedBy none
+sumAll borrows none
+sumAll catch none
+sumAll suppresses none
+
+takeMessage is call
+takeMessage in joinMessage
+takeMessage invokes take
+takeMessage argument bytes Int64 totalBytes copy
+takeMessage result message machine.Address
+takeMessage ownedBy none
+takeMessage cleanedBy none
+takeMessage borrows none
+takeMessage catch none
+takeMessage suppresses none
+
+copyFirst is call
+copyFirst in joinMessage
+copyFirst invokes machine.copy
+copyFirst argument target machine.Address message copy
+copyFirst argument source machine.Address firstAt copy
+copyFirst argument bytes Int64 firstBytes copy
+copyFirst result none
+copyFirst ownedBy none
+copyFirst cleanedBy none
+copyFirst borrows none
+copyFirst catch none
+copyFirst suppresses none
+
+findMiddle is call
+findMiddle in joinMessage
+findMiddle invokes machine.offset
+findMiddle argument address machine.Address message copy
+findMiddle argument bytes Int64 firstBytes copy
+findMiddle result middleTarget machine.Address
+findMiddle ownedBy none
+findMiddle cleanedBy none
+findMiddle borrows none
+findMiddle catch none
+findMiddle suppresses none
+
+copyMiddle is call
+copyMiddle in joinMessage
+copyMiddle invokes machine.copy
+copyMiddle argument target machine.Address middleTarget copy
+copyMiddle argument source machine.Address middle copy
+copyMiddle argument bytes Int64 middleBytes copy
+copyMiddle result none
+copyMiddle ownedBy none
+copyMiddle cleanedBy none
+copyMiddle borrows none
+copyMiddle catch none
+copyMiddle suppresses none
+
+findTail is call
+findTail in joinMessage
+findTail invokes machine.offset
+findTail argument address machine.Address message copy
+findTail argument bytes Int64 headBytes copy
+findTail result lastTarget machine.Address
+findTail ownedBy none
+findTail cleanedBy none
+findTail borrows none
+findTail catch none
+findTail suppresses none
+
+copyLast is call
+copyLast in joinMessage
+copyLast invokes machine.copy
+copyLast argument target machine.Address lastTarget copy
+copyLast argument source machine.Address lastAt copy
+copyLast argument bytes Int64 lastBytes copy
+copyLast result none
+copyLast ownedBy none
+copyLast cleanedBy none
+copyLast borrows none
+copyLast catch none
+copyLast suppresses none
+
+numbersMessage is operation
+numbersMessage purpose "A trap's message put together in a new block: a text, a number, a text, and a number, `<first><number><middle><other>`; its length is stored at an address"
+numbersMessage invariant writesNumbers "\"The block holds the first text, the first number in decimal, the middle text, and the second number in decimal, and the length is theirs\""
+numbersMessage typeParameter none
+numbersMessage input first String borrowed
+numbersMessage input number Int64 copied
+numbersMessage input middle String borrowed
+numbersMessage input other Int64 copied
+numbersMessage input lengthAt machine.Address copied
+numbersMessage output machine.Address
+numbersMessage outputOwnedBy none
+numbersMessage raises none
+numbersMessage effect use machine.memory
+numbersMessage effect use system.calls
+numbersMessage uses memoryAccess
+numbersMessage uses systemCalls
+numbersMessage memoryHeap false
+numbersMessage async false
+numbersMessage maxRecursion none
+numbersMessage label begin loopKind none
+numbersMessage label begin within none
+numbersMessage let fortyTwo Int64 42 immutable
+numbersMessage at begin do findFirst
+numbersMessage at begin do firstLength
+numbersMessage at begin do findMiddle
+numbersMessage at begin do middleLength
+numbersMessage at begin do sumText
+numbersMessage at begin do roomOf
+numbersMessage at begin do takeMessage
+numbersMessage at begin do copyFirst
+numbersMessage at begin do findNumber
+numbersMessage at begin do writeNumber
+numbersMessage at begin do afterNumber
+numbersMessage at begin do findMiddleTarget
+numbersMessage at begin do copyMiddle
+numbersMessage at begin do afterMiddle
+numbersMessage at begin do findOther
+numbersMessage at begin do writeOther
+numbersMessage at begin do total
+numbersMessage at begin do storeLength
+numbersMessage at begin return ok message
+
+findFirst is call
+findFirst in numbersMessage
+findFirst invokes machine.addressOfString
+findFirst argument text String first lend
+findFirst result firstAt machine.Address
+findFirst ownedBy none
+findFirst cleanedBy none
+findFirst borrows none
+findFirst catch none
+findFirst suppresses none
+
+firstLength is call
+firstLength in numbersMessage
+firstLength invokes string.byteLength
+firstLength argument text String first lend
+firstLength result firstBytes Int64
+firstLength ownedBy none
+firstLength cleanedBy none
+firstLength borrows none
+firstLength catch none
+firstLength suppresses none
+
+findMiddle is call
+findMiddle in numbersMessage
+findMiddle invokes machine.addressOfString
+findMiddle argument text String middle lend
+findMiddle result middleAt machine.Address
+findMiddle ownedBy none
+findMiddle cleanedBy none
+findMiddle borrows none
+findMiddle catch none
+findMiddle suppresses none
+
+middleLength is call
+middleLength in numbersMessage
+middleLength invokes string.byteLength
+middleLength argument text String middle lend
+middleLength result middleBytes Int64
+middleLength ownedBy none
+middleLength cleanedBy none
+middleLength borrows none
+middleLength catch none
+middleLength suppresses none
+
+sumText is call
+sumText in numbersMessage
+sumText invokes math.addInt64
+sumText argument left Int64 firstBytes copy
+sumText argument right Int64 middleBytes copy
+sumText result textBytes Int64
+sumText ownedBy none
+sumText cleanedBy none
+sumText borrows none
+sumText catch none
+sumText suppresses none
+
+roomOf is call
+roomOf in numbersMessage
+roomOf invokes math.addInt64
+roomOf argument left Int64 textBytes copy
+roomOf argument right Int64 fortyTwo copy
+roomOf result room Int64
+roomOf ownedBy none
+roomOf cleanedBy none
+roomOf borrows none
+roomOf catch none
+roomOf suppresses none
+
+takeMessage is call
+takeMessage in numbersMessage
+takeMessage invokes take
+takeMessage argument bytes Int64 room copy
+takeMessage result message machine.Address
+takeMessage ownedBy none
+takeMessage cleanedBy none
+takeMessage borrows none
+takeMessage catch none
+takeMessage suppresses none
+
+copyFirst is call
+copyFirst in numbersMessage
+copyFirst invokes machine.copy
+copyFirst argument target machine.Address message copy
+copyFirst argument source machine.Address firstAt copy
+copyFirst argument bytes Int64 firstBytes copy
+copyFirst result none
+copyFirst ownedBy none
+copyFirst cleanedBy none
+copyFirst borrows none
+copyFirst catch none
+copyFirst suppresses none
+
+findNumber is call
+findNumber in numbersMessage
+findNumber invokes machine.offset
+findNumber argument address machine.Address message copy
+findNumber argument bytes Int64 firstBytes copy
+findNumber result numberAt machine.Address
+findNumber ownedBy none
+findNumber cleanedBy none
+findNumber borrows none
+findNumber catch none
+findNumber suppresses none
+
+writeNumber is call
+writeNumber in numbersMessage
+writeNumber invokes numbers.formatDecimal
+writeNumber argument value Int64 number copy
+writeNumber argument target machine.Address numberAt copy
+writeNumber result numberBytes Int64
+writeNumber ownedBy none
+writeNumber cleanedBy none
+writeNumber borrows none
+writeNumber catch none
+writeNumber suppresses none
+
+afterNumber is call
+afterNumber in numbersMessage
+afterNumber invokes math.addInt64
+afterNumber argument left Int64 firstBytes copy
+afterNumber argument right Int64 numberBytes copy
+afterNumber result middleOffset Int64
+afterNumber ownedBy none
+afterNumber cleanedBy none
+afterNumber borrows none
+afterNumber catch none
+afterNumber suppresses none
+
+findMiddleTarget is call
+findMiddleTarget in numbersMessage
+findMiddleTarget invokes machine.offset
+findMiddleTarget argument address machine.Address message copy
+findMiddleTarget argument bytes Int64 middleOffset copy
+findMiddleTarget result middleTarget machine.Address
+findMiddleTarget ownedBy none
+findMiddleTarget cleanedBy none
+findMiddleTarget borrows none
+findMiddleTarget catch none
+findMiddleTarget suppresses none
+
+copyMiddle is call
+copyMiddle in numbersMessage
+copyMiddle invokes machine.copy
+copyMiddle argument target machine.Address middleTarget copy
+copyMiddle argument source machine.Address middleAt copy
+copyMiddle argument bytes Int64 middleBytes copy
+copyMiddle result none
+copyMiddle ownedBy none
+copyMiddle cleanedBy none
+copyMiddle borrows none
+copyMiddle catch none
+copyMiddle suppresses none
+
+afterMiddle is call
+afterMiddle in numbersMessage
+afterMiddle invokes math.addInt64
+afterMiddle argument left Int64 middleOffset copy
+afterMiddle argument right Int64 middleBytes copy
+afterMiddle result otherOffset Int64
+afterMiddle ownedBy none
+afterMiddle cleanedBy none
+afterMiddle borrows none
+afterMiddle catch none
+afterMiddle suppresses none
+
+findOther is call
+findOther in numbersMessage
+findOther invokes machine.offset
+findOther argument address machine.Address message copy
+findOther argument bytes Int64 otherOffset copy
+findOther result otherAt machine.Address
+findOther ownedBy none
+findOther cleanedBy none
+findOther borrows none
+findOther catch none
+findOther suppresses none
+
+writeOther is call
+writeOther in numbersMessage
+writeOther invokes numbers.formatDecimal
+writeOther argument value Int64 other copy
+writeOther argument target machine.Address otherAt copy
+writeOther result otherBytes Int64
+writeOther ownedBy none
+writeOther cleanedBy none
+writeOther borrows none
+writeOther catch none
+writeOther suppresses none
+
+total is call
+total in numbersMessage
+total invokes math.addInt64
+total argument left Int64 otherOffset copy
+total argument right Int64 otherBytes copy
+total result totalBytes Int64
+total ownedBy none
+total cleanedBy none
+total borrows none
+total catch none
+total suppresses none
+
+storeLength is call
+storeLength in numbersMessage
+storeLength invokes machine.storeInt64
+storeLength argument address machine.Address lengthAt copy
+storeLength argument value Int64 totalBytes copy
+storeLength result none
+storeLength ownedBy none
+storeLength cleanedBy none
+storeLength borrows none
+storeLength catch none
+storeLength suppresses none

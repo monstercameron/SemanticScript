@@ -1252,6 +1252,10 @@ class OpGen:
         if mod == "convert":
             if name in ("int64BitsToUInt64", "uint64BitsToInt64"):
                 return a[0], None, None  # the same 64 bits, read with the other signedness
+            if name == "float64BitsToUInt64":
+                return b.bitcast(a[0], I64), None, None  # D-127: the same 64 bits, read as an integer
+            if name == "uint64BitsToFloat64":
+                return b.bitcast(a[0], F64), None, None
             sig = ci.sig
             src, dst = sig.inputs[0].type, sig.output
             if src in INTEGER_RANGES and dst in INTEGER_RANGES:

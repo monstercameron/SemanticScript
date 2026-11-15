@@ -1,0 +1,2459 @@
+# Tests of the `floats` module; generated from tools/floats.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests write text in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state never
+# reaches. The expected texts and bits are Python's repr and float().
+expectFormat is operation
+expectFormat purpose "Write the Float64 with the given bits and compare the text with what is expected"
+expectFormat invariant none
+expectFormat typeParameter none
+expectFormat input bitsValue UInt64 copied
+expectFormat input expected String borrowed
+expectFormat output none
+expectFormat outputOwnedBy none
+expectFormat raises none
+expectFormat effect use machine.memory
+expectFormat effect use system.calls
+expectFormat uses memoryAccess
+expectFormat uses systemCalls
+expectFormat memoryHeap false
+expectFormat async false
+expectFormat maxRecursion none
+expectFormat label begin loopKind none
+expectFormat label begin within none
+expectFormat let scratchAt Int64 61440 immutable
+expectFormat at begin do findState
+expectFormat at begin do findScratch
+expectFormat at begin do asFloat
+expectFormat at begin do format
+expectFormat at begin do viewText
+expectFormat at begin do expectText
+expectFormat at begin return ok none
+
+findState is call
+findState in expectFormat
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in expectFormat
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+asFloat is call
+asFloat in expectFormat
+asFloat invokes convert.uint64BitsToFloat64
+asFloat argument value UInt64 bitsValue copy
+asFloat result value Float64
+asFloat ownedBy none
+asFloat cleanedBy none
+asFloat borrows none
+asFloat catch none
+asFloat suppresses none
+
+format is call
+format in expectFormat
+format invokes formatFloat
+format argument value Float64 value copy
+format argument target machine.Address scratch copy
+format result length Int64
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+viewText is call
+viewText in expectFormat
+viewText invokes machine.stringAt
+viewText argument address machine.Address scratch copy
+viewText argument bytes Int64 length copy
+viewText result text String
+viewText ownedBy none
+viewText cleanedBy none
+viewText borrows none
+viewText catch none
+viewText suppresses none
+
+expectText is call
+expectText in expectFormat
+expectText invokes test.assertEqualString
+expectText argument expected String expected lend
+expectText argument actual String text lend
+expectText result none
+expectText ownedBy none
+expectText cleanedBy none
+expectText borrows none
+expectText catch none
+expectText suppresses none
+
+expectParse is operation
+expectParse purpose "Read a text and compare the status and the bits of the value with what is expected"
+expectParse invariant none
+expectParse typeParameter none
+expectParse input text String borrowed
+expectParse input status Int64 copied
+expectParse input bitsValue UInt64 copied
+expectParse output none
+expectParse outputOwnedBy none
+expectParse raises none
+expectParse effect use machine.memory
+expectParse effect use system.calls
+expectParse uses memoryAccess
+expectParse uses systemCalls
+expectParse memoryHeap false
+expectParse async false
+expectParse maxRecursion none
+expectParse label begin loopKind none
+expectParse label begin within none
+expectParse let scratchAt Int64 61440 immutable
+expectParse at begin do findState
+expectParse at begin do findScratch
+expectParse at begin do findText
+expectParse at begin do measure
+expectParse at begin do parse
+expectParse at begin do widenStatus
+expectParse at begin do expectStatus
+expectParse at begin do readValue
+expectParse at begin do sameCheck
+expectParse at begin do expectBits
+expectParse at begin return ok none
+
+findState is call
+findState in expectParse
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in expectParse
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findText is call
+findText in expectParse
+findText invokes machine.addressOfString
+findText argument text String text lend
+findText result textPlace machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+measure is call
+measure in expectParse
+measure invokes string.byteLength
+measure argument text String text lend
+measure result bytes Int64
+measure ownedBy none
+measure cleanedBy none
+measure borrows none
+measure catch none
+measure suppresses none
+
+parse is call
+parse in expectParse
+parse invokes parseFloat
+parse argument text machine.Address textPlace copy
+parse argument bytes Int64 bytes copy
+parse argument out machine.Address scratch copy
+parse result got Int32
+parse ownedBy none
+parse cleanedBy none
+parse borrows none
+parse catch none
+parse suppresses none
+
+widenStatus is call
+widenStatus in expectParse
+widenStatus invokes convert.int32ToInt64
+widenStatus argument value Int32 got copy
+widenStatus result gotStatus Int64
+widenStatus ownedBy none
+widenStatus cleanedBy none
+widenStatus borrows none
+widenStatus catch none
+widenStatus suppresses none
+
+expectStatus is call
+expectStatus in expectParse
+expectStatus invokes test.assertEqualInt64
+expectStatus argument expected Int64 status copy
+expectStatus argument actual Int64 gotStatus copy
+expectStatus result none
+expectStatus ownedBy none
+expectStatus cleanedBy none
+expectStatus borrows none
+expectStatus catch none
+expectStatus suppresses none
+
+readValue is call
+readValue in expectParse
+readValue invokes machine.loadUInt64
+readValue argument address machine.Address scratch copy
+readValue result gotBits UInt64
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+sameCheck is call
+sameCheck in expectParse
+sameCheck invokes compare.equalUInt64
+sameCheck argument left UInt64 gotBits copy
+sameCheck argument right UInt64 bitsValue copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+expectBits is call
+expectBits in expectParse
+expectBits invokes test.assertTrue
+expectBits argument value Bool same copy
+expectBits result none
+expectBits ownedBy none
+expectBits cleanedBy none
+expectBits borrows none
+expectBits catch none
+expectBits suppresses none
+
+formatInRegionTest is test
+formatInRegionTest purpose "A float's text is put in a region and its length beside it"
+formatInRegionTest verifies formatFloatInRegion formatsIntoRegion
+formatInRegionTest typeParameter none
+formatInRegionTest input none
+formatInRegionTest output none
+formatInRegionTest outputOwnedBy none
+formatInRegionTest raises none
+formatInRegionTest effect use machine.memory
+formatInRegionTest effect use system.calls
+formatInRegionTest uses memoryAccess
+formatInRegionTest uses systemCalls
+formatInRegionTest memoryHeap false
+formatInRegionTest async false
+formatInRegionTest maxRecursion none
+formatInRegionTest label begin loopKind none
+formatInRegionTest label begin within none
+formatInRegionTest let label String "region `numbers` of `formatInRegionTest`" immutable
+formatInRegionTest let expected String "-2.5e-07" immutable
+formatInRegionTest let capacity Int64 64 immutable
+formatInRegionTest let scratchAt Int64 61440 immutable
+formatInRegionTest let minusQuarterMicro UInt64 13731694030708141453 immutable
+formatInRegionTest let fiftySix Int64 56 immutable
+formatInRegionTest at begin do findLabel
+formatInRegionTest at begin do labelLength
+formatInRegionTest at begin do make
+formatInRegionTest at begin do findState
+formatInRegionTest at begin do findLength
+formatInRegionTest at begin do asFloat
+formatInRegionTest at begin do format
+formatInRegionTest at begin do readLength
+formatInRegionTest at begin do viewText
+formatInRegionTest at begin do expectText
+formatInRegionTest at begin do readLeft
+formatInRegionTest at begin do expectLeft
+formatInRegionTest at begin do free
+formatInRegionTest at begin return ok none
+
+findLabel is call
+findLabel in formatInRegionTest
+findLabel invokes machine.addressOfString
+findLabel argument text String label lend
+findLabel result labelAt machine.Address
+findLabel ownedBy none
+findLabel cleanedBy none
+findLabel borrows none
+findLabel catch none
+findLabel suppresses none
+
+labelLength is call
+labelLength in formatInRegionTest
+labelLength invokes string.byteLength
+labelLength argument text String label lend
+labelLength result labelBytes Int64
+labelLength ownedBy none
+labelLength cleanedBy none
+labelLength borrows none
+labelLength catch none
+labelLength suppresses none
+
+make is call
+make in formatInRegionTest
+make invokes regions.newRegion
+make argument capacity Int64 capacity copy
+make argument label machine.Address labelAt copy
+make argument labelBytes Int64 labelBytes copy
+make result region machine.Address
+make ownedBy none
+make cleanedBy none
+make borrows none
+make catch none
+make suppresses none
+
+findState is call
+findState in formatInRegionTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findLength is call
+findLength in formatInRegionTest
+findLength invokes machine.offset
+findLength argument address machine.Address state copy
+findLength argument bytes Int64 scratchAt copy
+findLength result lengthAt machine.Address
+findLength ownedBy none
+findLength cleanedBy none
+findLength borrows none
+findLength catch none
+findLength suppresses none
+
+asFloat is call
+asFloat in formatInRegionTest
+asFloat invokes convert.uint64BitsToFloat64
+asFloat argument value UInt64 minusQuarterMicro copy
+asFloat result value Float64
+asFloat ownedBy none
+asFloat cleanedBy none
+asFloat borrows none
+asFloat catch none
+asFloat suppresses none
+
+format is call
+format in formatInRegionTest
+format invokes formatFloatInRegion
+format argument value Float64 value copy
+format argument region machine.Address region copy
+format argument lengthAt machine.Address lengthAt copy
+format result text machine.Address
+format ownedBy none
+format cleanedBy none
+format borrows none
+format catch none
+format suppresses none
+
+readLength is call
+readLength in formatInRegionTest
+readLength invokes machine.loadInt64
+readLength argument address machine.Address lengthAt copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+viewText is call
+viewText in formatInRegionTest
+viewText invokes machine.stringAt
+viewText argument address machine.Address text copy
+viewText argument bytes Int64 length copy
+viewText result shown String
+viewText ownedBy none
+viewText cleanedBy none
+viewText borrows none
+viewText catch none
+viewText suppresses none
+
+expectText is call
+expectText in formatInRegionTest
+expectText invokes test.assertEqualString
+expectText argument expected String expected lend
+expectText argument actual String shown lend
+expectText result none
+expectText ownedBy none
+expectText cleanedBy none
+expectText borrows none
+expectText catch none
+expectText suppresses none
+
+readLeft is call
+readLeft in formatInRegionTest
+readLeft invokes regions.remaining
+readLeft argument region machine.Address region copy
+readLeft result left Int64
+readLeft ownedBy none
+readLeft cleanedBy none
+readLeft borrows none
+readLeft catch none
+readLeft suppresses none
+
+expectLeft is call
+expectLeft in formatInRegionTest
+expectLeft invokes test.assertEqualInt64
+expectLeft argument expected Int64 fiftySix copy
+expectLeft argument actual Int64 left copy
+expectLeft result none
+expectLeft ownedBy none
+expectLeft cleanedBy none
+expectLeft borrows none
+expectLeft catch none
+expectLeft suppresses none
+
+free is call
+free in formatInRegionTest
+free invokes regions.release
+free argument region machine.Address region copy
+free result none
+free ownedBy none
+free cleanedBy none
+free borrows none
+free catch none
+free suppresses none
+
+writeFloatTest is test
+writeFloatTest purpose "A float written to standard error with no line end is its repr, and the write succeeds"
+writeFloatTest verifies writeFloat writesReprLine
+writeFloatTest typeParameter none
+writeFloatTest input none
+writeFloatTest output none
+writeFloatTest outputOwnedBy none
+writeFloatTest raises none
+writeFloatTest effect use machine.memory
+writeFloatTest effect use system.calls
+writeFloatTest uses memoryAccess
+writeFloatTest uses systemCalls
+writeFloatTest memoryHeap false
+writeFloatTest async false
+writeFloatTest maxRecursion none
+writeFloatTest label begin loopKind none
+writeFloatTest label begin within none
+writeFloatTest let expected String "0.5" immutable
+writeFloatTest let half UInt64 4602678819172646912 immutable
+writeFloatTest let two Int32 2 immutable
+writeFloatTest let noLine Int32 0 immutable
+writeFloatTest let three Int64 3 immutable
+writeFloatTest let zero Int64 0 immutable
+writeFloatTest at begin do asFloat
+writeFloatTest at begin do writeNumber
+writeFloatTest at begin do findText
+writeFloatTest at begin do viewText
+writeFloatTest at begin do expectText
+writeFloatTest at begin do statusWide
+writeFloatTest at begin do expectWritten
+writeFloatTest at begin return ok none
+
+asFloat is call
+asFloat in writeFloatTest
+asFloat invokes convert.uint64BitsToFloat64
+asFloat argument value UInt64 half copy
+asFloat result value Float64
+asFloat ownedBy none
+asFloat cleanedBy none
+asFloat borrows none
+asFloat catch none
+asFloat suppresses none
+
+writeNumber is call
+writeNumber in writeFloatTest
+writeNumber invokes writeFloat
+writeNumber argument stream Int32 two copy
+writeNumber argument value Float64 value copy
+writeNumber argument newline Int32 noLine copy
+writeNumber result status Int32
+writeNumber ownedBy none
+writeNumber cleanedBy none
+writeNumber borrows none
+writeNumber catch none
+writeNumber suppresses none
+
+findText is call
+findText in writeFloatTest
+findText invokes stateAt
+findText argument offset Int64 textAt copy
+findText result text machine.Address
+findText ownedBy none
+findText cleanedBy none
+findText borrows none
+findText catch none
+findText suppresses none
+
+viewText is call
+viewText in writeFloatTest
+viewText invokes machine.stringAt
+viewText argument address machine.Address text copy
+viewText argument bytes Int64 three copy
+viewText result shown String
+viewText ownedBy none
+viewText cleanedBy none
+viewText borrows none
+viewText catch none
+viewText suppresses none
+
+expectText is call
+expectText in writeFloatTest
+expectText invokes test.assertEqualString
+expectText argument expected String expected lend
+expectText argument actual String shown lend
+expectText result none
+expectText ownedBy none
+expectText cleanedBy none
+expectText borrows none
+expectText catch none
+expectText suppresses none
+
+statusWide is call
+statusWide in writeFloatTest
+statusWide invokes convert.int32ToInt64
+statusWide argument value Int32 status copy
+statusWide result statusValue Int64
+statusWide ownedBy none
+statusWide cleanedBy none
+statusWide borrows none
+statusWide catch none
+statusWide suppresses none
+
+expectWritten is call
+expectWritten in writeFloatTest
+expectWritten invokes test.assertEqualInt64
+expectWritten argument expected Int64 zero copy
+expectWritten argument actual Int64 statusValue copy
+expectWritten result none
+expectWritten ownedBy none
+expectWritten cleanedBy none
+expectWritten borrows none
+expectWritten catch none
+expectWritten suppresses none
+
+# ---------------------------------------------------------------- generated cases
+formatTest1 is test
+formatTest1 purpose "Floats are written as `refined run` writes them (Python's repr), part 1"
+formatTest1 verifies formatFloat writesRepr
+formatTest1 typeParameter none
+formatTest1 input none
+formatTest1 output none
+formatTest1 outputOwnedBy none
+formatTest1 raises none
+formatTest1 effect use machine.memory
+formatTest1 effect use system.calls
+formatTest1 uses memoryAccess
+formatTest1 uses systemCalls
+formatTest1 memoryHeap false
+formatTest1 async false
+formatTest1 maxRecursion none
+formatTest1 label begin loopKind none
+formatTest1 label begin within none
+formatTest1 let scratchAt Int64 61440 immutable
+formatTest1 let uInt640 UInt64 0 immutable
+formatTest1 let text1 String "0.0" immutable
+formatTest1 let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+formatTest1 let text2 String "-0.0" immutable
+formatTest1 let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+formatTest1 let text3 String "1.0" immutable
+formatTest1 let uInt644591870180066957722 UInt64 4591870180066957722 immutable
+formatTest1 let text4 String "0.1" immutable
+formatTest1 let uInt644636737291354636288 UInt64 4636737291354636288 immutable
+formatTest1 let text5 String "100.0" immutable
+formatTest1 let uInt644831355200913801216 UInt64 4831355200913801216 immutable
+formatTest1 let text6 String "1000000000000000.0" immutable
+formatTest1 let uInt644846369599423283200 UInt64 4846369599423283200 immutable
+formatTest1 let text7 String "1e+16" immutable
+formatTest1 let uInt644532020583610935537 UInt64 4532020583610935537 immutable
+formatTest1 let text8 String "1e-05" immutable
+formatTest1 let uInt644547007122018943789 UInt64 4547007122018943789 immutable
+formatTest1 let text9 String "0.0001" immutable
+formatTest1 let uInt641 UInt64 1 immutable
+formatTest1 let text10 String "5e-324" immutable
+formatTest1 let uInt644503599627370496 UInt64 4503599627370496 immutable
+formatTest1 let text11 String "2.2250738585072014e-308" immutable
+formatTest1 let uInt649218868437227405311 UInt64 9218868437227405311 immutable
+formatTest1 let text12 String "1.7976931348623157e+308" immutable
+formatTest1 let uInt644599075939470750516 UInt64 4599075939470750516 immutable
+formatTest1 let text13 String "0.30000000000000004" immutable
+formatTest1 let uInt644862596447618666293 UInt64 4862596447618666293 immutable
+formatTest1 let text14 String "1.2345678901234568e+17" immutable
+formatTest1 let uInt649221120237041090560 UInt64 9221120237041090560 immutable
+formatTest1 let text15 String "nan" immutable
+formatTest1 at begin do findState
+formatTest1 at begin do findScratch
+formatTest1 at begin do asFloat
+formatTest1 at begin do formatFirst
+formatTest1 at begin do viewFirst
+formatTest1 at begin do expectFirst
+formatTest1 at begin do case1
+formatTest1 at begin do case2
+formatTest1 at begin do case3
+formatTest1 at begin do case4
+formatTest1 at begin do case5
+formatTest1 at begin do case6
+formatTest1 at begin do case7
+formatTest1 at begin do case8
+formatTest1 at begin do case9
+formatTest1 at begin do case10
+formatTest1 at begin do case11
+formatTest1 at begin do case12
+formatTest1 at begin do case13
+formatTest1 at begin do case14
+formatTest1 at begin return ok none
+
+findState is call
+findState in formatTest1
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in formatTest1
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+asFloat is call
+asFloat in formatTest1
+asFloat invokes convert.uint64BitsToFloat64
+asFloat argument value UInt64 uInt640 copy
+asFloat result first Float64
+asFloat ownedBy none
+asFloat cleanedBy none
+asFloat borrows none
+asFloat catch none
+asFloat suppresses none
+
+formatFirst is call
+formatFirst in formatTest1
+formatFirst invokes formatFloat
+formatFirst argument value Float64 first copy
+formatFirst argument target machine.Address scratch copy
+formatFirst result length Int64
+formatFirst ownedBy none
+formatFirst cleanedBy none
+formatFirst borrows none
+formatFirst catch none
+formatFirst suppresses none
+
+viewFirst is call
+viewFirst in formatTest1
+viewFirst invokes machine.stringAt
+viewFirst argument address machine.Address scratch copy
+viewFirst argument bytes Int64 length copy
+viewFirst result text String
+viewFirst ownedBy none
+viewFirst cleanedBy none
+viewFirst borrows none
+viewFirst catch none
+viewFirst suppresses none
+
+expectFirst is call
+expectFirst in formatTest1
+expectFirst invokes test.assertEqualString
+expectFirst argument expected String text1 lend
+expectFirst argument actual String text lend
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+case1 is call
+case1 in formatTest1
+case1 invokes expectFormat
+case1 argument bitsValue UInt64 uInt649223372036854775808 copy
+case1 argument expected String text2 lend
+case1 result none
+case1 ownedBy none
+case1 cleanedBy none
+case1 borrows none
+case1 catch none
+case1 suppresses none
+
+case2 is call
+case2 in formatTest1
+case2 invokes expectFormat
+case2 argument bitsValue UInt64 uInt644607182418800017408 copy
+case2 argument expected String text3 lend
+case2 result none
+case2 ownedBy none
+case2 cleanedBy none
+case2 borrows none
+case2 catch none
+case2 suppresses none
+
+case3 is call
+case3 in formatTest1
+case3 invokes expectFormat
+case3 argument bitsValue UInt64 uInt644591870180066957722 copy
+case3 argument expected String text4 lend
+case3 result none
+case3 ownedBy none
+case3 cleanedBy none
+case3 borrows none
+case3 catch none
+case3 suppresses none
+
+case4 is call
+case4 in formatTest1
+case4 invokes expectFormat
+case4 argument bitsValue UInt64 uInt644636737291354636288 copy
+case4 argument expected String text5 lend
+case4 result none
+case4 ownedBy none
+case4 cleanedBy none
+case4 borrows none
+case4 catch none
+case4 suppresses none
+
+case5 is call
+case5 in formatTest1
+case5 invokes expectFormat
+case5 argument bitsValue UInt64 uInt644831355200913801216 copy
+case5 argument expected String text6 lend
+case5 result none
+case5 ownedBy none
+case5 cleanedBy none
+case5 borrows none
+case5 catch none
+case5 suppresses none
+
+case6 is call
+case6 in formatTest1
+case6 invokes expectFormat
+case6 argument bitsValue UInt64 uInt644846369599423283200 copy
+case6 argument expected String text7 lend
+case6 result none
+case6 ownedBy none
+case6 cleanedBy none
+case6 borrows none
+case6 catch none
+case6 suppresses none
+
+case7 is call
+case7 in formatTest1
+case7 invokes expectFormat
+case7 argument bitsValue UInt64 uInt644532020583610935537 copy
+case7 argument expected String text8 lend
+case7 result none
+case7 ownedBy none
+case7 cleanedBy none
+case7 borrows none
+case7 catch none
+case7 suppresses none
+
+case8 is call
+case8 in formatTest1
+case8 invokes expectFormat
+case8 argument bitsValue UInt64 uInt644547007122018943789 copy
+case8 argument expected String text9 lend
+case8 result none
+case8 ownedBy none
+case8 cleanedBy none
+case8 borrows none
+case8 catch none
+case8 suppresses none
+
+case9 is call
+case9 in formatTest1
+case9 invokes expectFormat
+case9 argument bitsValue UInt64 uInt641 copy
+case9 argument expected String text10 lend
+case9 result none
+case9 ownedBy none
+case9 cleanedBy none
+case9 borrows none
+case9 catch none
+case9 suppresses none
+
+case10 is call
+case10 in formatTest1
+case10 invokes expectFormat
+case10 argument bitsValue UInt64 uInt644503599627370496 copy
+case10 argument expected String text11 lend
+case10 result none
+case10 ownedBy none
+case10 cleanedBy none
+case10 borrows none
+case10 catch none
+case10 suppresses none
+
+case11 is call
+case11 in formatTest1
+case11 invokes expectFormat
+case11 argument bitsValue UInt64 uInt649218868437227405311 copy
+case11 argument expected String text12 lend
+case11 result none
+case11 ownedBy none
+case11 cleanedBy none
+case11 borrows none
+case11 catch none
+case11 suppresses none
+
+case12 is call
+case12 in formatTest1
+case12 invokes expectFormat
+case12 argument bitsValue UInt64 uInt644599075939470750516 copy
+case12 argument expected String text13 lend
+case12 result none
+case12 ownedBy none
+case12 cleanedBy none
+case12 borrows none
+case12 catch none
+case12 suppresses none
+
+case13 is call
+case13 in formatTest1
+case13 invokes expectFormat
+case13 argument bitsValue UInt64 uInt644862596447618666293 copy
+case13 argument expected String text14 lend
+case13 result none
+case13 ownedBy none
+case13 cleanedBy none
+case13 borrows none
+case13 catch none
+case13 suppresses none
+
+case14 is call
+case14 in formatTest1
+case14 invokes expectFormat
+case14 argument bitsValue UInt64 uInt649221120237041090560 copy
+case14 argument expected String text15 lend
+case14 result none
+case14 ownedBy none
+case14 cleanedBy none
+case14 borrows none
+case14 catch none
+case14 suppresses none
+
+formatTest2 is test
+formatTest2 purpose "Floats are written as `refined run` writes them (Python's repr), part 2"
+formatTest2 verifies formatFloat writesRepr
+formatTest2 typeParameter none
+formatTest2 input none
+formatTest2 output none
+formatTest2 outputOwnedBy none
+formatTest2 raises none
+formatTest2 effect use machine.memory
+formatTest2 effect use system.calls
+formatTest2 uses memoryAccess
+formatTest2 uses systemCalls
+formatTest2 memoryHeap false
+formatTest2 async false
+formatTest2 maxRecursion none
+formatTest2 label begin loopKind none
+formatTest2 label begin within none
+formatTest2 let scratchAt Int64 61440 immutable
+formatTest2 let uInt649218868437227405312 UInt64 9218868437227405312 immutable
+formatTest2 let text1 String "inf" immutable
+formatTest2 let uInt6418442240474082181120 UInt64 18442240474082181120 immutable
+formatTest2 let text2 String "-inf" immutable
+formatTest2 let uInt6413832806255468478464 UInt64 13832806255468478464 immutable
+formatTest2 let text3 String "-1.5" immutable
+formatTest2 let uInt64103582791429521408 UInt64 103582791429521408 immutable
+formatTest2 let text4 String "9.332636185032189e-302" immutable
+formatTest2 let uInt644877398396442247168 UInt64 4877398396442247168 immutable
+formatTest2 let text5 String "1.152921504606847e+18" immutable
+formatTest2 let uInt644503599627370496 UInt64 4503599627370496 immutable
+formatTest2 let text6 String "2.2250738585072014e-308" immutable
+formatTest2 let uInt649007199254740992 UInt64 9007199254740992 immutable
+formatTest2 let text7 String "4.450147717014403e-308" immutable
+formatTest2 let uInt644599676419421066581 UInt64 4599676419421066581 immutable
+formatTest2 let text8 String "0.3333333333333333" immutable
+formatTest2 let uInt644604180019048437077 UInt64 4604180019048437077 immutable
+formatTest2 let text9 String "0.6666666666666666" immutable
+formatTest2 let uInt644950912855330343670 UInt64 4950912855330343670 immutable
+formatTest2 let text10 String "1e+23" immutable
+formatTest2 let uInt644504762867522569078 UInt64 4504762867522569078 immutable
+formatTest2 let text11 String "1.5e-07" immutable
+formatTest2 let uInt649214364837600034816 UInt64 9214364837600034816 immutable
+formatTest2 let text12 String "8.98846567431158e+307" immutable
+formatTest2 let uInt644616583683022153318 UInt64 4616583683022153318 immutable
+formatTest2 let text13 String "4.35" immutable
+formatTest2 let uInt644602678819172646912 UInt64 4602678819172646912 immutable
+formatTest2 let text14 String "0.5" immutable
+formatTest2 let uInt644612811918334230528 UInt64 4612811918334230528 immutable
+formatTest2 let text15 String "2.5" immutable
+formatTest2 at begin do findState
+formatTest2 at begin do findScratch
+formatTest2 at begin do asFloat
+formatTest2 at begin do formatFirst
+formatTest2 at begin do viewFirst
+formatTest2 at begin do expectFirst
+formatTest2 at begin do case1
+formatTest2 at begin do case2
+formatTest2 at begin do case3
+formatTest2 at begin do case4
+formatTest2 at begin do case5
+formatTest2 at begin do case6
+formatTest2 at begin do case7
+formatTest2 at begin do case8
+formatTest2 at begin do case9
+formatTest2 at begin do case10
+formatTest2 at begin do case11
+formatTest2 at begin do case12
+formatTest2 at begin do case13
+formatTest2 at begin do case14
+formatTest2 at begin return ok none
+
+findState is call
+findState in formatTest2
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in formatTest2
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+asFloat is call
+asFloat in formatTest2
+asFloat invokes convert.uint64BitsToFloat64
+asFloat argument value UInt64 uInt649218868437227405312 copy
+asFloat result first Float64
+asFloat ownedBy none
+asFloat cleanedBy none
+asFloat borrows none
+asFloat catch none
+asFloat suppresses none
+
+formatFirst is call
+formatFirst in formatTest2
+formatFirst invokes formatFloat
+formatFirst argument value Float64 first copy
+formatFirst argument target machine.Address scratch copy
+formatFirst result length Int64
+formatFirst ownedBy none
+formatFirst cleanedBy none
+formatFirst borrows none
+formatFirst catch none
+formatFirst suppresses none
+
+viewFirst is call
+viewFirst in formatTest2
+viewFirst invokes machine.stringAt
+viewFirst argument address machine.Address scratch copy
+viewFirst argument bytes Int64 length copy
+viewFirst result text String
+viewFirst ownedBy none
+viewFirst cleanedBy none
+viewFirst borrows none
+viewFirst catch none
+viewFirst suppresses none
+
+expectFirst is call
+expectFirst in formatTest2
+expectFirst invokes test.assertEqualString
+expectFirst argument expected String text1 lend
+expectFirst argument actual String text lend
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+case1 is call
+case1 in formatTest2
+case1 invokes expectFormat
+case1 argument bitsValue UInt64 uInt6418442240474082181120 copy
+case1 argument expected String text2 lend
+case1 result none
+case1 ownedBy none
+case1 cleanedBy none
+case1 borrows none
+case1 catch none
+case1 suppresses none
+
+case2 is call
+case2 in formatTest2
+case2 invokes expectFormat
+case2 argument bitsValue UInt64 uInt6413832806255468478464 copy
+case2 argument expected String text3 lend
+case2 result none
+case2 ownedBy none
+case2 cleanedBy none
+case2 borrows none
+case2 catch none
+case2 suppresses none
+
+case3 is call
+case3 in formatTest2
+case3 invokes expectFormat
+case3 argument bitsValue UInt64 uInt64103582791429521408 copy
+case3 argument expected String text4 lend
+case3 result none
+case3 ownedBy none
+case3 cleanedBy none
+case3 borrows none
+case3 catch none
+case3 suppresses none
+
+case4 is call
+case4 in formatTest2
+case4 invokes expectFormat
+case4 argument bitsValue UInt64 uInt644877398396442247168 copy
+case4 argument expected String text5 lend
+case4 result none
+case4 ownedBy none
+case4 cleanedBy none
+case4 borrows none
+case4 catch none
+case4 suppresses none
+
+case5 is call
+case5 in formatTest2
+case5 invokes expectFormat
+case5 argument bitsValue UInt64 uInt644503599627370496 copy
+case5 argument expected String text6 lend
+case5 result none
+case5 ownedBy none
+case5 cleanedBy none
+case5 borrows none
+case5 catch none
+case5 suppresses none
+
+case6 is call
+case6 in formatTest2
+case6 invokes expectFormat
+case6 argument bitsValue UInt64 uInt649007199254740992 copy
+case6 argument expected String text7 lend
+case6 result none
+case6 ownedBy none
+case6 cleanedBy none
+case6 borrows none
+case6 catch none
+case6 suppresses none
+
+case7 is call
+case7 in formatTest2
+case7 invokes expectFormat
+case7 argument bitsValue UInt64 uInt644599676419421066581 copy
+case7 argument expected String text8 lend
+case7 result none
+case7 ownedBy none
+case7 cleanedBy none
+case7 borrows none
+case7 catch none
+case7 suppresses none
+
+case8 is call
+case8 in formatTest2
+case8 invokes expectFormat
+case8 argument bitsValue UInt64 uInt644604180019048437077 copy
+case8 argument expected String text9 lend
+case8 result none
+case8 ownedBy none
+case8 cleanedBy none
+case8 borrows none
+case8 catch none
+case8 suppresses none
+
+case9 is call
+case9 in formatTest2
+case9 invokes expectFormat
+case9 argument bitsValue UInt64 uInt644950912855330343670 copy
+case9 argument expected String text10 lend
+case9 result none
+case9 ownedBy none
+case9 cleanedBy none
+case9 borrows none
+case9 catch none
+case9 suppresses none
+
+case10 is call
+case10 in formatTest2
+case10 invokes expectFormat
+case10 argument bitsValue UInt64 uInt644504762867522569078 copy
+case10 argument expected String text11 lend
+case10 result none
+case10 ownedBy none
+case10 cleanedBy none
+case10 borrows none
+case10 catch none
+case10 suppresses none
+
+case11 is call
+case11 in formatTest2
+case11 invokes expectFormat
+case11 argument bitsValue UInt64 uInt649214364837600034816 copy
+case11 argument expected String text12 lend
+case11 result none
+case11 ownedBy none
+case11 cleanedBy none
+case11 borrows none
+case11 catch none
+case11 suppresses none
+
+case12 is call
+case12 in formatTest2
+case12 invokes expectFormat
+case12 argument bitsValue UInt64 uInt644616583683022153318 copy
+case12 argument expected String text13 lend
+case12 result none
+case12 ownedBy none
+case12 cleanedBy none
+case12 borrows none
+case12 catch none
+case12 suppresses none
+
+case13 is call
+case13 in formatTest2
+case13 invokes expectFormat
+case13 argument bitsValue UInt64 uInt644602678819172646912 copy
+case13 argument expected String text14 lend
+case13 result none
+case13 ownedBy none
+case13 cleanedBy none
+case13 borrows none
+case13 catch none
+case13 suppresses none
+
+case14 is call
+case14 in formatTest2
+case14 invokes expectFormat
+case14 argument bitsValue UInt64 uInt644612811918334230528 copy
+case14 argument expected String text15 lend
+case14 result none
+case14 ownedBy none
+case14 cleanedBy none
+case14 borrows none
+case14 catch none
+case14 suppresses none
+
+formatTest3 is test
+formatTest3 purpose "Floats are written as `refined run` writes them (Python's repr), part 3"
+formatTest3 verifies formatFloat writesRepr
+formatTest3 typeParameter none
+formatTest3 input none
+formatTest3 output none
+formatTest3 outputOwnedBy none
+formatTest3 raises none
+formatTest3 effect use machine.memory
+formatTest3 effect use system.calls
+formatTest3 uses memoryAccess
+formatTest3 uses systemCalls
+formatTest3 memoryHeap false
+formatTest3 async false
+formatTest3 maxRecursion none
+formatTest3 label begin loopKind none
+formatTest3 label begin within none
+formatTest3 let scratchAt Int64 61440 immutable
+formatTest3 let uInt646103021453049119613 UInt64 6103021453049119613 immutable
+formatTest3 let text1 String "1e+100" immutable
+formatTest3 let uInt644653144502051863213 UInt64 4653144502051863213 immutable
+formatTest3 let text2 String "1234.5678" immutable
+formatTest3 let uInt644950912855330343670 UInt64 4950912855330343670 immutable
+formatTest3 let text3 String "1e+23" immutable
+formatTest3 let uInt644936209963552724370 UInt64 4936209963552724370 immutable
+formatTest3 let text4 String "1e+22" immutable
+formatTest3 let uInt644841369599423283200 UInt64 4841369599423283200 immutable
+formatTest3 let text5 String "4503599627370496.0" immutable
+formatTest3 let uInt644845873199050653697 UInt64 4845873199050653697 immutable
+formatTest3 let text6 String "9007199254740994.0" immutable
+formatTest3 let uInt643 UInt64 3 immutable
+formatTest3 let text7 String "1.5e-323" immutable
+formatTest3 let uInt644607182418800017409 UInt64 4607182418800017409 immutable
+formatTest3 let text8 String "1.0000000000000002" immutable
+formatTest3 let uInt644607182418800017407 UInt64 4607182418800017407 immutable
+formatTest3 let text9 String "0.9999999999999999" immutable
+formatTest3 let uInt644547007122018943789 UInt64 4547007122018943789 immutable
+formatTest3 let text10 String "0.0001" immutable
+formatTest3 let uInt644517110426252607488 UInt64 4517110426252607488 immutable
+formatTest3 let text11 String "9.5367431640625e-07" immutable
+formatTest3 let uInt649223372036854788153 UInt64 9223372036854788153 immutable
+formatTest3 let text12 String "-6.099e-320" immutable
+formatTest3 let uInt644503599627370496 UInt64 4503599627370496 immutable
+formatTest3 let text13 String "2.2250738585072014e-308" immutable
+formatTest3 let uInt649214364837600034816 UInt64 9214364837600034816 immutable
+formatTest3 let text14 String "8.98846567431158e+307" immutable
+formatTest3 at begin do findState
+formatTest3 at begin do findScratch
+formatTest3 at begin do asFloat
+formatTest3 at begin do formatFirst
+formatTest3 at begin do viewFirst
+formatTest3 at begin do expectFirst
+formatTest3 at begin do case1
+formatTest3 at begin do case2
+formatTest3 at begin do case3
+formatTest3 at begin do case4
+formatTest3 at begin do case5
+formatTest3 at begin do case6
+formatTest3 at begin do case7
+formatTest3 at begin do case8
+formatTest3 at begin do case9
+formatTest3 at begin do case10
+formatTest3 at begin do case11
+formatTest3 at begin do case12
+formatTest3 at begin do case13
+formatTest3 at begin return ok none
+
+findState is call
+findState in formatTest3
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in formatTest3
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+asFloat is call
+asFloat in formatTest3
+asFloat invokes convert.uint64BitsToFloat64
+asFloat argument value UInt64 uInt646103021453049119613 copy
+asFloat result first Float64
+asFloat ownedBy none
+asFloat cleanedBy none
+asFloat borrows none
+asFloat catch none
+asFloat suppresses none
+
+formatFirst is call
+formatFirst in formatTest3
+formatFirst invokes formatFloat
+formatFirst argument value Float64 first copy
+formatFirst argument target machine.Address scratch copy
+formatFirst result length Int64
+formatFirst ownedBy none
+formatFirst cleanedBy none
+formatFirst borrows none
+formatFirst catch none
+formatFirst suppresses none
+
+viewFirst is call
+viewFirst in formatTest3
+viewFirst invokes machine.stringAt
+viewFirst argument address machine.Address scratch copy
+viewFirst argument bytes Int64 length copy
+viewFirst result text String
+viewFirst ownedBy none
+viewFirst cleanedBy none
+viewFirst borrows none
+viewFirst catch none
+viewFirst suppresses none
+
+expectFirst is call
+expectFirst in formatTest3
+expectFirst invokes test.assertEqualString
+expectFirst argument expected String text1 lend
+expectFirst argument actual String text lend
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+case1 is call
+case1 in formatTest3
+case1 invokes expectFormat
+case1 argument bitsValue UInt64 uInt644653144502051863213 copy
+case1 argument expected String text2 lend
+case1 result none
+case1 ownedBy none
+case1 cleanedBy none
+case1 borrows none
+case1 catch none
+case1 suppresses none
+
+case2 is call
+case2 in formatTest3
+case2 invokes expectFormat
+case2 argument bitsValue UInt64 uInt644950912855330343670 copy
+case2 argument expected String text3 lend
+case2 result none
+case2 ownedBy none
+case2 cleanedBy none
+case2 borrows none
+case2 catch none
+case2 suppresses none
+
+case3 is call
+case3 in formatTest3
+case3 invokes expectFormat
+case3 argument bitsValue UInt64 uInt644936209963552724370 copy
+case3 argument expected String text4 lend
+case3 result none
+case3 ownedBy none
+case3 cleanedBy none
+case3 borrows none
+case3 catch none
+case3 suppresses none
+
+case4 is call
+case4 in formatTest3
+case4 invokes expectFormat
+case4 argument bitsValue UInt64 uInt644841369599423283200 copy
+case4 argument expected String text5 lend
+case4 result none
+case4 ownedBy none
+case4 cleanedBy none
+case4 borrows none
+case4 catch none
+case4 suppresses none
+
+case5 is call
+case5 in formatTest3
+case5 invokes expectFormat
+case5 argument bitsValue UInt64 uInt644845873199050653697 copy
+case5 argument expected String text6 lend
+case5 result none
+case5 ownedBy none
+case5 cleanedBy none
+case5 borrows none
+case5 catch none
+case5 suppresses none
+
+case6 is call
+case6 in formatTest3
+case6 invokes expectFormat
+case6 argument bitsValue UInt64 uInt643 copy
+case6 argument expected String text7 lend
+case6 result none
+case6 ownedBy none
+case6 cleanedBy none
+case6 borrows none
+case6 catch none
+case6 suppresses none
+
+case7 is call
+case7 in formatTest3
+case7 invokes expectFormat
+case7 argument bitsValue UInt64 uInt644607182418800017409 copy
+case7 argument expected String text8 lend
+case7 result none
+case7 ownedBy none
+case7 cleanedBy none
+case7 borrows none
+case7 catch none
+case7 suppresses none
+
+case8 is call
+case8 in formatTest3
+case8 invokes expectFormat
+case8 argument bitsValue UInt64 uInt644607182418800017407 copy
+case8 argument expected String text9 lend
+case8 result none
+case8 ownedBy none
+case8 cleanedBy none
+case8 borrows none
+case8 catch none
+case8 suppresses none
+
+case9 is call
+case9 in formatTest3
+case9 invokes expectFormat
+case9 argument bitsValue UInt64 uInt644547007122018943789 copy
+case9 argument expected String text10 lend
+case9 result none
+case9 ownedBy none
+case9 cleanedBy none
+case9 borrows none
+case9 catch none
+case9 suppresses none
+
+case10 is call
+case10 in formatTest3
+case10 invokes expectFormat
+case10 argument bitsValue UInt64 uInt644517110426252607488 copy
+case10 argument expected String text11 lend
+case10 result none
+case10 ownedBy none
+case10 cleanedBy none
+case10 borrows none
+case10 catch none
+case10 suppresses none
+
+case11 is call
+case11 in formatTest3
+case11 invokes expectFormat
+case11 argument bitsValue UInt64 uInt649223372036854788153 copy
+case11 argument expected String text12 lend
+case11 result none
+case11 ownedBy none
+case11 cleanedBy none
+case11 borrows none
+case11 catch none
+case11 suppresses none
+
+case12 is call
+case12 in formatTest3
+case12 invokes expectFormat
+case12 argument bitsValue UInt64 uInt644503599627370496 copy
+case12 argument expected String text13 lend
+case12 result none
+case12 ownedBy none
+case12 cleanedBy none
+case12 borrows none
+case12 catch none
+case12 suppresses none
+
+case13 is call
+case13 in formatTest3
+case13 invokes expectFormat
+case13 argument bitsValue UInt64 uInt649214364837600034816 copy
+case13 argument expected String text14 lend
+case13 result none
+case13 ownedBy none
+case13 cleanedBy none
+case13 borrows none
+case13 catch none
+case13 suppresses none
+
+parseTest1 is test
+parseTest1 purpose "Text is read as `refined run` reads it, correctly rounded, part 1"
+parseTest1 verifies parseFloat readsCorrectlyRounded
+parseTest1 typeParameter none
+parseTest1 input none
+parseTest1 output none
+parseTest1 outputOwnedBy none
+parseTest1 raises none
+parseTest1 effect use machine.memory
+parseTest1 effect use system.calls
+parseTest1 uses memoryAccess
+parseTest1 uses systemCalls
+parseTest1 memoryHeap false
+parseTest1 async false
+parseTest1 maxRecursion none
+parseTest1 label begin loopKind none
+parseTest1 label begin within none
+parseTest1 let scratchAt Int64 61440 immutable
+parseTest1 let text1 String "0" immutable
+parseTest1 let one Int64 1 immutable
+parseTest1 let zero Int64 0 immutable
+parseTest1 let text2 String "-0" immutable
+parseTest1 let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+parseTest1 let text3 String "1" immutable
+parseTest1 let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+parseTest1 let text4 String "1.5" immutable
+parseTest1 let uInt644609434218613702656 UInt64 4609434218613702656 immutable
+parseTest1 let text5 String "0.1" immutable
+parseTest1 let uInt644591870180066957722 UInt64 4591870180066957722 immutable
+parseTest1 let text6 String "1e10" immutable
+parseTest1 let uInt644756540486875873280 UInt64 4756540486875873280 immutable
+parseTest1 let text7 String "1E-5" immutable
+parseTest1 let uInt644532020583610935537 UInt64 4532020583610935537 immutable
+parseTest1 let text8 String "2.5e+3" immutable
+parseTest1 let uInt644657715973212602368 UInt64 4657715973212602368 immutable
+parseTest1 let text9 String "-123.456" immutable
+parseTest1 let uInt6413861759897472843383 UInt64 13861759897472843383 immutable
+parseTest1 let text10 String "1.7976931348623157e308" immutable
+parseTest1 let uInt649218868437227405311 UInt64 9218868437227405311 immutable
+parseTest1 let text11 String "1.7976931348623158e308" immutable
+parseTest1 let text12 String "1.7976931348623159e308" immutable
+parseTest1 let two Int64 2 immutable
+parseTest1 let uInt640 UInt64 0 immutable
+parseTest1 let text13 String "1e309" immutable
+parseTest1 let text14 String "-1e309" immutable
+parseTest1 let text15 String "1e-400" immutable
+parseTest1 let text16 String "-1e-400" immutable
+parseTest1 at begin do findState
+parseTest1 at begin do findScratch
+parseTest1 at begin do findFirst
+parseTest1 at begin do parseFirst
+parseTest1 at begin do widenFirst
+parseTest1 at begin do expectFirst
+parseTest1 at begin do case1
+parseTest1 at begin do case2
+parseTest1 at begin do case3
+parseTest1 at begin do case4
+parseTest1 at begin do case5
+parseTest1 at begin do case6
+parseTest1 at begin do case7
+parseTest1 at begin do case8
+parseTest1 at begin do case9
+parseTest1 at begin do case10
+parseTest1 at begin do case11
+parseTest1 at begin do case12
+parseTest1 at begin do case13
+parseTest1 at begin do case14
+parseTest1 at begin do case15
+parseTest1 at begin return ok none
+
+findState is call
+findState in parseTest1
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in parseTest1
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findFirst is call
+findFirst in parseTest1
+findFirst invokes machine.addressOfString
+findFirst argument text String text1 lend
+findFirst result firstAt machine.Address
+findFirst ownedBy none
+findFirst cleanedBy none
+findFirst borrows none
+findFirst catch none
+findFirst suppresses none
+
+parseFirst is call
+parseFirst in parseTest1
+parseFirst invokes parseFloat
+parseFirst argument text machine.Address firstAt copy
+parseFirst argument bytes Int64 one copy
+parseFirst argument out machine.Address scratch copy
+parseFirst result got Int32
+parseFirst ownedBy none
+parseFirst cleanedBy none
+parseFirst borrows none
+parseFirst catch none
+parseFirst suppresses none
+
+widenFirst is call
+widenFirst in parseTest1
+widenFirst invokes convert.int32ToInt64
+widenFirst argument value Int32 got copy
+widenFirst result gotStatus Int64
+widenFirst ownedBy none
+widenFirst cleanedBy none
+widenFirst borrows none
+widenFirst catch none
+widenFirst suppresses none
+
+expectFirst is call
+expectFirst in parseTest1
+expectFirst invokes test.assertEqualInt64
+expectFirst argument expected Int64 zero copy
+expectFirst argument actual Int64 gotStatus copy
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+case1 is call
+case1 in parseTest1
+case1 invokes expectParse
+case1 argument text String text2 lend
+case1 argument status Int64 zero copy
+case1 argument bitsValue UInt64 uInt649223372036854775808 copy
+case1 result none
+case1 ownedBy none
+case1 cleanedBy none
+case1 borrows none
+case1 catch none
+case1 suppresses none
+
+case2 is call
+case2 in parseTest1
+case2 invokes expectParse
+case2 argument text String text3 lend
+case2 argument status Int64 zero copy
+case2 argument bitsValue UInt64 uInt644607182418800017408 copy
+case2 result none
+case2 ownedBy none
+case2 cleanedBy none
+case2 borrows none
+case2 catch none
+case2 suppresses none
+
+case3 is call
+case3 in parseTest1
+case3 invokes expectParse
+case3 argument text String text4 lend
+case3 argument status Int64 zero copy
+case3 argument bitsValue UInt64 uInt644609434218613702656 copy
+case3 result none
+case3 ownedBy none
+case3 cleanedBy none
+case3 borrows none
+case3 catch none
+case3 suppresses none
+
+case4 is call
+case4 in parseTest1
+case4 invokes expectParse
+case4 argument text String text5 lend
+case4 argument status Int64 zero copy
+case4 argument bitsValue UInt64 uInt644591870180066957722 copy
+case4 result none
+case4 ownedBy none
+case4 cleanedBy none
+case4 borrows none
+case4 catch none
+case4 suppresses none
+
+case5 is call
+case5 in parseTest1
+case5 invokes expectParse
+case5 argument text String text6 lend
+case5 argument status Int64 zero copy
+case5 argument bitsValue UInt64 uInt644756540486875873280 copy
+case5 result none
+case5 ownedBy none
+case5 cleanedBy none
+case5 borrows none
+case5 catch none
+case5 suppresses none
+
+case6 is call
+case6 in parseTest1
+case6 invokes expectParse
+case6 argument text String text7 lend
+case6 argument status Int64 zero copy
+case6 argument bitsValue UInt64 uInt644532020583610935537 copy
+case6 result none
+case6 ownedBy none
+case6 cleanedBy none
+case6 borrows none
+case6 catch none
+case6 suppresses none
+
+case7 is call
+case7 in parseTest1
+case7 invokes expectParse
+case7 argument text String text8 lend
+case7 argument status Int64 zero copy
+case7 argument bitsValue UInt64 uInt644657715973212602368 copy
+case7 result none
+case7 ownedBy none
+case7 cleanedBy none
+case7 borrows none
+case7 catch none
+case7 suppresses none
+
+case8 is call
+case8 in parseTest1
+case8 invokes expectParse
+case8 argument text String text9 lend
+case8 argument status Int64 zero copy
+case8 argument bitsValue UInt64 uInt6413861759897472843383 copy
+case8 result none
+case8 ownedBy none
+case8 cleanedBy none
+case8 borrows none
+case8 catch none
+case8 suppresses none
+
+case9 is call
+case9 in parseTest1
+case9 invokes expectParse
+case9 argument text String text10 lend
+case9 argument status Int64 zero copy
+case9 argument bitsValue UInt64 uInt649218868437227405311 copy
+case9 result none
+case9 ownedBy none
+case9 cleanedBy none
+case9 borrows none
+case9 catch none
+case9 suppresses none
+
+case10 is call
+case10 in parseTest1
+case10 invokes expectParse
+case10 argument text String text11 lend
+case10 argument status Int64 zero copy
+case10 argument bitsValue UInt64 uInt649218868437227405311 copy
+case10 result none
+case10 ownedBy none
+case10 cleanedBy none
+case10 borrows none
+case10 catch none
+case10 suppresses none
+
+case11 is call
+case11 in parseTest1
+case11 invokes expectParse
+case11 argument text String text12 lend
+case11 argument status Int64 two copy
+case11 argument bitsValue UInt64 uInt640 copy
+case11 result none
+case11 ownedBy none
+case11 cleanedBy none
+case11 borrows none
+case11 catch none
+case11 suppresses none
+
+case12 is call
+case12 in parseTest1
+case12 invokes expectParse
+case12 argument text String text13 lend
+case12 argument status Int64 two copy
+case12 argument bitsValue UInt64 uInt640 copy
+case12 result none
+case12 ownedBy none
+case12 cleanedBy none
+case12 borrows none
+case12 catch none
+case12 suppresses none
+
+case13 is call
+case13 in parseTest1
+case13 invokes expectParse
+case13 argument text String text14 lend
+case13 argument status Int64 two copy
+case13 argument bitsValue UInt64 uInt640 copy
+case13 result none
+case13 ownedBy none
+case13 cleanedBy none
+case13 borrows none
+case13 catch none
+case13 suppresses none
+
+case14 is call
+case14 in parseTest1
+case14 invokes expectParse
+case14 argument text String text15 lend
+case14 argument status Int64 zero copy
+case14 argument bitsValue UInt64 uInt640 copy
+case14 result none
+case14 ownedBy none
+case14 cleanedBy none
+case14 borrows none
+case14 catch none
+case14 suppresses none
+
+case15 is call
+case15 in parseTest1
+case15 invokes expectParse
+case15 argument text String text16 lend
+case15 argument status Int64 zero copy
+case15 argument bitsValue UInt64 uInt649223372036854775808 copy
+case15 result none
+case15 ownedBy none
+case15 cleanedBy none
+case15 borrows none
+case15 catch none
+case15 suppresses none
+
+parseTest2 is test
+parseTest2 purpose "Text is read as `refined run` reads it, correctly rounded, part 2"
+parseTest2 verifies parseFloat readsCorrectlyRounded
+parseTest2 typeParameter none
+parseTest2 input none
+parseTest2 output none
+parseTest2 outputOwnedBy none
+parseTest2 raises none
+parseTest2 effect use machine.memory
+parseTest2 effect use system.calls
+parseTest2 uses memoryAccess
+parseTest2 uses systemCalls
+parseTest2 memoryHeap false
+parseTest2 async false
+parseTest2 maxRecursion none
+parseTest2 label begin loopKind none
+parseTest2 label begin within none
+parseTest2 let scratchAt Int64 61440 immutable
+parseTest2 let text1 String "2.4703282292062328e-324" immutable
+parseTest2 let n23 Int64 23 immutable
+parseTest2 let zero Int64 0 immutable
+parseTest2 let text2 String "2.4703282292062327e-324" immutable
+parseTest2 let uInt640 UInt64 0 immutable
+parseTest2 let text3 String "4.9406564584124654e-324" immutable
+parseTest2 let uInt641 UInt64 1 immutable
+parseTest2 let text4 String "2.2250738585072011e-308" immutable
+parseTest2 let uInt644503599627370495 UInt64 4503599627370495 immutable
+parseTest2 let text5 String "2.2250738585072012e-308" immutable
+parseTest2 let uInt644503599627370496 UInt64 4503599627370496 immutable
+parseTest2 let text6 String "9007199254740993" immutable
+parseTest2 let uInt644845873199050653696 UInt64 4845873199050653696 immutable
+parseTest2 let text7 String "9007199254740995" immutable
+parseTest2 let uInt644845873199050653698 UInt64 4845873199050653698 immutable
+parseTest2 let text8 String "0.000000000000000000000000000000000001" immutable
+parseTest2 let uInt644068233174594694770 UInt64 4068233174594694770 immutable
+parseTest2 let text9 String "123456789012345678901234567890" immutable
+parseTest2 let uInt645042042089369253694 UInt64 5042042089369253694 immutable
+parseTest2 let text10 String "00012" immutable
+parseTest2 let uInt644622945017495814144 UInt64 4622945017495814144 immutable
+parseTest2 let text11 String "0.30000000000000004" immutable
+parseTest2 let uInt644599075939470750516 UInt64 4599075939470750516 immutable
+parseTest2 let text12 String "1000000000000000000000000000000e-30" immutable
+parseTest2 let uInt644607182418800017408 UInt64 4607182418800017408 immutable
+parseTest2 let text13 String "0.00000000001111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111" immutable
+parseTest2 let uInt644442923077622635117 UInt64 4442923077622635117 immutable
+parseTest2 let text14 String "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999e-820" immutable
+parseTest2 let text15 String "7e-10000000000000000000000" immutable
+parseTest2 let text16 String "1e99999999999999999999" immutable
+parseTest2 let two Int64 2 immutable
+parseTest2 at begin do findState
+parseTest2 at begin do findScratch
+parseTest2 at begin do findFirst
+parseTest2 at begin do parseFirst
+parseTest2 at begin do widenFirst
+parseTest2 at begin do expectFirst
+parseTest2 at begin do case1
+parseTest2 at begin do case2
+parseTest2 at begin do case3
+parseTest2 at begin do case4
+parseTest2 at begin do case5
+parseTest2 at begin do case6
+parseTest2 at begin do case7
+parseTest2 at begin do case8
+parseTest2 at begin do case9
+parseTest2 at begin do case10
+parseTest2 at begin do case11
+parseTest2 at begin do case12
+parseTest2 at begin do case13
+parseTest2 at begin do case14
+parseTest2 at begin do case15
+parseTest2 at begin return ok none
+
+findState is call
+findState in parseTest2
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in parseTest2
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findFirst is call
+findFirst in parseTest2
+findFirst invokes machine.addressOfString
+findFirst argument text String text1 lend
+findFirst result firstAt machine.Address
+findFirst ownedBy none
+findFirst cleanedBy none
+findFirst borrows none
+findFirst catch none
+findFirst suppresses none
+
+parseFirst is call
+parseFirst in parseTest2
+parseFirst invokes parseFloat
+parseFirst argument text machine.Address firstAt copy
+parseFirst argument bytes Int64 n23 copy
+parseFirst argument out machine.Address scratch copy
+parseFirst result got Int32
+parseFirst ownedBy none
+parseFirst cleanedBy none
+parseFirst borrows none
+parseFirst catch none
+parseFirst suppresses none
+
+widenFirst is call
+widenFirst in parseTest2
+widenFirst invokes convert.int32ToInt64
+widenFirst argument value Int32 got copy
+widenFirst result gotStatus Int64
+widenFirst ownedBy none
+widenFirst cleanedBy none
+widenFirst borrows none
+widenFirst catch none
+widenFirst suppresses none
+
+expectFirst is call
+expectFirst in parseTest2
+expectFirst invokes test.assertEqualInt64
+expectFirst argument expected Int64 zero copy
+expectFirst argument actual Int64 gotStatus copy
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+case1 is call
+case1 in parseTest2
+case1 invokes expectParse
+case1 argument text String text2 lend
+case1 argument status Int64 zero copy
+case1 argument bitsValue UInt64 uInt640 copy
+case1 result none
+case1 ownedBy none
+case1 cleanedBy none
+case1 borrows none
+case1 catch none
+case1 suppresses none
+
+case2 is call
+case2 in parseTest2
+case2 invokes expectParse
+case2 argument text String text3 lend
+case2 argument status Int64 zero copy
+case2 argument bitsValue UInt64 uInt641 copy
+case2 result none
+case2 ownedBy none
+case2 cleanedBy none
+case2 borrows none
+case2 catch none
+case2 suppresses none
+
+case3 is call
+case3 in parseTest2
+case3 invokes expectParse
+case3 argument text String text4 lend
+case3 argument status Int64 zero copy
+case3 argument bitsValue UInt64 uInt644503599627370495 copy
+case3 result none
+case3 ownedBy none
+case3 cleanedBy none
+case3 borrows none
+case3 catch none
+case3 suppresses none
+
+case4 is call
+case4 in parseTest2
+case4 invokes expectParse
+case4 argument text String text5 lend
+case4 argument status Int64 zero copy
+case4 argument bitsValue UInt64 uInt644503599627370496 copy
+case4 result none
+case4 ownedBy none
+case4 cleanedBy none
+case4 borrows none
+case4 catch none
+case4 suppresses none
+
+case5 is call
+case5 in parseTest2
+case5 invokes expectParse
+case5 argument text String text6 lend
+case5 argument status Int64 zero copy
+case5 argument bitsValue UInt64 uInt644845873199050653696 copy
+case5 result none
+case5 ownedBy none
+case5 cleanedBy none
+case5 borrows none
+case5 catch none
+case5 suppresses none
+
+case6 is call
+case6 in parseTest2
+case6 invokes expectParse
+case6 argument text String text7 lend
+case6 argument status Int64 zero copy
+case6 argument bitsValue UInt64 uInt644845873199050653698 copy
+case6 result none
+case6 ownedBy none
+case6 cleanedBy none
+case6 borrows none
+case6 catch none
+case6 suppresses none
+
+case7 is call
+case7 in parseTest2
+case7 invokes expectParse
+case7 argument text String text8 lend
+case7 argument status Int64 zero copy
+case7 argument bitsValue UInt64 uInt644068233174594694770 copy
+case7 result none
+case7 ownedBy none
+case7 cleanedBy none
+case7 borrows none
+case7 catch none
+case7 suppresses none
+
+case8 is call
+case8 in parseTest2
+case8 invokes expectParse
+case8 argument text String text9 lend
+case8 argument status Int64 zero copy
+case8 argument bitsValue UInt64 uInt645042042089369253694 copy
+case8 result none
+case8 ownedBy none
+case8 cleanedBy none
+case8 borrows none
+case8 catch none
+case8 suppresses none
+
+case9 is call
+case9 in parseTest2
+case9 invokes expectParse
+case9 argument text String text10 lend
+case9 argument status Int64 zero copy
+case9 argument bitsValue UInt64 uInt644622945017495814144 copy
+case9 result none
+case9 ownedBy none
+case9 cleanedBy none
+case9 borrows none
+case9 catch none
+case9 suppresses none
+
+case10 is call
+case10 in parseTest2
+case10 invokes expectParse
+case10 argument text String text11 lend
+case10 argument status Int64 zero copy
+case10 argument bitsValue UInt64 uInt644599075939470750516 copy
+case10 result none
+case10 ownedBy none
+case10 cleanedBy none
+case10 borrows none
+case10 catch none
+case10 suppresses none
+
+case11 is call
+case11 in parseTest2
+case11 invokes expectParse
+case11 argument text String text12 lend
+case11 argument status Int64 zero copy
+case11 argument bitsValue UInt64 uInt644607182418800017408 copy
+case11 result none
+case11 ownedBy none
+case11 cleanedBy none
+case11 borrows none
+case11 catch none
+case11 suppresses none
+
+case12 is call
+case12 in parseTest2
+case12 invokes expectParse
+case12 argument text String text13 lend
+case12 argument status Int64 zero copy
+case12 argument bitsValue UInt64 uInt644442923077622635117 copy
+case12 result none
+case12 ownedBy none
+case12 cleanedBy none
+case12 borrows none
+case12 catch none
+case12 suppresses none
+
+case13 is call
+case13 in parseTest2
+case13 invokes expectParse
+case13 argument text String text14 lend
+case13 argument status Int64 zero copy
+case13 argument bitsValue UInt64 uInt644607182418800017408 copy
+case13 result none
+case13 ownedBy none
+case13 cleanedBy none
+case13 borrows none
+case13 catch none
+case13 suppresses none
+
+case14 is call
+case14 in parseTest2
+case14 invokes expectParse
+case14 argument text String text15 lend
+case14 argument status Int64 zero copy
+case14 argument bitsValue UInt64 uInt640 copy
+case14 result none
+case14 ownedBy none
+case14 cleanedBy none
+case14 borrows none
+case14 catch none
+case14 suppresses none
+
+case15 is call
+case15 in parseTest2
+case15 invokes expectParse
+case15 argument text String text16 lend
+case15 argument status Int64 two copy
+case15 argument bitsValue UInt64 uInt640 copy
+case15 result none
+case15 ownedBy none
+case15 cleanedBy none
+case15 borrows none
+case15 catch none
+case15 suppresses none
+
+parseTest3 is test
+parseTest3 purpose "Text is read as `refined run` reads it, correctly rounded, part 3"
+parseTest3 verifies parseFloat readsCorrectlyRounded
+parseTest3 typeParameter none
+parseTest3 input none
+parseTest3 output none
+parseTest3 outputOwnedBy none
+parseTest3 raises none
+parseTest3 effect use machine.memory
+parseTest3 effect use system.calls
+parseTest3 uses memoryAccess
+parseTest3 uses systemCalls
+parseTest3 memoryHeap false
+parseTest3 async false
+parseTest3 maxRecursion none
+parseTest3 label begin loopKind none
+parseTest3 label begin within none
+parseTest3 let scratchAt Int64 61440 immutable
+parseTest3 let text1 String "0e99999999999999999999" immutable
+parseTest3 let n22 Int64 22 immutable
+parseTest3 let zero Int64 0 immutable
+parseTest3 let text2 String "+1" immutable
+parseTest3 let one Int64 1 immutable
+parseTest3 let uInt640 UInt64 0 immutable
+parseTest3 let text3 String "1." immutable
+parseTest3 let text4 String ".5" immutable
+parseTest3 let text5 String "1e" immutable
+parseTest3 let text6 String "abc" immutable
+parseTest3 let text7 String "" immutable
+parseTest3 let text8 String "-" immutable
+parseTest3 let text9 String "1.5e+" immutable
+parseTest3 let text10 String "1_0" immutable
+parseTest3 let text11 String " 1" immutable
+parseTest3 let text12 String "1e+-5" immutable
+parseTest3 let text13 String "--1" immutable
+parseTest3 let text14 String "1.2.3" immutable
+parseTest3 let text15 String "nan" immutable
+parseTest3 let text16 String "inf" immutable
+parseTest3 at begin do findState
+parseTest3 at begin do findScratch
+parseTest3 at begin do findFirst
+parseTest3 at begin do parseFirst
+parseTest3 at begin do widenFirst
+parseTest3 at begin do expectFirst
+parseTest3 at begin do case1
+parseTest3 at begin do case2
+parseTest3 at begin do case3
+parseTest3 at begin do case4
+parseTest3 at begin do case5
+parseTest3 at begin do case6
+parseTest3 at begin do case7
+parseTest3 at begin do case8
+parseTest3 at begin do case9
+parseTest3 at begin do case10
+parseTest3 at begin do case11
+parseTest3 at begin do case12
+parseTest3 at begin do case13
+parseTest3 at begin do case14
+parseTest3 at begin do case15
+parseTest3 at begin return ok none
+
+findState is call
+findState in parseTest3
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findScratch is call
+findScratch in parseTest3
+findScratch invokes machine.offset
+findScratch argument address machine.Address state copy
+findScratch argument bytes Int64 scratchAt copy
+findScratch result scratch machine.Address
+findScratch ownedBy none
+findScratch cleanedBy none
+findScratch borrows none
+findScratch catch none
+findScratch suppresses none
+
+findFirst is call
+findFirst in parseTest3
+findFirst invokes machine.addressOfString
+findFirst argument text String text1 lend
+findFirst result firstAt machine.Address
+findFirst ownedBy none
+findFirst cleanedBy none
+findFirst borrows none
+findFirst catch none
+findFirst suppresses none
+
+parseFirst is call
+parseFirst in parseTest3
+parseFirst invokes parseFloat
+parseFirst argument text machine.Address firstAt copy
+parseFirst argument bytes Int64 n22 copy
+parseFirst argument out machine.Address scratch copy
+parseFirst result got Int32
+parseFirst ownedBy none
+parseFirst cleanedBy none
+parseFirst borrows none
+parseFirst catch none
+parseFirst suppresses none
+
+widenFirst is call
+widenFirst in parseTest3
+widenFirst invokes convert.int32ToInt64
+widenFirst argument value Int32 got copy
+widenFirst result gotStatus Int64
+widenFirst ownedBy none
+widenFirst cleanedBy none
+widenFirst borrows none
+widenFirst catch none
+widenFirst suppresses none
+
+expectFirst is call
+expectFirst in parseTest3
+expectFirst invokes test.assertEqualInt64
+expectFirst argument expected Int64 zero copy
+expectFirst argument actual Int64 gotStatus copy
+expectFirst result none
+expectFirst ownedBy none
+expectFirst cleanedBy none
+expectFirst borrows none
+expectFirst catch none
+expectFirst suppresses none
+
+case1 is call
+case1 in parseTest3
+case1 invokes expectParse
+case1 argument text String text2 lend
+case1 argument status Int64 one copy
+case1 argument bitsValue UInt64 uInt640 copy
+case1 result none
+case1 ownedBy none
+case1 cleanedBy none
+case1 borrows none
+case1 catch none
+case1 suppresses none
+
+case2 is call
+case2 in parseTest3
+case2 invokes expectParse
+case2 argument text String text3 lend
+case2 argument status Int64 one copy
+case2 argument bitsValue UInt64 uInt640 copy
+case2 result none
+case2 ownedBy none
+case2 cleanedBy none
+case2 borrows none
+case2 catch none
+case2 suppresses none
+
+case3 is call
+case3 in parseTest3
+case3 invokes expectParse
+case3 argument text String text4 lend
+case3 argument status Int64 one copy
+case3 argument bitsValue UInt64 uInt640 copy
+case3 result none
+case3 ownedBy none
+case3 cleanedBy none
+case3 borrows none
+case3 catch none
+case3 suppresses none
+
+case4 is call
+case4 in parseTest3
+case4 invokes expectParse
+case4 argument text String text5 lend
+case4 argument status Int64 one copy
+case4 argument bitsValue UInt64 uInt640 copy
+case4 result none
+case4 ownedBy none
+case4 cleanedBy none
+case4 borrows none
+case4 catch none
+case4 suppresses none
+
+case5 is call
+case5 in parseTest3
+case5 invokes expectParse
+case5 argument text String text6 lend
+case5 argument status Int64 one copy
+case5 argument bitsValue UInt64 uInt640 copy
+case5 result none
+case5 ownedBy none
+case5 cleanedBy none
+case5 borrows none
+case5 catch none
+case5 suppresses none
+
+case6 is call
+case6 in parseTest3
+case6 invokes expectParse
+case6 argument text String text7 lend
+case6 argument status Int64 one copy
+case6 argument bitsValue UInt64 uInt640 copy
+case6 result none
+case6 ownedBy none
+case6 cleanedBy none
+case6 borrows none
+case6 catch none
+case6 suppresses none
+
+case7 is call
+case7 in parseTest3
+case7 invokes expectParse
+case7 argument text String text8 lend
+case7 argument status Int64 one copy
+case7 argument bitsValue UInt64 uInt640 copy
+case7 result none
+case7 ownedBy none
+case7 cleanedBy none
+case7 borrows none
+case7 catch none
+case7 suppresses none
+
+case8 is call
+case8 in parseTest3
+case8 invokes expectParse
+case8 argument text String text9 lend
+case8 argument status Int64 one copy
+case8 argument bitsValue UInt64 uInt640 copy
+case8 result none
+case8 ownedBy none
+case8 cleanedBy none
+case8 borrows none
+case8 catch none
+case8 suppresses none
+
+case9 is call
+case9 in parseTest3
+case9 invokes expectParse
+case9 argument text String text10 lend
+case9 argument status Int64 one copy
+case9 argument bitsValue UInt64 uInt640 copy
+case9 result none
+case9 ownedBy none
+case9 cleanedBy none
+case9 borrows none
+case9 catch none
+case9 suppresses none
+
+case10 is call
+case10 in parseTest3
+case10 invokes expectParse
+case10 argument text String text11 lend
+case10 argument status Int64 one copy
+case10 argument bitsValue UInt64 uInt640 copy
+case10 result none
+case10 ownedBy none
+case10 cleanedBy none
+case10 borrows none
+case10 catch none
+case10 suppresses none
+
+case11 is call
+case11 in parseTest3
+case11 invokes expectParse
+case11 argument text String text12 lend
+case11 argument status Int64 one copy
+case11 argument bitsValue UInt64 uInt640 copy
+case11 result none
+case11 ownedBy none
+case11 cleanedBy none
+case11 borrows none
+case11 catch none
+case11 suppresses none
+
+case12 is call
+case12 in parseTest3
+case12 invokes expectParse
+case12 argument text String text13 lend
+case12 argument status Int64 one copy
+case12 argument bitsValue UInt64 uInt640 copy
+case12 result none
+case12 ownedBy none
+case12 cleanedBy none
+case12 borrows none
+case12 catch none
+case12 suppresses none
+
+case13 is call
+case13 in parseTest3
+case13 invokes expectParse
+case13 argument text String text14 lend
+case13 argument status Int64 one copy
+case13 argument bitsValue UInt64 uInt640 copy
+case13 result none
+case13 ownedBy none
+case13 cleanedBy none
+case13 borrows none
+case13 catch none
+case13 suppresses none
+
+case14 is call
+case14 in parseTest3
+case14 invokes expectParse
+case14 argument text String text15 lend
+case14 argument status Int64 one copy
+case14 argument bitsValue UInt64 uInt640 copy
+case14 result none
+case14 ownedBy none
+case14 cleanedBy none
+case14 borrows none
+case14 catch none
+case14 suppresses none
+
+case15 is call
+case15 in parseTest3
+case15 invokes expectParse
+case15 argument text String text16 lend
+case15 argument status Int64 one copy
+case15 argument bitsValue UInt64 uInt640 copy
+case15 result none
+case15 ownedBy none
+case15 cleanedBy none
+case15 borrows none
+case15 catch none
+case15 suppresses none

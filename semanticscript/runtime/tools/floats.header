@@ -1,0 +1,7 @@
+# Floating-point numbers as text, and text as floating-point numbers, exactly as `refined run`
+# writes and reads them (D-125, D-129): the shortest digits that read back as the value, nearest
+# it, laid out as Python's repr, and correctly rounded reading, both computed exactly with the
+# bignum module (refined_write_float, refined_format_float, refined_parse_float).
+#
+# This module is generated from tools/floats.dsl by tools/build.py; its test cases come from
+# tools/floatcases.py.

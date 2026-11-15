@@ -5,7 +5,8 @@
 
 Each `<module>.dsl` here is written out as `../<module>.sem`, its `@tests` section as `../<module>.test.sem`, with
 the comment header in `<module>.header` (and `<module>.test.header`). The generated `.sem` files are the runtime;
-regenerating must leave `git status` clean.
+regenerating must leave `git status` clean. The floats module's test cases, values with what Python writes and
+reads for them, are written into floats.dsl by floatcases.py.
 """
 import os
 import sys
@@ -17,7 +18,7 @@ sys.path.insert(0, os.path.join(REPO, "docs", "refined-examples", "stage0", "too
 from semgen import Generator, Module, Program  # noqa: E402
 
 # in the order build.sem includes them: a module's DSL may call only the modules above it
-MODULES = ["memory", "numbers", "output", "frames", "regions", "start"]
+MODULES = ["memory", "numbers", "output", "frames", "heap", "tables", "handles", "regions", "bignum", "floats", "host", "start"]
 
 
 def lines_of(path):

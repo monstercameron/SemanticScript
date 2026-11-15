@@ -1,0 +1,554 @@
+# Tests of the `handles` module; generated from tools/handles.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+# Tests keep a region's header in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state
+# never reaches.
+handleTest is test
+handleTest purpose "Handles are numbered in order, name their objects and kinds, are listed by their region, and are closed when it is released"
+handleTest verifies newHandle numbersHandles
+handleTest verifies kindOf knowsKind
+handleTest verifies objectOf givesObject
+handleTest verifies drop closesHandle
+handleTest verifies dropRegion dropsOwned
+handleTest typeParameter none
+handleTest input none
+handleTest output none
+handleTest outputOwnedBy none
+handleTest raises none
+handleTest effect use machine.memory
+handleTest effect use system.calls
+handleTest uses memoryAccess
+handleTest uses systemCalls
+handleTest memoryHeap false
+handleTest async false
+handleTest maxRecursion none
+handleTest label begin loopKind none
+handleTest label begin within none
+handleTest let regionAt Int64 61440 immutable
+handleTest let zeroByte Byte 0 immutable
+handleTest let sixtyFour Int64 64 immutable
+handleTest let fortyEight Int64 48 immutable
+handleTest let tableBytes Int64 88 immutable
+handleTest let zero Int64 0 immutable
+handleTest let minusOne Int64 -1 immutable
+handleTest let one Int64 1 immutable
+handleTest let fiftySix Int64 56 immutable
+handleTest at begin do findState
+handleTest at begin do findRegion
+handleTest at begin do clearRegion
+handleTest at begin do takeBuffer
+handleTest at begin do makeBuffer
+handleTest at begin do takeSet
+handleTest at begin do prepareSet
+handleTest at begin do nowhere
+handleTest at begin do makeSet
+handleTest at begin do nextOf
+handleTest at begin do expectNumbered
+handleTest at begin do readBufferKind
+handleTest at begin do expectBufferKind
+handleTest at begin do readObject
+handleTest at begin do sameCheck
+handleTest at begin do expectObject
+handleTest at begin do findCount
+handleTest at begin do readCount
+handleTest at begin do expectListed
+handleTest at begin do release
+handleTest at begin do readDropped
+handleTest at begin do expectDropped
+handleTest at begin do readKept
+handleTest at begin do expectKept
+handleTest at begin do dropSet
+handleTest at begin do readClosed
+handleTest at begin do expectClosed
+handleTest at begin do dropAgain
+handleTest at begin do readNever
+handleTest at begin do expectNever
+handleTest at begin return ok none
+
+findState is call
+findState in handleTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findRegion is call
+findRegion in handleTest
+findRegion invokes machine.offset
+findRegion argument address machine.Address state copy
+findRegion argument bytes Int64 regionAt copy
+findRegion result region machine.Address
+findRegion ownedBy none
+findRegion cleanedBy none
+findRegion borrows none
+findRegion catch none
+findRegion suppresses none
+
+clearRegion is call
+clearRegion in handleTest
+clearRegion invokes machine.fill
+clearRegion argument target machine.Address region copy
+clearRegion argument value Byte zeroByte copy
+clearRegion argument bytes Int64 sixtyFour copy
+clearRegion result none
+clearRegion ownedBy none
+clearRegion cleanedBy none
+clearRegion borrows none
+clearRegion catch none
+clearRegion suppresses none
+
+takeBuffer is call
+takeBuffer in handleTest
+takeBuffer invokes heap.take
+takeBuffer argument bytes Int64 fortyEight copy
+takeBuffer result buffer machine.Address
+takeBuffer ownedBy none
+takeBuffer cleanedBy none
+takeBuffer borrows none
+takeBuffer catch none
+takeBuffer suppresses none
+
+makeBuffer is call
+makeBuffer in handleTest
+makeBuffer invokes newHandle
+makeBuffer argument kind Int64 kindBuffer copy
+makeBuffer argument object machine.Address buffer copy
+makeBuffer argument region machine.Address region copy
+makeBuffer result bufferHandle Int64
+makeBuffer ownedBy none
+makeBuffer cleanedBy none
+makeBuffer borrows none
+makeBuffer catch none
+makeBuffer suppresses none
+
+takeSet is call
+takeSet in handleTest
+takeSet invokes heap.take
+takeSet argument bytes Int64 tableBytes copy
+takeSet result setObject machine.Address
+takeSet ownedBy none
+takeSet cleanedBy none
+takeSet borrows none
+takeSet catch none
+takeSet suppresses none
+
+prepareSet is call
+prepareSet in handleTest
+prepareSet invokes tables.prepare
+prepareSet argument table machine.Address setObject copy
+prepareSet argument text Int64 zero copy
+prepareSet argument keySlots Int64 minusOne copy
+prepareSet argument valueSlots Int64 zero copy
+prepareSet result none
+prepareSet ownedBy none
+prepareSet cleanedBy none
+prepareSet borrows none
+prepareSet catch none
+prepareSet suppresses none
+
+nowhere is call
+nowhere in handleTest
+nowhere invokes machine.zero
+nowhere argument none
+nowhere result anywhere machine.Address
+nowhere ownedBy none
+nowhere cleanedBy none
+nowhere borrows none
+nowhere catch none
+nowhere suppresses none
+
+makeSet is call
+makeSet in handleTest
+makeSet invokes newHandle
+makeSet argument kind Int64 kindSet copy
+makeSet argument object machine.Address setObject copy
+makeSet argument region machine.Address anywhere copy
+makeSet result setHandle Int64
+makeSet ownedBy none
+makeSet cleanedBy none
+makeSet borrows none
+makeSet catch none
+makeSet suppresses none
+
+nextOf is call
+nextOf in handleTest
+nextOf invokes math.addInt64
+nextOf argument left Int64 bufferHandle copy
+nextOf argument right Int64 one copy
+nextOf result expectedSet Int64
+nextOf ownedBy none
+nextOf cleanedBy none
+nextOf borrows none
+nextOf catch none
+nextOf suppresses none
+
+expectNumbered is call
+expectNumbered in handleTest
+expectNumbered invokes test.assertEqualInt64
+expectNumbered argument expected Int64 expectedSet copy
+expectNumbered argument actual Int64 setHandle copy
+expectNumbered result none
+expectNumbered ownedBy none
+expectNumbered cleanedBy none
+expectNumbered borrows none
+expectNumbered catch none
+expectNumbered suppresses none
+
+readBufferKind is call
+readBufferKind in handleTest
+readBufferKind invokes kindOf
+readBufferKind argument handle Int64 bufferHandle copy
+readBufferKind result bufferKind Int64
+readBufferKind ownedBy none
+readBufferKind cleanedBy none
+readBufferKind borrows none
+readBufferKind catch none
+readBufferKind suppresses none
+
+expectBufferKind is call
+expectBufferKind in handleTest
+expectBufferKind invokes test.assertEqualInt64
+expectBufferKind argument expected Int64 kindBuffer copy
+expectBufferKind argument actual Int64 bufferKind copy
+expectBufferKind result none
+expectBufferKind ownedBy none
+expectBufferKind cleanedBy none
+expectBufferKind borrows none
+expectBufferKind catch none
+expectBufferKind suppresses none
+
+readObject is call
+readObject in handleTest
+readObject invokes objectOf
+readObject argument handle Int64 setHandle copy
+readObject argument kind Int64 kindSet copy
+readObject result object machine.Address
+readObject ownedBy none
+readObject cleanedBy none
+readObject borrows none
+readObject catch none
+readObject suppresses none
+
+sameCheck is call
+sameCheck in handleTest
+sameCheck invokes machine.equal
+sameCheck argument left machine.Address object copy
+sameCheck argument right machine.Address setObject copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+expectObject is call
+expectObject in handleTest
+expectObject invokes test.assertTrue
+expectObject argument value Bool same copy
+expectObject result none
+expectObject ownedBy none
+expectObject cleanedBy none
+expectObject borrows none
+expectObject catch none
+expectObject suppresses none
+
+findCount is call
+findCount in handleTest
+findCount invokes machine.offset
+findCount argument address machine.Address region copy
+findCount argument bytes Int64 fiftySix copy
+findCount result countSlot machine.Address
+findCount ownedBy none
+findCount cleanedBy none
+findCount borrows none
+findCount catch none
+findCount suppresses none
+
+readCount is call
+readCount in handleTest
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countSlot copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+expectListed is call
+expectListed in handleTest
+expectListed invokes test.assertEqualInt64
+expectListed argument expected Int64 one copy
+expectListed argument actual Int64 count copy
+expectListed result none
+expectListed ownedBy none
+expectListed cleanedBy none
+expectListed borrows none
+expectListed catch none
+expectListed suppresses none
+
+release is call
+release in handleTest
+release invokes dropRegion
+release argument region machine.Address region copy
+release result none
+release ownedBy none
+release cleanedBy none
+release borrows none
+release catch none
+release suppresses none
+
+readDropped is call
+readDropped in handleTest
+readDropped invokes kindOf
+readDropped argument handle Int64 bufferHandle copy
+readDropped result droppedKind Int64
+readDropped ownedBy none
+readDropped cleanedBy none
+readDropped borrows none
+readDropped catch none
+readDropped suppresses none
+
+expectDropped is call
+expectDropped in handleTest
+expectDropped invokes test.assertEqualInt64
+expectDropped argument expected Int64 zero copy
+expectDropped argument actual Int64 droppedKind copy
+expectDropped result none
+expectDropped ownedBy none
+expectDropped cleanedBy none
+expectDropped borrows none
+expectDropped catch none
+expectDropped suppresses none
+
+readKept is call
+readKept in handleTest
+readKept invokes kindOf
+readKept argument handle Int64 setHandle copy
+readKept result keptKind Int64
+readKept ownedBy none
+readKept cleanedBy none
+readKept borrows none
+readKept catch none
+readKept suppresses none
+
+expectKept is call
+expectKept in handleTest
+expectKept invokes test.assertEqualInt64
+expectKept argument expected Int64 kindSet copy
+expectKept argument actual Int64 keptKind copy
+expectKept result none
+expectKept ownedBy none
+expectKept cleanedBy none
+expectKept borrows none
+expectKept catch none
+expectKept suppresses none
+
+dropSet is call
+dropSet in handleTest
+dropSet invokes drop
+dropSet argument handle Int64 setHandle copy
+dropSet result none
+dropSet ownedBy none
+dropSet cleanedBy none
+dropSet borrows none
+dropSet catch none
+dropSet suppresses none
+
+readClosed is call
+readClosed in handleTest
+readClosed invokes kindOf
+readClosed argument handle Int64 setHandle copy
+readClosed result closedKind Int64
+readClosed ownedBy none
+readClosed cleanedBy none
+readClosed borrows none
+readClosed catch none
+readClosed suppresses none
+
+expectClosed is call
+expectClosed in handleTest
+expectClosed invokes test.assertEqualInt64
+expectClosed argument expected Int64 zero copy
+expectClosed argument actual Int64 closedKind copy
+expectClosed result none
+expectClosed ownedBy none
+expectClosed cleanedBy none
+expectClosed borrows none
+expectClosed catch none
+expectClosed suppresses none
+
+dropAgain is call
+dropAgain in handleTest
+dropAgain invokes drop
+dropAgain argument handle Int64 setHandle copy
+dropAgain result none
+dropAgain ownedBy none
+dropAgain cleanedBy none
+dropAgain borrows none
+dropAgain catch none
+dropAgain suppresses none
+
+readNever is call
+readNever in handleTest
+readNever invokes kindOf
+readNever argument handle Int64 minusOne copy
+readNever result neverKind Int64
+readNever ownedBy none
+readNever cleanedBy none
+readNever borrows none
+readNever catch none
+readNever suppresses none
+
+expectNever is call
+expectNever in handleTest
+expectNever invokes test.assertEqualInt64
+expectNever argument expected Int64 zero copy
+expectNever argument actual Int64 neverKind copy
+expectNever result none
+expectNever ownedBy none
+expectNever cleanedBy none
+expectNever borrows none
+expectNever catch none
+expectNever suppresses none
+
+regionOfTest is test
+regionOfTest purpose "A handle made with a region gives it back as the place its stored text goes"
+regionOfTest verifies regionOf givesRegion
+regionOfTest typeParameter none
+regionOfTest input none
+regionOfTest output none
+regionOfTest outputOwnedBy none
+regionOfTest raises none
+regionOfTest effect use machine.memory
+regionOfTest effect use system.calls
+regionOfTest uses memoryAccess
+regionOfTest uses systemCalls
+regionOfTest memoryHeap false
+regionOfTest async false
+regionOfTest maxRecursion none
+regionOfTest label begin loopKind none
+regionOfTest label begin within none
+regionOfTest let regionAt Int64 61440 immutable
+regionOfTest let zeroByte Byte 0 immutable
+regionOfTest let sixtyFour Int64 64 immutable
+regionOfTest let fortyEight Int64 48 immutable
+regionOfTest at begin do findState
+regionOfTest at begin do findRegion
+regionOfTest at begin do clearRegion
+regionOfTest at begin do takeBuffer
+regionOfTest at begin do makeBuffer
+regionOfTest at begin do readOwner
+regionOfTest at begin do sameCheck
+regionOfTest at begin do expectOwner
+regionOfTest at begin do release
+regionOfTest at begin return ok none
+
+findState is call
+findState in regionOfTest
+findState invokes machine.state
+findState argument none
+findState result state machine.Address
+findState ownedBy none
+findState cleanedBy none
+findState borrows none
+findState catch none
+findState suppresses none
+
+findRegion is call
+findRegion in regionOfTest
+findRegion invokes machine.offset
+findRegion argument address machine.Address state copy
+findRegion argument bytes Int64 regionAt copy
+findRegion result region machine.Address
+findRegion ownedBy none
+findRegion cleanedBy none
+findRegion borrows none
+findRegion catch none
+findRegion suppresses none
+
+clearRegion is call
+clearRegion in regionOfTest
+clearRegion invokes machine.fill
+clearRegion argument target machine.Address region copy
+clearRegion argument value Byte zeroByte copy
+clearRegion argument bytes Int64 sixtyFour copy
+clearRegion result none
+clearRegion ownedBy none
+clearRegion cleanedBy none
+clearRegion borrows none
+clearRegion catch none
+clearRegion suppresses none
+
+takeBuffer is call
+takeBuffer in regionOfTest
+takeBuffer invokes heap.take
+takeBuffer argument bytes Int64 fortyEight copy
+takeBuffer result buffer machine.Address
+takeBuffer ownedBy none
+takeBuffer cleanedBy none
+takeBuffer borrows none
+takeBuffer catch none
+takeBuffer suppresses none
+
+makeBuffer is call
+makeBuffer in regionOfTest
+makeBuffer invokes newHandle
+makeBuffer argument kind Int64 kindBuffer copy
+makeBuffer argument object machine.Address buffer copy
+makeBuffer argument region machine.Address region copy
+makeBuffer result bufferHandle Int64
+makeBuffer ownedBy none
+makeBuffer cleanedBy none
+makeBuffer borrows none
+makeBuffer catch none
+makeBuffer suppresses none
+
+readOwner is call
+readOwner in regionOfTest
+readOwner invokes regionOf
+readOwner argument handle Int64 bufferHandle copy
+readOwner result owner machine.Address
+readOwner ownedBy none
+readOwner cleanedBy none
+readOwner borrows none
+readOwner catch none
+readOwner suppresses none
+
+sameCheck is call
+sameCheck in regionOfTest
+sameCheck invokes machine.equal
+sameCheck argument left machine.Address owner copy
+sameCheck argument right machine.Address region copy
+sameCheck result same Bool
+sameCheck ownedBy none
+sameCheck cleanedBy none
+sameCheck borrows none
+sameCheck catch none
+sameCheck suppresses none
+
+expectOwner is call
+expectOwner in regionOfTest
+expectOwner invokes test.assertTrue
+expectOwner argument value Bool same copy
+expectOwner result none
+expectOwner ownedBy none
+expectOwner cleanedBy none
+expectOwner borrows none
+expectOwner catch none
+expectOwner suppresses none
+
+release is call
+release in regionOfTest
+release invokes dropRegion
+release argument region machine.Address region copy
+release result none
+release ownedBy none
+release cleanedBy none
+release borrows none
+release catch none
+release suppresses none

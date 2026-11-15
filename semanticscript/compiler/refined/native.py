@@ -70,7 +70,7 @@ def emit(ir_text: str, triple: str | None, kind: str) -> bytes:
 
 RUNTIME_C = os.path.join(os.path.dirname(os.path.abspath(__file__)), "native_runtime.c")
 STACK_BYTES = 256 * 1024 * 1024
-_TARGET_ROW = re.compile(r'^\s*\{"([A-Za-z.]+)", (\w+), (-?\d+)\},$', re.M)
+_TARGET_ROW = re.compile(r'^\s*\{"([A-Za-z0-9.]+)", (\w+), (-?\d+)\},$', re.M)
 
 
 def native_targets() -> dict[str, int]:
@@ -122,7 +122,7 @@ def find_cc() -> list[str] | None:
 def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
     """Link the program's object, the C runtime (native_runtime.c), and a `main` into one executable."""
     native = native_targets()
-    needs = sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z.]+)\|', ir_text)) - set(native))
+    needs = sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z0-9.]+)\|', ir_text)) - set(native))
     if needs:
         return False, ("R901 this program calls " + ", ".join(f"`{n}`" for n in needs) + ", which need the host "
                        "library; standalone executables include the native part of it only (D-81), so run it with "
@@ -246,6 +246,19 @@ def _ss_runtime_object(triple: str, folder: str) -> tuple[str | None, set[str], 
         return fresh, symbols, ""
 
 
+_HOST_TARGET_CELL = re.compile(r'^hostTargets cell \w+ name "([A-Za-z0-9.]+)"$', re.M)
+
+
+def runtime_host_targets() -> set[str]:
+    """The host targets the runtime in SemanticScript implements: the `hostTargets` table of its host module, which
+    its `refined_host` dispatches over (D-130)."""
+    path = os.path.join(RUNTIME_PROJECT, "host.sem")
+    if not os.path.exists(path):
+        return set()
+    with open(path, encoding="utf-8") as fh:
+        return set(_HOST_TARGET_CELL.findall(fh.read()))
+
+
 def needed_runtime(ir_text: str) -> set[str]:
     """The runtime functions a compiled program calls: the callbacks it declares (codegen declares each when it is
     first used). `memcpy` and the like, which LLVM may call, the runtime always defines."""
@@ -268,6 +281,7 @@ def executable_semanticscript(ir_text: str, entry: str, output: str) -> tuple[bo
         if runtime_obj is None:
             return False, problem
         missing = sorted(needed_runtime(ir_text) - provided)
+        missing += sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z0-9.]+)\|', ir_text)) - runtime_host_targets())
         if missing:
             return False, ("R901 this program needs " + ", ".join(f"`{n}`" for n in missing) + ", which the runtime "
                            "in SemanticScript does not provide yet (docs/runtime-in-semanticscript.md); build it "

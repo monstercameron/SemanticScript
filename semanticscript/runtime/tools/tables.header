@@ -1,0 +1,5 @@
+# Tables of rows in the order their keys were first put, found through an open-addressing index
+# by a hash of the key: what the host's maps and sets are made of (D-62). A text key is compared
+# by its bytes (D-61); removed rows stay until the rows are compacted.
+#
+# This module is generated from tools/tables.dsl by tools/build.py.

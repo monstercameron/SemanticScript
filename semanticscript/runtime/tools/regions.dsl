@@ -1,6 +1,6 @@
 module regions "Regions: memory taken from the operating system in chunks, handed out by bumping, and returned all at once"
   path regions
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test numbers frames
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test numbers frames handles
   exports newRegion allocate remaining release formatInteger
 
 capability memoryAccess "Authority to keep regions and their chunks in memory" use machine.memory none
@@ -10,7 +10,8 @@ capability systemCalls "Authority to take memory from the operating system and g
 ## A chunk is memory from VirtualAlloc: at 0 the next chunk of its region, 8 its size, 16 how many of its bytes are
 ## used, its own 32 bytes included; what it hands out starts at 32 and is zeroed. A region's header lives in its
 ## first chunk, after the chunk's own: at 0 its capacity, 8 the bytes asked of it (as `refined run` counts them),
-## 16 the chunk being filled, 24 the address and 32 the length of its label, 40 how many chunks it has.
+## 16 the chunk being filled, 24 the address and 32 the length of its label, 40 how many chunks it has, 48 and 56
+## the host objects it owns (the handles module's).
 ## A region's chunks of the standard size go back to a list of free chunks, zeroed, when it is released.
 ## machine.state bytes 128 to 191 belong to this module: 128 the first free chunk, 136 how many are free, 144 to
 ## 175 a number's digits.
@@ -291,7 +292,7 @@ op remaining "How many of a region's bytes are still free to ask for: refined_re
   return left
 
 op release "Give back every chunk of a region at once: refined_region_free"
-  invariant reusesChunks "Every chunk of the region is given back; a chunk of the standard size is kept, zeroed, for the next region while 64 are not yet kept"
+  invariant reusesChunks "Every host object the region owns is closed and every chunk of the region is given back; a chunk of the standard size is kept, zeroed, for the next region while 64 are not yet kept"
   input region machine.Address copied
   effect use machine.memory
   effect use system.calls
@@ -300,6 +301,7 @@ op release "Give back every chunk of a region at once: refined_region_free"
   abi c "refined_region_free"
   let chunk machine.Address unset mut
 :begin
+  dropHandles: handles.dropRegion(region)
   findChunks: chunksSlot = machine.offset(region, sixteen=16)
   readChunk: first = machine.loadAddress(chunksSlot)
   set chunk first

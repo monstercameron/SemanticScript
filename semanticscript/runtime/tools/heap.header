@@ -1,0 +1,5 @@
+# Memory from the process heap (HeapAlloc, HeapReAlloc, HeapFree) for what grows and is given back
+# piece by piece: the runtime's host objects, its tables, and the messages of its traps. Traps whose
+# message is put together from parts end here too.
+#
+# This module is generated from tools/heap.dsl by tools/build.py.
