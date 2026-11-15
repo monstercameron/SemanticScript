@@ -225,7 +225,8 @@ def test_suite_programs_link_or_are_refused(tmp_path):
     # stage 1 linked 42 of the 76, stage 2 49; stages 3 and 4 every program but the five REFUSED names
     refused = {o.split(":", 1)[1] for o in outcomes if o.startswith("refused:")}
     assert refused == set(REFUSED) & {c.name for c in cases}, refused
-    assert outcomes.count("linked") == len(cases) - len(refused) >= 71, outcomes.count("linked")
+    # 71 on Windows; 70 on Linux, where `18-interop/foreign` is refused too (ffi needs the dynamic loader, D-140)
+    assert outcomes.count("linked") == len(cases) - len(refused) >= (71 if WINDOWS else 70), outcomes.count("linked")
 
 
 @needs_windows_cc

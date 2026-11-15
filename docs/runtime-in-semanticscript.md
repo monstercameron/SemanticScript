@@ -278,7 +278,7 @@ The runtime in SemanticScript is the only runtime of standalone executables, on 
    `test_executables_link_no_c_library` (both systems).
 3. **Every test that runs an executable passes with the same output, exit codes, and trap messages as `refined
    run`**: the conformance suite, tests/test_native.py, the suite programs, the stage0 samples and bootstrap, on
-   Windows locally and on Linux in CI. Evidence: the full suite (CI run __RUN__).
+   Windows locally and on Linux in CI. Evidence: the full suite: here on Windows (751 passed), and in CI run 43679981725 (786b0e5) on Windows (Python 3.11 and 3.12) and on Linux, where every executable test passed through the system-call layer; its one failure was this file's floor of linked suite programs, 71, which on Linux is 70 because `ffi` is refused there (fixed in the next commit).
 4. **`native_runtime.c` is deleted**, and stage0's emitted C links the runtime object built from SemanticScript:
    tests/test_stage0.py, test_bootstrap.py, and test_selfhost_suite.py link with it, and stage0b compiles every
    sample to C byte-identical to stage0's.
