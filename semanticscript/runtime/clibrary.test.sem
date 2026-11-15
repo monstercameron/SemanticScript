@@ -4524,6 +4524,7 @@ helpersTest verifies charOf keepsLowByte
 helpersTest verifies runHandlers runsInReverse
 helpersTest verifies checkFits passesWhatFits
 helpersTest verifies errnoCell firstThreadsCell
+helpersTest verifies windowsErrno mapsWindowsErrors
 helpersTest verifies divideWhole dividesTowardZero
 helpersTest verifies prepare pointsAtStreams
 helpersTest verifies isSpaceByte spacesLikeC
@@ -4568,6 +4569,11 @@ helpersTest let n1920 Int64 1920 immutable
 helpersTest let eight Int64 8 immutable
 helpersTest let zero Int64 0 immutable
 helpersTest let four Int64 4 immutable
+helpersTest let int322 Int32 2 immutable
+helpersTest let int32109 Int32 109 immutable
+helpersTest let int3232 Int32 32 immutable
+helpersTest let int3299999 Int32 99999 immutable
+helpersTest let int3222 Int32 22 immutable
 helpersTest let minus7 Int64 -7 immutable
 helpersTest let minus3 Int64 -3 immutable
 helpersTest let minus1 Int64 -1 immutable
@@ -4622,10 +4628,19 @@ helpersTest at begin do readQuickCell
 helpersTest at begin do readLeft
 helpersTest at begin do doAssertEqualInt645
 helpersTest at begin do doCheckFits
-helpersTest at begin do readSharedErrno
-helpersTest at begin do readStateErrno
+helpersTest at begin do readNotFound
 helpersTest at begin do doAssertTrueStep8
 helpersTest at begin do doAssertTrue9
+helpersTest at begin do readBrokenPipe
+helpersTest at begin do doAssertTrueStep9
+helpersTest at begin do doAssertTrue10
+helpersTest at begin do readUnknownCode
+helpersTest at begin do doAssertTrueStep10
+helpersTest at begin do doAssertTrue11
+helpersTest at begin do readSharedErrno
+helpersTest at begin do readStateErrno
+helpersTest at begin do doAssertTrueStep11
+helpersTest at begin do doAssertTrue12
 helpersTest at begin do doCheckFits2
 helpersTest at begin do readPair
 helpersTest at begin do readQuotient
@@ -5219,6 +5234,108 @@ doCheckFits borrows none
 doCheckFits catch none
 doCheckFits suppresses none
 
+readNotFound is call
+readNotFound in helpersTest
+readNotFound invokes windowsErrno
+readNotFound argument code Int32 int322 copy
+readNotFound result notFound Int32
+readNotFound ownedBy none
+readNotFound cleanedBy none
+readNotFound borrows none
+readNotFound catch none
+readNotFound suppresses none
+
+doAssertTrueStep8 is call
+doAssertTrueStep8 in helpersTest
+doAssertTrueStep8 invokes compare.equalInt32
+doAssertTrueStep8 argument left Int32 notFound copy
+doAssertTrueStep8 argument right Int32 int322 copy
+doAssertTrueStep8 result doAssertTruePart8 Bool
+doAssertTrueStep8 ownedBy none
+doAssertTrueStep8 cleanedBy none
+doAssertTrueStep8 borrows none
+doAssertTrueStep8 catch none
+doAssertTrueStep8 suppresses none
+
+doAssertTrue9 is call
+doAssertTrue9 in helpersTest
+doAssertTrue9 invokes test.assertTrue
+doAssertTrue9 argument value Bool doAssertTruePart8 copy
+doAssertTrue9 result none
+doAssertTrue9 ownedBy none
+doAssertTrue9 cleanedBy none
+doAssertTrue9 borrows none
+doAssertTrue9 catch none
+doAssertTrue9 suppresses none
+
+readBrokenPipe is call
+readBrokenPipe in helpersTest
+readBrokenPipe invokes windowsErrno
+readBrokenPipe argument code Int32 int32109 copy
+readBrokenPipe result brokenPipe Int32
+readBrokenPipe ownedBy none
+readBrokenPipe cleanedBy none
+readBrokenPipe borrows none
+readBrokenPipe catch none
+readBrokenPipe suppresses none
+
+doAssertTrueStep9 is call
+doAssertTrueStep9 in helpersTest
+doAssertTrueStep9 invokes compare.equalInt32
+doAssertTrueStep9 argument left Int32 brokenPipe copy
+doAssertTrueStep9 argument right Int32 int3232 copy
+doAssertTrueStep9 result doAssertTruePart9 Bool
+doAssertTrueStep9 ownedBy none
+doAssertTrueStep9 cleanedBy none
+doAssertTrueStep9 borrows none
+doAssertTrueStep9 catch none
+doAssertTrueStep9 suppresses none
+
+doAssertTrue10 is call
+doAssertTrue10 in helpersTest
+doAssertTrue10 invokes test.assertTrue
+doAssertTrue10 argument value Bool doAssertTruePart9 copy
+doAssertTrue10 result none
+doAssertTrue10 ownedBy none
+doAssertTrue10 cleanedBy none
+doAssertTrue10 borrows none
+doAssertTrue10 catch none
+doAssertTrue10 suppresses none
+
+readUnknownCode is call
+readUnknownCode in helpersTest
+readUnknownCode invokes windowsErrno
+readUnknownCode argument code Int32 int3299999 copy
+readUnknownCode result unknownCode Int32
+readUnknownCode ownedBy none
+readUnknownCode cleanedBy none
+readUnknownCode borrows none
+readUnknownCode catch none
+readUnknownCode suppresses none
+
+doAssertTrueStep10 is call
+doAssertTrueStep10 in helpersTest
+doAssertTrueStep10 invokes compare.equalInt32
+doAssertTrueStep10 argument left Int32 unknownCode copy
+doAssertTrueStep10 argument right Int32 int3222 copy
+doAssertTrueStep10 result doAssertTruePart10 Bool
+doAssertTrueStep10 ownedBy none
+doAssertTrueStep10 cleanedBy none
+doAssertTrueStep10 borrows none
+doAssertTrueStep10 catch none
+doAssertTrueStep10 suppresses none
+
+doAssertTrue11 is call
+doAssertTrue11 in helpersTest
+doAssertTrue11 invokes test.assertTrue
+doAssertTrue11 argument value Bool doAssertTruePart10 copy
+doAssertTrue11 result none
+doAssertTrue11 ownedBy none
+doAssertTrue11 cleanedBy none
+doAssertTrue11 borrows none
+doAssertTrue11 catch none
+doAssertTrue11 suppresses none
+
 readSharedErrno is call
 readSharedErrno in helpersTest
 readSharedErrno invokes errnoCell
@@ -5241,28 +5358,28 @@ readStateErrno borrows none
 readStateErrno catch none
 readStateErrno suppresses none
 
-doAssertTrueStep8 is call
-doAssertTrueStep8 in helpersTest
-doAssertTrueStep8 invokes machine.equal
-doAssertTrueStep8 argument left machine.Address sharedErrno copy
-doAssertTrueStep8 argument right machine.Address stateErrno copy
-doAssertTrueStep8 result doAssertTruePart8 Bool
-doAssertTrueStep8 ownedBy none
-doAssertTrueStep8 cleanedBy none
-doAssertTrueStep8 borrows none
-doAssertTrueStep8 catch none
-doAssertTrueStep8 suppresses none
+doAssertTrueStep11 is call
+doAssertTrueStep11 in helpersTest
+doAssertTrueStep11 invokes machine.equal
+doAssertTrueStep11 argument left machine.Address sharedErrno copy
+doAssertTrueStep11 argument right machine.Address stateErrno copy
+doAssertTrueStep11 result doAssertTruePart11 Bool
+doAssertTrueStep11 ownedBy none
+doAssertTrueStep11 cleanedBy none
+doAssertTrueStep11 borrows none
+doAssertTrueStep11 catch none
+doAssertTrueStep11 suppresses none
 
-doAssertTrue9 is call
-doAssertTrue9 in helpersTest
-doAssertTrue9 invokes test.assertTrue
-doAssertTrue9 argument value Bool doAssertTruePart8 copy
-doAssertTrue9 result none
-doAssertTrue9 ownedBy none
-doAssertTrue9 cleanedBy none
-doAssertTrue9 borrows none
-doAssertTrue9 catch none
-doAssertTrue9 suppresses none
+doAssertTrue12 is call
+doAssertTrue12 in helpersTest
+doAssertTrue12 invokes test.assertTrue
+doAssertTrue12 argument value Bool doAssertTruePart11 copy
+doAssertTrue12 result none
+doAssertTrue12 ownedBy none
+doAssertTrue12 cleanedBy none
+doAssertTrue12 borrows none
+doAssertTrue12 catch none
+doAssertTrue12 suppresses none
 
 doCheckFits2 is call
 doCheckFits2 in helpersTest

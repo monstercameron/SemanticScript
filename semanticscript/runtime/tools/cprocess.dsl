@@ -178,7 +178,7 @@ op raiseSignal "raise: send a signal to the process, so its handler runs before 
   let fine Int32 0
   let failure Int32 -1
 :begin
-  when signalNumber < 1 || signalNumber > 64 refuse send
+  when signalNumber < 0 || signalNumber > 64 refuse send
 :refuse
   clibrary.setErrno(invalidError)
   return failure
@@ -196,6 +196,10 @@ op raiseSignal "raise: send a signal to the process, so its handler runs before 
 :sent
   return fine
 :windows
+  when signalNumber == 0 probed table
+:probed
+  return fine
+:table
   cell = handlerCell(signalNumber)
   handler = machine.loadAddress(cell)
   calc handlerValue = machine.toInt64(handler)
@@ -331,7 +335,8 @@ op runCommand "system: run a command with the system's shell and wait for it: /b
   when created == 0 createFailed waitWindows
 :createFailed
   heap.give(information)
-  clibrary.setErrno(2)
+  lastError = system.getLastError()
+  clibrary.setErrno(clibrary.windowsErrno(lastError))
   return failure
 :waitWindows
   process = machine.loadAddress(information)
@@ -383,8 +388,10 @@ test signalTest "signal gives back the handler it replaced, and raise of an igno
   nowhere = machine.zero()
   shell = runCommand(nowhere)
   test.assertTrue(shell == 1)
-  bad = raiseSignal(0)
+  bad = raiseSignal(65)
   test.assertTrue(bad == -1)
+  probe = raiseSignal(0)
+  test.assertTrue(probe == 0)
   return
 
 test jumpTest "setjmp gives 0, longjmp brings it back with the value (and 1 for 0), with memory written in between kept"

@@ -17,6 +17,7 @@ clibrary imports standard.compare
 clibrary imports standard.convert
 clibrary imports standard.bits
 clibrary imports standard.logic
+clibrary imports standard.list
 clibrary imports standard.test
 clibrary imports kernel
 clibrary imports memory
@@ -43,6 +44,7 @@ clibrary exports parseReal
 clibrary exports runHandlers
 clibrary exports checkFits
 clibrary exports errnoCell
+clibrary exports windowsErrno
 
 memoryAccess is capability
 memoryAccess purpose "Authority to read and write the memory C callers hand the library"
@@ -187,6 +189,343 @@ signBit is constant
 signBit purpose "The sign bit of a Float64"
 signBit type UInt64
 signBit value 9223372036854775808
+
+WindowsError is record
+WindowsError purpose "A Windows error code and the errno that stands for it"
+WindowsError typeParameter none
+WindowsError field code Int32
+WindowsError field errno Int32
+
+windowsErrors is table
+windowsErrors purpose "Each Windows error code a call of the library can give, with the errno glibc's Linux number of the same failure (D-171); a code not here is EINVAL"
+windowsErrors rowType WindowsError
+windowsErrors row code1 1
+windowsErrors row code2 2
+windowsErrors row code3 3
+windowsErrors row code4 4
+windowsErrors row code5 5
+windowsErrors row code6 6
+windowsErrors row code8 7
+windowsErrors row code12 8
+windowsErrors row code13 9
+windowsErrors row code14 10
+windowsErrors row code15 11
+windowsErrors row code16 12
+windowsErrors row code17 13
+windowsErrors row code18 14
+windowsErrors row code19 15
+windowsErrors row code20 16
+windowsErrors row code21 17
+windowsErrors row code23 18
+windowsErrors row code25 19
+windowsErrors row code26 20
+windowsErrors row code29 21
+windowsErrors row code30 22
+windowsErrors row code31 23
+windowsErrors row code32 24
+windowsErrors row code33 25
+windowsErrors row code36 26
+windowsErrors row code38 27
+windowsErrors row code39 28
+windowsErrors row code50 29
+windowsErrors row code51 30
+windowsErrors row code53 31
+windowsErrors row code55 32
+windowsErrors row code59 33
+windowsErrors row code64 34
+windowsErrors row code65 35
+windowsErrors row code67 36
+windowsErrors row code80 37
+windowsErrors row code82 38
+windowsErrors row code84 39
+windowsErrors row code87 40
+windowsErrors row code89 41
+windowsErrors row code108 42
+windowsErrors row code109 43
+windowsErrors row code110 44
+windowsErrors row code111 45
+windowsErrors row code112 46
+windowsErrors row code114 47
+windowsErrors row code120 48
+windowsErrors row code121 49
+windowsErrors row code122 50
+windowsErrors row code123 51
+windowsErrors row code126 52
+windowsErrors row code127 53
+windowsErrors row code130 54
+windowsErrors row code131 55
+windowsErrors row code132 56
+windowsErrors row code145 57
+windowsErrors row code158 58
+windowsErrors row code161 59
+windowsErrors row code164 60
+windowsErrors row code167 61
+windowsErrors row code170 62
+windowsErrors row code183 63
+windowsErrors row code186 64
+windowsErrors row code193 65
+windowsErrors row code206 66
+windowsErrors row code212 67
+windowsErrors row code215 68
+windowsErrors row code230 69
+windowsErrors row code231 70
+windowsErrors row code232 71
+windowsErrors row code233 72
+windowsErrors row code267 73
+windowsErrors row code282 74
+windowsErrors row code298 75
+windowsErrors row code995 76
+windowsErrors row code998 77
+windowsErrors row code1006 78
+windowsErrors row code1110 79
+windowsErrors row code1117 80
+windowsErrors row code1224 81
+windowsErrors row code1450 82
+windowsErrors row code1455 83
+windowsErrors row code1460 84
+windowsErrors row code1784 85
+windowsErrors row code1816 86
+windowsErrors row code10004 87
+windowsErrors row code10013 88
+windowsErrors row code10014 89
+windowsErrors row code10022 90
+windowsErrors row code10024 91
+windowsErrors row code10035 92
+windowsErrors row code10036 93
+windowsErrors row code10037 94
+windowsErrors row code10038 95
+windowsErrors row code10040 96
+windowsErrors row code10047 97
+windowsErrors row code10048 98
+windowsErrors row code10049 99
+windowsErrors row code10050 100
+windowsErrors row code10051 101
+windowsErrors row code10053 102
+windowsErrors row code10054 103
+windowsErrors row code10055 104
+windowsErrors row code10056 105
+windowsErrors row code10057 106
+windowsErrors row code10060 107
+windowsErrors row code10061 108
+windowsErrors row code10065 109
+windowsErrors cell code1 code 1
+windowsErrors cell code1 errno 22
+windowsErrors cell code2 code 2
+windowsErrors cell code2 errno 2
+windowsErrors cell code3 code 3
+windowsErrors cell code3 errno 2
+windowsErrors cell code4 code 4
+windowsErrors cell code4 errno 24
+windowsErrors cell code5 code 5
+windowsErrors cell code5 errno 13
+windowsErrors cell code6 code 6
+windowsErrors cell code6 errno 9
+windowsErrors cell code8 code 8
+windowsErrors cell code8 errno 12
+windowsErrors cell code12 code 12
+windowsErrors cell code12 errno 13
+windowsErrors cell code13 code 13
+windowsErrors cell code13 errno 22
+windowsErrors cell code14 code 14
+windowsErrors cell code14 errno 12
+windowsErrors cell code15 code 15
+windowsErrors cell code15 errno 2
+windowsErrors cell code16 code 16
+windowsErrors cell code16 errno 13
+windowsErrors cell code17 code 17
+windowsErrors cell code17 errno 18
+windowsErrors cell code18 code 18
+windowsErrors cell code18 errno 2
+windowsErrors cell code19 code 19
+windowsErrors cell code19 errno 30
+windowsErrors cell code20 code 20
+windowsErrors cell code20 errno 19
+windowsErrors cell code21 code 21
+windowsErrors cell code21 errno 5
+windowsErrors cell code23 code 23
+windowsErrors cell code23 errno 5
+windowsErrors cell code25 code 25
+windowsErrors cell code25 errno 29
+windowsErrors cell code26 code 26
+windowsErrors cell code26 errno 5
+windowsErrors cell code29 code 29
+windowsErrors cell code29 errno 5
+windowsErrors cell code30 code 30
+windowsErrors cell code30 errno 5
+windowsErrors cell code31 code 31
+windowsErrors cell code31 errno 5
+windowsErrors cell code32 code 32
+windowsErrors cell code32 errno 13
+windowsErrors cell code33 code 33
+windowsErrors cell code33 errno 13
+windowsErrors cell code36 code 36
+windowsErrors cell code36 errno 24
+windowsErrors cell code38 code 38
+windowsErrors cell code38 errno 5
+windowsErrors cell code39 code 39
+windowsErrors cell code39 errno 28
+windowsErrors cell code50 code 50
+windowsErrors cell code50 errno 95
+windowsErrors cell code51 code 51
+windowsErrors cell code51 errno 112
+windowsErrors cell code53 code 53
+windowsErrors cell code53 errno 2
+windowsErrors cell code55 code 55
+windowsErrors cell code55 errno 19
+windowsErrors cell code59 code 59
+windowsErrors cell code59 errno 5
+windowsErrors cell code64 code 64
+windowsErrors cell code64 errno 104
+windowsErrors cell code65 code 65
+windowsErrors cell code65 errno 13
+windowsErrors cell code67 code 67
+windowsErrors cell code67 errno 2
+windowsErrors cell code80 code 80
+windowsErrors cell code80 errno 17
+windowsErrors cell code82 code 82
+windowsErrors cell code82 errno 13
+windowsErrors cell code84 code 84
+windowsErrors cell code84 errno 12
+windowsErrors cell code87 code 87
+windowsErrors cell code87 errno 22
+windowsErrors cell code89 code 89
+windowsErrors cell code89 errno 11
+windowsErrors cell code108 code 108
+windowsErrors cell code108 errno 13
+windowsErrors cell code109 code 109
+windowsErrors cell code109 errno 32
+windowsErrors cell code110 code 110
+windowsErrors cell code110 errno 2
+windowsErrors cell code111 code 111
+windowsErrors cell code111 errno 36
+windowsErrors cell code112 code 112
+windowsErrors cell code112 errno 28
+windowsErrors cell code114 code 114
+windowsErrors cell code114 errno 9
+windowsErrors cell code120 code 120
+windowsErrors cell code120 errno 38
+windowsErrors cell code121 code 121
+windowsErrors cell code121 errno 110
+windowsErrors cell code122 code 122
+windowsErrors cell code122 errno 34
+windowsErrors cell code123 code 123
+windowsErrors cell code123 errno 2
+windowsErrors cell code126 code 126
+windowsErrors cell code126 errno 2
+windowsErrors cell code127 code 127
+windowsErrors cell code127 errno 2
+windowsErrors cell code130 code 130
+windowsErrors cell code130 errno 9
+windowsErrors cell code131 code 131
+windowsErrors cell code131 errno 22
+windowsErrors cell code132 code 132
+windowsErrors cell code132 errno 29
+windowsErrors cell code145 code 145
+windowsErrors cell code145 errno 39
+windowsErrors cell code158 code 158
+windowsErrors cell code158 errno 13
+windowsErrors cell code161 code 161
+windowsErrors cell code161 errno 2
+windowsErrors cell code164 code 164
+windowsErrors cell code164 errno 11
+windowsErrors cell code167 code 167
+windowsErrors cell code167 errno 13
+windowsErrors cell code170 code 170
+windowsErrors cell code170 errno 16
+windowsErrors cell code183 code 183
+windowsErrors cell code183 errno 17
+windowsErrors cell code186 code 186
+windowsErrors cell code186 errno 22
+windowsErrors cell code193 code 193
+windowsErrors cell code193 errno 8
+windowsErrors cell code206 code 206
+windowsErrors cell code206 errno 36
+windowsErrors cell code212 code 212
+windowsErrors cell code212 errno 13
+windowsErrors cell code215 code 215
+windowsErrors cell code215 errno 11
+windowsErrors cell code230 code 230
+windowsErrors cell code230 errno 32
+windowsErrors cell code231 code 231
+windowsErrors cell code231 errno 16
+windowsErrors cell code232 code 232
+windowsErrors cell code232 errno 32
+windowsErrors cell code233 code 233
+windowsErrors cell code233 errno 107
+windowsErrors cell code267 code 267
+windowsErrors cell code267 errno 20
+windowsErrors cell code282 code 282
+windowsErrors cell code282 errno 84
+windowsErrors cell code298 code 298
+windowsErrors cell code298 errno 11
+windowsErrors cell code995 code 995
+windowsErrors cell code995 errno 4
+windowsErrors cell code998 code 998
+windowsErrors cell code998 errno 14
+windowsErrors cell code1006 code 1006
+windowsErrors cell code1006 errno 19
+windowsErrors cell code1110 code 1110
+windowsErrors cell code1110 errno 5
+windowsErrors cell code1117 code 1117
+windowsErrors cell code1117 errno 5
+windowsErrors cell code1224 code 1224
+windowsErrors cell code1224 errno 13
+windowsErrors cell code1450 code 1450
+windowsErrors cell code1450 errno 12
+windowsErrors cell code1455 code 1455
+windowsErrors cell code1455 errno 12
+windowsErrors cell code1460 code 1460
+windowsErrors cell code1460 errno 110
+windowsErrors cell code1784 code 1784
+windowsErrors cell code1784 errno 14
+windowsErrors cell code1816 code 1816
+windowsErrors cell code1816 errno 12
+windowsErrors cell code10004 code 10004
+windowsErrors cell code10004 errno 4
+windowsErrors cell code10013 code 10013
+windowsErrors cell code10013 errno 13
+windowsErrors cell code10014 code 10014
+windowsErrors cell code10014 errno 14
+windowsErrors cell code10022 code 10022
+windowsErrors cell code10022 errno 22
+windowsErrors cell code10024 code 10024
+windowsErrors cell code10024 errno 24
+windowsErrors cell code10035 code 10035
+windowsErrors cell code10035 errno 11
+windowsErrors cell code10036 code 10036
+windowsErrors cell code10036 errno 115
+windowsErrors cell code10037 code 10037
+windowsErrors cell code10037 errno 114
+windowsErrors cell code10038 code 10038
+windowsErrors cell code10038 errno 88
+windowsErrors cell code10040 code 10040
+windowsErrors cell code10040 errno 90
+windowsErrors cell code10047 code 10047
+windowsErrors cell code10047 errno 97
+windowsErrors cell code10048 code 10048
+windowsErrors cell code10048 errno 98
+windowsErrors cell code10049 code 10049
+windowsErrors cell code10049 errno 99
+windowsErrors cell code10050 code 10050
+windowsErrors cell code10050 errno 100
+windowsErrors cell code10051 code 10051
+windowsErrors cell code10051 errno 101
+windowsErrors cell code10053 code 10053
+windowsErrors cell code10053 errno 103
+windowsErrors cell code10054 code 10054
+windowsErrors cell code10054 errno 104
+windowsErrors cell code10055 code 10055
+windowsErrors cell code10055 errno 105
+windowsErrors cell code10056 code 10056
+windowsErrors cell code10056 errno 106
+windowsErrors cell code10057 code 10057
+windowsErrors cell code10057 errno 107
+windowsErrors cell code10060 code 10060
+windowsErrors cell code10060 errno 110
+windowsErrors cell code10061 code 10061
+windowsErrors cell code10061 errno 111
+windowsErrors cell code10065 code 10065
+windowsErrors cell code10065 errno 113
 
 # ---------------------------------------------------------------- the process and traps
 endProcess is operation
@@ -17071,3 +17410,132 @@ readResult cleanedBy none
 readResult borrows none
 readResult catch none
 readResult suppresses none
+
+windowsErrno is operation
+windowsErrno purpose "The errno for a Windows error code, by the table of windowsErrors: glibc's number for the same failure (ENOENT for a file or path not found, EACCES for access denied, EEXIST for a file that exists, EPIPE for a broken pipe, ENOSPC for a full disk, ...); EINVAL for any other code (D-171)"
+windowsErrno invariant mapsWindowsErrors "\"Every code the table names gives its errno, and any other EINVAL\""
+windowsErrno typeParameter none
+windowsErrno input code Int32 copied
+windowsErrno output Int32
+windowsErrno outputOwnedBy none
+windowsErrno raises none
+windowsErrno effect none
+windowsErrno uses none
+windowsErrno memoryHeap false
+windowsErrno async false
+windowsErrno maxRecursion none
+windowsErrno label begin loopKind none
+windowsErrno label begin within none
+windowsErrno label eachRow loopKind while
+windowsErrno label eachRow within none
+windowsErrno label eachRow maxIterations count
+windowsErrno label look loopKind none
+windowsErrno label look within eachRow
+windowsErrno label compare loopKind none
+windowsErrno label compare within eachRow
+windowsErrno label next loopKind none
+windowsErrno label next within eachRow
+windowsErrno label found loopKind none
+windowsErrno label found within none
+windowsErrno label missing loopKind none
+windowsErrno label missing within none
+windowsErrno label unknown loopKind none
+windowsErrno label unknown within none
+windowsErrno let at Int64 1 mutable
+windowsErrno let one Int64 1 immutable
+windowsErrno at begin do readCount
+windowsErrno at begin goto eachRow
+windowsErrno at eachRow do findCheck11
+windowsErrno at eachRow branch if check1 goto unknown else goto look
+windowsErrno at look do findRow
+windowsErrno at look branch ifError findRow goto missing else goto compare
+windowsErrno at compare do readRowCode
+windowsErrno at compare do findCheck21
+windowsErrno at compare branch if check2 goto found else goto next
+windowsErrno at next do findAtNext11
+windowsErrno at next set at atNext1
+windowsErrno at next goto eachRow
+windowsErrno at found do readMapped
+windowsErrno at found return ok mapped
+windowsErrno at missing return ok invalidError
+windowsErrno at unknown return ok invalidError
+
+readCount is call
+readCount in windowsErrno
+readCount invokes windowsErrors.length
+readCount argument none
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCheck11 is call
+findCheck11 in windowsErrno
+findCheck11 invokes compare.greaterThanInt64
+findCheck11 argument left Int64 at copy
+findCheck11 argument right Int64 count copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findRow is call
+findRow in windowsErrno
+findRow invokes windowsErrors.rowAt
+findRow argument position Int64 at copy
+findRow result row WindowsError
+findRow ownedBy none
+findRow cleanedBy none
+findRow borrows none
+findRow catch rowError list.IndexOutOfRange
+findRow suppresses none
+
+readRowCode is call
+readRowCode in windowsErrno
+readRowCode invokes WindowsError.code
+readRowCode argument record WindowsError row copy
+readRowCode result rowCode Int32
+readRowCode ownedBy none
+readRowCode cleanedBy none
+readRowCode borrows none
+readRowCode catch none
+readRowCode suppresses none
+
+findCheck21 is call
+findCheck21 in windowsErrno
+findCheck21 invokes compare.equalInt32
+findCheck21 argument left Int32 rowCode copy
+findCheck21 argument right Int32 code copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findAtNext11 is call
+findAtNext11 in windowsErrno
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+readMapped is call
+readMapped in windowsErrno
+readMapped invokes WindowsError.errno
+readMapped argument record WindowsError row copy
+readMapped result mapped Int32
+readMapped ownedBy none
+readMapped cleanedBy none
+readMapped borrows none
+readMapped catch none
+readMapped suppresses none

@@ -1,7 +1,7 @@
 module clibrary "The C standard library written in SemanticScript: what ffi.open of c binds, and what a library the loader maps finds for its C imports (D-153)"
   path clibrary
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel memory output heap floats wide
-  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal runHandlers checkFits errnoCell
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.list standard.test kernel memory output heap floats wide
+  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal runHandlers checkFits errnoCell windowsErrno
 
 capability memoryAccess "Authority to read and write the memory C callers hand the library" use machine.memory none
 
@@ -68,6 +68,121 @@ constant infinityBits "The bits of +infinity" UInt64 9218868437227405312
 constant nanBits "The bits of the quiet NaN glibc gives" UInt64 9221120237041090560
 
 constant signBit "The sign bit of a Float64" UInt64 9223372036854775808
+
+record WindowsError "A Windows error code and the errno that stands for it"
+  field code Int32
+  field errno Int32
+
+table windowsErrors "Each Windows error code a call of the library can give, with the errno glibc's Linux number of the same failure (D-171); a code not here is EINVAL" WindowsError
+  row code1 code=1 errno=22
+  row code2 code=2 errno=2
+  row code3 code=3 errno=2
+  row code4 code=4 errno=24
+  row code5 code=5 errno=13
+  row code6 code=6 errno=9
+  row code8 code=8 errno=12
+  row code12 code=12 errno=13
+  row code13 code=13 errno=22
+  row code14 code=14 errno=12
+  row code15 code=15 errno=2
+  row code16 code=16 errno=13
+  row code17 code=17 errno=18
+  row code18 code=18 errno=2
+  row code19 code=19 errno=30
+  row code20 code=20 errno=19
+  row code21 code=21 errno=5
+  row code23 code=23 errno=5
+  row code25 code=25 errno=29
+  row code26 code=26 errno=5
+  row code29 code=29 errno=5
+  row code30 code=30 errno=5
+  row code31 code=31 errno=5
+  row code32 code=32 errno=13
+  row code33 code=33 errno=13
+  row code36 code=36 errno=24
+  row code38 code=38 errno=5
+  row code39 code=39 errno=28
+  row code50 code=50 errno=95
+  row code51 code=51 errno=112
+  row code53 code=53 errno=2
+  row code55 code=55 errno=19
+  row code59 code=59 errno=5
+  row code64 code=64 errno=104
+  row code65 code=65 errno=13
+  row code67 code=67 errno=2
+  row code80 code=80 errno=17
+  row code82 code=82 errno=13
+  row code84 code=84 errno=12
+  row code87 code=87 errno=22
+  row code89 code=89 errno=11
+  row code108 code=108 errno=13
+  row code109 code=109 errno=32
+  row code110 code=110 errno=2
+  row code111 code=111 errno=36
+  row code112 code=112 errno=28
+  row code114 code=114 errno=9
+  row code120 code=120 errno=38
+  row code121 code=121 errno=110
+  row code122 code=122 errno=34
+  row code123 code=123 errno=2
+  row code126 code=126 errno=2
+  row code127 code=127 errno=2
+  row code130 code=130 errno=9
+  row code131 code=131 errno=22
+  row code132 code=132 errno=29
+  row code145 code=145 errno=39
+  row code158 code=158 errno=13
+  row code161 code=161 errno=2
+  row code164 code=164 errno=11
+  row code167 code=167 errno=13
+  row code170 code=170 errno=16
+  row code183 code=183 errno=17
+  row code186 code=186 errno=22
+  row code193 code=193 errno=8
+  row code206 code=206 errno=36
+  row code212 code=212 errno=13
+  row code215 code=215 errno=11
+  row code230 code=230 errno=32
+  row code231 code=231 errno=16
+  row code232 code=232 errno=32
+  row code233 code=233 errno=107
+  row code267 code=267 errno=20
+  row code282 code=282 errno=84
+  row code298 code=298 errno=11
+  row code995 code=995 errno=4
+  row code998 code=998 errno=14
+  row code1006 code=1006 errno=19
+  row code1110 code=1110 errno=5
+  row code1117 code=1117 errno=5
+  row code1224 code=1224 errno=13
+  row code1450 code=1450 errno=12
+  row code1455 code=1455 errno=12
+  row code1460 code=1460 errno=110
+  row code1784 code=1784 errno=14
+  row code1816 code=1816 errno=12
+  row code10004 code=10004 errno=4
+  row code10013 code=10013 errno=13
+  row code10014 code=10014 errno=14
+  row code10022 code=10022 errno=22
+  row code10024 code=10024 errno=24
+  row code10035 code=10035 errno=11
+  row code10036 code=10036 errno=115
+  row code10037 code=10037 errno=114
+  row code10038 code=10038 errno=88
+  row code10040 code=10040 errno=90
+  row code10047 code=10047 errno=97
+  row code10048 code=10048 errno=98
+  row code10049 code=10049 errno=99
+  row code10050 code=10050 errno=100
+  row code10051 code=10051 errno=101
+  row code10053 code=10053 errno=103
+  row code10054 code=10054 errno=104
+  row code10055 code=10055 errno=105
+  row code10056 code=10056 errno=106
+  row code10057 code=10057 errno=107
+  row code10060 code=10060 errno=110
+  row code10061 code=10061 errno=111
+  row code10065 code=10065 errno=113
 
 ## ---------------------------------------------------------------- the process and traps
 
@@ -3449,6 +3564,33 @@ op stringAppendBoundedChecked "__strncat_chk: strncat, when the target's text, w
   result = stringAppendBounded(target, source, count)
   return result
 
+op windowsErrno "The errno for a Windows error code, by the table of windowsErrors: glibc's number for the same failure (ENOENT for a file or path not found, EACCES for access denied, EEXIST for a file that exists, EPIPE for a broken pipe, ENOSPC for a full disk, ...); EINVAL for any other code (D-171)"
+  invariant mapsWindowsErrors "Every code the table names gives its errno, and any other EINVAL"
+  input code Int32 copied
+  output Int32
+  let at Int64 1 mut
+:begin
+  count = windowsErrors.length()
+  goto eachRow
+:eachRow loop=while max=count
+  when at > count unknown look
+:look in=eachRow
+  findRow: row = windowsErrors.rowAt(at) ! rowError
+  iferr findRow missing compare
+:compare in=eachRow
+  rowCode = WindowsError.code(row)
+  when rowCode == code found next
+:next in=eachRow
+  calc at := at + 1
+  goto eachRow
+:found
+  mapped = WindowsError.errno(row)
+  return mapped
+:missing
+  return invalidError
+:unknown
+  return invalidError
+
 @tests
 
 ## Tests write C strings in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state never
@@ -3951,6 +4093,7 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   verifies runHandlers runsInReverse
   verifies checkFits passesWhatFits
   verifies errnoCell firstThreadsCell
+  verifies windowsErrno mapsWindowsErrors
   verifies divideWhole dividesTowardZero
   verifies prepare pointsAtStreams
   verifies isSpaceByte spacesLikeC
@@ -4005,6 +4148,12 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   left = machine.loadInt64(quickCell)
   test.assertEqualInt64(0, left)
   checkFits(4, 4)
+  notFound = windowsErrno(2)
+  test.assertTrue(notFound == 2)
+  brokenPipe = windowsErrno(109)
+  test.assertTrue(brokenPipe == 32)
+  unknownCode = windowsErrno(99999)
+  test.assertTrue(unknownCode == 22)
   sharedErrno = errnoCell()
   stateErrno = kernel.stateAt(errnoAt)
   test.assertTrue(sharedErrno == stateErrno)

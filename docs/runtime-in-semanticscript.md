@@ -374,6 +374,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | locale.h, assert.h, inttypes.h | setlocale, localeconv (the C locale); `__assert_fail`; imaxabs, strtoimax, strtoumax, wcstoimax, wcstoumax (D-183) | Done |
 | wchar.h, wctype.h, uchar.h | the wide string, number, and classification functions, and the multibyte conversions, in the C locale (D-184) | Done |
 | threads.h | thrd_*, mtx_*, cnd_*, tss_*, call_once on Linux threads and futexes and on Windows threads; deadlines honoured; the heap and streams locked, errno per thread on Linux (D-166, D-168, D-169) | Done |
+| errno.h | glibc's numbers, the kernel's on Linux and a table of Windows error codes (D-171) | Done |
 | string.h | strerror: `Unknown error N` for every number (glibc's messages are a known gap) | Gap |
 
 - **stdio** (D-159, D-160). `printf` and its kin read their arguments from the system's own `va_list` (x86_64 Linux,

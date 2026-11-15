@@ -24,6 +24,7 @@ signalTest let one Int64 1 immutable
 signalTest let int3210 Int32 10 immutable
 signalTest let int320 Int32 0 immutable
 signalTest let int321 Int32 1 immutable
+signalTest let int3265 Int32 65 immutable
 signalTest let int32Minus1 Int32 -1 immutable
 signalTest at begin do readIgnore
 signalTest at begin do readFirst
@@ -41,6 +42,9 @@ signalTest at begin do doAssertTrue3
 signalTest at begin do readBad
 signalTest at begin do doAssertTrueStep4
 signalTest at begin do doAssertTrue4
+signalTest at begin do readProbe
+signalTest at begin do doAssertTrueStep5
+signalTest at begin do doAssertTrue5
 signalTest at begin return ok none
 
 readIgnore is call
@@ -195,7 +199,7 @@ doAssertTrue3 suppresses none
 readBad is call
 readBad in signalTest
 readBad invokes raiseSignal
-readBad argument signalNumber Int32 int320 copy
+readBad argument signalNumber Int32 int3265 copy
 readBad result bad Int32
 readBad ownedBy none
 readBad cleanedBy none
@@ -225,6 +229,40 @@ doAssertTrue4 cleanedBy none
 doAssertTrue4 borrows none
 doAssertTrue4 catch none
 doAssertTrue4 suppresses none
+
+readProbe is call
+readProbe in signalTest
+readProbe invokes raiseSignal
+readProbe argument signalNumber Int32 int320 copy
+readProbe result probe Int32
+readProbe ownedBy none
+readProbe cleanedBy none
+readProbe borrows none
+readProbe catch none
+readProbe suppresses none
+
+doAssertTrueStep5 is call
+doAssertTrueStep5 in signalTest
+doAssertTrueStep5 invokes compare.equalInt32
+doAssertTrueStep5 argument left Int32 probe copy
+doAssertTrueStep5 argument right Int32 int320 copy
+doAssertTrueStep5 result doAssertTruePart5 Bool
+doAssertTrueStep5 ownedBy none
+doAssertTrueStep5 cleanedBy none
+doAssertTrueStep5 borrows none
+doAssertTrueStep5 catch none
+doAssertTrueStep5 suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in signalTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool doAssertTruePart5 copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
 
 jumpTest is test
 jumpTest purpose "setjmp gives 0, longjmp brings it back with the value (and 1 for 0), with memory written in between kept"

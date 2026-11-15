@@ -467,167 +467,6 @@ readHandle catch none
 readHandle suppresses none
 
 # ---------------------------------------------------------------- the operating system
-windowsErrno is operation
-windowsErrno purpose "The errno for a Windows error code: ENOENT for a file or path not found, EACCES for access denied, EEXIST for a file that exists, EINVAL otherwise"
-windowsErrno invariant none
-windowsErrno typeParameter none
-windowsErrno input code Int32 copied
-windowsErrno output Int32
-windowsErrno outputOwnedBy none
-windowsErrno raises none
-windowsErrno effect none
-windowsErrno uses none
-windowsErrno memoryHeap false
-windowsErrno async false
-windowsErrno maxRecursion none
-windowsErrno label begin loopKind none
-windowsErrno label begin within none
-windowsErrno label missing loopKind none
-windowsErrno label missing within none
-windowsErrno label other loopKind none
-windowsErrno label other within none
-windowsErrno label refused loopKind none
-windowsErrno label refused within none
-windowsErrno label existing loopKind none
-windowsErrno label existing within none
-windowsErrno label there loopKind none
-windowsErrno label there within none
-windowsErrno label unknown loopKind none
-windowsErrno label unknown within none
-windowsErrno let notFound Int32 2 immutable
-windowsErrno let denied Int32 13 immutable
-windowsErrno let exists Int32 17 immutable
-windowsErrno let int322 Int32 2 immutable
-windowsErrno let int323 Int32 3 immutable
-windowsErrno let int325 Int32 5 immutable
-windowsErrno let int3232 Int32 32 immutable
-windowsErrno let int3280 Int32 80 immutable
-windowsErrno let int32183 Int32 183 immutable
-windowsErrno at begin do check1Step1
-windowsErrno at begin do check1Step2
-windowsErrno at begin do findCheck11
-windowsErrno at begin branch if check1 goto missing else goto other
-windowsErrno at missing return ok notFound
-windowsErrno at other do check2Step1
-windowsErrno at other do check2Step2
-windowsErrno at other do findCheck21
-windowsErrno at other branch if check2 goto refused else goto existing
-windowsErrno at refused return ok denied
-windowsErrno at existing do check3Step1
-windowsErrno at existing do check3Step2
-windowsErrno at existing do findCheck31
-windowsErrno at existing branch if check3 goto there else goto unknown
-windowsErrno at there return ok exists
-windowsErrno at unknown return ok invalid
-
-check1Step1 is call
-check1Step1 in windowsErrno
-check1Step1 invokes compare.equalInt32
-check1Step1 argument left Int32 code copy
-check1Step1 argument right Int32 int322 copy
-check1Step1 result check1Part1 Bool
-check1Step1 ownedBy none
-check1Step1 cleanedBy none
-check1Step1 borrows none
-check1Step1 catch none
-check1Step1 suppresses none
-
-check1Step2 is call
-check1Step2 in windowsErrno
-check1Step2 invokes compare.equalInt32
-check1Step2 argument left Int32 code copy
-check1Step2 argument right Int32 int323 copy
-check1Step2 result check1Part2 Bool
-check1Step2 ownedBy none
-check1Step2 cleanedBy none
-check1Step2 borrows none
-check1Step2 catch none
-check1Step2 suppresses none
-
-findCheck11 is call
-findCheck11 in windowsErrno
-findCheck11 invokes logic.or
-findCheck11 argument left Bool check1Part1 copy
-findCheck11 argument right Bool check1Part2 copy
-findCheck11 result check1 Bool
-findCheck11 ownedBy none
-findCheck11 cleanedBy none
-findCheck11 borrows none
-findCheck11 catch none
-findCheck11 suppresses none
-
-check2Step1 is call
-check2Step1 in windowsErrno
-check2Step1 invokes compare.equalInt32
-check2Step1 argument left Int32 code copy
-check2Step1 argument right Int32 int325 copy
-check2Step1 result check2Part1 Bool
-check2Step1 ownedBy none
-check2Step1 cleanedBy none
-check2Step1 borrows none
-check2Step1 catch none
-check2Step1 suppresses none
-
-check2Step2 is call
-check2Step2 in windowsErrno
-check2Step2 invokes compare.equalInt32
-check2Step2 argument left Int32 code copy
-check2Step2 argument right Int32 int3232 copy
-check2Step2 result check2Part2 Bool
-check2Step2 ownedBy none
-check2Step2 cleanedBy none
-check2Step2 borrows none
-check2Step2 catch none
-check2Step2 suppresses none
-
-findCheck21 is call
-findCheck21 in windowsErrno
-findCheck21 invokes logic.or
-findCheck21 argument left Bool check2Part1 copy
-findCheck21 argument right Bool check2Part2 copy
-findCheck21 result check2 Bool
-findCheck21 ownedBy none
-findCheck21 cleanedBy none
-findCheck21 borrows none
-findCheck21 catch none
-findCheck21 suppresses none
-
-check3Step1 is call
-check3Step1 in windowsErrno
-check3Step1 invokes compare.equalInt32
-check3Step1 argument left Int32 code copy
-check3Step1 argument right Int32 int3280 copy
-check3Step1 result check3Part1 Bool
-check3Step1 ownedBy none
-check3Step1 cleanedBy none
-check3Step1 borrows none
-check3Step1 catch none
-check3Step1 suppresses none
-
-check3Step2 is call
-check3Step2 in windowsErrno
-check3Step2 invokes compare.equalInt32
-check3Step2 argument left Int32 code copy
-check3Step2 argument right Int32 int32183 copy
-check3Step2 result check3Part2 Bool
-check3Step2 ownedBy none
-check3Step2 cleanedBy none
-check3Step2 borrows none
-check3Step2 catch none
-check3Step2 suppresses none
-
-findCheck31 is call
-findCheck31 in windowsErrno
-findCheck31 invokes logic.or
-findCheck31 argument left Bool check3Part1 copy
-findCheck31 argument right Bool check3Part2 copy
-findCheck31 result check3 Bool
-findCheck31 ownedBy none
-findCheck31 cleanedBy none
-findCheck31 borrows none
-findCheck31 catch none
-findCheck31 suppresses none
-
 setWindowsErrno is operation
 setWindowsErrno purpose "Set errno from GetLastError"
 setWindowsErrno invariant none
@@ -664,7 +503,7 @@ readCode suppresses none
 
 findMapped1 is call
 findMapped1 in setWindowsErrno
-findMapped1 invokes windowsErrno
+findMapped1 invokes clibrary.windowsErrno
 findMapped1 argument code Int32 code copy
 findMapped1 result mapped Int32
 findMapped1 ownedBy none
@@ -842,7 +681,7 @@ doSetErrno suppresses none
 
 findMapped1 is call
 findMapped1 in rawWrite
-findMapped1 invokes windowsErrno
+findMapped1 invokes clibrary.windowsErrno
 findMapped1 argument code Int32 status copy
 findMapped1 result mapped Int32
 findMapped1 ownedBy none
@@ -1125,7 +964,7 @@ findCheck31 suppresses none
 
 findMapped1 is call
 findMapped1 in rawRead
-findMapped1 invokes windowsErrno
+findMapped1 invokes clibrary.windowsErrno
 findMapped1 argument code Int32 code copy
 findMapped1 result mapped Int32
 findMapped1 ownedBy none
@@ -9896,7 +9735,7 @@ doDropFlag catch none
 doDropFlag suppresses none
 
 setBuffering is operation
-setBuffering purpose "setvbuf: choose a stream's buffering before it is used: _IOFBF (0) full, _IOLBF (1) by line, _IONBF (2) none, with the caller's buffer or one of the stream's own; 0, or nonzero for another mode"
+setBuffering purpose "setvbuf: choose a stream's buffering before it is used: _IOFBF (0) full, _IOLBF (1) by line, _IONBF (2) none, with the caller's buffer or one of the stream's own; 0, or nonzero for another mode (errno untouched, as glibc leaves it)"
 setBuffering invariant none
 setBuffering typeParameter none
 setBuffering input stream machine.Address copied
@@ -9953,7 +9792,6 @@ setBuffering at begin do check1Step1
 setBuffering at begin do check1Step2
 setBuffering at begin do findCheck11
 setBuffering at begin branch if check1 goto refuse else goto release
-setBuffering at refuse do doSetErrno
 setBuffering at refuse return ok failure
 setBuffering at release do doReleaseBuffer
 setBuffering at release do doDropFlagStep1
@@ -10034,17 +9872,6 @@ findCheck11 cleanedBy none
 findCheck11 borrows none
 findCheck11 catch none
 findCheck11 suppresses none
-
-doSetErrno is call
-doSetErrno in setBuffering
-doSetErrno invokes clibrary.setErrno
-doSetErrno argument value Int32 invalid copy
-doSetErrno result none
-doSetErrno ownedBy none
-doSetErrno cleanedBy none
-doSetErrno borrows none
-doSetErrno catch none
-doSetErrno suppresses none
 
 doReleaseBuffer is call
 doReleaseBuffer in setBuffering

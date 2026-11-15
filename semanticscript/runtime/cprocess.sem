@@ -876,6 +876,10 @@ raiseSignal label sent loopKind none
 raiseSignal label sent within none
 raiseSignal label windows loopKind none
 raiseSignal label windows within none
+raiseSignal label probed loopKind none
+raiseSignal label probed within none
+raiseSignal label table loopKind none
+raiseSignal label table within none
 raiseSignal label ignored loopKind none
 raiseSignal label ignored within none
 raiseSignal label notIgnored loopKind none
@@ -886,7 +890,7 @@ raiseSignal label call loopKind none
 raiseSignal label call within none
 raiseSignal let fine Int32 0 immutable
 raiseSignal let failure Int32 -1 immutable
-raiseSignal let int321 Int32 1 immutable
+raiseSignal let int320 Int32 0 immutable
 raiseSignal let int3264 Int32 64 immutable
 raiseSignal let zero Int64 0 immutable
 raiseSignal let one Int64 1 immutable
@@ -909,14 +913,17 @@ raiseSignal at failed do doSetErrnoStep2
 raiseSignal at failed do doSetErrno2
 raiseSignal at failed return ok failure
 raiseSignal at sent return ok fine
-raiseSignal at windows do readCell
-raiseSignal at windows do readHandler
-raiseSignal at windows do findHandlerValue1
 raiseSignal at windows do findCheck31
-raiseSignal at windows branch if check3 goto ignored else goto notIgnored
+raiseSignal at windows branch if check3 goto probed else goto table
+raiseSignal at probed return ok fine
+raiseSignal at table do readCell
+raiseSignal at table do readHandler
+raiseSignal at table do findHandlerValue1
+raiseSignal at table do findCheck41
+raiseSignal at table branch if check4 goto ignored else goto notIgnored
 raiseSignal at ignored return ok fine
-raiseSignal at notIgnored do findCheck41
-raiseSignal at notIgnored branch if check4 goto defaultAction else goto call
+raiseSignal at notIgnored do findCheck51
+raiseSignal at notIgnored branch if check5 goto defaultAction else goto call
 raiseSignal at defaultAction do doEndProcess
 raiseSignal at defaultAction return ok fine
 raiseSignal at call do argumentStep1
@@ -928,7 +935,7 @@ check1Step1 is call
 check1Step1 in raiseSignal
 check1Step1 invokes compare.lessThanInt32
 check1Step1 argument left Int32 signalNumber copy
-check1Step1 argument right Int32 int321 copy
+check1Step1 argument right Int32 int320 copy
 check1Step1 result check1Part1 Bool
 check1Step1 ownedBy none
 check1Step1 cleanedBy none
@@ -1062,6 +1069,18 @@ doSetErrno2 borrows none
 doSetErrno2 catch none
 doSetErrno2 suppresses none
 
+findCheck31 is call
+findCheck31 in raiseSignal
+findCheck31 invokes compare.equalInt32
+findCheck31 argument left Int32 signalNumber copy
+findCheck31 argument right Int32 int320 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
 readCell is call
 readCell in raiseSignal
 readCell invokes handlerCell
@@ -1095,29 +1114,29 @@ findHandlerValue1 borrows none
 findHandlerValue1 catch none
 findHandlerValue1 suppresses none
 
-findCheck31 is call
-findCheck31 in raiseSignal
-findCheck31 invokes compare.equalInt64
-findCheck31 argument left Int64 handlerValue copy
-findCheck31 argument right Int64 one copy
-findCheck31 result check3 Bool
-findCheck31 ownedBy none
-findCheck31 cleanedBy none
-findCheck31 borrows none
-findCheck31 catch none
-findCheck31 suppresses none
-
 findCheck41 is call
 findCheck41 in raiseSignal
 findCheck41 invokes compare.equalInt64
 findCheck41 argument left Int64 handlerValue copy
-findCheck41 argument right Int64 zero copy
+findCheck41 argument right Int64 one copy
 findCheck41 result check4 Bool
 findCheck41 ownedBy none
 findCheck41 cleanedBy none
 findCheck41 borrows none
 findCheck41 catch none
 findCheck41 suppresses none
+
+findCheck51 is call
+findCheck51 in raiseSignal
+findCheck51 invokes compare.equalInt64
+findCheck51 argument left Int64 handlerValue copy
+findCheck51 argument right Int64 zero copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
 
 doEndProcess is call
 doEndProcess in raiseSignal
@@ -1384,7 +1403,6 @@ runCommand let int32104 Int32 104 immutable
 runCommand let n24 Int64 24 immutable
 runCommand let int321 Int32 1 immutable
 runCommand let int320 Int32 0 immutable
-runCommand let int322 Int32 2 immutable
 runCommand let int32Minus1 Int32 -1 immutable
 runCommand let n255 Int64 255 immutable
 runCommand at begin do readNowhere
@@ -1461,6 +1479,8 @@ runCommand at windows do doGive10
 runCommand at windows do findCheck71
 runCommand at windows branch if check7 goto createFailed else goto waitWindows
 runCommand at createFailed do doGive11
+runCommand at createFailed do readLastError
+runCommand at createFailed do doSetErrnoStep5
 runCommand at createFailed do doSetErrno3
 runCommand at createFailed return ok failure
 runCommand at waitWindows do readProcess
@@ -2158,10 +2178,32 @@ doGive11 borrows none
 doGive11 catch none
 doGive11 suppresses none
 
+readLastError is call
+readLastError in runCommand
+readLastError invokes system.getLastError
+readLastError argument none
+readLastError result lastError Int32
+readLastError ownedBy none
+readLastError cleanedBy none
+readLastError borrows none
+readLastError catch none
+readLastError suppresses none
+
+doSetErrnoStep5 is call
+doSetErrnoStep5 in runCommand
+doSetErrnoStep5 invokes clibrary.windowsErrno
+doSetErrnoStep5 argument code Int32 lastError copy
+doSetErrnoStep5 result doSetErrnoPart5 Int32
+doSetErrnoStep5 ownedBy none
+doSetErrnoStep5 cleanedBy none
+doSetErrnoStep5 borrows none
+doSetErrnoStep5 catch none
+doSetErrnoStep5 suppresses none
+
 doSetErrno3 is call
 doSetErrno3 in runCommand
 doSetErrno3 invokes clibrary.setErrno
-doSetErrno3 argument value Int32 int322 copy
+doSetErrno3 argument value Int32 doSetErrnoPart5 copy
 doSetErrno3 result none
 doSetErrno3 ownedBy none
 doSetErrno3 cleanedBy none

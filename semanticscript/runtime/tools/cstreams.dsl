@@ -131,27 +131,6 @@ op handleOf "A FILE's handle as an address, for Windows's functions"
 
 ## ---------------------------------------------------------------- the operating system
 
-op windowsErrno "The errno for a Windows error code: ENOENT for a file or path not found, EACCES for access denied, EEXIST for a file that exists, EINVAL otherwise"
-  input code Int32 copied
-  output Int32
-  let notFound Int32 2
-  let denied Int32 13
-  let exists Int32 17
-:begin
-  when code == 2 || code == 3 missing other
-:missing
-  return notFound
-:other
-  when code == 5 || code == 32 refused existing
-:refused
-  return denied
-:existing
-  when code == 80 || code == 183 there unknown
-:there
-  return exists
-:unknown
-  return invalid
-
 op setWindowsErrno "Set errno from GetLastError"
   effect use machine.memory
   effect use system.calls
@@ -159,7 +138,7 @@ op setWindowsErrno "Set errno from GetLastError"
   uses systemCalls
 :begin
   code = system.getLastError()
-  calc mapped = windowsErrno(code)
+  calc mapped = clibrary.windowsErrno(code)
   clibrary.setErrno(mapped)
   return
 
@@ -194,7 +173,7 @@ op rawWrite "Write bytes to a handle, all of them; whether it worked (errno set 
   clibrary.setErrno(status)
   return false
 :windowsCode
-  calc mapped = windowsErrno(status)
+  calc mapped = clibrary.windowsErrno(status)
   clibrary.setErrno(mapped)
   return false
 
@@ -234,7 +213,7 @@ op rawRead "Read up to a number of bytes from a handle: how many (0 at the end o
 :ended
   return nothing
 :windowsError
-  calc mapped = windowsErrno(code)
+  calc mapped = clibrary.windowsErrno(code)
   clibrary.setErrno(mapped)
   return failure
 :windowsRead
@@ -1597,7 +1576,7 @@ op clearErrors "clearerr: clear a stream's end of file and error"
   dropFlag(stream, atEnd | failed)
   return
 
-op setBuffering "setvbuf: choose a stream's buffering before it is used: _IOFBF (0) full, _IOLBF (1) by line, _IONBF (2) none, with the caller's buffer or one of the stream's own; 0, or nonzero for another mode"
+op setBuffering "setvbuf: choose a stream's buffering before it is used: _IOFBF (0) full, _IOLBF (1) by line, _IONBF (2) none, with the caller's buffer or one of the stream's own; 0, or nonzero for another mode (errno untouched, as glibc leaves it)"
   input stream machine.Address copied
   input buffer machine.Address copied
   input mode Int32 copied
@@ -1615,7 +1594,6 @@ op setBuffering "setvbuf: choose a stream's buffering before it is used: _IOFBF 
   ensureStandard()
   when mode < 0 || mode > 2 refuse release
 :refuse
-  clibrary.setErrno(invalid)
   return failure
 :release
   releaseBuffer(stream)

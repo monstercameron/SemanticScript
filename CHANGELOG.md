@@ -113,6 +113,7 @@ based on [Keep a Changelog](https://keepachangelog.com/).
 - threads.h on Linux's threads, with a locked heap and streams and errno per thread; the floating-point control and
   fused multiply-add primitives (D-166, D-167); threads on Windows, deadlines for timed waits, and setjmp and
   longjmp on Windows (D-168 to D-170).
+- errno as glibc's numbers, Windows error codes mapped by one table (D-171).
 
 ### The runtime in SemanticScript: `ffi` everywhere
 

@@ -3012,6 +3012,15 @@ does in the C locale. Step one is stdio, which needs variadic functions. Decided
   host's, so an x86_64 object built on an ARM64 machine gets a routine that traps; on x86_64 hosts (CI's Windows
   runner) it is the real one, and cprocess's jumpTest runs it under `refined test` (and the AArch64 one here).
 
+- **D-171** errno is glibc's numbers everywhere. On Linux the library passes on the kernel's own (they are glibc's),
+  and it sets EINVAL, ERANGE, ENOMEM, EBADF, EILSEQ, and EOVERFLOW where glibc's functions set them (setvbuf with an
+  unknown mode leaves errno alone, as glibc's does; raise(0) is the kernel's check and gives 0). On Windows one table
+  (clibrary's windowsErrors) maps each Windows error code a file, pipe, process, socket, or memory call can give to
+  glibc's number for the same failure: ENOENT for a file or path not found, EACCES for access denied and sharing
+  violations, EEXIST, EBADF, ENOMEM, ENOSPC, EPIPE for a broken pipe, ENOTEMPTY, ENAMETOOLONG, EXDEV, EROFS, Winsock's
+  WSAE codes to their errno, and so on (109 codes); any other is EINVAL. tests/cprograms/errno_values.c compares
+  errno after 21 failing calls with glibc's.
+
 ## The runtime in SemanticScript, the C library and a loader (2026-11-15)
 
 `ffi` was the one module an executable on Linux refused (D-145): `ffi.open("c")` asked for glibc, which a static
@@ -3617,6 +3626,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-165 | The runtime in SemanticScript, the whole C library: the `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call (by delegation) |
 | 2026-11-15 | D-166 to D-167 | The runtime in SemanticScript, the whole C library: C11 threads on Linux's threads with futexes, a locked heap and locked streams, errno per thread; the floating-point control and fused multiply-add primitives (by delegation) |
 | 2026-11-15 | D-168 to D-170 | The runtime in SemanticScript, the whole C library: threads.h on Windows (CreateThread, a thread-local slot), deadlines for timed waits, setjmp and longjmp on Windows (by delegation) |
+| 2026-11-15 | D-171 | The runtime in SemanticScript, the whole C library: errno as glibc's numbers, Windows errors mapped by one table (by delegation) |
 | 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
 | 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
 | 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |
