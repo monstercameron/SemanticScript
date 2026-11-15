@@ -433,11 +433,13 @@ op setLocale "setlocale: the C locale answers to `C`, `POSIX`, and the empty nam
 :answer
   return nameCell
 
-op localeConventions "localeconv: the static struct lconv of the C locale: the decimal point `.`, every other text empty, every number CHAR_MAX (127)"
+op localeConventions "localeconv: the static struct lconv of the C locale: the decimal point `.`, every other text empty, every number CHAR_MAX (127, and 255 on AArch64 where char is unsigned)"
   invariant givesC "Gives glibc's C-locale struct lconv"
   output machine.Address
   effect use machine.memory
+  effect use system.calls
   uses memoryAccess
+  uses systemCalls
   abi library "localeconv"
   let at Int64 0 mut
 :begin
@@ -460,6 +462,12 @@ op localeConventions "localeconv: the static struct lconv of the C locale: the d
   when at >= 9 numbers eachText
 :numbers
   calc numbersAt = block + 80
+  onArm = system.aarch64()
+  when onArm armNumbers intelNumbers
+:armNumbers
+  machine.fill(numbersAt, 255, 14)
+  return block
+:intelNumbers
   machine.fill(numbersAt, 127, 14)
   return block
 
@@ -1722,11 +1730,12 @@ test localeTest "setlocale takes C, POSIX, the empty name, and NULL and refuses 
   calc digitsSlot = conventions + 80
   digits = machine.loadByte(digitsSlot)
   digitsWide = convert.byteToInt64(digits)
-  test.assertEqualInt64(127, digitsWide)
+  calc digitsHigh = digitsWide >= 127
+  test.assertTrue(digitsHigh)
   calc lastSlot = conventions + 93
   lastDigit = machine.loadByte(lastSlot)
   lastWide = convert.byteToInt64(lastDigit)
-  test.assertEqualInt64(127, lastWide)
+  test.assertEqualInt64(digitsWide, lastWide)
   return
 
 test randomTest "rand follows glibc for srand(1) and srand(0) and starts as srand(1)"

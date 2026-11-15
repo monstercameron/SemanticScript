@@ -933,11 +933,12 @@ localeTest at begin do doAssertTrue6
 localeTest at begin do findDigitsSlot1
 localeTest at begin do readDigits
 localeTest at begin do readDigitsWide
-localeTest at begin do doAssertEqualInt64
+localeTest at begin do findDigitsHigh1
+localeTest at begin do doAssertTrue7
 localeTest at begin do findLastSlot1
 localeTest at begin do readLastDigit
 localeTest at begin do readLastWide
-localeTest at begin do doAssertEqualInt642
+localeTest at begin do doAssertEqualInt64
 localeTest at begin return ok none
 
 readNowhere is call
@@ -1249,17 +1250,28 @@ readDigitsWide borrows none
 readDigitsWide catch none
 readDigitsWide suppresses none
 
-doAssertEqualInt64 is call
-doAssertEqualInt64 in localeTest
-doAssertEqualInt64 invokes test.assertEqualInt64
-doAssertEqualInt64 argument expected Int64 n127 copy
-doAssertEqualInt64 argument actual Int64 digitsWide copy
-doAssertEqualInt64 result none
-doAssertEqualInt64 ownedBy none
-doAssertEqualInt64 cleanedBy none
-doAssertEqualInt64 borrows none
-doAssertEqualInt64 catch none
-doAssertEqualInt64 suppresses none
+findDigitsHigh1 is call
+findDigitsHigh1 in localeTest
+findDigitsHigh1 invokes compare.greaterOrEqualInt64
+findDigitsHigh1 argument left Int64 digitsWide copy
+findDigitsHigh1 argument right Int64 n127 copy
+findDigitsHigh1 result digitsHigh Bool
+findDigitsHigh1 ownedBy none
+findDigitsHigh1 cleanedBy none
+findDigitsHigh1 borrows none
+findDigitsHigh1 catch none
+findDigitsHigh1 suppresses none
+
+doAssertTrue7 is call
+doAssertTrue7 in localeTest
+doAssertTrue7 invokes test.assertTrue
+doAssertTrue7 argument value Bool digitsHigh copy
+doAssertTrue7 result none
+doAssertTrue7 ownedBy none
+doAssertTrue7 cleanedBy none
+doAssertTrue7 borrows none
+doAssertTrue7 catch none
+doAssertTrue7 suppresses none
 
 findLastSlot1 is call
 findLastSlot1 in localeTest
@@ -1295,17 +1307,17 @@ readLastWide borrows none
 readLastWide catch none
 readLastWide suppresses none
 
-doAssertEqualInt642 is call
-doAssertEqualInt642 in localeTest
-doAssertEqualInt642 invokes test.assertEqualInt64
-doAssertEqualInt642 argument expected Int64 n127 copy
-doAssertEqualInt642 argument actual Int64 lastWide copy
-doAssertEqualInt642 result none
-doAssertEqualInt642 ownedBy none
-doAssertEqualInt642 cleanedBy none
-doAssertEqualInt642 borrows none
-doAssertEqualInt642 catch none
-doAssertEqualInt642 suppresses none
+doAssertEqualInt64 is call
+doAssertEqualInt64 in localeTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 digitsWide copy
+doAssertEqualInt64 argument actual Int64 lastWide copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
 
 randomTest is test
 randomTest purpose "rand follows glibc for srand(1) and srand(0) and starts as srand(1)"

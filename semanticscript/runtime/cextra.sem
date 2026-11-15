@@ -2274,7 +2274,7 @@ findCheck61 catch none
 findCheck61 suppresses none
 
 localeConventions is operation
-localeConventions purpose "localeconv: the static struct lconv of the C locale: the decimal point `.`, every other text empty, every number CHAR_MAX (127)"
+localeConventions purpose "localeconv: the static struct lconv of the C locale: the decimal point `.`, every other text empty, every number CHAR_MAX (127, and 255 on AArch64 where char is unsigned)"
 localeConventions invariant givesC "\"Gives glibc's C-locale struct lconv\""
 localeConventions typeParameter none
 localeConventions input none
@@ -2282,7 +2282,9 @@ localeConventions output machine.Address
 localeConventions outputOwnedBy none
 localeConventions raises none
 localeConventions effect use machine.memory
+localeConventions effect use system.calls
 localeConventions uses memoryAccess
+localeConventions uses systemCalls
 localeConventions memoryHeap false
 localeConventions async false
 localeConventions maxRecursion none
@@ -2294,6 +2296,10 @@ localeConventions label eachText within none
 localeConventions label eachText maxIterations 9
 localeConventions label numbers loopKind none
 localeConventions label numbers within none
+localeConventions label armNumbers loopKind none
+localeConventions label armNumbers within none
+localeConventions label intelNumbers loopKind none
+localeConventions label intelNumbers within none
 localeConventions let at Int64 0 mutable
 localeConventions let byte46 Byte 46 immutable
 localeConventions let one Int64 1 immutable
@@ -2302,8 +2308,9 @@ localeConventions let n96 Int64 96 immutable
 localeConventions let eight Int64 8 immutable
 localeConventions let nine Int64 9 immutable
 localeConventions let n80 Int64 80 immutable
-localeConventions let byte127 Byte 127 immutable
+localeConventions let byte255 Byte 255 immutable
 localeConventions let n14 Int64 14 immutable
+localeConventions let byte127 Byte 127 immutable
 localeConventions at begin do readBlock
 localeConventions at begin do readDot
 localeConventions at begin do readEmpty
@@ -2323,8 +2330,12 @@ localeConventions at eachText set at atNext1
 localeConventions at eachText do findCheck11
 localeConventions at eachText branch if check1 goto numbers else goto eachText
 localeConventions at numbers do findNumbersAt1
-localeConventions at numbers do doFill2
-localeConventions at numbers return ok block
+localeConventions at numbers do readOnArm
+localeConventions at numbers branch if onArm goto armNumbers else goto intelNumbers
+localeConventions at armNumbers do doFill2
+localeConventions at armNumbers return ok block
+localeConventions at intelNumbers do doFill3
+localeConventions at intelNumbers return ok block
 
 readBlock is call
 readBlock in localeConventions
@@ -2516,11 +2527,22 @@ findNumbersAt1 borrows none
 findNumbersAt1 catch none
 findNumbersAt1 suppresses none
 
+readOnArm is call
+readOnArm in localeConventions
+readOnArm invokes system.aarch64
+readOnArm argument none
+readOnArm result onArm Bool
+readOnArm ownedBy none
+readOnArm cleanedBy none
+readOnArm borrows none
+readOnArm catch none
+readOnArm suppresses none
+
 doFill2 is call
 doFill2 in localeConventions
 doFill2 invokes machine.fill
 doFill2 argument target machine.Address numbersAt copy
-doFill2 argument value Byte byte127 copy
+doFill2 argument value Byte byte255 copy
 doFill2 argument bytes Int64 n14 copy
 doFill2 result none
 doFill2 ownedBy none
@@ -2528,6 +2550,19 @@ doFill2 cleanedBy none
 doFill2 borrows none
 doFill2 catch none
 doFill2 suppresses none
+
+doFill3 is call
+doFill3 in localeConventions
+doFill3 invokes machine.fill
+doFill3 argument target machine.Address numbersAt copy
+doFill3 argument value Byte byte127 copy
+doFill3 argument bytes Int64 n14 copy
+doFill3 result none
+doFill3 ownedBy none
+doFill3 cleanedBy none
+doFill3 borrows none
+doFill3 catch none
+doFill3 suppresses none
 
 # ---------------------------------------------------------------- stdlib.h: rand
 seedWords is operation

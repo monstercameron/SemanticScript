@@ -238,6 +238,16 @@ def _lines_put_long() -> str:
     return "\n".join(out)
 
 
+def is_arm() -> bool:
+    """Whether the executables are built for AArch64, where char is unsigned (localeconv's CHAR_MAX is 255)."""
+    from refined.native import find_cc, platform
+    cc = find_cc()
+    if cc is None:
+        return False
+    _machine, triple, _problem = platform(cc)
+    return bool(triple) and triple.startswith("aarch64")
+
+
 def ident(symbol: str) -> str:
     """A C name as a SemanticScript name: no leading underscore, snake case made camel case."""
     parts = [x for x in symbol.split("_") if x]
@@ -619,7 +629,7 @@ def build_program() -> Program:
     p.emit("makeNowhere: nowhere = math.addInt64(zeroBase=0, zeroAdd=0)")
     p.put_long(ERRNO_RANGE, 34)
     p.put_long(ERRNO_INVALID, 22)
-    p.fill(p.ptr(ONES), 127, 14)
+    p.fill(p.ptr(ONES), 255 if is_arm() else 127, 14)  # CHAR_MAX: char is unsigned on AArch64
 
     # rand starts as srand(1) does
     for value in glibc_rand_sequence(1, 3):
