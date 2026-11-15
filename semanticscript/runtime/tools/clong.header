@@ -1,0 +1,4 @@
+# long double for the runtime's C library, written in SemanticScript (D-174): the exact l-suffixed functions
+# of math.h, done on the format's bits.
+#
+# This module is generated from tools/clong.dsl by tools/build.py.

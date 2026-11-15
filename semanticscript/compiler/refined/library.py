@@ -294,6 +294,25 @@ def _machine() -> dict:
         "startThread": Sig((_at("stackTop"), _at("block"), _at("tidAt"), _at("record")), "Int64", effects=_MEM),
         # D-168: the address of the runtime's `refined_c_thread_main`, where a Windows thread starts (CreateThread)
         "threadEntry": Sig((), _A, effects=_MEM),
+        "loadLongDouble": Sig((_at("address"),), "machine.LongDouble", effects=_MEM),
+        "storeLongDouble": Sig((_at("address"), P("value", "machine.LongDouble", "copied")), effects=_MEM),
+        # arithmetic, each one rounding: x87's instructions on x86_64 Linux, libgcc's soft float (__addtf3, ...) on
+        # AArch64 Linux, a double's on Windows; comparisons are ordered (false when either is a NaN)
+        "addLongDouble": Sig((P("left", "machine.LongDouble", "copied"), P("right", "machine.LongDouble", "copied")),
+                             "machine.LongDouble", effects=_MEM),
+        "subtractLongDouble": Sig((P("left", "machine.LongDouble", "copied"),
+                                   P("right", "machine.LongDouble", "copied")), "machine.LongDouble", effects=_MEM),
+        "multiplyLongDouble": Sig((P("left", "machine.LongDouble", "copied"),
+                                   P("right", "machine.LongDouble", "copied")), "machine.LongDouble", effects=_MEM),
+        "divideLongDouble": Sig((P("left", "machine.LongDouble", "copied"), P("right", "machine.LongDouble", "copied")),
+                                "machine.LongDouble", effects=_MEM),
+        "lessLongDouble": Sig((P("left", "machine.LongDouble", "copied"), P("right", "machine.LongDouble", "copied")),
+                              "Bool", effects=_MEM),
+        "equalLongDouble": Sig((P("left", "machine.LongDouble", "copied"), P("right", "machine.LongDouble", "copied")),
+                               "Bool", effects=_MEM),
+        "longDoubleFromFloat64": Sig((P("value", "Float64", "copied"),), "machine.LongDouble", effects=_MEM),
+        "longDoubleToFloat64": Sig((P("value", "machine.LongDouble", "copied"),), "Float64", effects=_MEM),
+        "longDoubleFromInt64": Sig((P("value", "Int64", "copied"),), "machine.LongDouble", effects=_MEM),
         # D-167: fenv.h and fma. `loadFloatControl` is the floating-point control and status (x86_64: MXCSR in the low
         # 32 bits; AArch64: FPCR | FPSR << 32), `storeFloatControl` sets them; `fusedMultiplyAdd` is a * b + c rounded
         # once (llvm.fma: one instruction, FMA3 on x86_64, which every x86_64 processor since 2015 has)
@@ -545,7 +564,11 @@ AARCH64_NUMBERS: dict[str, int] = {
 
 LIBRARY: dict[str, dict] = {
     "machine": {
-        "types": {"Address": TypeInfo(_A, "opaque", True)},
+        # D-174: C's long double, which an `abi library` operation takes and gives as the C ABI passes it: x87's 80
+        # bits on x86_64 Linux, binary128 on AArch64 Linux, a double on Windows (the Microsoft ABI's long double);
+        # the runtime reads and writes one only through memory (`loadLongDouble`, `storeLongDouble`), 16 bytes
+        "types": {"Address": TypeInfo(_A, "opaque", True),
+                  "LongDouble": TypeInfo("machine.LongDouble", "opaque", True)},
         "targets": _machine(),
     },
     "system": {

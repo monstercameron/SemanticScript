@@ -30,6 +30,7 @@ runtime includesModule bignum
 runtime includesModule floats
 runtime includesModule wide
 runtime includesModule clibrary
+runtime includesModule clong
 runtime includesModule cformat
 runtime includesModule cstreams
 runtime includesModule cstart

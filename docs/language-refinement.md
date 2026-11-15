@@ -3055,6 +3055,42 @@ does in the C locale. Step one is stdio, which needs variadic functions. Decided
   CI on Linux against glibc: printf's `%5%` writes a bare `%` (the width is ignored), and scanf's `%f` reads `nan`
   but not the `(chars)` strtod takes after it, stopping before the `(` as glibc's scanf does.
 
+- **D-174** C's long double is the platform's: x87's 80-bit extended format on x86_64 Linux (64 significand bits with
+  the leading one written out, 16 bytes in memory), IEEE binary128 on AArch64 Linux (113 bits), and a double on
+  Windows (the Microsoft ABI's long double). The compiler has the type `machine.LongDouble` (LLVM's `x86_fp80`,
+  `fp128`, or `double`), which an `abi library` operation takes and gives as the C ABI passes it (x87's on the stack
+  and in `st(0)`, binary128 in a vector register), `machine.loadLongDouble` and `machine.storeLongDouble`, and
+  arithmetic, comparisons, and conversions on it (`addLongDouble`, `lessLongDouble`, `longDoubleFromFloat64`, ...:
+  x87 instructions, libgcc's soft float on AArch64). The runtime's long double functions (`clong`) use none of that
+  arithmetic: a value is unpacked into parts (sign, kind, power of two, a 128-bit significand), worked on exactly as
+  whole numbers, and `settle` rounds the result to the format as the rounding mode rounds (read from MXCSR or FPCR,
+  `roundingMode`; printf's rounding of digits reads the same), so each function is exact on all three formats and is
+  tested on all three from any machine (every operation takes the layout: 0 double, 1 x87, 2 binary128, 3 float).
+  clong has fabsl, copysignl, frexpl, ldexpl (ERANGE), scalbnl, scalblnl, ilogbl, logbl, nanl, truncl, floorl, ceill,
+  roundl, rintl, nearbyintl, lrintl, llrintl, lroundl, llroundl, modfl, fmaxl, fminl, fdiml, nextafterl,
+  nexttowardl, nexttoward, nexttowardf, fmodl, remainderl, remquol, and sqrtl (bit by bit, correctly rounded). Past
+  the largest finite value a rounding toward zero (or downward for a positive value, upward for a negative one) gives
+  the largest finite value rather than an infinity, as IEEE 754 says. strtold (in `cformat`) reads what strtod reads
+  (strtod finds the end, the infinities and the NaNs) and rounds once: a decimal number's significant digits are
+  compared exactly with the decimal expansion of candidates m * 2^e (`decimalDigits`), first to find the power of two
+  at or below the value, then for each significand bit from the top to two below the format's last, then for whether
+  anything is left; a hexadecimal number's digits are its bits. ERANGE comes with an overflow and with a subnormal or
+  zero result that is not exactly the text's value. wcstold reads the ASCII characters of a wide string the same way,
+  and scanf's `%Lf` (`%Le`, `%Lg`, `%La`) stores what strtold reads rather than a double widened. The transcendental
+  `l` functions (expl, logl, sinl, powl, ...) and fmal are not in this piece: they come with `cmathlong`.
+  tests/cprograms/long_double.c compares strtold, wcstold, the exact functions, printf's `%La` and `%.30Lg`, and
+  sscanf's `%Lf` and `%La` with glibc's on Linux, and `cformat.longTextTest` checks strtold for the double layout
+  against strtod (bits, ends, errno) and for x87, binary128, and float against values computed exactly.
+
+- **D-175** A record of two numbers crosses the C boundary as the C ABI passes a struct of them: two Int64 (ldiv_t,
+  D-157), two Float64 (`double complex`), or two Float32 (`float complex`), as an input or output of an `abi library`
+  operation and of a foreign function bound with `ffi.Function`. Windows x64 passes a 16-byte struct by reference and
+  returns it through memory the caller gives, and a struct of two floats as one integer register; x86_64 Linux packs
+  two floats into one vector register and splits two doubles or two longs into two registers; AArch64 (Linux and
+  Windows) passes two doubles or two floats as a homogeneous aggregate in two vector registers and two longs in two
+  integer registers. The compiler wraps the operation (`library_function`) or the call (`foreign_pair_call`) so the
+  record's own value is what SemanticScript sees on each side.
+
 ## The runtime in SemanticScript, the C library and a loader (2026-11-15)
 
 `ffi` was the one module an executable on Linux refused (D-145): `ffi.open("c")` asked for glibc, which a static
@@ -3663,6 +3699,8 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-171 | The runtime in SemanticScript, the whole C library: errno as glibc's numbers, Windows errors mapped by one table (by delegation) |
 | 2026-11-15 | D-172 | The runtime in SemanticScript, the whole C library: strerror's messages taken from glibc by the compiler on a glibc machine (by delegation) |
 | 2026-11-15 | D-173 | The runtime in SemanticScript, the whole C library: glibc's `__isoc23_` names with C23's binary numbers; `%5%` and scanf's `nan` as glibc (by delegation) |
+| 2026-11-15 | D-174 | The runtime in SemanticScript, the whole C library: long double as each platform's C has it, its exact functions on parts, strtold and wcstold correctly rounded, scanf's `%Lf` (by delegation) |
+| 2026-11-15 | D-175 | The runtime in SemanticScript, the whole C library: records of two numbers (complex numbers, ldiv_t) passed as the C ABI passes structs (by delegation) |
 | 2026-11-15 | D-180 | The runtime in SemanticScript, the whole C library: math.h's hyperbolic, error, and gamma functions within 1 ulp, in double-double (by delegation) |
 | 2026-11-15 | D-181 | The runtime in SemanticScript, the whole C library: math.h's trigonometric functions within 1 ulp, with Payne-Hanek reduction (by delegation) |
 | 2026-11-15 | D-182 | The runtime in SemanticScript, the whole C library: math.h's exponential, logarithmic, and power functions within 1 ulp, table-free in double-double (by delegation) |

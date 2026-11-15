@@ -98,6 +98,8 @@ class World:
         self.taken: dict[str, set[tuple[str, str]]] = {}
         # D-92: instances at type arguments the backend put in (`concrete`), by their made-up names
         self.synthetic: dict[str, Optional[TypeInfo]] = {}
+        # D-175: the operation types foreign functions are bound as, whose calls pass records as the C ABI does
+        self.foreign_types: set[str] = set()
 
     # ------------------------------------------------------------ types
 
@@ -866,9 +868,13 @@ def _check_foreign(world: World, m: Module, row, canon: str) -> None:
         m.sink.error("R403", row.line, f"`ffi.Function` takes an operation type; `{canon}` is not one")
         return
     sig = info.sig
-    bad = [p.type for p in sig.inputs if p.type not in FOREIGN_TYPES or p.mode != "copied"]
-    if sig.output is not None and sig.output not in FOREIGN_TYPES:
+    # D-175: a record of two Float64 or two Float32 (C's complex numbers) crosses by value too
+    def passes(t: str) -> bool:
+        return t in FOREIGN_TYPES or pair_record(world, t) in ("f64", "f32")
+    bad = [p.type for p in sig.inputs if not passes(p.type) or p.mode != "copied"]
+    if sig.output is not None and not passes(sig.output):
         bad.append(sig.output)
+    world.foreign_types.add(canon)
     if bad:
         m.sink.error("R403", row.line, f"a foreign function takes and returns numbers or `Bool` by value; "
                      f"`{canon}` uses {', '.join(f'`{b}`' for b in bad)}")
@@ -1316,7 +1322,7 @@ def _check_op(world: World, m: Module, op: OpInfo) -> None:
 
 
 # D-123: what crosses the C boundary as it is: integers, `Byte`, `Bool`, `Float64`, and addresses
-ABI_TYPES = ("Int64", "Int32", "Byte", "Bool", "Float64", "Float32", "machine.Address")  # D-157: Float32, C's float
+ABI_TYPES = ("Int64", "Int32", "Byte", "Bool", "Float64", "Float32", "machine.Address", "machine.LongDouble")  # D-157: Float32, C's float
 C_SYMBOL = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
@@ -1338,11 +1344,14 @@ def library_variadic(ent) -> bool:
     return row is not None and len(row.args) > 2 and row.text(0) == "library" and row.text(2) == "variadic"
 
 
-def pair_record(world, canon: Optional[str]) -> bool:
-    """D-157: a record of two Int64 fields, which a C library function may give (`ldiv_t`): returned in two registers
-    on x86_64 Linux and AArch64, through memory the caller gives on Windows."""
+def pair_record(world, canon: Optional[str]) -> Optional[str]:
+    """D-157, D-175: a record of two numbers the C ABI passes as a struct: two Int64 (`ldiv_t`, "i64"), two Float64
+    (`double complex`, "f64"), or two Float32 (`float complex`, "f32"); None for any other type."""
     info = world.type_info(canon) if canon else None
-    return info is not None and info.kind == "record" and [t for _n, t in info.fields] == ["Int64", "Int64"]
+    if info is None or info.kind != "record":
+        return None
+    kinds = {("Int64", "Int64"): "i64", ("Float64", "Float64"): "f64", ("Float32", "Float32"): "f32"}
+    return kinds.get(tuple(t for _n, t in info.fields))
 
 
 def _check_abi(world: World, m: Module, op: OpInfo) -> None:
@@ -1367,6 +1376,8 @@ def _check_abi(world: World, m: Module, op: OpInfo) -> None:
         return
     shown = ", ".join(f"`{t}`" for t in ABI_TYPES)
     for p in op.sig.inputs:
+        if library_symbol(ent) is not None and pair_record(world, p.type) and p.mode == "copied":
+            continue  # D-175: a struct of two numbers, by value
         if p.type not in ABI_TYPES:
             sink.error("R403", row.line, f"input `{p.name}` is `{_show(p.type)}`; an operation exported to C takes "
                        f"only {shown}")

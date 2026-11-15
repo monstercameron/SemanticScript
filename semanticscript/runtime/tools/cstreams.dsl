@@ -3004,6 +3004,11 @@ op scanAll "scanf's engine (glibc's __isoc99 forms): match a format against a st
   if suppress eachDirective realWrite
 :realWrite in=eachDirective
   realTarget = machine.fromInt64(cformat.readWord(cursor))
+  when length == 5 longWrite shortWrite
+:longWrite in=eachDirective
+  cformat.scanLong(buffer, realTarget)
+  goto addAssigned
+:shortWrite in=eachDirective
   storeReal(realTarget, realValue, length)
   goto addAssigned
 :whole in=eachDirective

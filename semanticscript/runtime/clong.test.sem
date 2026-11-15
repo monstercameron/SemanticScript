@@ -1,0 +1,2481 @@
+# Tests of the `clong` module; generated from tools/clong.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+longOf is operation
+longOf purpose "A double as this system's long double, exactly (made through parts, with no long double arithmetic)"
+longOf invariant none
+longOf typeParameter none
+longOf input value Float64 copied
+longOf output machine.LongDouble
+longOf outputOwnedBy none
+longOf raises none
+longOf effect use machine.memory
+longOf effect use system.calls
+longOf uses memoryAccess
+longOf uses systemCalls
+longOf memoryHeap false
+longOf async false
+longOf maxRecursion none
+longOf label begin loopKind none
+longOf label begin within none
+longOf label finite loopKind none
+longOf label finite within none
+longOf label done loopKind none
+longOf label done within none
+longOf let sixteen Int64 16 immutable
+longOf let zero Int64 0 immutable
+longOf let eight Int64 8 immutable
+longOf let one Int64 1 immutable
+longOf at begin do readCell
+longOf at begin do doStoreFloat64
+longOf at begin do readParts
+longOf at begin do doUnpackAs
+longOf at begin do doGive
+longOf at begin do readKind
+longOf at begin do findCheck11
+longOf at begin branch if check1 goto finite else goto done
+longOf at finite do doSettle
+longOf at finite goto done
+longOf at done do readResult
+longOf at done return ok result
+
+readCell is call
+readCell in longOf
+readCell invokes heap.take
+readCell argument bytes Int64 sixteen copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+doStoreFloat64 is call
+doStoreFloat64 in longOf
+doStoreFloat64 invokes machine.storeFloat64
+doStoreFloat64 argument address machine.Address cell copy
+doStoreFloat64 argument value Float64 value copy
+doStoreFloat64 result none
+doStoreFloat64 ownedBy none
+doStoreFloat64 cleanedBy none
+doStoreFloat64 borrows none
+doStoreFloat64 catch none
+doStoreFloat64 suppresses none
+
+readParts is call
+readParts in longOf
+readParts invokes partsNew
+readParts argument none
+readParts result parts machine.Address
+readParts ownedBy none
+readParts cleanedBy none
+readParts borrows none
+readParts catch none
+readParts suppresses none
+
+doUnpackAs is call
+doUnpackAs in longOf
+doUnpackAs invokes unpackAs
+doUnpackAs argument source machine.Address cell copy
+doUnpackAs argument parts machine.Address parts copy
+doUnpackAs argument layout Int64 zero copy
+doUnpackAs result none
+doUnpackAs ownedBy none
+doUnpackAs cleanedBy none
+doUnpackAs borrows none
+doUnpackAs catch none
+doUnpackAs suppresses none
+
+doGive is call
+doGive in longOf
+doGive invokes heap.give
+doGive argument block machine.Address cell copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+readKind is call
+readKind in longOf
+readKind invokes getPart
+readKind argument parts machine.Address parts copy
+readKind argument offset Int64 eight copy
+readKind result kind Int64
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+findCheck11 is call
+findCheck11 in longOf
+findCheck11 invokes compare.equalInt64
+findCheck11 argument left Int64 kind copy
+findCheck11 argument right Int64 one copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doSettle is call
+doSettle in longOf
+doSettle invokes settle
+doSettle argument parts machine.Address parts copy
+doSettle argument dropped Int64 zero copy
+doSettle result none
+doSettle ownedBy none
+doSettle cleanedBy none
+doSettle borrows none
+doSettle catch none
+doSettle suppresses none
+
+readResult is call
+readResult in longOf
+readResult invokes valueOf
+readResult argument parts machine.Address parts copy
+readResult result result machine.LongDouble
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+sameLong is operation
+sameLong purpose "Whether two long doubles have the same bits"
+sameLong invariant none
+sameLong typeParameter none
+sameLong input left machine.LongDouble copied
+sameLong input right machine.LongDouble copied
+sameLong output Bool
+sameLong outputOwnedBy none
+sameLong raises none
+sameLong effect use machine.memory
+sameLong effect use system.calls
+sameLong uses memoryAccess
+sameLong uses systemCalls
+sameLong memoryHeap false
+sameLong async false
+sameLong maxRecursion none
+sameLong label begin loopKind none
+sameLong label begin within none
+sameLong let sixteen Int64 16 immutable
+sameLong let int320 Int32 0 immutable
+sameLong at begin do readLeftCell
+sameLong at begin do readRightCell
+sameLong at begin do doStoreLongDouble
+sameLong at begin do doStoreLongDouble2
+sameLong at begin do readOrder
+sameLong at begin do doGive
+sameLong at begin do doGive2
+sameLong at begin do findSame1
+sameLong at begin return ok same
+
+readLeftCell is call
+readLeftCell in sameLong
+readLeftCell invokes heap.take
+readLeftCell argument bytes Int64 sixteen copy
+readLeftCell result leftCell machine.Address
+readLeftCell ownedBy none
+readLeftCell cleanedBy none
+readLeftCell borrows none
+readLeftCell catch none
+readLeftCell suppresses none
+
+readRightCell is call
+readRightCell in sameLong
+readRightCell invokes heap.take
+readRightCell argument bytes Int64 sixteen copy
+readRightCell result rightCell machine.Address
+readRightCell ownedBy none
+readRightCell cleanedBy none
+readRightCell borrows none
+readRightCell catch none
+readRightCell suppresses none
+
+doStoreLongDouble is call
+doStoreLongDouble in sameLong
+doStoreLongDouble invokes machine.storeLongDouble
+doStoreLongDouble argument address machine.Address leftCell copy
+doStoreLongDouble argument value machine.LongDouble left copy
+doStoreLongDouble result none
+doStoreLongDouble ownedBy none
+doStoreLongDouble cleanedBy none
+doStoreLongDouble borrows none
+doStoreLongDouble catch none
+doStoreLongDouble suppresses none
+
+doStoreLongDouble2 is call
+doStoreLongDouble2 in sameLong
+doStoreLongDouble2 invokes machine.storeLongDouble
+doStoreLongDouble2 argument address machine.Address rightCell copy
+doStoreLongDouble2 argument value machine.LongDouble right copy
+doStoreLongDouble2 result none
+doStoreLongDouble2 ownedBy none
+doStoreLongDouble2 cleanedBy none
+doStoreLongDouble2 borrows none
+doStoreLongDouble2 catch none
+doStoreLongDouble2 suppresses none
+
+readOrder is call
+readOrder in sameLong
+readOrder invokes machine.compare
+readOrder argument left machine.Address leftCell copy
+readOrder argument right machine.Address rightCell copy
+readOrder argument bytes Int64 sixteen copy
+readOrder result order Int32
+readOrder ownedBy none
+readOrder cleanedBy none
+readOrder borrows none
+readOrder catch none
+readOrder suppresses none
+
+doGive is call
+doGive in sameLong
+doGive invokes heap.give
+doGive argument block machine.Address leftCell copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in sameLong
+doGive2 invokes heap.give
+doGive2 argument block machine.Address rightCell copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+findSame1 is call
+findSame1 in sameLong
+findSame1 invokes compare.equalInt32
+findSame1 argument left Int32 order copy
+findSame1 argument right Int32 int320 copy
+findSame1 result same Bool
+findSame1 ownedBy none
+findSame1 cleanedBy none
+findSame1 borrows none
+findSame1 catch none
+findSame1 suppresses none
+
+expectLong is operation
+expectLong purpose "Assert a long double is a double's value"
+expectLong invariant none
+expectLong typeParameter none
+expectLong input actual machine.LongDouble copied
+expectLong input expected Float64 copied
+expectLong output none
+expectLong outputOwnedBy none
+expectLong raises none
+expectLong effect use machine.memory
+expectLong effect use system.calls
+expectLong uses memoryAccess
+expectLong uses systemCalls
+expectLong memoryHeap false
+expectLong async false
+expectLong maxRecursion none
+expectLong label begin loopKind none
+expectLong label begin within none
+expectLong let none
+expectLong at begin do readWanted
+expectLong at begin do readSame
+expectLong at begin do doAssertTrue
+expectLong at begin return ok none
+
+readWanted is call
+readWanted in expectLong
+readWanted invokes longOf
+readWanted argument value Float64 expected copy
+readWanted result wanted machine.LongDouble
+readWanted ownedBy none
+readWanted cleanedBy none
+readWanted borrows none
+readWanted catch none
+readWanted suppresses none
+
+readSame is call
+readSame in expectLong
+readSame invokes sameLong
+readSame argument left machine.LongDouble actual copy
+readSame argument right machine.LongDouble wanted copy
+readSame result same Bool
+readSame ownedBy none
+readSame cleanedBy none
+readSame borrows none
+readSame catch none
+readSame suppresses none
+
+doAssertTrue is call
+doAssertTrue in expectLong
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool same copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+exactTest is test
+exactTest purpose "The exact long double functions on this system's format: signs, frexpl and ldexpl, the whole-number family, modfl, fmodl, remainderl, remquol, sqrtl of squares, nextafterl both ways, nexttoward and nexttowardf, fmaxl and fminl with NaN, ilogbl"
+exactTest verifies format namesFormat
+exactTest verifies precisionOf countsBits
+exactTest verifies unpack readsParts
+exactTest verifies pack writesParts
+exactTest verifies partsNew givesZeroed
+exactTest verifies settle roundsToFormat
+exactTest verifies roundingMode readsMode
+exactTest typeParameter none
+exactTest input none
+exactTest output none
+exactTest outputOwnedBy none
+exactTest raises none
+exactTest effect use machine.memory
+exactTest effect use system.calls
+exactTest uses memoryAccess
+exactTest uses systemCalls
+exactTest memoryHeap false
+exactTest async false
+exactTest maxRecursion none
+exactTest label begin loopKind none
+exactTest label begin within none
+exactTest let zero Int64 0 immutable
+exactTest let n53 Int64 53 immutable
+exactTest let eleven Int64 11 immutable
+exactTest let n49 Int64 49 immutable
+exactTest let realc004000000000000 Float64 -2.5 immutable
+exactTest let real4004000000000000 Float64 2.5 immutable
+exactTest let real4008000000000000 Float64 3.0 immutable
+exactTest let real8000000000000000 Float64 -0.0 immutable
+exactTest let realc008000000000000 Float64 -3.0 immutable
+exactTest let eight Int64 8 immutable
+exactTest let real4048000000000000 Float64 48.0 immutable
+exactTest let real3fe8000000000000 Float64 0.75 immutable
+exactTest let int326 Int32 6 immutable
+exactTest let realc000000000000000 Float64 -2.0 immutable
+exactTest let real4000000000000000 Float64 2.0 immutable
+exactTest let real400c000000000000 Float64 3.5 immutable
+exactTest let real4010000000000000 Float64 4.0 immutable
+exactTest let two Int64 2 immutable
+exactTest let minus3 Int64 -3 immutable
+exactTest let sixteen Int64 16 immutable
+exactTest let realc00a000000000000 Float64 -3.25 immutable
+exactTest let realbfd0000000000000 Float64 -0.25 immutable
+exactTest let real401e000000000000 Float64 7.5 immutable
+exactTest let real3ff8000000000000 Float64 1.5 immutable
+exactTest let realbfe0000000000000 Float64 -0.5 immutable
+exactTest let int324 Int32 4 immutable
+exactTest let real4019000000000000 Float64 6.25 immutable
+exactTest let real0000000000000000 Float64 0.0 immutable
+exactTest let real3ff0000000000000 Float64 1.0 immutable
+exactTest let uInt644607182418800017409 UInt64 4607182418800017409 immutable
+exactTest let real3fefffffe0000000 Float64 0.9999999403953552 immutable
+exactTest let realbff0000000000000 Float64 -1.0 immutable
+exactTest let int325 Int32 5 immutable
+exactTest let realbfd8000000000000 Float64 -0.375 immutable
+exactTest let int320 Int32 0 immutable
+exactTest at begin do readMode
+exactTest at begin do doAssertEqualInt64
+exactTest at begin do readLayout
+exactTest at begin do readPrecision
+exactTest at begin do readOnLinux
+exactTest at begin do readOnArm
+exactTest at begin do expectedPrecisionStep1
+exactTest at begin do expectedPrecisionStep2
+exactTest at begin do expectedPrecisionStep3
+exactTest at begin do expectedPrecisionStep4
+exactTest at begin do findExpectedPrecision1
+exactTest at begin do doAssertEqualInt642
+exactTest at begin do readMinusTwoHalf
+exactTest at begin do doExpectLongStep1
+exactTest at begin do doExpectLong
+exactTest at begin do doExpectLongStep2
+exactTest at begin do doExpectLongStep3
+exactTest at begin do doExpectLongStep4
+exactTest at begin do doExpectLong2
+exactTest at begin do readExponentCell
+exactTest at begin do fractionStep1
+exactTest at begin do readFraction
+exactTest at begin do doExpectLong3
+exactTest at begin do readExponent
+exactTest at begin do doAssertTrueStep1
+exactTest at begin do doAssertTrue
+exactTest at begin do doExpectLongStep5
+exactTest at begin do doExpectLongStep6
+exactTest at begin do doExpectLong4
+exactTest at begin do doExpectLongStep7
+exactTest at begin do doExpectLong5
+exactTest at begin do doExpectLongStep8
+exactTest at begin do doExpectLong6
+exactTest at begin do doExpectLongStep9
+exactTest at begin do doExpectLong7
+exactTest at begin do doExpectLongStep10
+exactTest at begin do doExpectLongStep11
+exactTest at begin do doExpectLong8
+exactTest at begin do doExpectLongStep12
+exactTest at begin do doExpectLongStep13
+exactTest at begin do doExpectLong9
+exactTest at begin do doExpectLongStep14
+exactTest at begin do doExpectLongStep15
+exactTest at begin do doExpectLong10
+exactTest at begin do roundedStep1
+exactTest at begin do readRounded
+exactTest at begin do doAssertEqualInt643
+exactTest at begin do readAway
+exactTest at begin do doAssertEqualInt644
+exactTest at begin do readWholeCell
+exactTest at begin do partStep1
+exactTest at begin do readPart
+exactTest at begin do doExpectLong11
+exactTest at begin do readWhole
+exactTest at begin do doExpectLong12
+exactTest at begin do doExpectLongStep16
+exactTest at begin do doExpectLongStep17
+exactTest at begin do doExpectLongStep18
+exactTest at begin do doExpectLong13
+exactTest at begin do doExpectLongStep19
+exactTest at begin do doExpectLongStep20
+exactTest at begin do doExpectLongStep21
+exactTest at begin do doExpectLong14
+exactTest at begin do readQuotientCell
+exactTest at begin do doExpectLongStep22
+exactTest at begin do doExpectLongStep23
+exactTest at begin do doExpectLongStep24
+exactTest at begin do doExpectLong15
+exactTest at begin do readQuotient
+exactTest at begin do doAssertTrueStep2
+exactTest at begin do doAssertTrue2
+exactTest at begin do doExpectLongStep25
+exactTest at begin do doExpectLongStep26
+exactTest at begin do doExpectLong16
+exactTest at begin do doExpectLongStep27
+exactTest at begin do doExpectLongStep28
+exactTest at begin do doExpectLong17
+exactTest at begin do readOne
+exactTest at begin do aboveStep1
+exactTest at begin do readAbove
+exactTest at begin do readDiffers
+exactTest at begin do doAssertTrueStep3
+exactTest at begin do doAssertTrue3
+exactTest at begin do doExpectLongStep29
+exactTest at begin do doExpectLongStep30
+exactTest at begin do doExpectLong18
+exactTest at begin do nextDoubleStep1
+exactTest at begin do readNextDouble
+exactTest at begin do doAssertTrueStep4
+exactTest at begin do doAssertTrueStep5
+exactTest at begin do doAssertTrue4
+exactTest at begin do nextSingleStep1
+exactTest at begin do nextSingleStep2
+exactTest at begin do readNextSingle
+exactTest at begin do doAssertTrueStep6
+exactTest at begin do doAssertTrueStep7
+exactTest at begin do doAssertTrue5
+exactTest at begin do readNan
+exactTest at begin do doExpectLongStep31
+exactTest at begin do doExpectLongStep32
+exactTest at begin do doExpectLong19
+exactTest at begin do doExpectLongStep33
+exactTest at begin do doExpectLongStep34
+exactTest at begin do doExpectLongStep35
+exactTest at begin do doExpectLong20
+exactTest at begin do logarithmStep1
+exactTest at begin do readLogarithm
+exactTest at begin do doAssertTrueStep8
+exactTest at begin do doAssertTrue6
+exactTest at begin do readRoundTrip
+exactTest at begin do readSource
+exactTest at begin do doStoreLongDoubleStep1
+exactTest at begin do doStoreLongDouble
+exactTest at begin do doUnpack
+exactTest at begin do doSettle
+exactTest at begin do readCopy
+exactTest at begin do doPack
+exactTest at begin do readOrder
+exactTest at begin do doAssertTrueStep9
+exactTest at begin do doAssertTrue7
+exactTest at begin return ok none
+
+readMode is call
+readMode in exactTest
+readMode invokes roundingMode
+readMode argument none
+readMode result mode Int64
+readMode ownedBy none
+readMode cleanedBy none
+readMode borrows none
+readMode catch none
+readMode suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in exactTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 zero copy
+doAssertEqualInt64 argument actual Int64 mode copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readLayout is call
+readLayout in exactTest
+readLayout invokes format
+readLayout argument none
+readLayout result layout Int64
+readLayout ownedBy none
+readLayout cleanedBy none
+readLayout borrows none
+readLayout catch none
+readLayout suppresses none
+
+readPrecision is call
+readPrecision in exactTest
+readPrecision invokes precisionOf
+readPrecision argument kind Int64 layout copy
+readPrecision result precision Int64
+readPrecision ownedBy none
+readPrecision cleanedBy none
+readPrecision borrows none
+readPrecision catch none
+readPrecision suppresses none
+
+readOnLinux is call
+readOnLinux in exactTest
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readOnArm is call
+readOnArm in exactTest
+readOnArm invokes system.aarch64
+readOnArm argument none
+readOnArm result onArm Bool
+readOnArm ownedBy none
+readOnArm cleanedBy none
+readOnArm borrows none
+readOnArm catch none
+readOnArm suppresses none
+
+expectedPrecisionStep1 is call
+expectedPrecisionStep1 in exactTest
+expectedPrecisionStep1 invokes choose
+expectedPrecisionStep1 argument condition Bool onLinux copy
+expectedPrecisionStep1 argument value Int64 eleven copy
+expectedPrecisionStep1 result expectedPrecisionPart1 Int64
+expectedPrecisionStep1 ownedBy none
+expectedPrecisionStep1 cleanedBy none
+expectedPrecisionStep1 borrows none
+expectedPrecisionStep1 catch none
+expectedPrecisionStep1 suppresses none
+
+expectedPrecisionStep2 is call
+expectedPrecisionStep2 in exactTest
+expectedPrecisionStep2 invokes math.addInt64
+expectedPrecisionStep2 argument left Int64 n53 copy
+expectedPrecisionStep2 argument right Int64 expectedPrecisionPart1 copy
+expectedPrecisionStep2 result expectedPrecisionPart2 Int64
+expectedPrecisionStep2 ownedBy none
+expectedPrecisionStep2 cleanedBy none
+expectedPrecisionStep2 borrows none
+expectedPrecisionStep2 catch none
+expectedPrecisionStep2 suppresses none
+
+expectedPrecisionStep3 is call
+expectedPrecisionStep3 in exactTest
+expectedPrecisionStep3 invokes logic.and
+expectedPrecisionStep3 argument left Bool onLinux copy
+expectedPrecisionStep3 argument right Bool onArm copy
+expectedPrecisionStep3 result expectedPrecisionPart3 Bool
+expectedPrecisionStep3 ownedBy none
+expectedPrecisionStep3 cleanedBy none
+expectedPrecisionStep3 borrows none
+expectedPrecisionStep3 catch none
+expectedPrecisionStep3 suppresses none
+
+expectedPrecisionStep4 is call
+expectedPrecisionStep4 in exactTest
+expectedPrecisionStep4 invokes choose
+expectedPrecisionStep4 argument condition Bool expectedPrecisionPart3 copy
+expectedPrecisionStep4 argument value Int64 n49 copy
+expectedPrecisionStep4 result expectedPrecisionPart4 Int64
+expectedPrecisionStep4 ownedBy none
+expectedPrecisionStep4 cleanedBy none
+expectedPrecisionStep4 borrows none
+expectedPrecisionStep4 catch none
+expectedPrecisionStep4 suppresses none
+
+findExpectedPrecision1 is call
+findExpectedPrecision1 in exactTest
+findExpectedPrecision1 invokes math.addInt64
+findExpectedPrecision1 argument left Int64 expectedPrecisionPart2 copy
+findExpectedPrecision1 argument right Int64 expectedPrecisionPart4 copy
+findExpectedPrecision1 result expectedPrecision Int64
+findExpectedPrecision1 ownedBy none
+findExpectedPrecision1 cleanedBy none
+findExpectedPrecision1 borrows none
+findExpectedPrecision1 catch none
+findExpectedPrecision1 suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in exactTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 expectedPrecision copy
+doAssertEqualInt642 argument actual Int64 precision copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+readMinusTwoHalf is call
+readMinusTwoHalf in exactTest
+readMinusTwoHalf invokes longOf
+readMinusTwoHalf argument value Float64 realc004000000000000 copy
+readMinusTwoHalf result minusTwoHalf machine.LongDouble
+readMinusTwoHalf ownedBy none
+readMinusTwoHalf cleanedBy none
+readMinusTwoHalf borrows none
+readMinusTwoHalf catch none
+readMinusTwoHalf suppresses none
+
+doExpectLongStep1 is call
+doExpectLongStep1 in exactTest
+doExpectLongStep1 invokes absoluteLong
+doExpectLongStep1 argument value machine.LongDouble minusTwoHalf copy
+doExpectLongStep1 result doExpectLongPart1 machine.LongDouble
+doExpectLongStep1 ownedBy none
+doExpectLongStep1 cleanedBy none
+doExpectLongStep1 borrows none
+doExpectLongStep1 catch none
+doExpectLongStep1 suppresses none
+
+doExpectLong is call
+doExpectLong in exactTest
+doExpectLong invokes expectLong
+doExpectLong argument actual machine.LongDouble doExpectLongPart1 copy
+doExpectLong argument expected Float64 real4004000000000000 copy
+doExpectLong result none
+doExpectLong ownedBy none
+doExpectLong cleanedBy none
+doExpectLong borrows none
+doExpectLong catch none
+doExpectLong suppresses none
+
+doExpectLongStep2 is call
+doExpectLongStep2 in exactTest
+doExpectLongStep2 invokes longOf
+doExpectLongStep2 argument value Float64 real4008000000000000 copy
+doExpectLongStep2 result doExpectLongPart2 machine.LongDouble
+doExpectLongStep2 ownedBy none
+doExpectLongStep2 cleanedBy none
+doExpectLongStep2 borrows none
+doExpectLongStep2 catch none
+doExpectLongStep2 suppresses none
+
+doExpectLongStep3 is call
+doExpectLongStep3 in exactTest
+doExpectLongStep3 invokes longOf
+doExpectLongStep3 argument value Float64 real8000000000000000 copy
+doExpectLongStep3 result doExpectLongPart3 machine.LongDouble
+doExpectLongStep3 ownedBy none
+doExpectLongStep3 cleanedBy none
+doExpectLongStep3 borrows none
+doExpectLongStep3 catch none
+doExpectLongStep3 suppresses none
+
+doExpectLongStep4 is call
+doExpectLongStep4 in exactTest
+doExpectLongStep4 invokes copySignLong
+doExpectLongStep4 argument magnitude machine.LongDouble doExpectLongPart2 copy
+doExpectLongStep4 argument sign machine.LongDouble doExpectLongPart3 copy
+doExpectLongStep4 result doExpectLongPart4 machine.LongDouble
+doExpectLongStep4 ownedBy none
+doExpectLongStep4 cleanedBy none
+doExpectLongStep4 borrows none
+doExpectLongStep4 catch none
+doExpectLongStep4 suppresses none
+
+doExpectLong2 is call
+doExpectLong2 in exactTest
+doExpectLong2 invokes expectLong
+doExpectLong2 argument actual machine.LongDouble doExpectLongPart4 copy
+doExpectLong2 argument expected Float64 realc008000000000000 copy
+doExpectLong2 result none
+doExpectLong2 ownedBy none
+doExpectLong2 cleanedBy none
+doExpectLong2 borrows none
+doExpectLong2 catch none
+doExpectLong2 suppresses none
+
+readExponentCell is call
+readExponentCell in exactTest
+readExponentCell invokes heap.take
+readExponentCell argument bytes Int64 eight copy
+readExponentCell result exponentCell machine.Address
+readExponentCell ownedBy none
+readExponentCell cleanedBy none
+readExponentCell borrows none
+readExponentCell catch none
+readExponentCell suppresses none
+
+fractionStep1 is call
+fractionStep1 in exactTest
+fractionStep1 invokes longOf
+fractionStep1 argument value Float64 real4048000000000000 copy
+fractionStep1 result fractionPart1 machine.LongDouble
+fractionStep1 ownedBy none
+fractionStep1 cleanedBy none
+fractionStep1 borrows none
+fractionStep1 catch none
+fractionStep1 suppresses none
+
+readFraction is call
+readFraction in exactTest
+readFraction invokes splitLong
+readFraction argument value machine.LongDouble fractionPart1 copy
+readFraction argument exponent machine.Address exponentCell copy
+readFraction result fraction machine.LongDouble
+readFraction ownedBy none
+readFraction cleanedBy none
+readFraction borrows none
+readFraction catch none
+readFraction suppresses none
+
+doExpectLong3 is call
+doExpectLong3 in exactTest
+doExpectLong3 invokes expectLong
+doExpectLong3 argument actual machine.LongDouble fraction copy
+doExpectLong3 argument expected Float64 real3fe8000000000000 copy
+doExpectLong3 result none
+doExpectLong3 ownedBy none
+doExpectLong3 cleanedBy none
+doExpectLong3 borrows none
+doExpectLong3 catch none
+doExpectLong3 suppresses none
+
+readExponent is call
+readExponent in exactTest
+readExponent invokes machine.loadInt32
+readExponent argument address machine.Address exponentCell copy
+readExponent result exponent Int32
+readExponent ownedBy none
+readExponent cleanedBy none
+readExponent borrows none
+readExponent catch none
+readExponent suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in exactTest
+doAssertTrueStep1 invokes compare.equalInt32
+doAssertTrueStep1 argument left Int32 exponent copy
+doAssertTrueStep1 argument right Int32 int326 copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in exactTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+doExpectLongStep5 is call
+doExpectLongStep5 in exactTest
+doExpectLongStep5 invokes longOf
+doExpectLongStep5 argument value Float64 real3fe8000000000000 copy
+doExpectLongStep5 result doExpectLongPart5 machine.LongDouble
+doExpectLongStep5 ownedBy none
+doExpectLongStep5 cleanedBy none
+doExpectLongStep5 borrows none
+doExpectLongStep5 catch none
+doExpectLongStep5 suppresses none
+
+doExpectLongStep6 is call
+doExpectLongStep6 in exactTest
+doExpectLongStep6 invokes loadExponentLong
+doExpectLongStep6 argument value machine.LongDouble doExpectLongPart5 copy
+doExpectLongStep6 argument count Int32 int326 copy
+doExpectLongStep6 result doExpectLongPart6 machine.LongDouble
+doExpectLongStep6 ownedBy none
+doExpectLongStep6 cleanedBy none
+doExpectLongStep6 borrows none
+doExpectLongStep6 catch none
+doExpectLongStep6 suppresses none
+
+doExpectLong4 is call
+doExpectLong4 in exactTest
+doExpectLong4 invokes expectLong
+doExpectLong4 argument actual machine.LongDouble doExpectLongPart6 copy
+doExpectLong4 argument expected Float64 real4048000000000000 copy
+doExpectLong4 result none
+doExpectLong4 ownedBy none
+doExpectLong4 cleanedBy none
+doExpectLong4 borrows none
+doExpectLong4 catch none
+doExpectLong4 suppresses none
+
+doExpectLongStep7 is call
+doExpectLongStep7 in exactTest
+doExpectLongStep7 invokes truncLong
+doExpectLongStep7 argument value machine.LongDouble minusTwoHalf copy
+doExpectLongStep7 result doExpectLongPart7 machine.LongDouble
+doExpectLongStep7 ownedBy none
+doExpectLongStep7 cleanedBy none
+doExpectLongStep7 borrows none
+doExpectLongStep7 catch none
+doExpectLongStep7 suppresses none
+
+doExpectLong5 is call
+doExpectLong5 in exactTest
+doExpectLong5 invokes expectLong
+doExpectLong5 argument actual machine.LongDouble doExpectLongPart7 copy
+doExpectLong5 argument expected Float64 realc000000000000000 copy
+doExpectLong5 result none
+doExpectLong5 ownedBy none
+doExpectLong5 cleanedBy none
+doExpectLong5 borrows none
+doExpectLong5 catch none
+doExpectLong5 suppresses none
+
+doExpectLongStep8 is call
+doExpectLongStep8 in exactTest
+doExpectLongStep8 invokes floorLong
+doExpectLongStep8 argument value machine.LongDouble minusTwoHalf copy
+doExpectLongStep8 result doExpectLongPart8 machine.LongDouble
+doExpectLongStep8 ownedBy none
+doExpectLongStep8 cleanedBy none
+doExpectLongStep8 borrows none
+doExpectLongStep8 catch none
+doExpectLongStep8 suppresses none
+
+doExpectLong6 is call
+doExpectLong6 in exactTest
+doExpectLong6 invokes expectLong
+doExpectLong6 argument actual machine.LongDouble doExpectLongPart8 copy
+doExpectLong6 argument expected Float64 realc008000000000000 copy
+doExpectLong6 result none
+doExpectLong6 ownedBy none
+doExpectLong6 cleanedBy none
+doExpectLong6 borrows none
+doExpectLong6 catch none
+doExpectLong6 suppresses none
+
+doExpectLongStep9 is call
+doExpectLongStep9 in exactTest
+doExpectLongStep9 invokes ceilLong
+doExpectLongStep9 argument value machine.LongDouble minusTwoHalf copy
+doExpectLongStep9 result doExpectLongPart9 machine.LongDouble
+doExpectLongStep9 ownedBy none
+doExpectLongStep9 cleanedBy none
+doExpectLongStep9 borrows none
+doExpectLongStep9 catch none
+doExpectLongStep9 suppresses none
+
+doExpectLong7 is call
+doExpectLong7 in exactTest
+doExpectLong7 invokes expectLong
+doExpectLong7 argument actual machine.LongDouble doExpectLongPart9 copy
+doExpectLong7 argument expected Float64 realc000000000000000 copy
+doExpectLong7 result none
+doExpectLong7 ownedBy none
+doExpectLong7 cleanedBy none
+doExpectLong7 borrows none
+doExpectLong7 catch none
+doExpectLong7 suppresses none
+
+doExpectLongStep10 is call
+doExpectLongStep10 in exactTest
+doExpectLongStep10 invokes longOf
+doExpectLongStep10 argument value Float64 real4004000000000000 copy
+doExpectLongStep10 result doExpectLongPart10 machine.LongDouble
+doExpectLongStep10 ownedBy none
+doExpectLongStep10 cleanedBy none
+doExpectLongStep10 borrows none
+doExpectLongStep10 catch none
+doExpectLongStep10 suppresses none
+
+doExpectLongStep11 is call
+doExpectLongStep11 in exactTest
+doExpectLongStep11 invokes roundHalfAwayLong
+doExpectLongStep11 argument value machine.LongDouble doExpectLongPart10 copy
+doExpectLongStep11 result doExpectLongPart11 machine.LongDouble
+doExpectLongStep11 ownedBy none
+doExpectLongStep11 cleanedBy none
+doExpectLongStep11 borrows none
+doExpectLongStep11 catch none
+doExpectLongStep11 suppresses none
+
+doExpectLong8 is call
+doExpectLong8 in exactTest
+doExpectLong8 invokes expectLong
+doExpectLong8 argument actual machine.LongDouble doExpectLongPart11 copy
+doExpectLong8 argument expected Float64 real4008000000000000 copy
+doExpectLong8 result none
+doExpectLong8 ownedBy none
+doExpectLong8 cleanedBy none
+doExpectLong8 borrows none
+doExpectLong8 catch none
+doExpectLong8 suppresses none
+
+doExpectLongStep12 is call
+doExpectLongStep12 in exactTest
+doExpectLongStep12 invokes longOf
+doExpectLongStep12 argument value Float64 real4004000000000000 copy
+doExpectLongStep12 result doExpectLongPart12 machine.LongDouble
+doExpectLongStep12 ownedBy none
+doExpectLongStep12 cleanedBy none
+doExpectLongStep12 borrows none
+doExpectLongStep12 catch none
+doExpectLongStep12 suppresses none
+
+doExpectLongStep13 is call
+doExpectLongStep13 in exactTest
+doExpectLongStep13 invokes rintLong
+doExpectLongStep13 argument value machine.LongDouble doExpectLongPart12 copy
+doExpectLongStep13 result doExpectLongPart13 machine.LongDouble
+doExpectLongStep13 ownedBy none
+doExpectLongStep13 cleanedBy none
+doExpectLongStep13 borrows none
+doExpectLongStep13 catch none
+doExpectLongStep13 suppresses none
+
+doExpectLong9 is call
+doExpectLong9 in exactTest
+doExpectLong9 invokes expectLong
+doExpectLong9 argument actual machine.LongDouble doExpectLongPart13 copy
+doExpectLong9 argument expected Float64 real4000000000000000 copy
+doExpectLong9 result none
+doExpectLong9 ownedBy none
+doExpectLong9 cleanedBy none
+doExpectLong9 borrows none
+doExpectLong9 catch none
+doExpectLong9 suppresses none
+
+doExpectLongStep14 is call
+doExpectLongStep14 in exactTest
+doExpectLongStep14 invokes longOf
+doExpectLongStep14 argument value Float64 real400c000000000000 copy
+doExpectLongStep14 result doExpectLongPart14 machine.LongDouble
+doExpectLongStep14 ownedBy none
+doExpectLongStep14 cleanedBy none
+doExpectLongStep14 borrows none
+doExpectLongStep14 catch none
+doExpectLongStep14 suppresses none
+
+doExpectLongStep15 is call
+doExpectLongStep15 in exactTest
+doExpectLongStep15 invokes rintLong
+doExpectLongStep15 argument value machine.LongDouble doExpectLongPart14 copy
+doExpectLongStep15 result doExpectLongPart15 machine.LongDouble
+doExpectLongStep15 ownedBy none
+doExpectLongStep15 cleanedBy none
+doExpectLongStep15 borrows none
+doExpectLongStep15 catch none
+doExpectLongStep15 suppresses none
+
+doExpectLong10 is call
+doExpectLong10 in exactTest
+doExpectLong10 invokes expectLong
+doExpectLong10 argument actual machine.LongDouble doExpectLongPart15 copy
+doExpectLong10 argument expected Float64 real4010000000000000 copy
+doExpectLong10 result none
+doExpectLong10 ownedBy none
+doExpectLong10 cleanedBy none
+doExpectLong10 borrows none
+doExpectLong10 catch none
+doExpectLong10 suppresses none
+
+roundedStep1 is call
+roundedStep1 in exactTest
+roundedStep1 invokes longOf
+roundedStep1 argument value Float64 real4004000000000000 copy
+roundedStep1 result roundedPart1 machine.LongDouble
+roundedStep1 ownedBy none
+roundedStep1 cleanedBy none
+roundedStep1 borrows none
+roundedStep1 catch none
+roundedStep1 suppresses none
+
+readRounded is call
+readRounded in exactTest
+readRounded invokes lrintLong
+readRounded argument value machine.LongDouble roundedPart1 copy
+readRounded result rounded Int64
+readRounded ownedBy none
+readRounded cleanedBy none
+readRounded borrows none
+readRounded catch none
+readRounded suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in exactTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 two copy
+doAssertEqualInt643 argument actual Int64 rounded copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+readAway is call
+readAway in exactTest
+readAway invokes lroundLong
+readAway argument value machine.LongDouble minusTwoHalf copy
+readAway result away Int64
+readAway ownedBy none
+readAway cleanedBy none
+readAway borrows none
+readAway catch none
+readAway suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in exactTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 minus3 copy
+doAssertEqualInt644 argument actual Int64 away copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+readWholeCell is call
+readWholeCell in exactTest
+readWholeCell invokes heap.take
+readWholeCell argument bytes Int64 sixteen copy
+readWholeCell result wholeCell machine.Address
+readWholeCell ownedBy none
+readWholeCell cleanedBy none
+readWholeCell borrows none
+readWholeCell catch none
+readWholeCell suppresses none
+
+partStep1 is call
+partStep1 in exactTest
+partStep1 invokes longOf
+partStep1 argument value Float64 realc00a000000000000 copy
+partStep1 result partPart1 machine.LongDouble
+partStep1 ownedBy none
+partStep1 cleanedBy none
+partStep1 borrows none
+partStep1 catch none
+partStep1 suppresses none
+
+readPart is call
+readPart in exactTest
+readPart invokes splitWholeLong
+readPart argument value machine.LongDouble partPart1 copy
+readPart argument whole machine.Address wholeCell copy
+readPart result part machine.LongDouble
+readPart ownedBy none
+readPart cleanedBy none
+readPart borrows none
+readPart catch none
+readPart suppresses none
+
+doExpectLong11 is call
+doExpectLong11 in exactTest
+doExpectLong11 invokes expectLong
+doExpectLong11 argument actual machine.LongDouble part copy
+doExpectLong11 argument expected Float64 realbfd0000000000000 copy
+doExpectLong11 result none
+doExpectLong11 ownedBy none
+doExpectLong11 cleanedBy none
+doExpectLong11 borrows none
+doExpectLong11 catch none
+doExpectLong11 suppresses none
+
+readWhole is call
+readWhole in exactTest
+readWhole invokes machine.loadLongDouble
+readWhole argument address machine.Address wholeCell copy
+readWhole result whole machine.LongDouble
+readWhole ownedBy none
+readWhole cleanedBy none
+readWhole borrows none
+readWhole catch none
+readWhole suppresses none
+
+doExpectLong12 is call
+doExpectLong12 in exactTest
+doExpectLong12 invokes expectLong
+doExpectLong12 argument actual machine.LongDouble whole copy
+doExpectLong12 argument expected Float64 realc008000000000000 copy
+doExpectLong12 result none
+doExpectLong12 ownedBy none
+doExpectLong12 cleanedBy none
+doExpectLong12 borrows none
+doExpectLong12 catch none
+doExpectLong12 suppresses none
+
+doExpectLongStep16 is call
+doExpectLongStep16 in exactTest
+doExpectLongStep16 invokes longOf
+doExpectLongStep16 argument value Float64 real401e000000000000 copy
+doExpectLongStep16 result doExpectLongPart16 machine.LongDouble
+doExpectLongStep16 ownedBy none
+doExpectLongStep16 cleanedBy none
+doExpectLongStep16 borrows none
+doExpectLongStep16 catch none
+doExpectLongStep16 suppresses none
+
+doExpectLongStep17 is call
+doExpectLongStep17 in exactTest
+doExpectLongStep17 invokes longOf
+doExpectLongStep17 argument value Float64 real4000000000000000 copy
+doExpectLongStep17 result doExpectLongPart17 machine.LongDouble
+doExpectLongStep17 ownedBy none
+doExpectLongStep17 cleanedBy none
+doExpectLongStep17 borrows none
+doExpectLongStep17 catch none
+doExpectLongStep17 suppresses none
+
+doExpectLongStep18 is call
+doExpectLongStep18 in exactTest
+doExpectLongStep18 invokes modLong
+doExpectLongStep18 argument left machine.LongDouble doExpectLongPart16 copy
+doExpectLongStep18 argument right machine.LongDouble doExpectLongPart17 copy
+doExpectLongStep18 result doExpectLongPart18 machine.LongDouble
+doExpectLongStep18 ownedBy none
+doExpectLongStep18 cleanedBy none
+doExpectLongStep18 borrows none
+doExpectLongStep18 catch none
+doExpectLongStep18 suppresses none
+
+doExpectLong13 is call
+doExpectLong13 in exactTest
+doExpectLong13 invokes expectLong
+doExpectLong13 argument actual machine.LongDouble doExpectLongPart18 copy
+doExpectLong13 argument expected Float64 real3ff8000000000000 copy
+doExpectLong13 result none
+doExpectLong13 ownedBy none
+doExpectLong13 cleanedBy none
+doExpectLong13 borrows none
+doExpectLong13 catch none
+doExpectLong13 suppresses none
+
+doExpectLongStep19 is call
+doExpectLongStep19 in exactTest
+doExpectLongStep19 invokes longOf
+doExpectLongStep19 argument value Float64 real401e000000000000 copy
+doExpectLongStep19 result doExpectLongPart19 machine.LongDouble
+doExpectLongStep19 ownedBy none
+doExpectLongStep19 cleanedBy none
+doExpectLongStep19 borrows none
+doExpectLongStep19 catch none
+doExpectLongStep19 suppresses none
+
+doExpectLongStep20 is call
+doExpectLongStep20 in exactTest
+doExpectLongStep20 invokes longOf
+doExpectLongStep20 argument value Float64 real4000000000000000 copy
+doExpectLongStep20 result doExpectLongPart20 machine.LongDouble
+doExpectLongStep20 ownedBy none
+doExpectLongStep20 cleanedBy none
+doExpectLongStep20 borrows none
+doExpectLongStep20 catch none
+doExpectLongStep20 suppresses none
+
+doExpectLongStep21 is call
+doExpectLongStep21 in exactTest
+doExpectLongStep21 invokes remainderLong
+doExpectLongStep21 argument left machine.LongDouble doExpectLongPart19 copy
+doExpectLongStep21 argument right machine.LongDouble doExpectLongPart20 copy
+doExpectLongStep21 result doExpectLongPart21 machine.LongDouble
+doExpectLongStep21 ownedBy none
+doExpectLongStep21 cleanedBy none
+doExpectLongStep21 borrows none
+doExpectLongStep21 catch none
+doExpectLongStep21 suppresses none
+
+doExpectLong14 is call
+doExpectLong14 in exactTest
+doExpectLong14 invokes expectLong
+doExpectLong14 argument actual machine.LongDouble doExpectLongPart21 copy
+doExpectLong14 argument expected Float64 realbfe0000000000000 copy
+doExpectLong14 result none
+doExpectLong14 ownedBy none
+doExpectLong14 cleanedBy none
+doExpectLong14 borrows none
+doExpectLong14 catch none
+doExpectLong14 suppresses none
+
+readQuotientCell is call
+readQuotientCell in exactTest
+readQuotientCell invokes heap.take
+readQuotientCell argument bytes Int64 eight copy
+readQuotientCell result quotientCell machine.Address
+readQuotientCell ownedBy none
+readQuotientCell cleanedBy none
+readQuotientCell borrows none
+readQuotientCell catch none
+readQuotientCell suppresses none
+
+doExpectLongStep22 is call
+doExpectLongStep22 in exactTest
+doExpectLongStep22 invokes longOf
+doExpectLongStep22 argument value Float64 real401e000000000000 copy
+doExpectLongStep22 result doExpectLongPart22 machine.LongDouble
+doExpectLongStep22 ownedBy none
+doExpectLongStep22 cleanedBy none
+doExpectLongStep22 borrows none
+doExpectLongStep22 catch none
+doExpectLongStep22 suppresses none
+
+doExpectLongStep23 is call
+doExpectLongStep23 in exactTest
+doExpectLongStep23 invokes longOf
+doExpectLongStep23 argument value Float64 real4000000000000000 copy
+doExpectLongStep23 result doExpectLongPart23 machine.LongDouble
+doExpectLongStep23 ownedBy none
+doExpectLongStep23 cleanedBy none
+doExpectLongStep23 borrows none
+doExpectLongStep23 catch none
+doExpectLongStep23 suppresses none
+
+doExpectLongStep24 is call
+doExpectLongStep24 in exactTest
+doExpectLongStep24 invokes remainderQuotientLong
+doExpectLongStep24 argument left machine.LongDouble doExpectLongPart22 copy
+doExpectLongStep24 argument right machine.LongDouble doExpectLongPart23 copy
+doExpectLongStep24 argument quotientAt machine.Address quotientCell copy
+doExpectLongStep24 result doExpectLongPart24 machine.LongDouble
+doExpectLongStep24 ownedBy none
+doExpectLongStep24 cleanedBy none
+doExpectLongStep24 borrows none
+doExpectLongStep24 catch none
+doExpectLongStep24 suppresses none
+
+doExpectLong15 is call
+doExpectLong15 in exactTest
+doExpectLong15 invokes expectLong
+doExpectLong15 argument actual machine.LongDouble doExpectLongPart24 copy
+doExpectLong15 argument expected Float64 realbfe0000000000000 copy
+doExpectLong15 result none
+doExpectLong15 ownedBy none
+doExpectLong15 cleanedBy none
+doExpectLong15 borrows none
+doExpectLong15 catch none
+doExpectLong15 suppresses none
+
+readQuotient is call
+readQuotient in exactTest
+readQuotient invokes machine.loadInt32
+readQuotient argument address machine.Address quotientCell copy
+readQuotient result quotient Int32
+readQuotient ownedBy none
+readQuotient cleanedBy none
+readQuotient borrows none
+readQuotient catch none
+readQuotient suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in exactTest
+doAssertTrueStep2 invokes compare.equalInt32
+doAssertTrueStep2 argument left Int32 quotient copy
+doAssertTrueStep2 argument right Int32 int324 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in exactTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool doAssertTruePart2 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+doExpectLongStep25 is call
+doExpectLongStep25 in exactTest
+doExpectLongStep25 invokes longOf
+doExpectLongStep25 argument value Float64 real4019000000000000 copy
+doExpectLongStep25 result doExpectLongPart25 machine.LongDouble
+doExpectLongStep25 ownedBy none
+doExpectLongStep25 cleanedBy none
+doExpectLongStep25 borrows none
+doExpectLongStep25 catch none
+doExpectLongStep25 suppresses none
+
+doExpectLongStep26 is call
+doExpectLongStep26 in exactTest
+doExpectLongStep26 invokes squareRootLong
+doExpectLongStep26 argument value machine.LongDouble doExpectLongPart25 copy
+doExpectLongStep26 result doExpectLongPart26 machine.LongDouble
+doExpectLongStep26 ownedBy none
+doExpectLongStep26 cleanedBy none
+doExpectLongStep26 borrows none
+doExpectLongStep26 catch none
+doExpectLongStep26 suppresses none
+
+doExpectLong16 is call
+doExpectLong16 in exactTest
+doExpectLong16 invokes expectLong
+doExpectLong16 argument actual machine.LongDouble doExpectLongPart26 copy
+doExpectLong16 argument expected Float64 real4004000000000000 copy
+doExpectLong16 result none
+doExpectLong16 ownedBy none
+doExpectLong16 cleanedBy none
+doExpectLong16 borrows none
+doExpectLong16 catch none
+doExpectLong16 suppresses none
+
+doExpectLongStep27 is call
+doExpectLongStep27 in exactTest
+doExpectLongStep27 invokes longOf
+doExpectLongStep27 argument value Float64 real0000000000000000 copy
+doExpectLongStep27 result doExpectLongPart27 machine.LongDouble
+doExpectLongStep27 ownedBy none
+doExpectLongStep27 cleanedBy none
+doExpectLongStep27 borrows none
+doExpectLongStep27 catch none
+doExpectLongStep27 suppresses none
+
+doExpectLongStep28 is call
+doExpectLongStep28 in exactTest
+doExpectLongStep28 invokes squareRootLong
+doExpectLongStep28 argument value machine.LongDouble doExpectLongPart27 copy
+doExpectLongStep28 result doExpectLongPart28 machine.LongDouble
+doExpectLongStep28 ownedBy none
+doExpectLongStep28 cleanedBy none
+doExpectLongStep28 borrows none
+doExpectLongStep28 catch none
+doExpectLongStep28 suppresses none
+
+doExpectLong17 is call
+doExpectLong17 in exactTest
+doExpectLong17 invokes expectLong
+doExpectLong17 argument actual machine.LongDouble doExpectLongPart28 copy
+doExpectLong17 argument expected Float64 real0000000000000000 copy
+doExpectLong17 result none
+doExpectLong17 ownedBy none
+doExpectLong17 cleanedBy none
+doExpectLong17 borrows none
+doExpectLong17 catch none
+doExpectLong17 suppresses none
+
+readOne is call
+readOne in exactTest
+readOne invokes longOf
+readOne argument value Float64 real3ff0000000000000 copy
+readOne result one machine.LongDouble
+readOne ownedBy none
+readOne cleanedBy none
+readOne borrows none
+readOne catch none
+readOne suppresses none
+
+aboveStep1 is call
+aboveStep1 in exactTest
+aboveStep1 invokes longOf
+aboveStep1 argument value Float64 real4000000000000000 copy
+aboveStep1 result abovePart1 machine.LongDouble
+aboveStep1 ownedBy none
+aboveStep1 cleanedBy none
+aboveStep1 borrows none
+aboveStep1 catch none
+aboveStep1 suppresses none
+
+readAbove is call
+readAbove in exactTest
+readAbove invokes nextLong
+readAbove argument value machine.LongDouble one copy
+readAbove argument toward machine.LongDouble abovePart1 copy
+readAbove result above machine.LongDouble
+readAbove ownedBy none
+readAbove cleanedBy none
+readAbove borrows none
+readAbove catch none
+readAbove suppresses none
+
+readDiffers is call
+readDiffers in exactTest
+readDiffers invokes sameLong
+readDiffers argument left machine.LongDouble above copy
+readDiffers argument right machine.LongDouble one copy
+readDiffers result differs Bool
+readDiffers ownedBy none
+readDiffers cleanedBy none
+readDiffers borrows none
+readDiffers catch none
+readDiffers suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in exactTest
+doAssertTrueStep3 invokes logic.not
+doAssertTrueStep3 argument value Bool differs copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in exactTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart3 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+doExpectLongStep29 is call
+doExpectLongStep29 in exactTest
+doExpectLongStep29 invokes longOf
+doExpectLongStep29 argument value Float64 real0000000000000000 copy
+doExpectLongStep29 result doExpectLongPart29 machine.LongDouble
+doExpectLongStep29 ownedBy none
+doExpectLongStep29 cleanedBy none
+doExpectLongStep29 borrows none
+doExpectLongStep29 catch none
+doExpectLongStep29 suppresses none
+
+doExpectLongStep30 is call
+doExpectLongStep30 in exactTest
+doExpectLongStep30 invokes nextLong
+doExpectLongStep30 argument value machine.LongDouble above copy
+doExpectLongStep30 argument toward machine.LongDouble doExpectLongPart29 copy
+doExpectLongStep30 result doExpectLongPart30 machine.LongDouble
+doExpectLongStep30 ownedBy none
+doExpectLongStep30 cleanedBy none
+doExpectLongStep30 borrows none
+doExpectLongStep30 catch none
+doExpectLongStep30 suppresses none
+
+doExpectLong18 is call
+doExpectLong18 in exactTest
+doExpectLong18 invokes expectLong
+doExpectLong18 argument actual machine.LongDouble doExpectLongPart30 copy
+doExpectLong18 argument expected Float64 real3ff0000000000000 copy
+doExpectLong18 result none
+doExpectLong18 ownedBy none
+doExpectLong18 cleanedBy none
+doExpectLong18 borrows none
+doExpectLong18 catch none
+doExpectLong18 suppresses none
+
+nextDoubleStep1 is call
+nextDoubleStep1 in exactTest
+nextDoubleStep1 invokes longOf
+nextDoubleStep1 argument value Float64 real4000000000000000 copy
+nextDoubleStep1 result nextDoublePart1 machine.LongDouble
+nextDoubleStep1 ownedBy none
+nextDoubleStep1 cleanedBy none
+nextDoubleStep1 borrows none
+nextDoubleStep1 catch none
+nextDoubleStep1 suppresses none
+
+readNextDouble is call
+readNextDouble in exactTest
+readNextDouble invokes nextTowardDouble
+readNextDouble argument value Float64 real3ff0000000000000 copy
+readNextDouble argument toward machine.LongDouble nextDoublePart1 copy
+readNextDouble result nextDouble Float64
+readNextDouble ownedBy none
+readNextDouble cleanedBy none
+readNextDouble borrows none
+readNextDouble catch none
+readNextDouble suppresses none
+
+doAssertTrueStep4 is call
+doAssertTrueStep4 in exactTest
+doAssertTrueStep4 invokes convert.float64BitsToUInt64
+doAssertTrueStep4 argument value Float64 nextDouble copy
+doAssertTrueStep4 result doAssertTruePart4 UInt64
+doAssertTrueStep4 ownedBy none
+doAssertTrueStep4 cleanedBy none
+doAssertTrueStep4 borrows none
+doAssertTrueStep4 catch none
+doAssertTrueStep4 suppresses none
+
+doAssertTrueStep5 is call
+doAssertTrueStep5 in exactTest
+doAssertTrueStep5 invokes compare.equalUInt64
+doAssertTrueStep5 argument left UInt64 doAssertTruePart4 copy
+doAssertTrueStep5 argument right UInt64 uInt644607182418800017409 copy
+doAssertTrueStep5 result doAssertTruePart5 Bool
+doAssertTrueStep5 ownedBy none
+doAssertTrueStep5 cleanedBy none
+doAssertTrueStep5 borrows none
+doAssertTrueStep5 catch none
+doAssertTrueStep5 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in exactTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool doAssertTruePart5 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+nextSingleStep1 is call
+nextSingleStep1 in exactTest
+nextSingleStep1 invokes convert.float64ToFloat32
+nextSingleStep1 argument value Float64 real3ff0000000000000 copy
+nextSingleStep1 result nextSinglePart1 Float32
+nextSingleStep1 ownedBy none
+nextSingleStep1 cleanedBy none
+nextSingleStep1 borrows none
+nextSingleStep1 catch none
+nextSingleStep1 suppresses none
+
+nextSingleStep2 is call
+nextSingleStep2 in exactTest
+nextSingleStep2 invokes longOf
+nextSingleStep2 argument value Float64 real0000000000000000 copy
+nextSingleStep2 result nextSinglePart2 machine.LongDouble
+nextSingleStep2 ownedBy none
+nextSingleStep2 cleanedBy none
+nextSingleStep2 borrows none
+nextSingleStep2 catch none
+nextSingleStep2 suppresses none
+
+readNextSingle is call
+readNextSingle in exactTest
+readNextSingle invokes nextTowardFloat
+readNextSingle argument value Float32 nextSinglePart1 copy
+readNextSingle argument toward machine.LongDouble nextSinglePart2 copy
+readNextSingle result nextSingle Float32
+readNextSingle ownedBy none
+readNextSingle cleanedBy none
+readNextSingle borrows none
+readNextSingle catch none
+readNextSingle suppresses none
+
+doAssertTrueStep6 is call
+doAssertTrueStep6 in exactTest
+doAssertTrueStep6 invokes convert.float32ToFloat64
+doAssertTrueStep6 argument value Float32 nextSingle copy
+doAssertTrueStep6 result doAssertTruePart6 Float64
+doAssertTrueStep6 ownedBy none
+doAssertTrueStep6 cleanedBy none
+doAssertTrueStep6 borrows none
+doAssertTrueStep6 catch none
+doAssertTrueStep6 suppresses none
+
+doAssertTrueStep7 is call
+doAssertTrueStep7 in exactTest
+doAssertTrueStep7 invokes compare.equalFloat64
+doAssertTrueStep7 argument left Float64 doAssertTruePart6 copy
+doAssertTrueStep7 argument right Float64 real3fefffffe0000000 copy
+doAssertTrueStep7 result doAssertTruePart7 Bool
+doAssertTrueStep7 ownedBy none
+doAssertTrueStep7 cleanedBy none
+doAssertTrueStep7 borrows none
+doAssertTrueStep7 catch none
+doAssertTrueStep7 suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in exactTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool doAssertTruePart7 copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+readNan is call
+readNan in exactTest
+readNan invokes notANumberLong
+readNan argument text machine.Address exponentCell copy
+readNan result nan machine.LongDouble
+readNan ownedBy none
+readNan cleanedBy none
+readNan borrows none
+readNan catch none
+readNan suppresses none
+
+doExpectLongStep31 is call
+doExpectLongStep31 in exactTest
+doExpectLongStep31 invokes longOf
+doExpectLongStep31 argument value Float64 realbff0000000000000 copy
+doExpectLongStep31 result doExpectLongPart31 machine.LongDouble
+doExpectLongStep31 ownedBy none
+doExpectLongStep31 cleanedBy none
+doExpectLongStep31 borrows none
+doExpectLongStep31 catch none
+doExpectLongStep31 suppresses none
+
+doExpectLongStep32 is call
+doExpectLongStep32 in exactTest
+doExpectLongStep32 invokes largerLong
+doExpectLongStep32 argument left machine.LongDouble nan copy
+doExpectLongStep32 argument right machine.LongDouble doExpectLongPart31 copy
+doExpectLongStep32 result doExpectLongPart32 machine.LongDouble
+doExpectLongStep32 ownedBy none
+doExpectLongStep32 cleanedBy none
+doExpectLongStep32 borrows none
+doExpectLongStep32 catch none
+doExpectLongStep32 suppresses none
+
+doExpectLong19 is call
+doExpectLong19 in exactTest
+doExpectLong19 invokes expectLong
+doExpectLong19 argument actual machine.LongDouble doExpectLongPart32 copy
+doExpectLong19 argument expected Float64 realbff0000000000000 copy
+doExpectLong19 result none
+doExpectLong19 ownedBy none
+doExpectLong19 cleanedBy none
+doExpectLong19 borrows none
+doExpectLong19 catch none
+doExpectLong19 suppresses none
+
+doExpectLongStep33 is call
+doExpectLongStep33 in exactTest
+doExpectLongStep33 invokes longOf
+doExpectLongStep33 argument value Float64 real4000000000000000 copy
+doExpectLongStep33 result doExpectLongPart33 machine.LongDouble
+doExpectLongStep33 ownedBy none
+doExpectLongStep33 cleanedBy none
+doExpectLongStep33 borrows none
+doExpectLongStep33 catch none
+doExpectLongStep33 suppresses none
+
+doExpectLongStep34 is call
+doExpectLongStep34 in exactTest
+doExpectLongStep34 invokes longOf
+doExpectLongStep34 argument value Float64 realbff0000000000000 copy
+doExpectLongStep34 result doExpectLongPart34 machine.LongDouble
+doExpectLongStep34 ownedBy none
+doExpectLongStep34 cleanedBy none
+doExpectLongStep34 borrows none
+doExpectLongStep34 catch none
+doExpectLongStep34 suppresses none
+
+doExpectLongStep35 is call
+doExpectLongStep35 in exactTest
+doExpectLongStep35 invokes smallerLong
+doExpectLongStep35 argument left machine.LongDouble doExpectLongPart33 copy
+doExpectLongStep35 argument right machine.LongDouble doExpectLongPart34 copy
+doExpectLongStep35 result doExpectLongPart35 machine.LongDouble
+doExpectLongStep35 ownedBy none
+doExpectLongStep35 cleanedBy none
+doExpectLongStep35 borrows none
+doExpectLongStep35 catch none
+doExpectLongStep35 suppresses none
+
+doExpectLong20 is call
+doExpectLong20 in exactTest
+doExpectLong20 invokes expectLong
+doExpectLong20 argument actual machine.LongDouble doExpectLongPart35 copy
+doExpectLong20 argument expected Float64 realbff0000000000000 copy
+doExpectLong20 result none
+doExpectLong20 ownedBy none
+doExpectLong20 cleanedBy none
+doExpectLong20 borrows none
+doExpectLong20 catch none
+doExpectLong20 suppresses none
+
+logarithmStep1 is call
+logarithmStep1 in exactTest
+logarithmStep1 invokes longOf
+logarithmStep1 argument value Float64 real4048000000000000 copy
+logarithmStep1 result logarithmPart1 machine.LongDouble
+logarithmStep1 ownedBy none
+logarithmStep1 cleanedBy none
+logarithmStep1 borrows none
+logarithmStep1 catch none
+logarithmStep1 suppresses none
+
+readLogarithm is call
+readLogarithm in exactTest
+readLogarithm invokes exponentOfLong
+readLogarithm argument value machine.LongDouble logarithmPart1 copy
+readLogarithm result logarithm Int32
+readLogarithm ownedBy none
+readLogarithm cleanedBy none
+readLogarithm borrows none
+readLogarithm catch none
+readLogarithm suppresses none
+
+doAssertTrueStep8 is call
+doAssertTrueStep8 in exactTest
+doAssertTrueStep8 invokes compare.equalInt32
+doAssertTrueStep8 argument left Int32 logarithm copy
+doAssertTrueStep8 argument right Int32 int325 copy
+doAssertTrueStep8 result doAssertTruePart8 Bool
+doAssertTrueStep8 ownedBy none
+doAssertTrueStep8 cleanedBy none
+doAssertTrueStep8 borrows none
+doAssertTrueStep8 catch none
+doAssertTrueStep8 suppresses none
+
+doAssertTrue6 is call
+doAssertTrue6 in exactTest
+doAssertTrue6 invokes test.assertTrue
+doAssertTrue6 argument value Bool doAssertTruePart8 copy
+doAssertTrue6 result none
+doAssertTrue6 ownedBy none
+doAssertTrue6 cleanedBy none
+doAssertTrue6 borrows none
+doAssertTrue6 catch none
+doAssertTrue6 suppresses none
+
+readRoundTrip is call
+readRoundTrip in exactTest
+readRoundTrip invokes partsNew
+readRoundTrip argument none
+readRoundTrip result roundTrip machine.Address
+readRoundTrip ownedBy none
+readRoundTrip cleanedBy none
+readRoundTrip borrows none
+readRoundTrip catch none
+readRoundTrip suppresses none
+
+readSource is call
+readSource in exactTest
+readSource invokes heap.take
+readSource argument bytes Int64 sixteen copy
+readSource result source machine.Address
+readSource ownedBy none
+readSource cleanedBy none
+readSource borrows none
+readSource catch none
+readSource suppresses none
+
+doStoreLongDoubleStep1 is call
+doStoreLongDoubleStep1 in exactTest
+doStoreLongDoubleStep1 invokes longOf
+doStoreLongDoubleStep1 argument value Float64 realbfd8000000000000 copy
+doStoreLongDoubleStep1 result doStoreLongDoublePart1 machine.LongDouble
+doStoreLongDoubleStep1 ownedBy none
+doStoreLongDoubleStep1 cleanedBy none
+doStoreLongDoubleStep1 borrows none
+doStoreLongDoubleStep1 catch none
+doStoreLongDoubleStep1 suppresses none
+
+doStoreLongDouble is call
+doStoreLongDouble in exactTest
+doStoreLongDouble invokes machine.storeLongDouble
+doStoreLongDouble argument address machine.Address source copy
+doStoreLongDouble argument value machine.LongDouble doStoreLongDoublePart1 copy
+doStoreLongDouble result none
+doStoreLongDouble ownedBy none
+doStoreLongDouble cleanedBy none
+doStoreLongDouble borrows none
+doStoreLongDouble catch none
+doStoreLongDouble suppresses none
+
+doUnpack is call
+doUnpack in exactTest
+doUnpack invokes unpack
+doUnpack argument source machine.Address source copy
+doUnpack argument parts machine.Address roundTrip copy
+doUnpack result none
+doUnpack ownedBy none
+doUnpack cleanedBy none
+doUnpack borrows none
+doUnpack catch none
+doUnpack suppresses none
+
+doSettle is call
+doSettle in exactTest
+doSettle invokes settle
+doSettle argument parts machine.Address roundTrip copy
+doSettle argument dropped Int64 zero copy
+doSettle result none
+doSettle ownedBy none
+doSettle cleanedBy none
+doSettle borrows none
+doSettle catch none
+doSettle suppresses none
+
+readCopy is call
+readCopy in exactTest
+readCopy invokes heap.take
+readCopy argument bytes Int64 sixteen copy
+readCopy result copy machine.Address
+readCopy ownedBy none
+readCopy cleanedBy none
+readCopy borrows none
+readCopy catch none
+readCopy suppresses none
+
+doPack is call
+doPack in exactTest
+doPack invokes pack
+doPack argument parts machine.Address roundTrip copy
+doPack argument target machine.Address copy copy
+doPack result none
+doPack ownedBy none
+doPack cleanedBy none
+doPack borrows none
+doPack catch none
+doPack suppresses none
+
+readOrder is call
+readOrder in exactTest
+readOrder invokes machine.compare
+readOrder argument left machine.Address source copy
+readOrder argument right machine.Address copy copy
+readOrder argument bytes Int64 sixteen copy
+readOrder result order Int32
+readOrder ownedBy none
+readOrder cleanedBy none
+readOrder borrows none
+readOrder catch none
+readOrder suppresses none
+
+doAssertTrueStep9 is call
+doAssertTrueStep9 in exactTest
+doAssertTrueStep9 invokes compare.equalInt32
+doAssertTrueStep9 argument left Int32 order copy
+doAssertTrueStep9 argument right Int32 int320 copy
+doAssertTrueStep9 result doAssertTruePart9 Bool
+doAssertTrueStep9 ownedBy none
+doAssertTrueStep9 cleanedBy none
+doAssertTrueStep9 borrows none
+doAssertTrueStep9 catch none
+doAssertTrueStep9 suppresses none
+
+doAssertTrue7 is call
+doAssertTrue7 in exactTest
+doAssertTrue7 invokes test.assertTrue
+doAssertTrue7 argument value Bool doAssertTruePart9 copy
+doAssertTrue7 result none
+doAssertTrue7 ownedBy none
+doAssertTrue7 cleanedBy none
+doAssertTrue7 borrows none
+doAssertTrue7 catch none
+doAssertTrue7 suppresses none
+
+partsTest is test
+partsTest purpose "Parts by layout: the double layout's powers, parts and significand words read back, low bits and lengths of 128-bit significands, 3 settled and packed as a float and read back"
+partsTest verifies leastPower givesLeast
+partsTest verifies greatestPower givesGreatest
+partsTest verifies getPart readsPart
+partsTest verifies setPart writesPart
+partsTest verifies highOf readsHigh
+partsTest verifies lowOf readsLow
+partsTest verifies setSignificand writesSignificand
+partsTest verifies unpackAs readsLayout
+partsTest verifies packAs writesLayout
+partsTest verifies lowBitsSet seesLowBits
+partsTest verifies bitLength countsLength
+partsTest verifies settleAs roundsToLayout
+partsTest typeParameter none
+partsTest input none
+partsTest output none
+partsTest outputOwnedBy none
+partsTest raises none
+partsTest effect use machine.memory
+partsTest effect use system.calls
+partsTest uses memoryAccess
+partsTest uses systemCalls
+partsTest memoryHeap false
+partsTest async false
+partsTest maxRecursion none
+partsTest label begin loopKind none
+partsTest label begin within none
+partsTest let topWord UInt64 1 immutable
+partsTest let lowWord UInt64 3 immutable
+partsTest let noWord UInt64 0 immutable
+partsTest let zero Int64 0 immutable
+partsTest let minus1074 Int64 -1074 immutable
+partsTest let n971 Int64 971 immutable
+partsTest let sixteen Int64 16 immutable
+partsTest let minus3 Int64 -3 immutable
+partsTest let uInt641 UInt64 1 immutable
+partsTest let uInt643 UInt64 3 immutable
+partsTest let n65 Int64 65 immutable
+partsTest let sixtyFour Int64 64 immutable
+partsTest let eight Int64 8 immutable
+partsTest let one Int64 1 immutable
+partsTest let three Int64 3 immutable
+partsTest let uInt6412582912 UInt64 12582912 immutable
+partsTest let minus22 Int64 -22 immutable
+partsTest let int321077936128 Int32 1077936128 immutable
+partsTest at begin do readLeast
+partsTest at begin do doAssertEqualInt64
+partsTest at begin do readGreatest
+partsTest at begin do doAssertEqualInt642
+partsTest at begin do readParts
+partsTest at begin do doSetPart
+partsTest at begin do readPower
+partsTest at begin do doAssertEqualInt643
+partsTest at begin do doSetSignificand
+partsTest at begin do readHigh
+partsTest at begin do readLow
+partsTest at begin do doAssertTrueStep1
+partsTest at begin do doAssertTrueStep2
+partsTest at begin do doAssertTrueStep3
+partsTest at begin do doAssertTrue
+partsTest at begin do readInside
+partsTest at begin do doAssertTrue2
+partsTest at begin do readPast
+partsTest at begin do doAssertTrueStep4
+partsTest at begin do doAssertTrue3
+partsTest at begin do readLength
+partsTest at begin do doAssertEqualInt644
+partsTest at begin do doSetSignificand2
+partsTest at begin do doSetPart2
+partsTest at begin do doSetPart3
+partsTest at begin do doSettleAs
+partsTest at begin do readSettledLow
+partsTest at begin do readSettledPower
+partsTest at begin do doAssertTrueStep5
+partsTest at begin do doAssertTrue4
+partsTest at begin do doAssertEqualInt645
+partsTest at begin do readCell
+partsTest at begin do doPackAs
+partsTest at begin do readSingle
+partsTest at begin do doAssertTrueStep6
+partsTest at begin do doAssertTrue5
+partsTest at begin do readAgain
+partsTest at begin do doUnpackAs
+partsTest at begin do readAgainPower
+partsTest at begin do doAssertEqualInt646
+partsTest at begin do doGive
+partsTest at begin do doGive2
+partsTest at begin do doGive3
+partsTest at begin return ok none
+
+readLeast is call
+readLeast in partsTest
+readLeast invokes leastPower
+readLeast argument kind Int64 zero copy
+readLeast result least Int64
+readLeast ownedBy none
+readLeast cleanedBy none
+readLeast borrows none
+readLeast catch none
+readLeast suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in partsTest
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 minus1074 copy
+doAssertEqualInt64 argument actual Int64 least copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readGreatest is call
+readGreatest in partsTest
+readGreatest invokes greatestPower
+readGreatest argument kind Int64 zero copy
+readGreatest result greatest Int64
+readGreatest ownedBy none
+readGreatest cleanedBy none
+readGreatest borrows none
+readGreatest catch none
+readGreatest suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in partsTest
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 n971 copy
+doAssertEqualInt642 argument actual Int64 greatest copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+readParts is call
+readParts in partsTest
+readParts invokes partsNew
+readParts argument none
+readParts result parts machine.Address
+readParts ownedBy none
+readParts cleanedBy none
+readParts borrows none
+readParts catch none
+readParts suppresses none
+
+doSetPart is call
+doSetPart in partsTest
+doSetPart invokes setPart
+doSetPart argument parts machine.Address parts copy
+doSetPart argument offset Int64 sixteen copy
+doSetPart argument value Int64 minus3 copy
+doSetPart result none
+doSetPart ownedBy none
+doSetPart cleanedBy none
+doSetPart borrows none
+doSetPart catch none
+doSetPart suppresses none
+
+readPower is call
+readPower in partsTest
+readPower invokes getPart
+readPower argument parts machine.Address parts copy
+readPower argument offset Int64 sixteen copy
+readPower result power Int64
+readPower ownedBy none
+readPower cleanedBy none
+readPower borrows none
+readPower catch none
+readPower suppresses none
+
+doAssertEqualInt643 is call
+doAssertEqualInt643 in partsTest
+doAssertEqualInt643 invokes test.assertEqualInt64
+doAssertEqualInt643 argument expected Int64 minus3 copy
+doAssertEqualInt643 argument actual Int64 power copy
+doAssertEqualInt643 result none
+doAssertEqualInt643 ownedBy none
+doAssertEqualInt643 cleanedBy none
+doAssertEqualInt643 borrows none
+doAssertEqualInt643 catch none
+doAssertEqualInt643 suppresses none
+
+doSetSignificand is call
+doSetSignificand in partsTest
+doSetSignificand invokes setSignificand
+doSetSignificand argument parts machine.Address parts copy
+doSetSignificand argument high UInt64 topWord copy
+doSetSignificand argument low UInt64 lowWord copy
+doSetSignificand result none
+doSetSignificand ownedBy none
+doSetSignificand cleanedBy none
+doSetSignificand borrows none
+doSetSignificand catch none
+doSetSignificand suppresses none
+
+readHigh is call
+readHigh in partsTest
+readHigh invokes highOf
+readHigh argument parts machine.Address parts copy
+readHigh result high UInt64
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+readLow is call
+readLow in partsTest
+readLow invokes lowOf
+readLow argument parts machine.Address parts copy
+readLow result low UInt64
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in partsTest
+doAssertTrueStep1 invokes compare.equalUInt64
+doAssertTrueStep1 argument left UInt64 high copy
+doAssertTrueStep1 argument right UInt64 uInt641 copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in partsTest
+doAssertTrueStep2 invokes compare.equalUInt64
+doAssertTrueStep2 argument left UInt64 low copy
+doAssertTrueStep2 argument right UInt64 uInt643 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in partsTest
+doAssertTrueStep3 invokes logic.and
+doAssertTrueStep3 argument left Bool doAssertTruePart1 copy
+doAssertTrueStep3 argument right Bool doAssertTruePart2 copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrue is call
+doAssertTrue in partsTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart3 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readInside is call
+readInside in partsTest
+readInside invokes lowBitsSet
+readInside argument high UInt64 topWord copy
+readInside argument low UInt64 noWord copy
+readInside argument count Int64 n65 copy
+readInside result inside Bool
+readInside ownedBy none
+readInside cleanedBy none
+readInside borrows none
+readInside catch none
+readInside suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in partsTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool inside copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+readPast is call
+readPast in partsTest
+readPast invokes lowBitsSet
+readPast argument high UInt64 topWord copy
+readPast argument low UInt64 noWord copy
+readPast argument count Int64 sixtyFour copy
+readPast result past Bool
+readPast ownedBy none
+readPast cleanedBy none
+readPast borrows none
+readPast catch none
+readPast suppresses none
+
+doAssertTrueStep4 is call
+doAssertTrueStep4 in partsTest
+doAssertTrueStep4 invokes logic.not
+doAssertTrueStep4 argument value Bool past copy
+doAssertTrueStep4 result doAssertTruePart4 Bool
+doAssertTrueStep4 ownedBy none
+doAssertTrueStep4 cleanedBy none
+doAssertTrueStep4 borrows none
+doAssertTrueStep4 catch none
+doAssertTrueStep4 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in partsTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart4 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+readLength is call
+readLength in partsTest
+readLength invokes bitLength
+readLength argument high UInt64 topWord copy
+readLength argument low UInt64 noWord copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+doAssertEqualInt644 is call
+doAssertEqualInt644 in partsTest
+doAssertEqualInt644 invokes test.assertEqualInt64
+doAssertEqualInt644 argument expected Int64 n65 copy
+doAssertEqualInt644 argument actual Int64 length copy
+doAssertEqualInt644 result none
+doAssertEqualInt644 ownedBy none
+doAssertEqualInt644 cleanedBy none
+doAssertEqualInt644 borrows none
+doAssertEqualInt644 catch none
+doAssertEqualInt644 suppresses none
+
+doSetSignificand2 is call
+doSetSignificand2 in partsTest
+doSetSignificand2 invokes setSignificand
+doSetSignificand2 argument parts machine.Address parts copy
+doSetSignificand2 argument high UInt64 noWord copy
+doSetSignificand2 argument low UInt64 lowWord copy
+doSetSignificand2 result none
+doSetSignificand2 ownedBy none
+doSetSignificand2 cleanedBy none
+doSetSignificand2 borrows none
+doSetSignificand2 catch none
+doSetSignificand2 suppresses none
+
+doSetPart2 is call
+doSetPart2 in partsTest
+doSetPart2 invokes setPart
+doSetPart2 argument parts machine.Address parts copy
+doSetPart2 argument offset Int64 sixteen copy
+doSetPart2 argument value Int64 zero copy
+doSetPart2 result none
+doSetPart2 ownedBy none
+doSetPart2 cleanedBy none
+doSetPart2 borrows none
+doSetPart2 catch none
+doSetPart2 suppresses none
+
+doSetPart3 is call
+doSetPart3 in partsTest
+doSetPart3 invokes setPart
+doSetPart3 argument parts machine.Address parts copy
+doSetPart3 argument offset Int64 eight copy
+doSetPart3 argument value Int64 one copy
+doSetPart3 result none
+doSetPart3 ownedBy none
+doSetPart3 cleanedBy none
+doSetPart3 borrows none
+doSetPart3 catch none
+doSetPart3 suppresses none
+
+doSettleAs is call
+doSettleAs in partsTest
+doSettleAs invokes settleAs
+doSettleAs argument parts machine.Address parts copy
+doSettleAs argument dropped Int64 zero copy
+doSettleAs argument layout Int64 three copy
+doSettleAs result none
+doSettleAs ownedBy none
+doSettleAs cleanedBy none
+doSettleAs borrows none
+doSettleAs catch none
+doSettleAs suppresses none
+
+readSettledLow is call
+readSettledLow in partsTest
+readSettledLow invokes lowOf
+readSettledLow argument parts machine.Address parts copy
+readSettledLow result settledLow UInt64
+readSettledLow ownedBy none
+readSettledLow cleanedBy none
+readSettledLow borrows none
+readSettledLow catch none
+readSettledLow suppresses none
+
+readSettledPower is call
+readSettledPower in partsTest
+readSettledPower invokes getPart
+readSettledPower argument parts machine.Address parts copy
+readSettledPower argument offset Int64 sixteen copy
+readSettledPower result settledPower Int64
+readSettledPower ownedBy none
+readSettledPower cleanedBy none
+readSettledPower borrows none
+readSettledPower catch none
+readSettledPower suppresses none
+
+doAssertTrueStep5 is call
+doAssertTrueStep5 in partsTest
+doAssertTrueStep5 invokes compare.equalUInt64
+doAssertTrueStep5 argument left UInt64 settledLow copy
+doAssertTrueStep5 argument right UInt64 uInt6412582912 copy
+doAssertTrueStep5 result doAssertTruePart5 Bool
+doAssertTrueStep5 ownedBy none
+doAssertTrueStep5 cleanedBy none
+doAssertTrueStep5 borrows none
+doAssertTrueStep5 catch none
+doAssertTrueStep5 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in partsTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool doAssertTruePart5 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none
+
+doAssertEqualInt645 is call
+doAssertEqualInt645 in partsTest
+doAssertEqualInt645 invokes test.assertEqualInt64
+doAssertEqualInt645 argument expected Int64 minus22 copy
+doAssertEqualInt645 argument actual Int64 settledPower copy
+doAssertEqualInt645 result none
+doAssertEqualInt645 ownedBy none
+doAssertEqualInt645 cleanedBy none
+doAssertEqualInt645 borrows none
+doAssertEqualInt645 catch none
+doAssertEqualInt645 suppresses none
+
+readCell is call
+readCell in partsTest
+readCell invokes heap.take
+readCell argument bytes Int64 sixteen copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+doPackAs is call
+doPackAs in partsTest
+doPackAs invokes packAs
+doPackAs argument parts machine.Address parts copy
+doPackAs argument target machine.Address cell copy
+doPackAs argument layout Int64 three copy
+doPackAs result none
+doPackAs ownedBy none
+doPackAs cleanedBy none
+doPackAs borrows none
+doPackAs catch none
+doPackAs suppresses none
+
+readSingle is call
+readSingle in partsTest
+readSingle invokes machine.loadInt32
+readSingle argument address machine.Address cell copy
+readSingle result single Int32
+readSingle ownedBy none
+readSingle cleanedBy none
+readSingle borrows none
+readSingle catch none
+readSingle suppresses none
+
+doAssertTrueStep6 is call
+doAssertTrueStep6 in partsTest
+doAssertTrueStep6 invokes compare.equalInt32
+doAssertTrueStep6 argument left Int32 single copy
+doAssertTrueStep6 argument right Int32 int321077936128 copy
+doAssertTrueStep6 result doAssertTruePart6 Bool
+doAssertTrueStep6 ownedBy none
+doAssertTrueStep6 cleanedBy none
+doAssertTrueStep6 borrows none
+doAssertTrueStep6 catch none
+doAssertTrueStep6 suppresses none
+
+doAssertTrue5 is call
+doAssertTrue5 in partsTest
+doAssertTrue5 invokes test.assertTrue
+doAssertTrue5 argument value Bool doAssertTruePart6 copy
+doAssertTrue5 result none
+doAssertTrue5 ownedBy none
+doAssertTrue5 cleanedBy none
+doAssertTrue5 borrows none
+doAssertTrue5 catch none
+doAssertTrue5 suppresses none
+
+readAgain is call
+readAgain in partsTest
+readAgain invokes partsNew
+readAgain argument none
+readAgain result again machine.Address
+readAgain ownedBy none
+readAgain cleanedBy none
+readAgain borrows none
+readAgain catch none
+readAgain suppresses none
+
+doUnpackAs is call
+doUnpackAs in partsTest
+doUnpackAs invokes unpackAs
+doUnpackAs argument source machine.Address cell copy
+doUnpackAs argument parts machine.Address again copy
+doUnpackAs argument layout Int64 three copy
+doUnpackAs result none
+doUnpackAs ownedBy none
+doUnpackAs cleanedBy none
+doUnpackAs borrows none
+doUnpackAs catch none
+doUnpackAs suppresses none
+
+readAgainPower is call
+readAgainPower in partsTest
+readAgainPower invokes getPart
+readAgainPower argument parts machine.Address again copy
+readAgainPower argument offset Int64 sixteen copy
+readAgainPower result againPower Int64
+readAgainPower ownedBy none
+readAgainPower cleanedBy none
+readAgainPower borrows none
+readAgainPower catch none
+readAgainPower suppresses none
+
+doAssertEqualInt646 is call
+doAssertEqualInt646 in partsTest
+doAssertEqualInt646 invokes test.assertEqualInt64
+doAssertEqualInt646 argument expected Int64 minus22 copy
+doAssertEqualInt646 argument actual Int64 againPower copy
+doAssertEqualInt646 result none
+doAssertEqualInt646 ownedBy none
+doAssertEqualInt646 cleanedBy none
+doAssertEqualInt646 borrows none
+doAssertEqualInt646 catch none
+doAssertEqualInt646 suppresses none
+
+doGive is call
+doGive in partsTest
+doGive invokes heap.give
+doGive argument block machine.Address again copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in partsTest
+doGive2 invokes heap.give
+doGive2 argument block machine.Address cell copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doGive3 is call
+doGive3 in partsTest
+doGive3 invokes heap.give
+doGive3 argument block machine.Address parts copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none

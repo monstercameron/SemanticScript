@@ -324,7 +324,7 @@ def q(text: str) -> str:
 
 
 def split_args(s: str):
-    out, cur, inq, esc = [], "", False, False
+    out, cur, inq, esc, depth = [], "", False, False, 0
     for ch in s:
         if inq:
             cur += ch
@@ -338,10 +338,11 @@ def split_args(s: str):
         if ch == '"':
             inq = True
             cur += ch
-        elif ch == ",":
+        elif ch == "," and depth == 0:
             out.append(cur.strip())
             cur = ""
         else:
+            depth += 1 if ch == "(" else -1 if ch == ")" else 0  # D-156: an argument may be a call of its own
             cur += ch
     if cur.strip():
         out.append(cur.strip())
@@ -532,6 +533,11 @@ class OpBuilder:
             else:
                 self.counter += 1
                 name = f"text{self.counter}"
+            # D-156: a name made for a literal steers clear of the operation's blocks' names
+            base, i = name, 2
+            while name in getattr(self, "labels_ahead", ()) or (name in self.names and name not in self.lets):
+                name = f"{base}Value{i if i > 2 else ''}"
+                i += 1
         self.add_let(name, self.prog.spell(self.m, canon), value, False)
         return name
 
@@ -1288,6 +1294,7 @@ class Generator:
             ob = OpBuilder(self, m, t[1], unq(t[2]), test=(k == "test"))
             header_done = False
             body = self.expand(body)
+            ob.labels_ahead = {tokens(b)[0][1:] for b in body if b.startswith(":")}
             early = [b for b in body if b.startswith(("let ", "region "))]
             body = [b for b in body if not b.startswith(("let ", "region "))]
             heads = [b for b in body if tokens(b)[0] in ("invariant", "verifies", "input", "output", "owner", "raises",

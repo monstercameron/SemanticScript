@@ -377,6 +377,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | threads.h | thrd_*, mtx_*, cnd_*, tss_*, call_once on Linux threads and futexes and on Windows threads; deadlines honoured; the heap and streams locked, errno per thread on Linux (D-166, D-168, D-169) | Done |
 | errno.h | glibc's numbers, the kernel's on Linux and a table of Windows error codes (D-171) | Done |
 | string.h | strerror: glibc's messages, read from glibc by the compiler on a glibc machine; `Unknown error N` when built elsewhere (D-172) | Done on Linux |
+| math.h, stdlib.h, wchar.h (long double) | long double as each platform's C has it (x87, binary128, double); fabsl, copysignl, frexpl, ldexpl, scalbnl, ilogbl, logbl, nanl, the rint and round families, modfl, fmodl, remainderl, remquol, sqrtl, nextafterl, nexttoward, fmaxl, fminl, fdiml exactly; strtold, wcstold, scanf's `%Lf` correctly rounded; complex numbers and ldiv_t passed as the C ABI passes structs (D-174, D-175) | Done; the transcendental `l` functions and fmal to come (`cmathlong`) |
 
 - **stdio** (D-159, D-160). `printf` and its kin read their arguments from the system's own `va_list` (x86_64 Linux,
   AArch64 Linux, Windows), every one first, then write each conversion as glibc does; a floating value's digits are

@@ -1423,3 +1423,1676 @@ layoutFor at windows return ok windowsLayout
 layoutFor at linux branch if onArm goto arm else goto sysv
 layoutFor at arm return ok armLayout
 layoutFor at sysv return ok sysvLayout
+
+cTextOf is operation
+cTextOf purpose "A text as a C string in a new heap block"
+cTextOf invariant none
+cTextOf typeParameter none
+cTextOf input text String borrowed
+cTextOf output machine.Address
+cTextOf outputOwnedBy none
+cTextOf raises none
+cTextOf effect use machine.memory
+cTextOf effect use system.calls
+cTextOf uses memoryAccess
+cTextOf uses systemCalls
+cTextOf memoryHeap false
+cTextOf async false
+cTextOf maxRecursion none
+cTextOf label begin loopKind none
+cTextOf label begin within none
+cTextOf let nul Byte 0 immutable
+cTextOf let one Int64 1 immutable
+cTextOf at begin do readBytes
+cTextOf at begin do blockStep1
+cTextOf at begin do findBlock1
+cTextOf at begin do readTextAt
+cTextOf at begin do doCopy
+cTextOf at begin do findEndAt1
+cTextOf at begin do doStoreByte
+cTextOf at begin return ok block
+
+readBytes is call
+readBytes in cTextOf
+readBytes invokes string.byteLength
+readBytes argument text String text lend
+readBytes result bytes Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+blockStep1 is call
+blockStep1 in cTextOf
+blockStep1 invokes math.addInt64
+blockStep1 argument left Int64 bytes copy
+blockStep1 argument right Int64 one copy
+blockStep1 result blockPart1 Int64
+blockStep1 ownedBy none
+blockStep1 cleanedBy none
+blockStep1 borrows none
+blockStep1 catch none
+blockStep1 suppresses none
+
+findBlock1 is call
+findBlock1 in cTextOf
+findBlock1 invokes heap.take
+findBlock1 argument bytes Int64 blockPart1 copy
+findBlock1 result block machine.Address
+findBlock1 ownedBy none
+findBlock1 cleanedBy none
+findBlock1 borrows none
+findBlock1 catch none
+findBlock1 suppresses none
+
+readTextAt is call
+readTextAt in cTextOf
+readTextAt invokes machine.addressOfString
+readTextAt argument text String text lend
+readTextAt result textAt machine.Address
+readTextAt ownedBy none
+readTextAt cleanedBy none
+readTextAt borrows none
+readTextAt catch none
+readTextAt suppresses none
+
+doCopy is call
+doCopy in cTextOf
+doCopy invokes machine.copy
+doCopy argument target machine.Address block copy
+doCopy argument source machine.Address textAt copy
+doCopy argument bytes Int64 bytes copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+findEndAt1 is call
+findEndAt1 in cTextOf
+findEndAt1 invokes machine.offset
+findEndAt1 argument address machine.Address block copy
+findEndAt1 argument bytes Int64 bytes copy
+findEndAt1 result endAt machine.Address
+findEndAt1 ownedBy none
+findEndAt1 cleanedBy none
+findEndAt1 borrows none
+findEndAt1 catch none
+findEndAt1 suppresses none
+
+doStoreByte is call
+doStoreByte in cTextOf
+doStoreByte invokes machine.storeByte
+doStoreByte argument address machine.Address endAt copy
+doStoreByte argument value Byte nul copy
+doStoreByte result none
+doStoreByte ownedBy none
+doStoreByte cleanedBy none
+doStoreByte borrows none
+doStoreByte catch none
+doStoreByte suppresses none
+
+sameAsDouble is operation
+sameAsDouble purpose "Assert strtold's reading for the double layout is strtod's: the same bits, end, and errno"
+sameAsDouble invariant none
+sameAsDouble typeParameter none
+sameAsDouble input text String borrowed
+sameAsDouble output none
+sameAsDouble outputOwnedBy none
+sameAsDouble raises none
+sameAsDouble effect use machine.memory
+sameAsDouble effect use system.calls
+sameAsDouble uses memoryAccess
+sameAsDouble uses systemCalls
+sameAsDouble memoryHeap false
+sameAsDouble async false
+sameAsDouble maxRecursion none
+sameAsDouble label begin loopKind none
+sameAsDouble label begin within none
+sameAsDouble let cleared Int32 0 immutable
+sameAsDouble let eight Int64 8 immutable
+sameAsDouble let sixteen Int64 16 immutable
+sameAsDouble let zero Int64 0 immutable
+sameAsDouble at begin do readBlock
+sameAsDouble at begin do readErrnoAt
+sameAsDouble at begin do doStoreInt32
+sameAsDouble at begin do readWantedEndCell
+sameAsDouble at begin do readWanted
+sameAsDouble at begin do readWantedErrno
+sameAsDouble at begin do doStoreInt322
+sameAsDouble at begin do readEndCell
+sameAsDouble at begin do readCell
+sameAsDouble at begin do doParseLongAs
+sameAsDouble at begin do readGotErrno
+sameAsDouble at begin do readGotBits
+sameAsDouble at begin do doAssertTrueStep1
+sameAsDouble at begin do doAssertTrueStep2
+sameAsDouble at begin do doAssertTrue
+sameAsDouble at begin do readWantedEnd
+sameAsDouble at begin do readGotEnd
+sameAsDouble at begin do readSameEnd
+sameAsDouble at begin do doAssertTrue2
+sameAsDouble at begin do doAssertTrueStep3
+sameAsDouble at begin do doAssertTrue3
+sameAsDouble at begin do doGive
+sameAsDouble at begin do doGive2
+sameAsDouble at begin do doGive3
+sameAsDouble at begin do doGive4
+sameAsDouble at begin return ok none
+
+readBlock is call
+readBlock in sameAsDouble
+readBlock invokes cTextOf
+readBlock argument text String text lend
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+readErrnoAt is call
+readErrnoAt in sameAsDouble
+readErrnoAt invokes clibrary.errnoCell
+readErrnoAt argument none
+readErrnoAt result errnoAt machine.Address
+readErrnoAt ownedBy none
+readErrnoAt cleanedBy none
+readErrnoAt borrows none
+readErrnoAt catch none
+readErrnoAt suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in sameAsDouble
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address errnoAt copy
+doStoreInt32 argument value Int32 cleared copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+readWantedEndCell is call
+readWantedEndCell in sameAsDouble
+readWantedEndCell invokes heap.take
+readWantedEndCell argument bytes Int64 eight copy
+readWantedEndCell result wantedEndCell machine.Address
+readWantedEndCell ownedBy none
+readWantedEndCell cleanedBy none
+readWantedEndCell borrows none
+readWantedEndCell catch none
+readWantedEndCell suppresses none
+
+readWanted is call
+readWanted in sameAsDouble
+readWanted invokes clibrary.parseReal
+readWanted argument text machine.Address block copy
+readWanted argument endAt machine.Address wantedEndCell copy
+readWanted result wanted Float64
+readWanted ownedBy none
+readWanted cleanedBy none
+readWanted borrows none
+readWanted catch none
+readWanted suppresses none
+
+readWantedErrno is call
+readWantedErrno in sameAsDouble
+readWantedErrno invokes machine.loadInt32
+readWantedErrno argument address machine.Address errnoAt copy
+readWantedErrno result wantedErrno Int32
+readWantedErrno ownedBy none
+readWantedErrno cleanedBy none
+readWantedErrno borrows none
+readWantedErrno catch none
+readWantedErrno suppresses none
+
+doStoreInt322 is call
+doStoreInt322 in sameAsDouble
+doStoreInt322 invokes machine.storeInt32
+doStoreInt322 argument address machine.Address errnoAt copy
+doStoreInt322 argument value Int32 cleared copy
+doStoreInt322 result none
+doStoreInt322 ownedBy none
+doStoreInt322 cleanedBy none
+doStoreInt322 borrows none
+doStoreInt322 catch none
+doStoreInt322 suppresses none
+
+readEndCell is call
+readEndCell in sameAsDouble
+readEndCell invokes heap.take
+readEndCell argument bytes Int64 eight copy
+readEndCell result endCell machine.Address
+readEndCell ownedBy none
+readEndCell cleanedBy none
+readEndCell borrows none
+readEndCell catch none
+readEndCell suppresses none
+
+readCell is call
+readCell in sameAsDouble
+readCell invokes heap.take
+readCell argument bytes Int64 sixteen copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+doParseLongAs is call
+doParseLongAs in sameAsDouble
+doParseLongAs invokes parseLongAs
+doParseLongAs argument text machine.Address block copy
+doParseLongAs argument endAt machine.Address endCell copy
+doParseLongAs argument layout Int64 zero copy
+doParseLongAs argument target machine.Address cell copy
+doParseLongAs result none
+doParseLongAs ownedBy none
+doParseLongAs cleanedBy none
+doParseLongAs borrows none
+doParseLongAs catch none
+doParseLongAs suppresses none
+
+readGotErrno is call
+readGotErrno in sameAsDouble
+readGotErrno invokes machine.loadInt32
+readGotErrno argument address machine.Address errnoAt copy
+readGotErrno result gotErrno Int32
+readGotErrno ownedBy none
+readGotErrno cleanedBy none
+readGotErrno borrows none
+readGotErrno catch none
+readGotErrno suppresses none
+
+readGotBits is call
+readGotBits in sameAsDouble
+readGotBits invokes machine.loadUInt64
+readGotBits argument address machine.Address cell copy
+readGotBits result gotBits UInt64
+readGotBits ownedBy none
+readGotBits cleanedBy none
+readGotBits borrows none
+readGotBits catch none
+readGotBits suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in sameAsDouble
+doAssertTrueStep1 invokes convert.float64BitsToUInt64
+doAssertTrueStep1 argument value Float64 wanted copy
+doAssertTrueStep1 result doAssertTruePart1 UInt64
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in sameAsDouble
+doAssertTrueStep2 invokes compare.equalUInt64
+doAssertTrueStep2 argument left UInt64 gotBits copy
+doAssertTrueStep2 argument right UInt64 doAssertTruePart1 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue is call
+doAssertTrue in sameAsDouble
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart2 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readWantedEnd is call
+readWantedEnd in sameAsDouble
+readWantedEnd invokes machine.loadAddress
+readWantedEnd argument address machine.Address wantedEndCell copy
+readWantedEnd result wantedEnd machine.Address
+readWantedEnd ownedBy none
+readWantedEnd cleanedBy none
+readWantedEnd borrows none
+readWantedEnd catch none
+readWantedEnd suppresses none
+
+readGotEnd is call
+readGotEnd in sameAsDouble
+readGotEnd invokes machine.loadAddress
+readGotEnd argument address machine.Address endCell copy
+readGotEnd result gotEnd machine.Address
+readGotEnd ownedBy none
+readGotEnd cleanedBy none
+readGotEnd borrows none
+readGotEnd catch none
+readGotEnd suppresses none
+
+readSameEnd is call
+readSameEnd in sameAsDouble
+readSameEnd invokes machine.equal
+readSameEnd argument left machine.Address wantedEnd copy
+readSameEnd argument right machine.Address gotEnd copy
+readSameEnd result sameEnd Bool
+readSameEnd ownedBy none
+readSameEnd cleanedBy none
+readSameEnd borrows none
+readSameEnd catch none
+readSameEnd suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in sameAsDouble
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool sameEnd copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in sameAsDouble
+doAssertTrueStep3 invokes compare.equalInt32
+doAssertTrueStep3 argument left Int32 gotErrno copy
+doAssertTrueStep3 argument right Int32 wantedErrno copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in sameAsDouble
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart3 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+doGive is call
+doGive in sameAsDouble
+doGive invokes heap.give
+doGive argument block machine.Address cell copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in sameAsDouble
+doGive2 invokes heap.give
+doGive2 argument block machine.Address endCell copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doGive3 is call
+doGive3 in sameAsDouble
+doGive3 invokes heap.give
+doGive3 argument block machine.Address wantedEndCell copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+doGive4 is call
+doGive4 in sameAsDouble
+doGive4 invokes heap.give
+doGive4 argument block machine.Address block copy
+doGive4 result none
+doGive4 ownedBy none
+doGive4 cleanedBy none
+doGive4 borrows none
+doGive4 catch none
+doGive4 suppresses none
+
+expectParts is operation
+expectParts purpose "Assert strtold's reading of a text for a layout is the finite value (high * 2^64 + low) * 2^power with a sign, in the layout's bytes"
+expectParts invariant none
+expectParts typeParameter none
+expectParts input text String borrowed
+expectParts input layout Int64 copied
+expectParts input high UInt64 copied
+expectParts input low UInt64 copied
+expectParts input power Int64 copied
+expectParts input negative Int64 copied
+expectParts output none
+expectParts outputOwnedBy none
+expectParts raises none
+expectParts effect use machine.memory
+expectParts effect use system.calls
+expectParts uses memoryAccess
+expectParts uses systemCalls
+expectParts memoryHeap false
+expectParts async false
+expectParts maxRecursion none
+expectParts label begin loopKind none
+expectParts label begin within none
+expectParts let sixteen Int64 16 immutable
+expectParts let zero Int64 0 immutable
+expectParts let eight Int64 8 immutable
+expectParts let one Int64 1 immutable
+expectParts at begin do readBlock
+expectParts at begin do readNowhere
+expectParts at begin do readGot
+expectParts at begin do doParseLongAs
+expectParts at begin do readParts
+expectParts at begin do doSetPart
+expectParts at begin do doSetPart2
+expectParts at begin do doSetPart3
+expectParts at begin do doSetSignificand
+expectParts at begin do readWanted
+expectParts at begin do doPackAs
+expectParts at begin do readOrder
+expectParts at begin do doAssertEqualInt64Step1
+expectParts at begin do doAssertEqualInt64
+expectParts at begin do doGive
+expectParts at begin do doGive2
+expectParts at begin do doGive3
+expectParts at begin do doGive4
+expectParts at begin return ok none
+
+readBlock is call
+readBlock in expectParts
+readBlock invokes cTextOf
+readBlock argument text String text lend
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+readNowhere is call
+readNowhere in expectParts
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readGot is call
+readGot in expectParts
+readGot invokes heap.take
+readGot argument bytes Int64 sixteen copy
+readGot result got machine.Address
+readGot ownedBy none
+readGot cleanedBy none
+readGot borrows none
+readGot catch none
+readGot suppresses none
+
+doParseLongAs is call
+doParseLongAs in expectParts
+doParseLongAs invokes parseLongAs
+doParseLongAs argument text machine.Address block copy
+doParseLongAs argument endAt machine.Address nowhere copy
+doParseLongAs argument layout Int64 layout copy
+doParseLongAs argument target machine.Address got copy
+doParseLongAs result none
+doParseLongAs ownedBy none
+doParseLongAs cleanedBy none
+doParseLongAs borrows none
+doParseLongAs catch none
+doParseLongAs suppresses none
+
+readParts is call
+readParts in expectParts
+readParts invokes clong.partsNew
+readParts argument none
+readParts result parts machine.Address
+readParts ownedBy none
+readParts cleanedBy none
+readParts borrows none
+readParts catch none
+readParts suppresses none
+
+doSetPart is call
+doSetPart in expectParts
+doSetPart invokes clong.setPart
+doSetPart argument parts machine.Address parts copy
+doSetPart argument offset Int64 zero copy
+doSetPart argument value Int64 negative copy
+doSetPart result none
+doSetPart ownedBy none
+doSetPart cleanedBy none
+doSetPart borrows none
+doSetPart catch none
+doSetPart suppresses none
+
+doSetPart2 is call
+doSetPart2 in expectParts
+doSetPart2 invokes clong.setPart
+doSetPart2 argument parts machine.Address parts copy
+doSetPart2 argument offset Int64 eight copy
+doSetPart2 argument value Int64 one copy
+doSetPart2 result none
+doSetPart2 ownedBy none
+doSetPart2 cleanedBy none
+doSetPart2 borrows none
+doSetPart2 catch none
+doSetPart2 suppresses none
+
+doSetPart3 is call
+doSetPart3 in expectParts
+doSetPart3 invokes clong.setPart
+doSetPart3 argument parts machine.Address parts copy
+doSetPart3 argument offset Int64 sixteen copy
+doSetPart3 argument value Int64 power copy
+doSetPart3 result none
+doSetPart3 ownedBy none
+doSetPart3 cleanedBy none
+doSetPart3 borrows none
+doSetPart3 catch none
+doSetPart3 suppresses none
+
+doSetSignificand is call
+doSetSignificand in expectParts
+doSetSignificand invokes clong.setSignificand
+doSetSignificand argument parts machine.Address parts copy
+doSetSignificand argument high UInt64 high copy
+doSetSignificand argument low UInt64 low copy
+doSetSignificand result none
+doSetSignificand ownedBy none
+doSetSignificand cleanedBy none
+doSetSignificand borrows none
+doSetSignificand catch none
+doSetSignificand suppresses none
+
+readWanted is call
+readWanted in expectParts
+readWanted invokes heap.take
+readWanted argument bytes Int64 sixteen copy
+readWanted result wanted machine.Address
+readWanted ownedBy none
+readWanted cleanedBy none
+readWanted borrows none
+readWanted catch none
+readWanted suppresses none
+
+doPackAs is call
+doPackAs in expectParts
+doPackAs invokes clong.packAs
+doPackAs argument parts machine.Address parts copy
+doPackAs argument target machine.Address wanted copy
+doPackAs argument layout Int64 layout copy
+doPackAs result none
+doPackAs ownedBy none
+doPackAs cleanedBy none
+doPackAs borrows none
+doPackAs catch none
+doPackAs suppresses none
+
+readOrder is call
+readOrder in expectParts
+readOrder invokes machine.compare
+readOrder argument left machine.Address got copy
+readOrder argument right machine.Address wanted copy
+readOrder argument bytes Int64 sixteen copy
+readOrder result order Int32
+readOrder ownedBy none
+readOrder cleanedBy none
+readOrder borrows none
+readOrder catch none
+readOrder suppresses none
+
+doAssertEqualInt64Step1 is call
+doAssertEqualInt64Step1 in expectParts
+doAssertEqualInt64Step1 invokes convert.int32ToInt64
+doAssertEqualInt64Step1 argument value Int32 order copy
+doAssertEqualInt64Step1 result doAssertEqualInt64Part1 Int64
+doAssertEqualInt64Step1 ownedBy none
+doAssertEqualInt64Step1 cleanedBy none
+doAssertEqualInt64Step1 borrows none
+doAssertEqualInt64Step1 catch none
+doAssertEqualInt64Step1 suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in expectParts
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 zero copy
+doAssertEqualInt64 argument actual Int64 doAssertEqualInt64Part1 copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+doGive is call
+doGive in expectParts
+doGive invokes heap.give
+doGive argument block machine.Address wanted copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in expectParts
+doGive2 invokes heap.give
+doGive2 argument block machine.Address parts copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doGive3 is call
+doGive3 in expectParts
+doGive3 invokes heap.give
+doGive3 argument block machine.Address got copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+doGive4 is call
+doGive4 in expectParts
+doGive4 invokes heap.give
+doGive4 argument block machine.Address block copy
+doGive4 result none
+doGive4 ownedBy none
+doGive4 cleanedBy none
+doGive4 borrows none
+doGive4 catch none
+doGive4 suppresses none
+
+expectKind is operation
+expectKind purpose "Assert strtold's reading of a text for a layout is a kind of value (0 zero, 1 finite, 2 infinite, 3 NaN) with a sign, and sets errno to a value"
+expectKind invariant none
+expectKind typeParameter none
+expectKind input text String borrowed
+expectKind input layout Int64 copied
+expectKind input kind Int64 copied
+expectKind input negative Int64 copied
+expectKind input expectedErrno Int32 copied
+expectKind output none
+expectKind outputOwnedBy none
+expectKind raises none
+expectKind effect use machine.memory
+expectKind effect use system.calls
+expectKind uses memoryAccess
+expectKind uses systemCalls
+expectKind memoryHeap false
+expectKind async false
+expectKind maxRecursion none
+expectKind label begin loopKind none
+expectKind label begin within none
+expectKind let cleared Int32 0 immutable
+expectKind let sixteen Int64 16 immutable
+expectKind let eight Int64 8 immutable
+expectKind let zero Int64 0 immutable
+expectKind at begin do readBlock
+expectKind at begin do readNowhere
+expectKind at begin do readErrnoAt
+expectKind at begin do doStoreInt32
+expectKind at begin do readGot
+expectKind at begin do doParseLongAs
+expectKind at begin do readGotErrno
+expectKind at begin do doAssertTrueStep1
+expectKind at begin do doAssertTrue
+expectKind at begin do readParts
+expectKind at begin do doUnpackAs
+expectKind at begin do readGotKind
+expectKind at begin do doAssertEqualInt64
+expectKind at begin do readGotSign
+expectKind at begin do doAssertEqualInt642
+expectKind at begin do doGive
+expectKind at begin do doGive2
+expectKind at begin do doGive3
+expectKind at begin return ok none
+
+readBlock is call
+readBlock in expectKind
+readBlock invokes cTextOf
+readBlock argument text String text lend
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+readNowhere is call
+readNowhere in expectKind
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readErrnoAt is call
+readErrnoAt in expectKind
+readErrnoAt invokes clibrary.errnoCell
+readErrnoAt argument none
+readErrnoAt result errnoAt machine.Address
+readErrnoAt ownedBy none
+readErrnoAt cleanedBy none
+readErrnoAt borrows none
+readErrnoAt catch none
+readErrnoAt suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in expectKind
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address errnoAt copy
+doStoreInt32 argument value Int32 cleared copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+readGot is call
+readGot in expectKind
+readGot invokes heap.take
+readGot argument bytes Int64 sixteen copy
+readGot result got machine.Address
+readGot ownedBy none
+readGot cleanedBy none
+readGot borrows none
+readGot catch none
+readGot suppresses none
+
+doParseLongAs is call
+doParseLongAs in expectKind
+doParseLongAs invokes parseLongAs
+doParseLongAs argument text machine.Address block copy
+doParseLongAs argument endAt machine.Address nowhere copy
+doParseLongAs argument layout Int64 layout copy
+doParseLongAs argument target machine.Address got copy
+doParseLongAs result none
+doParseLongAs ownedBy none
+doParseLongAs cleanedBy none
+doParseLongAs borrows none
+doParseLongAs catch none
+doParseLongAs suppresses none
+
+readGotErrno is call
+readGotErrno in expectKind
+readGotErrno invokes machine.loadInt32
+readGotErrno argument address machine.Address errnoAt copy
+readGotErrno result gotErrno Int32
+readGotErrno ownedBy none
+readGotErrno cleanedBy none
+readGotErrno borrows none
+readGotErrno catch none
+readGotErrno suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in expectKind
+doAssertTrueStep1 invokes compare.equalInt32
+doAssertTrueStep1 argument left Int32 gotErrno copy
+doAssertTrueStep1 argument right Int32 expectedErrno copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in expectKind
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readParts is call
+readParts in expectKind
+readParts invokes clong.partsNew
+readParts argument none
+readParts result parts machine.Address
+readParts ownedBy none
+readParts cleanedBy none
+readParts borrows none
+readParts catch none
+readParts suppresses none
+
+doUnpackAs is call
+doUnpackAs in expectKind
+doUnpackAs invokes clong.unpackAs
+doUnpackAs argument source machine.Address got copy
+doUnpackAs argument parts machine.Address parts copy
+doUnpackAs argument layout Int64 layout copy
+doUnpackAs result none
+doUnpackAs ownedBy none
+doUnpackAs cleanedBy none
+doUnpackAs borrows none
+doUnpackAs catch none
+doUnpackAs suppresses none
+
+readGotKind is call
+readGotKind in expectKind
+readGotKind invokes clong.getPart
+readGotKind argument parts machine.Address parts copy
+readGotKind argument offset Int64 eight copy
+readGotKind result gotKind Int64
+readGotKind ownedBy none
+readGotKind cleanedBy none
+readGotKind borrows none
+readGotKind catch none
+readGotKind suppresses none
+
+doAssertEqualInt64 is call
+doAssertEqualInt64 in expectKind
+doAssertEqualInt64 invokes test.assertEqualInt64
+doAssertEqualInt64 argument expected Int64 kind copy
+doAssertEqualInt64 argument actual Int64 gotKind copy
+doAssertEqualInt64 result none
+doAssertEqualInt64 ownedBy none
+doAssertEqualInt64 cleanedBy none
+doAssertEqualInt64 borrows none
+doAssertEqualInt64 catch none
+doAssertEqualInt64 suppresses none
+
+readGotSign is call
+readGotSign in expectKind
+readGotSign invokes clong.getPart
+readGotSign argument parts machine.Address parts copy
+readGotSign argument offset Int64 zero copy
+readGotSign result gotSign Int64
+readGotSign ownedBy none
+readGotSign cleanedBy none
+readGotSign borrows none
+readGotSign catch none
+readGotSign suppresses none
+
+doAssertEqualInt642 is call
+doAssertEqualInt642 in expectKind
+doAssertEqualInt642 invokes test.assertEqualInt64
+doAssertEqualInt642 argument expected Int64 negative copy
+doAssertEqualInt642 argument actual Int64 gotSign copy
+doAssertEqualInt642 result none
+doAssertEqualInt642 ownedBy none
+doAssertEqualInt642 cleanedBy none
+doAssertEqualInt642 borrows none
+doAssertEqualInt642 catch none
+doAssertEqualInt642 suppresses none
+
+doGive is call
+doGive in expectKind
+doGive invokes heap.give
+doGive argument block machine.Address parts copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in expectKind
+doGive2 invokes heap.give
+doGive2 argument block machine.Address got copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doGive3 is call
+doGive3 in expectKind
+doGive3 invokes heap.give
+doGive3 argument block machine.Address block copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+longTextTest is test
+longTextTest purpose "strtold reads as strtod for the double layout (bits, end, errno), and gives the nearest x87, binary128, and float values: 0.1 on each, ties to even, exact whole numbers, the least x87 subnormal, x87 overflow, hexadecimal digits past the precision"
+longTextTest verifies parseLongAs readsLikeStrtold
+longTextTest verifies scanLong storesLikeStrtold
+longTextTest typeParameter none
+longTextTest input none
+longTextTest output none
+longTextTest outputOwnedBy none
+longTextTest raises none
+longTextTest effect use machine.memory
+longTextTest effect use system.calls
+longTextTest uses memoryAccess
+longTextTest uses systemCalls
+longTextTest memoryHeap false
+longTextTest async false
+longTextTest maxRecursion none
+longTextTest label begin loopKind none
+longTextTest label begin within none
+longTextTest let text1 String "0.1" immutable
+longTextTest let text2 String "1e23" immutable
+longTextTest let text3 String "  -2.2250738585072011e-308xyz" immutable
+longTextTest let text4 String "4.9e-324" immutable
+longTextTest let text5 String "2.4703282292062328e-324" immutable
+longTextTest let text6 String "2.4703282292062327e-324" immutable
+longTextTest let text7 String "1.7976931348623157e308" immutable
+longTextTest let text8 String "1.7976931348623159e308" immutable
+longTextTest let text9 String "123456789012345678901234567890" immutable
+longTextTest let text10 String "9007199254740993" immutable
+longTextTest let text11 String "9007199254740993.0000000001" immutable
+longTextTest let text12 String "-0.0e5x" immutable
+longTextTest let text13 String "0x1.8p1" immutable
+longTextTest let text14 String "0x1.fffffffffffff8p0" immutable
+longTextTest let text15 String "0x1.00000000000008p0" immutable
+longTextTest let text16 String "0x1.000000000000081p0" immutable
+longTextTest let text17 String "0x.8p-1073" immutable
+longTextTest let text18 String "0x" immutable
+longTextTest let text19 String "infinity" immutable
+longTextTest let text20 String "-nan(12)" immutable
+longTextTest let text21 String "1e-400" immutable
+longTextTest let text22 String "1e309" immutable
+longTextTest let text23 String ".e5" immutable
+longTextTest let text24 String "0.1" immutable
+longTextTest let one Int64 1 immutable
+longTextTest let uInt640 UInt64 0 immutable
+longTextTest let uInt6414757395258967641293 UInt64 14757395258967641293 immutable
+longTextTest let minus67 Int64 -67 immutable
+longTextTest let zero Int64 0 immutable
+longTextTest let text25 String "18446744073709551617" immutable
+longTextTest let uInt649223372036854775808 UInt64 9223372036854775808 immutable
+longTextTest let text26 String "18446744073709551615" immutable
+longTextTest let uInt6418446744073709551615 UInt64 18446744073709551615 immutable
+longTextTest let text27 String "0x1.00000000000000018p0" immutable
+longTextTest let uInt649223372036854775809 UInt64 9223372036854775809 immutable
+longTextTest let minus63 Int64 -63 immutable
+longTextTest let text28 String "-0.1" immutable
+longTextTest let two Int64 2 immutable
+longTextTest let uInt64450359962737049 UInt64 450359962737049 immutable
+longTextTest let uInt6411068046444225730970 UInt64 11068046444225730970 immutable
+longTextTest let minus116 Int64 -116 immutable
+longTextTest let text29 String "0.1" immutable
+longTextTest let three Int64 3 immutable
+longTextTest let uInt6413421773 UInt64 13421773 immutable
+longTextTest let minus27 Int64 -27 immutable
+longTextTest let text30 String "16777217" immutable
+longTextTest let uInt648388608 UInt64 8388608 immutable
+longTextTest let text31 String "3.6451995318824746025e-4951" immutable
+longTextTest let uInt641 UInt64 1 immutable
+longTextTest let minus16445 Int64 -16445 immutable
+longTextTest let text32 String "1.2e4932" immutable
+longTextTest let int3234 Int32 34 immutable
+longTextTest let text33 String "-1.18e4932" immutable
+longTextTest let int320 Int32 0 immutable
+longTextTest let text34 String "1e-5000" immutable
+longTextTest let text35 String "-0" immutable
+longTextTest let text36 String "2.5e-1" immutable
+longTextTest let sixteen Int64 16 immutable
+longTextTest at begin do doSameAsDouble
+longTextTest at begin do doSameAsDouble2
+longTextTest at begin do doSameAsDouble3
+longTextTest at begin do doSameAsDouble4
+longTextTest at begin do doSameAsDouble5
+longTextTest at begin do doSameAsDouble6
+longTextTest at begin do doSameAsDouble7
+longTextTest at begin do doSameAsDouble8
+longTextTest at begin do doSameAsDouble9
+longTextTest at begin do doSameAsDouble10
+longTextTest at begin do doSameAsDouble11
+longTextTest at begin do doSameAsDouble12
+longTextTest at begin do doSameAsDouble13
+longTextTest at begin do doSameAsDouble14
+longTextTest at begin do doSameAsDouble15
+longTextTest at begin do doSameAsDouble16
+longTextTest at begin do doSameAsDouble17
+longTextTest at begin do doSameAsDouble18
+longTextTest at begin do doSameAsDouble19
+longTextTest at begin do doSameAsDouble20
+longTextTest at begin do doSameAsDouble21
+longTextTest at begin do doSameAsDouble22
+longTextTest at begin do doSameAsDouble23
+longTextTest at begin do doExpectParts
+longTextTest at begin do doExpectParts2
+longTextTest at begin do doExpectParts3
+longTextTest at begin do doExpectParts4
+longTextTest at begin do doExpectParts5
+longTextTest at begin do doExpectParts6
+longTextTest at begin do doExpectParts7
+longTextTest at begin do doExpectParts8
+longTextTest at begin do doExpectKind
+longTextTest at begin do doExpectKind2
+longTextTest at begin do doExpectKind3
+longTextTest at begin do doExpectKind4
+longTextTest at begin do readText
+longTextTest at begin do readScanned
+longTextTest at begin do doScanLong
+longTextTest at begin do readWanted
+longTextTest at begin do readNowhere
+longTextTest at begin do readLayout
+longTextTest at begin do doParseLongAs
+longTextTest at begin do readOrder
+longTextTest at begin do doAssertTrueStep1
+longTextTest at begin do doAssertTrue
+longTextTest at begin do doGive
+longTextTest at begin do doGive2
+longTextTest at begin do doGive3
+longTextTest at begin return ok none
+
+doSameAsDouble is call
+doSameAsDouble in longTextTest
+doSameAsDouble invokes sameAsDouble
+doSameAsDouble argument text String text1 lend
+doSameAsDouble result none
+doSameAsDouble ownedBy none
+doSameAsDouble cleanedBy none
+doSameAsDouble borrows none
+doSameAsDouble catch none
+doSameAsDouble suppresses none
+
+doSameAsDouble2 is call
+doSameAsDouble2 in longTextTest
+doSameAsDouble2 invokes sameAsDouble
+doSameAsDouble2 argument text String text2 lend
+doSameAsDouble2 result none
+doSameAsDouble2 ownedBy none
+doSameAsDouble2 cleanedBy none
+doSameAsDouble2 borrows none
+doSameAsDouble2 catch none
+doSameAsDouble2 suppresses none
+
+doSameAsDouble3 is call
+doSameAsDouble3 in longTextTest
+doSameAsDouble3 invokes sameAsDouble
+doSameAsDouble3 argument text String text3 lend
+doSameAsDouble3 result none
+doSameAsDouble3 ownedBy none
+doSameAsDouble3 cleanedBy none
+doSameAsDouble3 borrows none
+doSameAsDouble3 catch none
+doSameAsDouble3 suppresses none
+
+doSameAsDouble4 is call
+doSameAsDouble4 in longTextTest
+doSameAsDouble4 invokes sameAsDouble
+doSameAsDouble4 argument text String text4 lend
+doSameAsDouble4 result none
+doSameAsDouble4 ownedBy none
+doSameAsDouble4 cleanedBy none
+doSameAsDouble4 borrows none
+doSameAsDouble4 catch none
+doSameAsDouble4 suppresses none
+
+doSameAsDouble5 is call
+doSameAsDouble5 in longTextTest
+doSameAsDouble5 invokes sameAsDouble
+doSameAsDouble5 argument text String text5 lend
+doSameAsDouble5 result none
+doSameAsDouble5 ownedBy none
+doSameAsDouble5 cleanedBy none
+doSameAsDouble5 borrows none
+doSameAsDouble5 catch none
+doSameAsDouble5 suppresses none
+
+doSameAsDouble6 is call
+doSameAsDouble6 in longTextTest
+doSameAsDouble6 invokes sameAsDouble
+doSameAsDouble6 argument text String text6 lend
+doSameAsDouble6 result none
+doSameAsDouble6 ownedBy none
+doSameAsDouble6 cleanedBy none
+doSameAsDouble6 borrows none
+doSameAsDouble6 catch none
+doSameAsDouble6 suppresses none
+
+doSameAsDouble7 is call
+doSameAsDouble7 in longTextTest
+doSameAsDouble7 invokes sameAsDouble
+doSameAsDouble7 argument text String text7 lend
+doSameAsDouble7 result none
+doSameAsDouble7 ownedBy none
+doSameAsDouble7 cleanedBy none
+doSameAsDouble7 borrows none
+doSameAsDouble7 catch none
+doSameAsDouble7 suppresses none
+
+doSameAsDouble8 is call
+doSameAsDouble8 in longTextTest
+doSameAsDouble8 invokes sameAsDouble
+doSameAsDouble8 argument text String text8 lend
+doSameAsDouble8 result none
+doSameAsDouble8 ownedBy none
+doSameAsDouble8 cleanedBy none
+doSameAsDouble8 borrows none
+doSameAsDouble8 catch none
+doSameAsDouble8 suppresses none
+
+doSameAsDouble9 is call
+doSameAsDouble9 in longTextTest
+doSameAsDouble9 invokes sameAsDouble
+doSameAsDouble9 argument text String text9 lend
+doSameAsDouble9 result none
+doSameAsDouble9 ownedBy none
+doSameAsDouble9 cleanedBy none
+doSameAsDouble9 borrows none
+doSameAsDouble9 catch none
+doSameAsDouble9 suppresses none
+
+doSameAsDouble10 is call
+doSameAsDouble10 in longTextTest
+doSameAsDouble10 invokes sameAsDouble
+doSameAsDouble10 argument text String text10 lend
+doSameAsDouble10 result none
+doSameAsDouble10 ownedBy none
+doSameAsDouble10 cleanedBy none
+doSameAsDouble10 borrows none
+doSameAsDouble10 catch none
+doSameAsDouble10 suppresses none
+
+doSameAsDouble11 is call
+doSameAsDouble11 in longTextTest
+doSameAsDouble11 invokes sameAsDouble
+doSameAsDouble11 argument text String text11 lend
+doSameAsDouble11 result none
+doSameAsDouble11 ownedBy none
+doSameAsDouble11 cleanedBy none
+doSameAsDouble11 borrows none
+doSameAsDouble11 catch none
+doSameAsDouble11 suppresses none
+
+doSameAsDouble12 is call
+doSameAsDouble12 in longTextTest
+doSameAsDouble12 invokes sameAsDouble
+doSameAsDouble12 argument text String text12 lend
+doSameAsDouble12 result none
+doSameAsDouble12 ownedBy none
+doSameAsDouble12 cleanedBy none
+doSameAsDouble12 borrows none
+doSameAsDouble12 catch none
+doSameAsDouble12 suppresses none
+
+doSameAsDouble13 is call
+doSameAsDouble13 in longTextTest
+doSameAsDouble13 invokes sameAsDouble
+doSameAsDouble13 argument text String text13 lend
+doSameAsDouble13 result none
+doSameAsDouble13 ownedBy none
+doSameAsDouble13 cleanedBy none
+doSameAsDouble13 borrows none
+doSameAsDouble13 catch none
+doSameAsDouble13 suppresses none
+
+doSameAsDouble14 is call
+doSameAsDouble14 in longTextTest
+doSameAsDouble14 invokes sameAsDouble
+doSameAsDouble14 argument text String text14 lend
+doSameAsDouble14 result none
+doSameAsDouble14 ownedBy none
+doSameAsDouble14 cleanedBy none
+doSameAsDouble14 borrows none
+doSameAsDouble14 catch none
+doSameAsDouble14 suppresses none
+
+doSameAsDouble15 is call
+doSameAsDouble15 in longTextTest
+doSameAsDouble15 invokes sameAsDouble
+doSameAsDouble15 argument text String text15 lend
+doSameAsDouble15 result none
+doSameAsDouble15 ownedBy none
+doSameAsDouble15 cleanedBy none
+doSameAsDouble15 borrows none
+doSameAsDouble15 catch none
+doSameAsDouble15 suppresses none
+
+doSameAsDouble16 is call
+doSameAsDouble16 in longTextTest
+doSameAsDouble16 invokes sameAsDouble
+doSameAsDouble16 argument text String text16 lend
+doSameAsDouble16 result none
+doSameAsDouble16 ownedBy none
+doSameAsDouble16 cleanedBy none
+doSameAsDouble16 borrows none
+doSameAsDouble16 catch none
+doSameAsDouble16 suppresses none
+
+doSameAsDouble17 is call
+doSameAsDouble17 in longTextTest
+doSameAsDouble17 invokes sameAsDouble
+doSameAsDouble17 argument text String text17 lend
+doSameAsDouble17 result none
+doSameAsDouble17 ownedBy none
+doSameAsDouble17 cleanedBy none
+doSameAsDouble17 borrows none
+doSameAsDouble17 catch none
+doSameAsDouble17 suppresses none
+
+doSameAsDouble18 is call
+doSameAsDouble18 in longTextTest
+doSameAsDouble18 invokes sameAsDouble
+doSameAsDouble18 argument text String text18 lend
+doSameAsDouble18 result none
+doSameAsDouble18 ownedBy none
+doSameAsDouble18 cleanedBy none
+doSameAsDouble18 borrows none
+doSameAsDouble18 catch none
+doSameAsDouble18 suppresses none
+
+doSameAsDouble19 is call
+doSameAsDouble19 in longTextTest
+doSameAsDouble19 invokes sameAsDouble
+doSameAsDouble19 argument text String text19 lend
+doSameAsDouble19 result none
+doSameAsDouble19 ownedBy none
+doSameAsDouble19 cleanedBy none
+doSameAsDouble19 borrows none
+doSameAsDouble19 catch none
+doSameAsDouble19 suppresses none
+
+doSameAsDouble20 is call
+doSameAsDouble20 in longTextTest
+doSameAsDouble20 invokes sameAsDouble
+doSameAsDouble20 argument text String text20 lend
+doSameAsDouble20 result none
+doSameAsDouble20 ownedBy none
+doSameAsDouble20 cleanedBy none
+doSameAsDouble20 borrows none
+doSameAsDouble20 catch none
+doSameAsDouble20 suppresses none
+
+doSameAsDouble21 is call
+doSameAsDouble21 in longTextTest
+doSameAsDouble21 invokes sameAsDouble
+doSameAsDouble21 argument text String text21 lend
+doSameAsDouble21 result none
+doSameAsDouble21 ownedBy none
+doSameAsDouble21 cleanedBy none
+doSameAsDouble21 borrows none
+doSameAsDouble21 catch none
+doSameAsDouble21 suppresses none
+
+doSameAsDouble22 is call
+doSameAsDouble22 in longTextTest
+doSameAsDouble22 invokes sameAsDouble
+doSameAsDouble22 argument text String text22 lend
+doSameAsDouble22 result none
+doSameAsDouble22 ownedBy none
+doSameAsDouble22 cleanedBy none
+doSameAsDouble22 borrows none
+doSameAsDouble22 catch none
+doSameAsDouble22 suppresses none
+
+doSameAsDouble23 is call
+doSameAsDouble23 in longTextTest
+doSameAsDouble23 invokes sameAsDouble
+doSameAsDouble23 argument text String text23 lend
+doSameAsDouble23 result none
+doSameAsDouble23 ownedBy none
+doSameAsDouble23 cleanedBy none
+doSameAsDouble23 borrows none
+doSameAsDouble23 catch none
+doSameAsDouble23 suppresses none
+
+doExpectParts is call
+doExpectParts in longTextTest
+doExpectParts invokes expectParts
+doExpectParts argument text String text24 lend
+doExpectParts argument layout Int64 one copy
+doExpectParts argument high UInt64 uInt640 copy
+doExpectParts argument low UInt64 uInt6414757395258967641293 copy
+doExpectParts argument power Int64 minus67 copy
+doExpectParts argument negative Int64 zero copy
+doExpectParts result none
+doExpectParts ownedBy none
+doExpectParts cleanedBy none
+doExpectParts borrows none
+doExpectParts catch none
+doExpectParts suppresses none
+
+doExpectParts2 is call
+doExpectParts2 in longTextTest
+doExpectParts2 invokes expectParts
+doExpectParts2 argument text String text25 lend
+doExpectParts2 argument layout Int64 one copy
+doExpectParts2 argument high UInt64 uInt640 copy
+doExpectParts2 argument low UInt64 uInt649223372036854775808 copy
+doExpectParts2 argument power Int64 one copy
+doExpectParts2 argument negative Int64 zero copy
+doExpectParts2 result none
+doExpectParts2 ownedBy none
+doExpectParts2 cleanedBy none
+doExpectParts2 borrows none
+doExpectParts2 catch none
+doExpectParts2 suppresses none
+
+doExpectParts3 is call
+doExpectParts3 in longTextTest
+doExpectParts3 invokes expectParts
+doExpectParts3 argument text String text26 lend
+doExpectParts3 argument layout Int64 one copy
+doExpectParts3 argument high UInt64 uInt640 copy
+doExpectParts3 argument low UInt64 uInt6418446744073709551615 copy
+doExpectParts3 argument power Int64 zero copy
+doExpectParts3 argument negative Int64 zero copy
+doExpectParts3 result none
+doExpectParts3 ownedBy none
+doExpectParts3 cleanedBy none
+doExpectParts3 borrows none
+doExpectParts3 catch none
+doExpectParts3 suppresses none
+
+doExpectParts4 is call
+doExpectParts4 in longTextTest
+doExpectParts4 invokes expectParts
+doExpectParts4 argument text String text27 lend
+doExpectParts4 argument layout Int64 one copy
+doExpectParts4 argument high UInt64 uInt640 copy
+doExpectParts4 argument low UInt64 uInt649223372036854775809 copy
+doExpectParts4 argument power Int64 minus63 copy
+doExpectParts4 argument negative Int64 zero copy
+doExpectParts4 result none
+doExpectParts4 ownedBy none
+doExpectParts4 cleanedBy none
+doExpectParts4 borrows none
+doExpectParts4 catch none
+doExpectParts4 suppresses none
+
+doExpectParts5 is call
+doExpectParts5 in longTextTest
+doExpectParts5 invokes expectParts
+doExpectParts5 argument text String text28 lend
+doExpectParts5 argument layout Int64 two copy
+doExpectParts5 argument high UInt64 uInt64450359962737049 copy
+doExpectParts5 argument low UInt64 uInt6411068046444225730970 copy
+doExpectParts5 argument power Int64 minus116 copy
+doExpectParts5 argument negative Int64 one copy
+doExpectParts5 result none
+doExpectParts5 ownedBy none
+doExpectParts5 cleanedBy none
+doExpectParts5 borrows none
+doExpectParts5 catch none
+doExpectParts5 suppresses none
+
+doExpectParts6 is call
+doExpectParts6 in longTextTest
+doExpectParts6 invokes expectParts
+doExpectParts6 argument text String text29 lend
+doExpectParts6 argument layout Int64 three copy
+doExpectParts6 argument high UInt64 uInt640 copy
+doExpectParts6 argument low UInt64 uInt6413421773 copy
+doExpectParts6 argument power Int64 minus27 copy
+doExpectParts6 argument negative Int64 zero copy
+doExpectParts6 result none
+doExpectParts6 ownedBy none
+doExpectParts6 cleanedBy none
+doExpectParts6 borrows none
+doExpectParts6 catch none
+doExpectParts6 suppresses none
+
+doExpectParts7 is call
+doExpectParts7 in longTextTest
+doExpectParts7 invokes expectParts
+doExpectParts7 argument text String text30 lend
+doExpectParts7 argument layout Int64 three copy
+doExpectParts7 argument high UInt64 uInt640 copy
+doExpectParts7 argument low UInt64 uInt648388608 copy
+doExpectParts7 argument power Int64 one copy
+doExpectParts7 argument negative Int64 zero copy
+doExpectParts7 result none
+doExpectParts7 ownedBy none
+doExpectParts7 cleanedBy none
+doExpectParts7 borrows none
+doExpectParts7 catch none
+doExpectParts7 suppresses none
+
+doExpectParts8 is call
+doExpectParts8 in longTextTest
+doExpectParts8 invokes expectParts
+doExpectParts8 argument text String text31 lend
+doExpectParts8 argument layout Int64 one copy
+doExpectParts8 argument high UInt64 uInt640 copy
+doExpectParts8 argument low UInt64 uInt641 copy
+doExpectParts8 argument power Int64 minus16445 copy
+doExpectParts8 argument negative Int64 zero copy
+doExpectParts8 result none
+doExpectParts8 ownedBy none
+doExpectParts8 cleanedBy none
+doExpectParts8 borrows none
+doExpectParts8 catch none
+doExpectParts8 suppresses none
+
+doExpectKind is call
+doExpectKind in longTextTest
+doExpectKind invokes expectKind
+doExpectKind argument text String text32 lend
+doExpectKind argument layout Int64 one copy
+doExpectKind argument kind Int64 two copy
+doExpectKind argument negative Int64 zero copy
+doExpectKind argument expectedErrno Int32 int3234 copy
+doExpectKind result none
+doExpectKind ownedBy none
+doExpectKind cleanedBy none
+doExpectKind borrows none
+doExpectKind catch none
+doExpectKind suppresses none
+
+doExpectKind2 is call
+doExpectKind2 in longTextTest
+doExpectKind2 invokes expectKind
+doExpectKind2 argument text String text33 lend
+doExpectKind2 argument layout Int64 one copy
+doExpectKind2 argument kind Int64 one copy
+doExpectKind2 argument negative Int64 one copy
+doExpectKind2 argument expectedErrno Int32 int320 copy
+doExpectKind2 result none
+doExpectKind2 ownedBy none
+doExpectKind2 cleanedBy none
+doExpectKind2 borrows none
+doExpectKind2 catch none
+doExpectKind2 suppresses none
+
+doExpectKind3 is call
+doExpectKind3 in longTextTest
+doExpectKind3 invokes expectKind
+doExpectKind3 argument text String text34 lend
+doExpectKind3 argument layout Int64 one copy
+doExpectKind3 argument kind Int64 zero copy
+doExpectKind3 argument negative Int64 zero copy
+doExpectKind3 argument expectedErrno Int32 int3234 copy
+doExpectKind3 result none
+doExpectKind3 ownedBy none
+doExpectKind3 cleanedBy none
+doExpectKind3 borrows none
+doExpectKind3 catch none
+doExpectKind3 suppresses none
+
+doExpectKind4 is call
+doExpectKind4 in longTextTest
+doExpectKind4 invokes expectKind
+doExpectKind4 argument text String text35 lend
+doExpectKind4 argument layout Int64 two copy
+doExpectKind4 argument kind Int64 zero copy
+doExpectKind4 argument negative Int64 one copy
+doExpectKind4 argument expectedErrno Int32 int320 copy
+doExpectKind4 result none
+doExpectKind4 ownedBy none
+doExpectKind4 cleanedBy none
+doExpectKind4 borrows none
+doExpectKind4 catch none
+doExpectKind4 suppresses none
+
+readText is call
+readText in longTextTest
+readText invokes cTextOf
+readText argument text String text36 lend
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+readScanned is call
+readScanned in longTextTest
+readScanned invokes heap.take
+readScanned argument bytes Int64 sixteen copy
+readScanned result scanned machine.Address
+readScanned ownedBy none
+readScanned cleanedBy none
+readScanned borrows none
+readScanned catch none
+readScanned suppresses none
+
+doScanLong is call
+doScanLong in longTextTest
+doScanLong invokes scanLong
+doScanLong argument text machine.Address text copy
+doScanLong argument target machine.Address scanned copy
+doScanLong result none
+doScanLong ownedBy none
+doScanLong cleanedBy none
+doScanLong borrows none
+doScanLong catch none
+doScanLong suppresses none
+
+readWanted is call
+readWanted in longTextTest
+readWanted invokes heap.take
+readWanted argument bytes Int64 sixteen copy
+readWanted result wanted machine.Address
+readWanted ownedBy none
+readWanted cleanedBy none
+readWanted borrows none
+readWanted catch none
+readWanted suppresses none
+
+readNowhere is call
+readNowhere in longTextTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readLayout is call
+readLayout in longTextTest
+readLayout invokes clong.format
+readLayout argument none
+readLayout result layout Int64
+readLayout ownedBy none
+readLayout cleanedBy none
+readLayout borrows none
+readLayout catch none
+readLayout suppresses none
+
+doParseLongAs is call
+doParseLongAs in longTextTest
+doParseLongAs invokes parseLongAs
+doParseLongAs argument text machine.Address text copy
+doParseLongAs argument endAt machine.Address nowhere copy
+doParseLongAs argument layout Int64 layout copy
+doParseLongAs argument target machine.Address wanted copy
+doParseLongAs result none
+doParseLongAs ownedBy none
+doParseLongAs cleanedBy none
+doParseLongAs borrows none
+doParseLongAs catch none
+doParseLongAs suppresses none
+
+readOrder is call
+readOrder in longTextTest
+readOrder invokes machine.compare
+readOrder argument left machine.Address scanned copy
+readOrder argument right machine.Address wanted copy
+readOrder argument bytes Int64 sixteen copy
+readOrder result order Int32
+readOrder ownedBy none
+readOrder cleanedBy none
+readOrder borrows none
+readOrder catch none
+readOrder suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in longTextTest
+doAssertTrueStep1 invokes compare.equalInt32
+doAssertTrueStep1 argument left Int32 order copy
+doAssertTrueStep1 argument right Int32 int320 copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in longTextTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+doGive is call
+doGive in longTextTest
+doGive invokes heap.give
+doGive argument block machine.Address wanted copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in longTextTest
+doGive2 invokes heap.give
+doGive2 argument block machine.Address scanned copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doGive3 is call
+doGive3 in longTextTest
+doGive3 invokes heap.give
+doGive3 argument block machine.Address text copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none

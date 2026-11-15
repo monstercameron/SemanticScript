@@ -18597,6 +18597,10 @@ scanAll label realStore loopKind none
 scanAll label realStore within eachDirective
 scanAll label realWrite loopKind none
 scanAll label realWrite within eachDirective
+scanAll label longWrite loopKind none
+scanAll label longWrite within eachDirective
+scanAll label shortWrite loopKind none
+scanAll label shortWrite within eachDirective
 scanAll label whole loopKind none
 scanAll label whole within eachDirective
 scanAll label binaryConversion loopKind none
@@ -18645,6 +18649,7 @@ scanAll let three Int64 3 immutable
 scanAll let four Int64 4 immutable
 scanAll let n9223372036854775807 Int64 9223372036854775807 immutable
 scanAll let n4000 Int64 4000 immutable
+scanAll let five Int64 5 immutable
 scanAll let byte98 Byte 98 immutable
 scanAll let two Int64 2 immutable
 scanAll let byte100 Byte 100 immutable
@@ -18818,20 +18823,24 @@ scanAll at realStore do readRealValue
 scanAll at realStore branch if suppress goto eachDirective else goto realWrite
 scanAll at realWrite do realTargetStep1
 scanAll at realWrite do readRealTarget
-scanAll at realWrite do doStoreReal
-scanAll at realWrite goto addAssigned
+scanAll at realWrite do findCheck251
+scanAll at realWrite branch if check25 goto longWrite else goto shortWrite
+scanAll at longWrite do doScanLong
+scanAll at longWrite goto addAssigned
+scanAll at shortWrite do doStoreReal
+scanAll at shortWrite goto addAssigned
 scanAll at whole do findBaseNext11
 scanAll at whole set base baseNext1
-scanAll at whole do check25Step1
-scanAll at whole do findCheck251
-scanAll at whole branch if check25 goto binaryConversion else goto baseKnown
+scanAll at whole do check26Step1
+scanAll at whole do findCheck261
+scanAll at whole branch if check26 goto binaryConversion else goto baseKnown
 scanAll at binaryConversion set base two
 scanAll at binaryConversion goto baseKnown
-scanAll at baseKnown do findCheck261
-scanAll at baseKnown branch if check26 goto finish else goto wholeRead
+scanAll at baseKnown do findCheck271
+scanAll at baseKnown branch if check27 goto finish else goto wholeRead
 scanAll at wholeRead do readWholeBytes
-scanAll at wholeRead do findCheck271
-scanAll at wholeRead branch if check27 goto finish else goto wholeStore
+scanAll at wholeRead do findCheck281
+scanAll at wholeRead branch if check28 goto finish else goto wholeStore
 scanAll at wholeStore do unsignedStep1
 scanAll at wholeStore do unsignedStep2
 scanAll at wholeStore do findUnsigned1
@@ -18846,8 +18855,8 @@ scanAll at wholeWrite do wholeLengthStep2
 scanAll at wholeWrite do findWholeLength1
 scanAll at wholeWrite do doStoreWhole2
 scanAll at wholeWrite goto addAssigned
-scanAll at inputFailure do findCheck281
-scanAll at inputFailure branch if check28 goto giveEnd else goto finish
+scanAll at inputFailure do findCheck291
+scanAll at inputFailure branch if check29 goto giveEnd else goto finish
 scanAll at giveEnd do doReleaseScan
 scanAll at giveEnd return ok ended
 scanAll at finish do doReleaseScan2
@@ -20008,6 +20017,30 @@ readRealTarget borrows none
 readRealTarget catch none
 readRealTarget suppresses none
 
+findCheck251 is call
+findCheck251 in scanAll
+findCheck251 invokes compare.equalInt64
+findCheck251 argument left Int64 length copy
+findCheck251 argument right Int64 five copy
+findCheck251 result check25 Bool
+findCheck251 ownedBy none
+findCheck251 cleanedBy none
+findCheck251 borrows none
+findCheck251 catch none
+findCheck251 suppresses none
+
+doScanLong is call
+doScanLong in scanAll
+doScanLong invokes cformat.scanLong
+doScanLong argument text machine.Address buffer copy
+doScanLong argument target machine.Address realTarget copy
+doScanLong result none
+doScanLong ownedBy none
+doScanLong cleanedBy none
+doScanLong borrows none
+doScanLong catch none
+doScanLong suppresses none
+
 doStoreReal is call
 doStoreReal in scanAll
 doStoreReal invokes storeReal
@@ -20032,41 +20065,41 @@ findBaseNext11 borrows none
 findBaseNext11 catch none
 findBaseNext11 suppresses none
 
-check25Step1 is call
-check25Step1 in scanAll
-check25Step1 invokes compare.equalByte
-check25Step1 argument left Byte conversion copy
-check25Step1 argument right Byte byte98 copy
-check25Step1 result check25Part1 Bool
-check25Step1 ownedBy none
-check25Step1 cleanedBy none
-check25Step1 borrows none
-check25Step1 catch none
-check25Step1 suppresses none
-
-findCheck251 is call
-findCheck251 in scanAll
-findCheck251 invokes logic.and
-findCheck251 argument left Bool c23 copy
-findCheck251 argument right Bool check25Part1 copy
-findCheck251 result check25 Bool
-findCheck251 ownedBy none
-findCheck251 cleanedBy none
-findCheck251 borrows none
-findCheck251 catch none
-findCheck251 suppresses none
+check26Step1 is call
+check26Step1 in scanAll
+check26Step1 invokes compare.equalByte
+check26Step1 argument left Byte conversion copy
+check26Step1 argument right Byte byte98 copy
+check26Step1 result check26Part1 Bool
+check26Step1 ownedBy none
+check26Step1 cleanedBy none
+check26Step1 borrows none
+check26Step1 catch none
+check26Step1 suppresses none
 
 findCheck261 is call
 findCheck261 in scanAll
-findCheck261 invokes compare.lessThanInt64
-findCheck261 argument left Int64 base copy
-findCheck261 argument right Int64 zero copy
+findCheck261 invokes logic.and
+findCheck261 argument left Bool c23 copy
+findCheck261 argument right Bool check26Part1 copy
 findCheck261 result check26 Bool
 findCheck261 ownedBy none
 findCheck261 cleanedBy none
 findCheck261 borrows none
 findCheck261 catch none
 findCheck261 suppresses none
+
+findCheck271 is call
+findCheck271 in scanAll
+findCheck271 invokes compare.lessThanInt64
+findCheck271 argument left Int64 base copy
+findCheck271 argument right Int64 zero copy
+findCheck271 result check27 Bool
+findCheck271 ownedBy none
+findCheck271 cleanedBy none
+findCheck271 borrows none
+findCheck271 catch none
+findCheck271 suppresses none
 
 readWholeBytes is call
 readWholeBytes in scanAll
@@ -20083,17 +20116,17 @@ readWholeBytes borrows none
 readWholeBytes catch none
 readWholeBytes suppresses none
 
-findCheck271 is call
-findCheck271 in scanAll
-findCheck271 invokes compare.lessThanInt64
-findCheck271 argument left Int64 wholeBytes copy
-findCheck271 argument right Int64 zero copy
-findCheck271 result check27 Bool
-findCheck271 ownedBy none
-findCheck271 cleanedBy none
-findCheck271 borrows none
-findCheck271 catch none
-findCheck271 suppresses none
+findCheck281 is call
+findCheck281 in scanAll
+findCheck281 invokes compare.lessThanInt64
+findCheck281 argument left Int64 wholeBytes copy
+findCheck281 argument right Int64 zero copy
+findCheck281 result check28 Bool
+findCheck281 ownedBy none
+findCheck281 cleanedBy none
+findCheck281 borrows none
+findCheck281 catch none
+findCheck281 suppresses none
 
 unsignedStep1 is call
 unsignedStep1 in scanAll
@@ -20239,17 +20272,17 @@ doStoreWhole2 borrows none
 doStoreWhole2 catch none
 doStoreWhole2 suppresses none
 
-findCheck281 is call
-findCheck281 in scanAll
-findCheck281 invokes compare.equalInt64
-findCheck281 argument left Int64 assigned copy
-findCheck281 argument right Int64 zero copy
-findCheck281 result check28 Bool
-findCheck281 ownedBy none
-findCheck281 cleanedBy none
-findCheck281 borrows none
-findCheck281 catch none
-findCheck281 suppresses none
+findCheck291 is call
+findCheck291 in scanAll
+findCheck291 invokes compare.equalInt64
+findCheck291 argument left Int64 assigned copy
+findCheck291 argument right Int64 zero copy
+findCheck291 result check29 Bool
+findCheck291 ownedBy none
+findCheck291 cleanedBy none
+findCheck291 borrows none
+findCheck291 catch none
+findCheck291 suppresses none
 
 doReleaseScan is call
 doReleaseScan in scanAll

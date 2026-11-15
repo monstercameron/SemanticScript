@@ -116,6 +116,9 @@ based on [Keep a Changelog](https://keepachangelog.com/).
 - strerror, perror, and `%m` give glibc's messages, which the compiler reads from glibc on a glibc machine (D-172).
 - glibc's `__isoc23_` names for strtol, the scanf family, and their wide and intmax kin, reading C23's binary
   numbers (D-173).
+- long double as each platform's C has it, with the exact `l` functions of math.h worked on its parts, and strtold,
+  wcstold, and scanf's `%Lf` correctly rounded (D-174); records of two numbers (complex numbers, ldiv_t) passed as
+  the C ABI passes structs, through `abi library` and `ffi` (D-175).
 
 ### The runtime in SemanticScript: `ffi` everywhere
 

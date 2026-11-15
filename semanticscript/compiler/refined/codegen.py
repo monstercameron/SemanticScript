@@ -296,6 +296,22 @@ _THREAD_START = {
                 "  svc #0", "  cbnz x0, 1f", "  ldr x0, [sp]", "  ldr x9, [sp, #8]", "  mov x29, xzr", "  mov x30, xzr",
                 "  blr x9", "  mov x0, #0", "  mov x8, #93", "  svc #0", "  brk #0", "1:", "  ret"],
 }
+class _LongFloat(ir.Type):
+    """D-174: an LLVM floating type llvmlite does not name (x86_fp80, fp128), spelled as LLVM spells it."""
+
+    def __init__(self, spelling: str):
+        self.spelling = spelling
+
+    def _to_string(self) -> str:
+        return self.spelling
+
+    def __eq__(self, other) -> bool:
+        return isinstance(other, _LongFloat) and other.spelling == self.spelling
+
+    def __hash__(self) -> int:
+        return hash(self.spelling)
+
+
 def _glibc_messages() -> list:
     """D-172: strerror's message for each number from 0 to 4095 that glibc has one for (None for the rest), when this
     machine's C library is glibc; an empty list anywhere else."""
@@ -447,6 +463,16 @@ class Backend:
         g.linkage = "internal"
         return g
 
+    def long_double(self) -> ir.Type:
+        """D-174: C's long double for the module's target: x86_fp80 on x86_64 Linux, fp128 on AArch64 Linux, double
+        elsewhere (Windows's long double is a double)."""
+        arch = self.linux_arch()
+        if arch == "x86_64":
+            return _LongFloat("x86_fp80")
+        if arch == "aarch64":
+            return _LongFloat("fp128")
+        return F64
+
     def error_messages(self) -> ir.GlobalVariable:
         """D-172: strerror's table: the count, then each number's message (a C string) or null. The messages are
         glibc's own, read when the compiler runs on a glibc system (os.strerror calls glibc's strerror there);
@@ -475,9 +501,9 @@ class Backend:
         return g
 
     def library_function(self, symbol: str) -> ir.Function:
-        """The function a C caller calls for a name of the runtime's C library: the operation's own, except that on
-        Windows a function that gives a pair of Int64 (`ldiv_t`) takes the address of the 16 bytes it fills first and
-        gives that address back, as the Windows x64 ABI returns a 16-byte struct (D-157)."""
+        """The function a C caller calls for a name of the runtime's C library: the operation's own, except where
+        it takes or gives a record of two numbers (D-157, D-175), which a wrapper passes as the C ABI passes the
+        struct (`pair_abi`)."""
         mod, op = self.library[symbol]
         fn = self.function_for(mod, op, None, 0)
         if not fn.name.endswith(".pair"):
@@ -485,15 +511,74 @@ class Backend:
         wrapper = self.module.globals.get(f"refined.c.{symbol}")
         if wrapper is not None:
             return wrapper
-        pair = fn.ftype.return_type
-        wrapper = ir.Function(self.module, ir.FunctionType(PTR, [PTR] + list(fn.ftype.args)), name=f"refined.c.{symbol}")
+        info = self.world.modules[mod].op_infos[op]
+        sig = info.sig
+        out_kind = pair_record(self.world, sig.output)
+        in_kinds = [pair_record(self.world, p.type) for p in sig.inputs]
+        sret = out_kind is not None and self.pair_abi(out_kind)[1] == "memory"
+        params = ([PTR] if sret else []) + [self.pair_abi(k)[0] if k else t
+                                            for k, t in zip(in_kinds, fn.ftype.args)]
+        ret = PTR if sret else (self.pair_abi(out_kind)[0] if out_kind else fn.ftype.return_type)
+        wrapper = ir.Function(self.module, ir.FunctionType(ret, params), name=f"refined.c.{symbol}")
         wb = ir.IRBuilder(wrapper.append_basic_block("entry"))
-        out = wrapper.args[0]
-        value = wb.call(fn, list(wrapper.args[1:]))
-        slots = wb.bitcast(out, ir.PointerType(pair))
-        wb.store(value, slots, align=8)
-        wb.ret(out)
+        given = list(wrapper.args[1:] if sret else wrapper.args)
+        inner = [self.pair_from_abi(wb, a, k, t) if k else a for a, k, t in zip(given, in_kinds, fn.ftype.args)]
+        value = wb.call(fn, inner)
+        if sret:
+            out = wrapper.args[0]
+            wb.store(value, wb.bitcast(out, ir.PointerType(fn.ftype.return_type)), align=8)
+            wb.ret(out)
+        elif out_kind:
+            wb.ret(self.pair_to_abi(wb, value, out_kind, fn.ftype.return_type))
+        elif isinstance(ret, ir.VoidType):
+            wb.ret_void()
+        else:
+            wb.ret(value)
         return wrapper
+
+    def pair_abi(self, kind: str) -> tuple:
+        """D-175: how the C ABI passes a struct of two numbers (kind "i64", "f64", "f32") on this target: (the
+        LLVM type it is passed as, "value" or "memory"). Windows x64 passes a 16-byte struct by reference and returns
+        it through memory the caller gives, and a struct of two floats as one integer register; x86_64 Linux packs
+        two floats in one vector register and splits two doubles or two longs into two registers; AArch64 (Linux and
+        Windows) passes two doubles or two floats in two vector registers (an HFA) and two longs in two integer
+        registers."""
+        arch = self.module.triple.split("-")[0]
+        struct = {"i64": ir.LiteralStructType([I64, I64]), "f64": ir.LiteralStructType([F64, F64]),
+                  "f32": ir.LiteralStructType([F32, F32])}[kind]
+        if arch == "x86_64" and self.os == "windows":
+            if kind == "f32":
+                return I64, "value"
+            return PTR, "memory"
+        if arch == "x86_64" and kind == "f32":
+            return ir.VectorType(F32, 2), "value"
+        return struct, "value"
+
+    def pair_from_abi(self, b: ir.IRBuilder, value, kind: str, struct):
+        """A struct of two numbers as the C ABI passed it, made the record's own value."""
+        t = value.type
+        if isinstance(t, ir.PointerType):
+            return b.load(b.bitcast(value, ir.PointerType(struct)), align=8)
+        if isinstance(t, ir.IntType):
+            value = b.bitcast(value, ir.VectorType(F32, 2))
+            t = value.type
+        if isinstance(t, ir.VectorType):
+            out = ir.Constant(struct, ir.Undefined)
+            out = b.insert_value(out, b.extract_element(value, I32(0)), 0)
+            return b.insert_value(out, b.extract_element(value, I32(1)), 1)
+        return value
+
+    def pair_to_abi(self, b: ir.IRBuilder, value, kind: str, struct):
+        """A record of two numbers made the form the C ABI passes it in (a register's worth; not memory)."""
+        abi, _how = self.pair_abi(kind)
+        if isinstance(abi, ir.LiteralStructType):
+            return value
+        vector = ir.Constant(ir.VectorType(F32, 2), ir.Undefined)
+        vector = b.insert_element(vector, b.extract_value(value, 0), I32(0))
+        vector = b.insert_element(vector, b.extract_value(value, 1), I32(1))
+        if isinstance(abi, ir.IntType):
+            return b.bitcast(vector, I64)
+        return vector
 
     def machine_state(self) -> ir.GlobalVariable:
         """D-121: one zeroed block of STATE_BYTES for the runtime's process-wide state, shared by every object that
@@ -655,6 +740,8 @@ class Backend:
             return STR
         if canon in ("Region", "machine.Address"):
             return PTR
+        if canon == "machine.LongDouble":
+            return self.long_double()
         if canon in self._types:
             return self._types[canon]
         info = self.world.type_info(canon)
@@ -737,8 +824,8 @@ class Backend:
         name = symbol or name  # D-123: exported to C under its symbol
         if library_symbol(ent) is not None:  # D-153: reached through the C library's table, never by its C name
             name = f"refined.c.{library_symbol(ent)}"
-            if self.os == "windows" and pair_record(self.world, sig.output):
-                name += ".pair"  # D-157: Windows returns it through memory; `library_function` wraps it so
+            if pair_record(self.world, sig.output) or any(pair_record(self.world, p.type) for p in sig.inputs):
+                name += ".pair"  # D-157, D-175: `library_function` wraps it in the C ABI's form of its structs
         ftype = self.fn_type(sig, m.file, ent.line)
         if library_variadic(ent):  # D-157: `...` after its own arguments
             ftype = ir.FunctionType(ftype.return_type, ftype.args, var_arg=True)
@@ -1367,7 +1454,9 @@ class OpGen:
         inv = ent.value("invokes")
         out = failed = err = None
         inst = self._instance(inv) if inv else None
-        if ci.reference is not None:
+        if ci.reference is not None and self._foreign_pairs(ci):
+            out, failed, err = self.foreign_pair_call(b, ci, args)
+        elif ci.reference is not None:
             fptr = b.load(self.allocas[ci.reference])
             if self.be.module.triple.startswith("x86_64"):
                 # D-158: on x86_64 a call through a reference is made as a call of a C function of `...`, which
@@ -1507,6 +1596,60 @@ class OpGen:
             other = self.world.modules[parts[0]]
             return (other, *instance_parts(self.world, other, other.op_instances[parts[1]]))
         return None
+
+    def _foreign_pairs(self, ci: CallInfo) -> bool:
+        """D-175: whether a call through a reference is a foreign function's (an operation type bound with
+        ffi.Function) that takes or gives a record of two numbers, which C passes as a struct."""
+        canon = self.t(self.info.bindings[ci.reference].type)
+        if canon not in self.world.foreign_types:
+            return False
+        sig = self._ref_sig(ci)
+        return bool(pair_record(self.world, sig.output) or any(pair_record(self.world, p.type) for p in sig.inputs))
+
+    def foreign_pair_call(self, b: ir.IRBuilder, ci: CallInfo, args: dict):
+        """D-175: call a foreign function passing its records of two numbers as the C ABI passes structs."""
+        sig = self._ref_sig(ci)
+        fptr = b.load(self.allocas[ci.reference])
+        out_kind = pair_record(self.world, sig.output)
+        out_struct = self.ltype(sig.output) if sig.output else None
+        values, types = [], []
+        sret = out_kind is not None and self.be.pair_abi(out_kind)[1] == "memory"
+        if sret:
+            slot = self.fn_alloca(out_struct, f"{ci.entity.name}.result")
+            values.append(b.bitcast(slot, PTR))
+            types.append(PTR)
+        for p in sig.inputs:
+            value = args[p.name]
+            kind = pair_record(self.world, p.type)
+            if kind is None:
+                values.append(value)
+                types.append(value.type)
+                continue
+            abi, how = self.be.pair_abi(kind)
+            if how == "memory":
+                copy = self.fn_alloca(value.type, f"{ci.entity.name}.{p.name}")
+                b.store(value, copy)
+                values.append(b.bitcast(copy, PTR))
+                types.append(PTR)
+            else:
+                values.append(self.be.pair_to_abi(b, value, kind, value.type))
+                types.append(abi)
+        if sret:
+            ret = PTR
+        elif out_kind:
+            ret = self.be.pair_abi(out_kind)[0]
+        else:
+            ret = self.ltype(sig.output) if sig.output else ir.VoidType()
+        if self.be.module.triple.startswith("x86_64"):
+            fty = ir.FunctionType(ret, [], var_arg=True)  # D-158
+        else:
+            fty = ir.FunctionType(ret, types)
+        result = b.call(b.bitcast(fptr, fty.as_pointer()), values)
+        if sret:
+            return b.load(slot), None, None
+        if out_kind:
+            return self.be.pair_from_abi(b, result, out_kind, out_struct), None, None
+        return (result if sig.output else None), None, None
 
     def _ref_sig(self, ci: CallInfo):
         t = self.info.bindings[ci.reference].type
@@ -2023,6 +2166,27 @@ class OpGen:
                 # the operation is compiled for FMA3, so llvm.fma is one instruction rather than a call of libm's fma
                 set.add(self.fn.attributes, '"target-features"="+fma"')
             return b.call(fma, [args["left"], args["right"], args["addend"]]), None, None
+        if name in ("addLongDouble", "subtractLongDouble", "multiplyLongDouble", "divideLongDouble"):
+            op = {"add": b.fadd, "subtract": b.fsub, "multiply": b.fmul, "divide": b.fdiv}[name[:-len("LongDouble")]]
+            return op(args["left"], args["right"]), None, None
+        if name in ("lessLongDouble", "equalLongDouble"):
+            return b.fcmp_ordered("<" if name == "lessLongDouble" else "==", args["left"], args["right"]), None, None
+        if name == "longDoubleFromFloat64":
+            t = self.be.long_double()
+            return (args["value"] if t == F64 else b.fpext(args["value"], t)), None, None
+        if name == "longDoubleToFloat64":
+            t = self.be.long_double()
+            return (args["value"] if t == F64 else b.fptrunc(args["value"], F64)), None, None
+        if name == "longDoubleFromInt64":
+            return b.sitofp(args["value"], self.be.long_double()), None, None
+        if name in ("loadLongDouble", "storeLongDouble"):
+            # D-174: a long double moves only through memory, 16 bytes, so the runtime never does its arithmetic
+            t = self.be.long_double()
+            place = b.bitcast(args["address"], t.as_pointer())
+            if name == "loadLongDouble":
+                return b.load(place, align=1), None, None
+            b.store(args["value"], place, align=1)
+            return None, None, None
         if name == "compareExchange32":
             pair = b.cmpxchg(b.bitcast(args["address"], I32.as_pointer()), args["expected"], args["desired"],
                              "seq_cst", "seq_cst")

@@ -1,7 +1,7 @@
 module cformat "printf's engine for the runtime's C library: every conversion as glibc writes it in the C locale, a floating value's digits exact (D-159)"
   path cformat
-  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test heap wide clibrary
-  exports cursorNew cursorFree formatAll decimalDigits roundingMode readWord
+  imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test heap wide clibrary clong
+  exports cursorNew cursorFree formatAll decimalDigits roundingMode readWord parseLongAs scanLong
 
 capability memoryAccess "Authority to read the format, the arguments, and the memory C callers hand the library" use machine.memory none
 
@@ -1286,12 +1286,16 @@ op digitCount "How many decimal digits a value has: 1 for 0"
 
 ## ---------------------------------------------------------------- rounding digits
 
-op roundingMode "The rounding mode floating values are written under: 0 to nearest, 1 downward, 2 upward, 3 toward zero (fegetround's, D-159)"
+op roundingMode "The rounding mode floating values are written under: 0 to nearest, 1 downward, 2 upward, 3 toward zero, as fesetround set it (D-159, D-174)"
   invariant nearestByDefault "Gives 0, to nearest, until the rounding mode is changed"
   output Int64
-  let nearest Int64 0
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
 :begin
-  return nearest
+  mode = clong.roundingMode()
+  return mode
 
 op anyNonzeroDigit "Whether a range of ASCII digits holds one that is not `0`"
   input digits machine.Address copied
@@ -1331,6 +1335,8 @@ op roundDigits "Round ASCII digits to their first `keep` (1 or more, below the c
   let at Int64 0 mut
   let carried Int64 1
   let noCarry Int64 0
+  effect use system.calls
+  uses systemCalls
 :begin
   mode = roundingMode()
   restNonzero = anyNonzeroDigit(digits, keep, count)
@@ -1910,6 +1916,8 @@ op hexRoundsUp "Whether hexadecimal digits rounded to their first `keep` go up, 
   uses memoryAccess
   let up Bool false mut
   let lastValue UInt64 0 mut
+  effect use system.calls
+  uses systemCalls
 :begin
   mode = roundingMode()
   restNonzero = anyNonzeroDigit(digits, keep, count)
@@ -2468,6 +2476,646 @@ op formatWideString "Write %ls: a wide string's characters as the C locale's byt
   heap.give(narrow)
   return
 
+## ---------------------------------------------------------------- strtold (D-174)
+##
+## strtold reads the syntax strtod reads (clibrary.parseReal finds where it ends and what an infinity or NaN is) and
+## makes the long double nearest the text's value without long double arithmetic. A decimal number's significant
+## digits and power of ten are compared, exactly, with the decimal digits decimalDigits gives for a candidate
+## m * 2^e: first the power of two at or below the value, then the significand's bits one at a time from the top,
+## two bits more than the format keeps, then whether anything is left below them; clong.settleAs rounds that as the
+## rounding mode rounds, among the subnormals too. A hexadecimal number's digits are its bits already. ERANGE comes
+## with an infinity (or the largest value, rounding toward zero) past the largest, and with a subnormal or a zero
+## that is not exactly the text's value.
+
+op textDigits "The significant digits of a decimal text (white space, a sign, digits with a point, an exponent) as ASCII without leading or trailing zeros in a new block, and the power of ten P with value = 0.digits * 10^P: stored at an address, 0 the block, 8 the count, 16 P; the count is 0 for a zero"
+  input text machine.Address copied
+  input result machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+  let count Int64 0 mut
+  let power Int64 0 mut
+  let seenPoint Bool false mut
+  let exponent Int64 0 mut
+  let exponentSign Int64 1 mut
+:begin
+  length = clibrary.cStringLength(text)
+  calc digits = heap.take(length + 1)
+  machine.storeAddress(result, digits)
+  goto spaces
+:spaces loop=while max=forever
+  current = clibrary.byteAt(text, at)
+  space = clibrary.isSpaceByte(current)
+  if space skipSpace sign
+:skipSpace in=spaces
+  calc at := at + 1
+  goto spaces
+:sign
+  signByte = clibrary.byteAt(text, at)
+  when signByte == 43 || signByte == 45 skipSign zeros
+:skipSign
+  calc at := at + 1
+  goto zeros
+:zeros loop=while max=forever
+  zeroByte = clibrary.byteAt(text, at)
+  when zeroByte == 48 skipZero pointCheck
+:skipZero in=zeros
+  calc at := at + 1
+  when seenPoint afterPointZero zeros
+:afterPointZero in=zeros
+  calc power := power - 1
+  goto zeros
+:pointCheck in=zeros
+  when zeroByte == 46 && !seenPoint takeLeadingPoint mantissa
+:takeLeadingPoint in=zeros
+  calc seenPoint := true
+  calc at := at + 1
+  goto zeros
+:mantissa loop=while max=forever
+  digit = clibrary.byteAt(text, at)
+  when digit >= 48 && digit <= 57 keepDigit mantissaPoint
+:keepDigit in=mantissa
+  calc digitAt = digits + count
+  machine.storeByte(digitAt, digit)
+  calc count := count + 1
+  when seenPoint advanceDigit wholeDigit
+:wholeDigit in=mantissa
+  calc power := power + 1
+  goto advanceDigit
+:advanceDigit in=mantissa
+  calc at := at + 1
+  goto mantissa
+:mantissaPoint in=mantissa
+  when digit == 46 && !seenPoint takePoint exponentCheck
+:takePoint in=mantissa
+  calc seenPoint := true
+  calc at := at + 1
+  goto mantissa
+:exponentCheck
+  marker = clibrary.byteAt(text, at)
+  when (marker | 32) == 101 exponentStart trim
+:exponentStart
+  calc exponentAt = at + 1
+  exponentFirst = clibrary.byteAt(text, exponentAt)
+  when exponentFirst == 45 negativeExponent positiveExponent
+:negativeExponent
+  calc exponentSign := -1
+  calc at := exponentAt + 1
+  goto exponentDigits
+:positiveExponent
+  when exponentFirst == 43 skipPlus noSign
+:skipPlus
+  calc at := exponentAt + 1
+  goto exponentDigits
+:noSign
+  set at exponentAt
+  goto exponentDigits
+:exponentDigits loop=while max=forever
+  exponentDigit = clibrary.byteAt(text, at)
+  when exponentDigit >= 48 && exponentDigit <= 57 addExponent applyExponent
+:addExponent in=exponentDigits
+  when exponent < 100000 grow skipExponentDigit
+:grow in=exponentDigits
+  calc exponent := exponent * 10 + convert.byteToInt64(exponentDigit) - 48
+  goto skipExponentDigit
+:skipExponentDigit in=exponentDigits
+  calc at := at + 1
+  goto exponentDigits
+:applyExponent
+  calc power := power + exponent * exponentSign
+  goto trim
+:trim loop=while max=forever
+  when count == 0 store trimCheck
+:trimCheck in=trim
+  calc lastAt = digits + count - 1
+  last = machine.loadByte(lastAt)
+  when last == 48 dropZero store
+:dropZero in=trim
+  calc count := count - 1
+  goto trim
+:store
+  calc countAt = result + 8
+  machine.storeInt64(countAt, count)
+  calc powerAt = result + 16
+  machine.storeInt64(powerAt, power)
+  return
+
+op compareDigits "How 0.left * 10^leftPower compares with 0.right * 10^rightPower, both with no leading zero digit and some digit: -1, 0, or 1"
+  input left machine.Address copied
+  input leftCount Int64 copied
+  input leftPower Int64 copied
+  input right machine.Address copied
+  input rightCount Int64 copied
+  input rightPower Int64 copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  let at Int64 0 mut
+  let less Int64 -1
+  let same Int64 0
+  let more Int64 1
+:begin
+  when leftPower < rightPower giveLess powerSame
+:powerSame
+  when leftPower > rightPower giveMore eachDigit
+:eachDigit loop=while max=forever
+  when at >= leftCount && at >= rightCount giveSame compareOne
+:compareOne in=eachDigit
+  calc leftDigit = digitOrZero(left, leftCount, at)
+  calc rightDigit = digitOrZero(right, rightCount, at)
+  when leftDigit < rightDigit giveLess notLess
+:notLess in=eachDigit
+  when leftDigit > rightDigit giveMore advance
+:advance in=eachDigit
+  calc at := at + 1
+  goto eachDigit
+:giveLess
+  return less
+:giveMore
+  return more
+:giveSame
+  return same
+
+op digitOrZero "The ASCII digit at a position of digits, or `0` past their count"
+  input digits machine.Address copied
+  input count Int64 copied
+  input at Int64 copied
+  output Byte
+  effect use machine.memory
+  uses memoryAccess
+  let zeroDigit Byte 48
+:begin
+  when at < count read pad
+:read
+  value = clibrary.byteAt(digits, at)
+  return value
+:pad
+  return zeroDigit
+
+op sideOf "How (high * 2^64 + low) * 2^exponent, nonzero, compares with a text's value 0.digits * 10^power: -1 below it, 0 equal, 1 above"
+  input high UInt64 copied
+  input low UInt64 copied
+  input exponent Int64 copied
+  input digits machine.Address copied
+  input count Int64 copied
+  input power Int64 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  made = heap.take(24)
+  decimalDigits(high, low, exponent, made)
+  candidate = machine.loadAddress(made)
+  calc candidateCountAt = made + 8
+  candidateCount = machine.loadInt64(candidateCountAt)
+  calc candidateFractionAt = made + 16
+  candidateFraction = machine.loadInt64(candidateFractionAt)
+  calc side = compareDigits(candidate, candidateCount, candidateCount - candidateFraction, digits, count, power)
+  heap.give(candidate)
+  heap.give(made)
+  return side
+
+op decimalParts "Put a decimal value 0.digits * 10^power (nonzero) in parts for a layout: the value's bits from its leading one down to two past the layout's precision, cut toward zero, and its power of two; gives 1 when the cut dropped something, else 0. A value far past the largest or below the least subnormal is put as a power of two past it"
+  input digits machine.Address copied
+  input count Int64 copied
+  input power Int64 copied
+  input parts machine.Address copied
+  input layout Int64 copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let top Int64 0 mut
+  let bit Int64 0 mut
+  let high UInt64 0 mut
+  let low UInt64 0 mut
+  let trialHigh UInt64 0 mut
+  let trialLow UInt64 0 mut
+  let dropped Int64 1 mut
+  let exactly Int64 0
+  let oneBit UInt64 1
+  let noBits UInt64 0
+:begin
+  precision = clong.precisionOf(layout)
+  least = clong.leastPower(layout)
+  greatest = clong.greatestPower(layout)
+  calc width = precision + 2
+  calc above = (power - 1) * 3321928 / 1000000
+  when above > greatest + precision + 4 huge notHuge
+:huge
+  clong.setSignificand(parts, noBits, oneBit)
+  clong.setPart(parts, 16, greatest + precision + 8)
+  return dropped
+:notHuge
+  calc below = power * 3321928 / 1000000
+  when below < least - 4 tiny search
+:tiny
+  clong.setSignificand(parts, noBits, oneBit)
+  clong.setPart(parts, 16, least - 8)
+  return dropped
+:search
+  set top above
+  goto lower
+:lower loop=while max=forever
+  calc downSide = sideOf(noBits, oneBit, top, digits, count, power)
+  when downSide > 0 stepDown raise
+:stepDown in=lower
+  calc top := top - 1
+  goto lower
+:raise loop=while max=forever
+  calc upSide = sideOf(noBits, oneBit, top + 1, digits, count, power)
+  when upSide <= 0 stepUp found
+:stepUp in=raise
+  calc top := top + 1
+  goto raise
+:found
+  calc scale = top - (width - 1)
+  calc bit := width - 2
+  when width - 1 >= 64 topHigh topLow
+:topHigh
+  calc high := oneBit << (width - 65)
+  goto eachBit
+:topLow
+  calc low := oneBit << (width - 1)
+  goto eachBit
+:eachBit loop=while max=forever
+  when bit < 0 cutDone tryBit
+:tryBit in=eachBit
+  when bit >= 64 bitHigh bitLow
+:bitHigh in=eachBit
+  calc trialHigh := high | (oneBit << (bit - 64))
+  set trialLow low
+  goto compareTrial
+:bitLow in=eachBit
+  set trialHigh high
+  calc trialLow := low | (oneBit << bit)
+  goto compareTrial
+:compareTrial in=eachBit
+  calc side = sideOf(trialHigh, trialLow, scale, digits, count, power)
+  when side <= 0 keepBit nextBit
+:keepBit in=eachBit
+  set high trialHigh
+  set low trialLow
+  when side == 0 exactCut nextBit
+:nextBit in=eachBit
+  calc bit := bit - 1
+  goto eachBit
+:exactCut
+  set dropped exactly
+  goto cutDone
+:cutDone
+  clong.setSignificand(parts, high, low)
+  clong.setPart(parts, 16, scale)
+  when bit < 0 lastCheck give
+:lastCheck
+  calc lastSide = sideOf(high, low, scale, digits, count, power)
+  when lastSide == 0 exactLast give
+:exactLast
+  set dropped exactly
+  goto give
+:give
+  return dropped
+
+op hexDigitOf "The value of an ASCII hexadecimal digit, or -1 for any other byte"
+  input value Byte copied
+  output Int64
+  let notHex Int64 -1
+:begin
+  calc code = convert.byteToInt64(value)
+  calc folded = code | 32
+  when code >= 48 && code <= 57 decimalDigit letterCheck
+:decimalDigit
+  calc decimalValue = code - 48
+  return decimalValue
+:letterCheck
+  when folded >= 97 && folded <= 102 letterDigit other
+:letterDigit
+  calc letterValue = folded - 87
+  return letterValue
+:other
+  return notHex
+
+op hexParts "Put the hexadecimal number after a `0x` (hex digits with a point, then p, a sign, and decimal digits) in parts: its first 120 or so bits and its power of two; gives 1 when a nonzero digit did not fit, else 0"
+  input text machine.Address copied
+  input start Int64 copied
+  input parts machine.Address copied
+  output Int64
+  effect use machine.memory
+  uses memoryAccess
+  let place Int64 0 mut
+  let high UInt64 0 mut
+  let low UInt64 0 mut
+  let power Int64 0 mut
+  let dropped Int64 0 mut
+  let seenPoint Bool false mut
+  let scaled Int64 0 mut
+  let scaleSign Int64 1 mut
+  let digitsFrom Int64 0 mut
+:begin
+  set place start
+  goto eachDigit
+:eachDigit loop=while max=forever
+  current = clibrary.byteAt(text, place)
+  digit = hexDigitOf(current)
+  when digit >= 0 takeDigit notDigit
+:takeDigit in=eachDigit
+  when (high >> 56) == 0 roomy crowded
+:roomy in=eachDigit
+  calc high := (high << 4) | (low >> 60)
+  calc low := (low << 4) | convert.int64ToUInt64(digit)
+  when seenPoint fractionDigit advance
+:fractionDigit in=eachDigit
+  calc power := power - 4
+  goto advance
+:crowded in=eachDigit
+  when digit != 0 sticky afterSticky
+:sticky in=eachDigit
+  calc dropped := 1
+  goto afterSticky
+:afterSticky in=eachDigit
+  when seenPoint advance wholeDigit
+:wholeDigit in=eachDigit
+  calc power := power + 4
+  goto advance
+:advance in=eachDigit
+  calc place := place + 1
+  goto eachDigit
+:notDigit in=eachDigit
+  when current == 46 && !seenPoint takePoint powerCheck
+:takePoint in=eachDigit
+  calc seenPoint := true
+  calc place := place + 1
+  goto eachDigit
+:powerCheck
+  when (current | 32) == 112 powerSign finish
+:powerSign
+  calc signAt = place + 1
+  signByte = clibrary.byteAt(text, signAt)
+  set digitsFrom signAt
+  when signByte == 45 minusPower plusCheck
+:minusPower
+  calc scaleSign := -1
+  calc digitsFrom := signAt + 1
+  goto powerDigits
+:plusCheck
+  when signByte == 43 plusPower powerDigits
+:plusPower
+  calc digitsFrom := signAt + 1
+  goto powerDigits
+:powerDigits loop=while max=forever
+  powerByte = clibrary.byteAt(text, digitsFrom)
+  when powerByte >= 48 && powerByte <= 57 addPower applyPower
+:addPower in=powerDigits
+  when scaled < 1000000 growPower skipPower
+:growPower in=powerDigits
+  calc scaled := scaled * 10 + convert.byteToInt64(powerByte) - 48
+  goto skipPower
+:skipPower in=powerDigits
+  calc digitsFrom := digitsFrom + 1
+  goto powerDigits
+:applyPower
+  calc power := power + scaled * scaleSign
+  goto finish
+:finish
+  clong.setSignificand(parts, high, low)
+  clong.setPart(parts, 16, power)
+  return dropped
+
+op parseLongAs "strtold's work for a layout (0 double, 1 x87, 2 binary128, 3 float): the value of a C string's leading number, correctly rounded as the rounding mode rounds, written in the layout's bytes at an address, the end of what was read stored at `endAt` unless it is the address 0; ERANGE past the largest value and for a subnormal or zero that is not the text's exact value"
+  invariant readsLikeStrtold "Reads what strtod reads, rounded once to the layout's precision"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  input layout Int64 copied
+  input target machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let at Int64 0 mut
+  let negative Int64 0 mut
+  let dropped Int64 0 mut
+  let rangeError Int32 34
+:begin
+  errnoAt = clibrary.errnoCell()
+  saved = machine.loadInt32(errnoAt)
+  endCell = heap.take(8)
+  double = clibrary.parseReal(text, endCell)
+  machine.storeInt32(errnoAt, saved)
+  endPlace = machine.loadAddress(endCell)
+  heap.give(endCell)
+  nowhere = machine.zero()
+  noEnd = machine.equal(endAt, nowhere)
+  if noEnd measured storeEnd
+:storeEnd
+  machine.storeAddress(endAt, endPlace)
+  goto measured
+:measured
+  consumed = machine.difference(endPlace, text)
+  parts = clong.partsNew()
+  when consumed == 0 packed spaces
+:spaces loop=while max=forever
+  leading = clibrary.byteAt(text, at)
+  space = clibrary.isSpaceByte(leading)
+  if space skipSpace signCheck
+:skipSpace in=spaces
+  calc at := at + 1
+  goto spaces
+:signCheck
+  when leading == 45 minus plusCheck
+:minus
+  calc negative := 1
+  calc at := at + 1
+  goto classify
+:plusCheck
+  when leading == 43 plus classify
+:plus
+  calc at := at + 1
+  goto classify
+:classify
+  clong.setPart(parts, 0, negative)
+  first = clibrary.byteAt(text, at)
+  calc folded = first | 32
+  when folded == 105 || folded == 110 special numeric
+:special
+  doubleCell = heap.take(8)
+  machine.storeFloat64(doubleCell, double)
+  clong.unpackAs(doubleCell, parts, 0)
+  heap.give(doubleCell)
+  goto packed
+:numeric
+  calc second = clibrary.byteAt(text, at + 1)
+  when first == 48 && (second | 32) == 120 && consumed > at + 1 hexadecimal decimal
+:hexadecimal
+  calc dropped := hexParts(text, at + 2, parts)
+  goto rounded
+:decimal
+  info = heap.take(24)
+  textDigits(text, info)
+  digits = machine.loadAddress(info)
+  calc countAt = info + 8
+  count = machine.loadInt64(countAt)
+  calc powerAt = info + 16
+  power = machine.loadInt64(powerAt)
+  heap.give(info)
+  when count == 0 zeroDigits someDigits
+:zeroDigits
+  heap.give(digits)
+  goto packed
+:someDigits
+  calc dropped := decimalParts(digits, count, power, parts, layout)
+  heap.give(digits)
+  goto rounded
+:rounded
+  clong.setPart(parts, 8, 1)
+  high = clong.highOf(parts)
+  low = clong.lowOf(parts)
+  scale = clong.getPart(parts, 16)
+  length = clong.bitLength(high, low)
+  when length == 0 && dropped == 0 zeroValue settling
+:zeroValue
+  clong.setPart(parts, 8, 0)
+  goto packed
+:settling
+  precision = clong.precisionOf(layout)
+  greatest = clong.greatestPower(layout)
+  clong.settleAs(parts, dropped, layout)
+  kind = clong.getPart(parts, 8)
+  when kind == 2 || length + scale - 1 >= greatest + precision overflowed tinyCheck
+:overflowed
+  clibrary.setErrno(rangeError)
+  goto packed
+:tinyCheck
+  settledHigh = clong.highOf(parts)
+  settledLow = clong.lowOf(parts)
+  settledLength = clong.bitLength(settledHigh, settledLow)
+  when kind == 0 || settledLength < precision tiny packed
+:tiny
+  settledPower = clong.getPart(parts, 16)
+  calc cut = lowestOf(highestOf(settledPower - scale, 0), 128)
+  calc inexact = dropped != 0 || kind == 0 || clong.lowBitsSet(high, low, cut)
+  when inexact underflowed packed
+:underflowed
+  clibrary.setErrno(rangeError)
+  goto packed
+:packed
+  clong.packAs(parts, target, layout)
+  heap.give(parts)
+  return
+
+op lowestOf "The smaller of two whole numbers"
+  input left Int64 copied
+  input right Int64 copied
+  output Int64
+:begin
+  when left < right giveLeft giveRight
+:giveLeft
+  return left
+:giveRight
+  return right
+
+op highestOf "The larger of two whole numbers"
+  input left Int64 copied
+  input right Int64 copied
+  output Int64
+:begin
+  when left > right giveLeft giveRight
+:giveLeft
+  return left
+:giveRight
+  return right
+
+op parseLong "strtold: a C string's leading number as a long double, correctly rounded, with where it ends"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  output machine.LongDouble
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "strtold"
+:begin
+  cell = heap.take(16)
+  layout = clong.format()
+  parseLongAs(text, endAt, layout, cell)
+  value = machine.loadLongDouble(cell)
+  heap.give(cell)
+  return value
+
+op scanLong "scanf's %Lf (and %Le %Lg %La): the text it collected read as strtold reads it, stored as a long double where the argument points"
+  invariant storesLikeStrtold "Stores the bytes strtold's reading gives"
+  input text machine.Address copied
+  input target machine.Address copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  nowhere = machine.zero()
+  layout = clong.format()
+  parseLongAs(text, nowhere, layout, target)
+  return
+
+op parseWideLong "wcstold: a wide string's leading number as a long double, as strtold reads its ASCII characters, with the end stored as a wide place"
+  input text machine.Address copied
+  input endAt machine.Address copied
+  output machine.LongDouble
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "wcstold"
+  let units Int64 0 mut
+  let copied Int64 0 mut
+  let zeroByte Byte 0
+:begin
+  goto measure
+:measure loop=while max=forever
+  calc unitAt = text + units * 4
+  unit = machine.loadInt32(unitAt)
+  when unit > 0 && unit < 128 countUnit copyOut
+:countUnit in=measure
+  calc units := units + 1
+  goto measure
+:copyOut
+  calc block = heap.take(units + 1)
+  goto copyEach
+:copyEach loop=while max=forever
+  when copied >= units copyDone copyOne
+:copyOne in=copyEach
+  calc sourceAt = text + copied * 4
+  wideUnit = machine.loadInt32(sourceAt)
+  calc placeAt = block + copied
+  machine.storeByte(placeAt, convert.int64ToByte(convert.int32ToInt64(wideUnit)))
+  calc copied := copied + 1
+  goto copyEach
+:copyDone
+  calc endByteAt = block + units
+  machine.storeByte(endByteAt, zeroByte)
+  endCell = heap.take(8)
+  cell = heap.take(16)
+  layout = clong.format()
+  parseLongAs(block, endCell, layout, cell)
+  value = machine.loadLongDouble(cell)
+  endPlace = machine.loadAddress(endCell)
+  consumed = machine.difference(endPlace, block)
+  nowhere = machine.zero()
+  noEnd = machine.equal(endAt, nowhere)
+  heap.give(cell)
+  heap.give(endCell)
+  heap.give(block)
+  if noEnd done storeEnd
+:storeEnd
+  calc wideEnd = text + consumed * 4
+  machine.storeAddress(endAt, wideEnd)
+  goto done
+:done
+  return value
+
 @tests
 
 op formatsTo "Whether formatAll writes a format with up to five argument slots (doubles as their bits) as expected"
@@ -2636,3 +3284,171 @@ op layoutFor "The va_list layout this system has: 3 on Windows, 1 on x86_64 Linu
   return armLayout
 :sysv
   return sysvLayout
+
+op cTextOf "A text as a C string in a new heap block"
+  input text String borrowed
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let nul Byte 0
+:begin
+  bytes = string.byteLength(text)
+  calc block = heap.take(bytes + 1)
+  textAt = machine.addressOfString(text)
+  machine.copy(block, textAt, bytes)
+  calc endAt = block + bytes
+  machine.storeByte(endAt, nul)
+  return block
+
+op sameAsDouble "Assert strtold's reading for the double layout is strtod's: the same bits, end, and errno"
+  input text String borrowed
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let cleared Int32 0
+:begin
+  block = cTextOf(text)
+  errnoAt = clibrary.errnoCell()
+  machine.storeInt32(errnoAt, cleared)
+  wantedEndCell = heap.take(8)
+  wanted = clibrary.parseReal(block, wantedEndCell)
+  wantedErrno = machine.loadInt32(errnoAt)
+  machine.storeInt32(errnoAt, cleared)
+  endCell = heap.take(8)
+  cell = heap.take(16)
+  parseLongAs(block, endCell, 0, cell)
+  gotErrno = machine.loadInt32(errnoAt)
+  gotBits = machine.loadUInt64(cell)
+  test.assertTrue(gotBits == convert.float64BitsToUInt64(wanted))
+  wantedEnd = machine.loadAddress(wantedEndCell)
+  gotEnd = machine.loadAddress(endCell)
+  sameEnd = machine.equal(wantedEnd, gotEnd)
+  test.assertTrue(sameEnd)
+  test.assertTrue(gotErrno == wantedErrno)
+  heap.give(cell)
+  heap.give(endCell)
+  heap.give(wantedEndCell)
+  heap.give(block)
+  return
+
+op expectParts "Assert strtold's reading of a text for a layout is the finite value (high * 2^64 + low) * 2^power with a sign, in the layout's bytes"
+  input text String borrowed
+  input layout Int64 copied
+  input high UInt64 copied
+  input low UInt64 copied
+  input power Int64 copied
+  input negative Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  block = cTextOf(text)
+  nowhere = machine.zero()
+  got = heap.take(16)
+  parseLongAs(block, nowhere, layout, got)
+  parts = clong.partsNew()
+  clong.setPart(parts, 0, negative)
+  clong.setPart(parts, 8, 1)
+  clong.setPart(parts, 16, power)
+  clong.setSignificand(parts, high, low)
+  wanted = heap.take(16)
+  clong.packAs(parts, wanted, layout)
+  order = machine.compare(got, wanted, 16)
+  test.assertEqualInt64(0, convert.int32ToInt64(order))
+  heap.give(wanted)
+  heap.give(parts)
+  heap.give(got)
+  heap.give(block)
+  return
+
+op expectKind "Assert strtold's reading of a text for a layout is a kind of value (0 zero, 1 finite, 2 infinite, 3 NaN) with a sign, and sets errno to a value"
+  input text String borrowed
+  input layout Int64 copied
+  input kind Int64 copied
+  input negative Int64 copied
+  input expectedErrno Int32 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let cleared Int32 0
+:begin
+  block = cTextOf(text)
+  nowhere = machine.zero()
+  errnoAt = clibrary.errnoCell()
+  machine.storeInt32(errnoAt, cleared)
+  got = heap.take(16)
+  parseLongAs(block, nowhere, layout, got)
+  gotErrno = machine.loadInt32(errnoAt)
+  test.assertTrue(gotErrno == expectedErrno)
+  parts = clong.partsNew()
+  clong.unpackAs(got, parts, layout)
+  gotKind = clong.getPart(parts, 8)
+  test.assertEqualInt64(kind, gotKind)
+  gotSign = clong.getPart(parts, 0)
+  test.assertEqualInt64(negative, gotSign)
+  heap.give(parts)
+  heap.give(got)
+  heap.give(block)
+  return
+
+test longTextTest "strtold reads as strtod for the double layout (bits, end, errno), and gives the nearest x87, binary128, and float values: 0.1 on each, ties to even, exact whole numbers, the least x87 subnormal, x87 overflow, hexadecimal digits past the precision"
+  verifies parseLongAs readsLikeStrtold
+  verifies scanLong storesLikeStrtold
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  sameAsDouble("0.1")
+  sameAsDouble("1e23")
+  sameAsDouble("  -2.2250738585072011e-308xyz")
+  sameAsDouble("4.9e-324")
+  sameAsDouble("2.4703282292062328e-324")
+  sameAsDouble("2.4703282292062327e-324")
+  sameAsDouble("1.7976931348623157e308")
+  sameAsDouble("1.7976931348623159e308")
+  sameAsDouble("123456789012345678901234567890")
+  sameAsDouble("9007199254740993")
+  sameAsDouble("9007199254740993.0000000001")
+  sameAsDouble("-0.0e5x")
+  sameAsDouble("0x1.8p1")
+  sameAsDouble("0x1.fffffffffffff8p0")
+  sameAsDouble("0x1.00000000000008p0")
+  sameAsDouble("0x1.000000000000081p0")
+  sameAsDouble("0x.8p-1073")
+  sameAsDouble("0x")
+  sameAsDouble("infinity")
+  sameAsDouble("-nan(12)")
+  sameAsDouble("1e-400")
+  sameAsDouble("1e309")
+  sameAsDouble(".e5")
+  expectParts("0.1", 1, 0, 14757395258967641293, -67, 0)
+  expectParts("18446744073709551617", 1, 0, 9223372036854775808, 1, 0)
+  expectParts("18446744073709551615", 1, 0, 18446744073709551615, 0, 0)
+  expectParts("0x1.00000000000000018p0", 1, 0, 9223372036854775809, -63, 0)
+  expectParts("-0.1", 2, 450359962737049, 11068046444225730970, -116, 1)
+  expectParts("0.1", 3, 0, 13421773, -27, 0)
+  expectParts("16777217", 3, 0, 8388608, 1, 0)
+  expectParts("3.6451995318824746025e-4951", 1, 0, 1, -16445, 0)
+  expectKind("1.2e4932", 1, 2, 0, 34)
+  expectKind("-1.18e4932", 1, 1, 1, 0)
+  expectKind("1e-5000", 1, 0, 0, 34)
+  expectKind("-0", 2, 0, 1, 0)
+  text = cTextOf("2.5e-1")
+  scanned = heap.take(16)
+  scanLong(text, scanned)
+  wanted = heap.take(16)
+  nowhere = machine.zero()
+  layout = clong.format()
+  parseLongAs(text, nowhere, layout, wanted)
+  order = machine.compare(scanned, wanted, 16)
+  test.assertTrue(order == 0)
+  heap.give(wanted)
+  heap.give(scanned)
+  heap.give(text)
+  return

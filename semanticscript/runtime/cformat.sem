@@ -18,12 +18,15 @@ cformat imports standard.test
 cformat imports heap
 cformat imports wide
 cformat imports clibrary
+cformat imports clong
 cformat exports cursorNew
 cformat exports cursorFree
 cformat exports formatAll
 cformat exports decimalDigits
 cformat exports roundingMode
 cformat exports readWord
+cformat exports parseLongAs
+cformat exports scanLong
 
 memoryAccess is capability
 memoryAccess purpose "Authority to read the format, the arguments, and the memory C callers hand the library"
@@ -9626,22 +9629,36 @@ findRestNext21 suppresses none
 
 # ---------------------------------------------------------------- rounding digits
 roundingMode is operation
-roundingMode purpose "The rounding mode floating values are written under: 0 to nearest, 1 downward, 2 upward, 3 toward zero (fegetround's, D-159)"
+roundingMode purpose "The rounding mode floating values are written under: 0 to nearest, 1 downward, 2 upward, 3 toward zero, as fesetround set it (D-159, D-174)"
 roundingMode invariant nearestByDefault "\"Gives 0, to nearest, until the rounding mode is changed\""
 roundingMode typeParameter none
 roundingMode input none
 roundingMode output Int64
 roundingMode outputOwnedBy none
 roundingMode raises none
-roundingMode effect none
-roundingMode uses none
+roundingMode effect use machine.memory
+roundingMode effect use system.calls
+roundingMode uses memoryAccess
+roundingMode uses systemCalls
 roundingMode memoryHeap false
 roundingMode async false
 roundingMode maxRecursion none
 roundingMode label begin loopKind none
 roundingMode label begin within none
-roundingMode let nearest Int64 0 immutable
-roundingMode at begin return ok nearest
+roundingMode let none
+roundingMode at begin do readMode
+roundingMode at begin return ok mode
+
+readMode is call
+readMode in roundingMode
+readMode invokes clong.roundingMode
+readMode argument none
+readMode result mode Int64
+readMode ownedBy none
+readMode cleanedBy none
+readMode borrows none
+readMode catch none
+readMode suppresses none
 
 anyNonzeroDigit is operation
 anyNonzeroDigit purpose "Whether a range of ASCII digits holds one that is not `0`"
@@ -9749,7 +9766,9 @@ roundDigits output Int64
 roundDigits outputOwnedBy none
 roundDigits raises none
 roundDigits effect use machine.memory
+roundDigits effect use system.calls
 roundDigits uses memoryAccess
+roundDigits uses systemCalls
 roundDigits memoryHeap false
 roundDigits async false
 roundDigits maxRecursion none
@@ -14064,7 +14083,9 @@ hexRoundsUp output Bool
 hexRoundsUp outputOwnedBy none
 hexRoundsUp raises none
 hexRoundsUp effect use machine.memory
+hexRoundsUp effect use system.calls
 hexRoundsUp uses memoryAccess
+hexRoundsUp uses systemCalls
 hexRoundsUp memoryHeap false
 hexRoundsUp async false
 hexRoundsUp maxRecursion none
@@ -18328,3 +18349,5084 @@ doGive3 cleanedBy none
 doGive3 borrows none
 doGive3 catch none
 doGive3 suppresses none
+
+# ---------------------------------------------------------------- strtold (D-174)
+#
+# strtold reads the syntax strtod reads (clibrary.parseReal finds where it ends and what an infinity or NaN is) and
+# makes the long double nearest the text's value without long double arithmetic. A decimal number's significant
+# digits and power of ten are compared, exactly, with the decimal digits decimalDigits gives for a candidate
+# m * 2^e: first the power of two at or below the value, then the significand's bits one at a time from the top,
+# two bits more than the format keeps, then whether anything is left below them; clong.settleAs rounds that as the
+# rounding mode rounds, among the subnormals too. A hexadecimal number's digits are its bits already. ERANGE comes
+# with an infinity (or the largest value, rounding toward zero) past the largest, and with a subnormal or a zero
+# that is not exactly the text's value.
+textDigits is operation
+textDigits purpose "The significant digits of a decimal text (white space, a sign, digits with a point, an exponent) as ASCII without leading or trailing zeros in a new block, and the power of ten P with value = 0.digits * 10^P: stored at an address, 0 the block, 8 the count, 16 P; the count is 0 for a zero"
+textDigits invariant none
+textDigits typeParameter none
+textDigits input text machine.Address copied
+textDigits input result machine.Address copied
+textDigits output none
+textDigits outputOwnedBy none
+textDigits raises none
+textDigits effect use machine.memory
+textDigits effect use system.calls
+textDigits uses memoryAccess
+textDigits uses systemCalls
+textDigits memoryHeap false
+textDigits async false
+textDigits maxRecursion none
+textDigits label begin loopKind none
+textDigits label begin within none
+textDigits label spaces loopKind while
+textDigits label spaces within none
+textDigits label spaces maxIterations forever
+textDigits label skipSpace loopKind none
+textDigits label skipSpace within spaces
+textDigits label sign loopKind none
+textDigits label sign within none
+textDigits label skipSign loopKind none
+textDigits label skipSign within none
+textDigits label zeros loopKind while
+textDigits label zeros within none
+textDigits label zeros maxIterations forever
+textDigits label skipZero loopKind none
+textDigits label skipZero within zeros
+textDigits label afterPointZero loopKind none
+textDigits label afterPointZero within zeros
+textDigits label pointCheck loopKind none
+textDigits label pointCheck within zeros
+textDigits label takeLeadingPoint loopKind none
+textDigits label takeLeadingPoint within zeros
+textDigits label mantissa loopKind while
+textDigits label mantissa within none
+textDigits label mantissa maxIterations forever
+textDigits label keepDigit loopKind none
+textDigits label keepDigit within mantissa
+textDigits label wholeDigit loopKind none
+textDigits label wholeDigit within mantissa
+textDigits label advanceDigit loopKind none
+textDigits label advanceDigit within mantissa
+textDigits label mantissaPoint loopKind none
+textDigits label mantissaPoint within mantissa
+textDigits label takePoint loopKind none
+textDigits label takePoint within mantissa
+textDigits label exponentCheck loopKind none
+textDigits label exponentCheck within none
+textDigits label exponentStart loopKind none
+textDigits label exponentStart within none
+textDigits label negativeExponent loopKind none
+textDigits label negativeExponent within none
+textDigits label positiveExponent loopKind none
+textDigits label positiveExponent within none
+textDigits label skipPlus loopKind none
+textDigits label skipPlus within none
+textDigits label noSign loopKind none
+textDigits label noSign within none
+textDigits label exponentDigits loopKind while
+textDigits label exponentDigits within none
+textDigits label exponentDigits maxIterations forever
+textDigits label addExponent loopKind none
+textDigits label addExponent within exponentDigits
+textDigits label grow loopKind none
+textDigits label grow within exponentDigits
+textDigits label skipExponentDigit loopKind none
+textDigits label skipExponentDigit within exponentDigits
+textDigits label applyExponent loopKind none
+textDigits label applyExponent within none
+textDigits label trim loopKind while
+textDigits label trim within none
+textDigits label trim maxIterations forever
+textDigits label trimCheck loopKind none
+textDigits label trimCheck within trim
+textDigits label dropZero loopKind none
+textDigits label dropZero within trim
+textDigits label store loopKind none
+textDigits label store within none
+textDigits let at Int64 0 mutable
+textDigits let count Int64 0 mutable
+textDigits let power Int64 0 mutable
+textDigits let seenPoint Bool false mutable
+textDigits let exponent Int64 0 mutable
+textDigits let exponentSign Int64 1 mutable
+textDigits let one Int64 1 immutable
+textDigits let byte43 Byte 43 immutable
+textDigits let byte45 Byte 45 immutable
+textDigits let byte48 Byte 48 immutable
+textDigits let byte46 Byte 46 immutable
+textDigits let yes Bool true immutable
+textDigits let byte57 Byte 57 immutable
+textDigits let byte32 Byte 32 immutable
+textDigits let byte101 Byte 101 immutable
+textDigits let minus1 Int64 -1 immutable
+textDigits let n100000 Int64 100000 immutable
+textDigits let ten Int64 10 immutable
+textDigits let n48 Int64 48 immutable
+textDigits let zero Int64 0 immutable
+textDigits let eight Int64 8 immutable
+textDigits let sixteen Int64 16 immutable
+textDigits at begin do readLength
+textDigits at begin do digitsStep1
+textDigits at begin do findDigits1
+textDigits at begin do doStoreAddress
+textDigits at begin goto spaces
+textDigits at spaces do readCurrent
+textDigits at spaces do readSpace
+textDigits at spaces branch if space goto skipSpace else goto sign
+textDigits at skipSpace do findAtNext11
+textDigits at skipSpace set at atNext1
+textDigits at skipSpace goto spaces
+textDigits at sign do readSignByte
+textDigits at sign do check1Step1
+textDigits at sign do check1Step2
+textDigits at sign do findCheck11
+textDigits at sign branch if check1 goto skipSign else goto zeros
+textDigits at skipSign do findAtNext21
+textDigits at skipSign set at atNext2
+textDigits at skipSign goto zeros
+textDigits at zeros do readZeroByte
+textDigits at zeros do findCheck21
+textDigits at zeros branch if check2 goto skipZero else goto pointCheck
+textDigits at skipZero do findAtNext31
+textDigits at skipZero set at atNext3
+textDigits at skipZero branch if seenPoint goto afterPointZero else goto zeros
+textDigits at afterPointZero do findPowerNext11
+textDigits at afterPointZero set power powerNext1
+textDigits at afterPointZero goto zeros
+textDigits at pointCheck do check3Step1
+textDigits at pointCheck do check3Step2
+textDigits at pointCheck do findCheck31
+textDigits at pointCheck branch if check3 goto takeLeadingPoint else goto mantissa
+textDigits at takeLeadingPoint set seenPoint yes
+textDigits at takeLeadingPoint do findAtNext41
+textDigits at takeLeadingPoint set at atNext4
+textDigits at takeLeadingPoint goto zeros
+textDigits at mantissa do readDigit
+textDigits at mantissa do check4Step1
+textDigits at mantissa do check4Step2
+textDigits at mantissa do findCheck41
+textDigits at mantissa branch if check4 goto keepDigit else goto mantissaPoint
+textDigits at keepDigit do findDigitAt1
+textDigits at keepDigit do doStoreByte
+textDigits at keepDigit do findCountNext11
+textDigits at keepDigit set count countNext1
+textDigits at keepDigit branch if seenPoint goto advanceDigit else goto wholeDigit
+textDigits at wholeDigit do findPowerNext21
+textDigits at wholeDigit set power powerNext2
+textDigits at wholeDigit goto advanceDigit
+textDigits at advanceDigit do findAtNext51
+textDigits at advanceDigit set at atNext5
+textDigits at advanceDigit goto mantissa
+textDigits at mantissaPoint do check5Step1
+textDigits at mantissaPoint do check5Step2
+textDigits at mantissaPoint do findCheck51
+textDigits at mantissaPoint branch if check5 goto takePoint else goto exponentCheck
+textDigits at takePoint set seenPoint yes
+textDigits at takePoint do findAtNext61
+textDigits at takePoint set at atNext6
+textDigits at takePoint goto mantissa
+textDigits at exponentCheck do readMarker
+textDigits at exponentCheck do check6Step1
+textDigits at exponentCheck do findCheck61
+textDigits at exponentCheck branch if check6 goto exponentStart else goto trim
+textDigits at exponentStart do findExponentAt1
+textDigits at exponentStart do readExponentFirst
+textDigits at exponentStart do findCheck71
+textDigits at exponentStart branch if check7 goto negativeExponent else goto positiveExponent
+textDigits at negativeExponent set exponentSign minus1
+textDigits at negativeExponent do findAtNext71
+textDigits at negativeExponent set at atNext7
+textDigits at negativeExponent goto exponentDigits
+textDigits at positiveExponent do findCheck81
+textDigits at positiveExponent branch if check8 goto skipPlus else goto noSign
+textDigits at skipPlus do findAtNext81
+textDigits at skipPlus set at atNext8
+textDigits at skipPlus goto exponentDigits
+textDigits at noSign set at exponentAt
+textDigits at noSign goto exponentDigits
+textDigits at exponentDigits do readExponentDigit
+textDigits at exponentDigits do check9Step1
+textDigits at exponentDigits do check9Step2
+textDigits at exponentDigits do findCheck91
+textDigits at exponentDigits branch if check9 goto addExponent else goto applyExponent
+textDigits at addExponent do findCheck101
+textDigits at addExponent branch if check10 goto grow else goto skipExponentDigit
+textDigits at grow do exponentStep1
+textDigits at grow do exponentStep2
+textDigits at grow do exponentStep3
+textDigits at grow do findExponentNext11
+textDigits at grow set exponent exponentNext1
+textDigits at grow goto skipExponentDigit
+textDigits at skipExponentDigit do findAtNext91
+textDigits at skipExponentDigit set at atNext9
+textDigits at skipExponentDigit goto exponentDigits
+textDigits at applyExponent do powerStep1
+textDigits at applyExponent do findPowerNext31
+textDigits at applyExponent set power powerNext3
+textDigits at applyExponent goto trim
+textDigits at trim do findCheck111
+textDigits at trim branch if check11 goto store else goto trimCheck
+textDigits at trimCheck do lastAtStep1
+textDigits at trimCheck do lastAtStep2
+textDigits at trimCheck do findLastAt1
+textDigits at trimCheck do readLast
+textDigits at trimCheck do findCheck121
+textDigits at trimCheck branch if check12 goto dropZero else goto store
+textDigits at dropZero do findCountNext21
+textDigits at dropZero set count countNext2
+textDigits at dropZero goto trim
+textDigits at store do findCountAt1
+textDigits at store do doStoreInt64
+textDigits at store do findPowerAt1
+textDigits at store do doStoreInt642
+textDigits at store return ok none
+
+readLength is call
+readLength in textDigits
+readLength invokes clibrary.cStringLength
+readLength argument text machine.Address text copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+digitsStep1 is call
+digitsStep1 in textDigits
+digitsStep1 invokes math.addInt64
+digitsStep1 argument left Int64 length copy
+digitsStep1 argument right Int64 one copy
+digitsStep1 result digitsPart1 Int64
+digitsStep1 ownedBy none
+digitsStep1 cleanedBy none
+digitsStep1 borrows none
+digitsStep1 catch none
+digitsStep1 suppresses none
+
+findDigits1 is call
+findDigits1 in textDigits
+findDigits1 invokes heap.take
+findDigits1 argument bytes Int64 digitsPart1 copy
+findDigits1 result digits machine.Address
+findDigits1 ownedBy none
+findDigits1 cleanedBy none
+findDigits1 borrows none
+findDigits1 catch none
+findDigits1 suppresses none
+
+doStoreAddress is call
+doStoreAddress in textDigits
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address result copy
+doStoreAddress argument value machine.Address digits copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+readCurrent is call
+readCurrent in textDigits
+readCurrent invokes clibrary.byteAt
+readCurrent argument base machine.Address text copy
+readCurrent argument at Int64 at copy
+readCurrent result current Byte
+readCurrent ownedBy none
+readCurrent cleanedBy none
+readCurrent borrows none
+readCurrent catch none
+readCurrent suppresses none
+
+readSpace is call
+readSpace in textDigits
+readSpace invokes clibrary.isSpaceByte
+readSpace argument value Byte current copy
+readSpace result space Bool
+readSpace ownedBy none
+readSpace cleanedBy none
+readSpace borrows none
+readSpace catch none
+readSpace suppresses none
+
+findAtNext11 is call
+findAtNext11 in textDigits
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+readSignByte is call
+readSignByte in textDigits
+readSignByte invokes clibrary.byteAt
+readSignByte argument base machine.Address text copy
+readSignByte argument at Int64 at copy
+readSignByte result signByte Byte
+readSignByte ownedBy none
+readSignByte cleanedBy none
+readSignByte borrows none
+readSignByte catch none
+readSignByte suppresses none
+
+check1Step1 is call
+check1Step1 in textDigits
+check1Step1 invokes compare.equalByte
+check1Step1 argument left Byte signByte copy
+check1Step1 argument right Byte byte43 copy
+check1Step1 result check1Part1 Bool
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in textDigits
+check1Step2 invokes compare.equalByte
+check1Step2 argument left Byte signByte copy
+check1Step2 argument right Byte byte45 copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+findCheck11 is call
+findCheck11 in textDigits
+findCheck11 invokes logic.or
+findCheck11 argument left Bool check1Part1 copy
+findCheck11 argument right Bool check1Part2 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findAtNext21 is call
+findAtNext21 in textDigits
+findAtNext21 invokes math.addInt64
+findAtNext21 argument left Int64 at copy
+findAtNext21 argument right Int64 one copy
+findAtNext21 result atNext2 Int64
+findAtNext21 ownedBy none
+findAtNext21 cleanedBy none
+findAtNext21 borrows none
+findAtNext21 catch none
+findAtNext21 suppresses none
+
+readZeroByte is call
+readZeroByte in textDigits
+readZeroByte invokes clibrary.byteAt
+readZeroByte argument base machine.Address text copy
+readZeroByte argument at Int64 at copy
+readZeroByte result zeroByte Byte
+readZeroByte ownedBy none
+readZeroByte cleanedBy none
+readZeroByte borrows none
+readZeroByte catch none
+readZeroByte suppresses none
+
+findCheck21 is call
+findCheck21 in textDigits
+findCheck21 invokes compare.equalByte
+findCheck21 argument left Byte zeroByte copy
+findCheck21 argument right Byte byte48 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findAtNext31 is call
+findAtNext31 in textDigits
+findAtNext31 invokes math.addInt64
+findAtNext31 argument left Int64 at copy
+findAtNext31 argument right Int64 one copy
+findAtNext31 result atNext3 Int64
+findAtNext31 ownedBy none
+findAtNext31 cleanedBy none
+findAtNext31 borrows none
+findAtNext31 catch none
+findAtNext31 suppresses none
+
+findPowerNext11 is call
+findPowerNext11 in textDigits
+findPowerNext11 invokes math.subtractInt64
+findPowerNext11 argument left Int64 power copy
+findPowerNext11 argument right Int64 one copy
+findPowerNext11 result powerNext1 Int64
+findPowerNext11 ownedBy none
+findPowerNext11 cleanedBy none
+findPowerNext11 borrows none
+findPowerNext11 catch none
+findPowerNext11 suppresses none
+
+check3Step1 is call
+check3Step1 in textDigits
+check3Step1 invokes compare.equalByte
+check3Step1 argument left Byte zeroByte copy
+check3Step1 argument right Byte byte46 copy
+check3Step1 result check3Part1 Bool
+check3Step1 ownedBy none
+check3Step1 cleanedBy none
+check3Step1 borrows none
+check3Step1 catch none
+check3Step1 suppresses none
+
+check3Step2 is call
+check3Step2 in textDigits
+check3Step2 invokes logic.not
+check3Step2 argument value Bool seenPoint copy
+check3Step2 result check3Part2 Bool
+check3Step2 ownedBy none
+check3Step2 cleanedBy none
+check3Step2 borrows none
+check3Step2 catch none
+check3Step2 suppresses none
+
+findCheck31 is call
+findCheck31 in textDigits
+findCheck31 invokes logic.and
+findCheck31 argument left Bool check3Part1 copy
+findCheck31 argument right Bool check3Part2 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+findAtNext41 is call
+findAtNext41 in textDigits
+findAtNext41 invokes math.addInt64
+findAtNext41 argument left Int64 at copy
+findAtNext41 argument right Int64 one copy
+findAtNext41 result atNext4 Int64
+findAtNext41 ownedBy none
+findAtNext41 cleanedBy none
+findAtNext41 borrows none
+findAtNext41 catch none
+findAtNext41 suppresses none
+
+readDigit is call
+readDigit in textDigits
+readDigit invokes clibrary.byteAt
+readDigit argument base machine.Address text copy
+readDigit argument at Int64 at copy
+readDigit result digit Byte
+readDigit ownedBy none
+readDigit cleanedBy none
+readDigit borrows none
+readDigit catch none
+readDigit suppresses none
+
+check4Step1 is call
+check4Step1 in textDigits
+check4Step1 invokes compare.greaterOrEqualByte
+check4Step1 argument left Byte digit copy
+check4Step1 argument right Byte byte48 copy
+check4Step1 result check4Part1 Bool
+check4Step1 ownedBy none
+check4Step1 cleanedBy none
+check4Step1 borrows none
+check4Step1 catch none
+check4Step1 suppresses none
+
+check4Step2 is call
+check4Step2 in textDigits
+check4Step2 invokes compare.lessOrEqualByte
+check4Step2 argument left Byte digit copy
+check4Step2 argument right Byte byte57 copy
+check4Step2 result check4Part2 Bool
+check4Step2 ownedBy none
+check4Step2 cleanedBy none
+check4Step2 borrows none
+check4Step2 catch none
+check4Step2 suppresses none
+
+findCheck41 is call
+findCheck41 in textDigits
+findCheck41 invokes logic.and
+findCheck41 argument left Bool check4Part1 copy
+findCheck41 argument right Bool check4Part2 copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+findDigitAt1 is call
+findDigitAt1 in textDigits
+findDigitAt1 invokes machine.offset
+findDigitAt1 argument address machine.Address digits copy
+findDigitAt1 argument bytes Int64 count copy
+findDigitAt1 result digitAt machine.Address
+findDigitAt1 ownedBy none
+findDigitAt1 cleanedBy none
+findDigitAt1 borrows none
+findDigitAt1 catch none
+findDigitAt1 suppresses none
+
+doStoreByte is call
+doStoreByte in textDigits
+doStoreByte invokes machine.storeByte
+doStoreByte argument address machine.Address digitAt copy
+doStoreByte argument value Byte digit copy
+doStoreByte result none
+doStoreByte ownedBy none
+doStoreByte cleanedBy none
+doStoreByte borrows none
+doStoreByte catch none
+doStoreByte suppresses none
+
+findCountNext11 is call
+findCountNext11 in textDigits
+findCountNext11 invokes math.addInt64
+findCountNext11 argument left Int64 count copy
+findCountNext11 argument right Int64 one copy
+findCountNext11 result countNext1 Int64
+findCountNext11 ownedBy none
+findCountNext11 cleanedBy none
+findCountNext11 borrows none
+findCountNext11 catch none
+findCountNext11 suppresses none
+
+findPowerNext21 is call
+findPowerNext21 in textDigits
+findPowerNext21 invokes math.addInt64
+findPowerNext21 argument left Int64 power copy
+findPowerNext21 argument right Int64 one copy
+findPowerNext21 result powerNext2 Int64
+findPowerNext21 ownedBy none
+findPowerNext21 cleanedBy none
+findPowerNext21 borrows none
+findPowerNext21 catch none
+findPowerNext21 suppresses none
+
+findAtNext51 is call
+findAtNext51 in textDigits
+findAtNext51 invokes math.addInt64
+findAtNext51 argument left Int64 at copy
+findAtNext51 argument right Int64 one copy
+findAtNext51 result atNext5 Int64
+findAtNext51 ownedBy none
+findAtNext51 cleanedBy none
+findAtNext51 borrows none
+findAtNext51 catch none
+findAtNext51 suppresses none
+
+check5Step1 is call
+check5Step1 in textDigits
+check5Step1 invokes compare.equalByte
+check5Step1 argument left Byte digit copy
+check5Step1 argument right Byte byte46 copy
+check5Step1 result check5Part1 Bool
+check5Step1 ownedBy none
+check5Step1 cleanedBy none
+check5Step1 borrows none
+check5Step1 catch none
+check5Step1 suppresses none
+
+check5Step2 is call
+check5Step2 in textDigits
+check5Step2 invokes logic.not
+check5Step2 argument value Bool seenPoint copy
+check5Step2 result check5Part2 Bool
+check5Step2 ownedBy none
+check5Step2 cleanedBy none
+check5Step2 borrows none
+check5Step2 catch none
+check5Step2 suppresses none
+
+findCheck51 is call
+findCheck51 in textDigits
+findCheck51 invokes logic.and
+findCheck51 argument left Bool check5Part1 copy
+findCheck51 argument right Bool check5Part2 copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+findAtNext61 is call
+findAtNext61 in textDigits
+findAtNext61 invokes math.addInt64
+findAtNext61 argument left Int64 at copy
+findAtNext61 argument right Int64 one copy
+findAtNext61 result atNext6 Int64
+findAtNext61 ownedBy none
+findAtNext61 cleanedBy none
+findAtNext61 borrows none
+findAtNext61 catch none
+findAtNext61 suppresses none
+
+readMarker is call
+readMarker in textDigits
+readMarker invokes clibrary.byteAt
+readMarker argument base machine.Address text copy
+readMarker argument at Int64 at copy
+readMarker result marker Byte
+readMarker ownedBy none
+readMarker cleanedBy none
+readMarker borrows none
+readMarker catch none
+readMarker suppresses none
+
+check6Step1 is call
+check6Step1 in textDigits
+check6Step1 invokes bits.orByte
+check6Step1 argument left Byte marker copy
+check6Step1 argument right Byte byte32 copy
+check6Step1 result check6Part1 Byte
+check6Step1 ownedBy none
+check6Step1 cleanedBy none
+check6Step1 borrows none
+check6Step1 catch none
+check6Step1 suppresses none
+
+findCheck61 is call
+findCheck61 in textDigits
+findCheck61 invokes compare.equalByte
+findCheck61 argument left Byte check6Part1 copy
+findCheck61 argument right Byte byte101 copy
+findCheck61 result check6 Bool
+findCheck61 ownedBy none
+findCheck61 cleanedBy none
+findCheck61 borrows none
+findCheck61 catch none
+findCheck61 suppresses none
+
+findExponentAt1 is call
+findExponentAt1 in textDigits
+findExponentAt1 invokes math.addInt64
+findExponentAt1 argument left Int64 at copy
+findExponentAt1 argument right Int64 one copy
+findExponentAt1 result exponentAt Int64
+findExponentAt1 ownedBy none
+findExponentAt1 cleanedBy none
+findExponentAt1 borrows none
+findExponentAt1 catch none
+findExponentAt1 suppresses none
+
+readExponentFirst is call
+readExponentFirst in textDigits
+readExponentFirst invokes clibrary.byteAt
+readExponentFirst argument base machine.Address text copy
+readExponentFirst argument at Int64 exponentAt copy
+readExponentFirst result exponentFirst Byte
+readExponentFirst ownedBy none
+readExponentFirst cleanedBy none
+readExponentFirst borrows none
+readExponentFirst catch none
+readExponentFirst suppresses none
+
+findCheck71 is call
+findCheck71 in textDigits
+findCheck71 invokes compare.equalByte
+findCheck71 argument left Byte exponentFirst copy
+findCheck71 argument right Byte byte45 copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
+
+findAtNext71 is call
+findAtNext71 in textDigits
+findAtNext71 invokes math.addInt64
+findAtNext71 argument left Int64 exponentAt copy
+findAtNext71 argument right Int64 one copy
+findAtNext71 result atNext7 Int64
+findAtNext71 ownedBy none
+findAtNext71 cleanedBy none
+findAtNext71 borrows none
+findAtNext71 catch none
+findAtNext71 suppresses none
+
+findCheck81 is call
+findCheck81 in textDigits
+findCheck81 invokes compare.equalByte
+findCheck81 argument left Byte exponentFirst copy
+findCheck81 argument right Byte byte43 copy
+findCheck81 result check8 Bool
+findCheck81 ownedBy none
+findCheck81 cleanedBy none
+findCheck81 borrows none
+findCheck81 catch none
+findCheck81 suppresses none
+
+findAtNext81 is call
+findAtNext81 in textDigits
+findAtNext81 invokes math.addInt64
+findAtNext81 argument left Int64 exponentAt copy
+findAtNext81 argument right Int64 one copy
+findAtNext81 result atNext8 Int64
+findAtNext81 ownedBy none
+findAtNext81 cleanedBy none
+findAtNext81 borrows none
+findAtNext81 catch none
+findAtNext81 suppresses none
+
+readExponentDigit is call
+readExponentDigit in textDigits
+readExponentDigit invokes clibrary.byteAt
+readExponentDigit argument base machine.Address text copy
+readExponentDigit argument at Int64 at copy
+readExponentDigit result exponentDigit Byte
+readExponentDigit ownedBy none
+readExponentDigit cleanedBy none
+readExponentDigit borrows none
+readExponentDigit catch none
+readExponentDigit suppresses none
+
+check9Step1 is call
+check9Step1 in textDigits
+check9Step1 invokes compare.greaterOrEqualByte
+check9Step1 argument left Byte exponentDigit copy
+check9Step1 argument right Byte byte48 copy
+check9Step1 result check9Part1 Bool
+check9Step1 ownedBy none
+check9Step1 cleanedBy none
+check9Step1 borrows none
+check9Step1 catch none
+check9Step1 suppresses none
+
+check9Step2 is call
+check9Step2 in textDigits
+check9Step2 invokes compare.lessOrEqualByte
+check9Step2 argument left Byte exponentDigit copy
+check9Step2 argument right Byte byte57 copy
+check9Step2 result check9Part2 Bool
+check9Step2 ownedBy none
+check9Step2 cleanedBy none
+check9Step2 borrows none
+check9Step2 catch none
+check9Step2 suppresses none
+
+findCheck91 is call
+findCheck91 in textDigits
+findCheck91 invokes logic.and
+findCheck91 argument left Bool check9Part1 copy
+findCheck91 argument right Bool check9Part2 copy
+findCheck91 result check9 Bool
+findCheck91 ownedBy none
+findCheck91 cleanedBy none
+findCheck91 borrows none
+findCheck91 catch none
+findCheck91 suppresses none
+
+findCheck101 is call
+findCheck101 in textDigits
+findCheck101 invokes compare.lessThanInt64
+findCheck101 argument left Int64 exponent copy
+findCheck101 argument right Int64 n100000 copy
+findCheck101 result check10 Bool
+findCheck101 ownedBy none
+findCheck101 cleanedBy none
+findCheck101 borrows none
+findCheck101 catch none
+findCheck101 suppresses none
+
+exponentStep1 is call
+exponentStep1 in textDigits
+exponentStep1 invokes math.multiplyInt64
+exponentStep1 argument left Int64 exponent copy
+exponentStep1 argument right Int64 ten copy
+exponentStep1 result exponentPart1 Int64
+exponentStep1 ownedBy none
+exponentStep1 cleanedBy none
+exponentStep1 borrows none
+exponentStep1 catch none
+exponentStep1 suppresses none
+
+exponentStep2 is call
+exponentStep2 in textDigits
+exponentStep2 invokes convert.byteToInt64
+exponentStep2 argument value Byte exponentDigit copy
+exponentStep2 result exponentPart2 Int64
+exponentStep2 ownedBy none
+exponentStep2 cleanedBy none
+exponentStep2 borrows none
+exponentStep2 catch none
+exponentStep2 suppresses none
+
+exponentStep3 is call
+exponentStep3 in textDigits
+exponentStep3 invokes math.addInt64
+exponentStep3 argument left Int64 exponentPart1 copy
+exponentStep3 argument right Int64 exponentPart2 copy
+exponentStep3 result exponentPart3 Int64
+exponentStep3 ownedBy none
+exponentStep3 cleanedBy none
+exponentStep3 borrows none
+exponentStep3 catch none
+exponentStep3 suppresses none
+
+findExponentNext11 is call
+findExponentNext11 in textDigits
+findExponentNext11 invokes math.subtractInt64
+findExponentNext11 argument left Int64 exponentPart3 copy
+findExponentNext11 argument right Int64 n48 copy
+findExponentNext11 result exponentNext1 Int64
+findExponentNext11 ownedBy none
+findExponentNext11 cleanedBy none
+findExponentNext11 borrows none
+findExponentNext11 catch none
+findExponentNext11 suppresses none
+
+findAtNext91 is call
+findAtNext91 in textDigits
+findAtNext91 invokes math.addInt64
+findAtNext91 argument left Int64 at copy
+findAtNext91 argument right Int64 one copy
+findAtNext91 result atNext9 Int64
+findAtNext91 ownedBy none
+findAtNext91 cleanedBy none
+findAtNext91 borrows none
+findAtNext91 catch none
+findAtNext91 suppresses none
+
+powerStep1 is call
+powerStep1 in textDigits
+powerStep1 invokes math.multiplyInt64
+powerStep1 argument left Int64 exponent copy
+powerStep1 argument right Int64 exponentSign copy
+powerStep1 result powerPart1 Int64
+powerStep1 ownedBy none
+powerStep1 cleanedBy none
+powerStep1 borrows none
+powerStep1 catch none
+powerStep1 suppresses none
+
+findPowerNext31 is call
+findPowerNext31 in textDigits
+findPowerNext31 invokes math.addInt64
+findPowerNext31 argument left Int64 power copy
+findPowerNext31 argument right Int64 powerPart1 copy
+findPowerNext31 result powerNext3 Int64
+findPowerNext31 ownedBy none
+findPowerNext31 cleanedBy none
+findPowerNext31 borrows none
+findPowerNext31 catch none
+findPowerNext31 suppresses none
+
+findCheck111 is call
+findCheck111 in textDigits
+findCheck111 invokes compare.equalInt64
+findCheck111 argument left Int64 count copy
+findCheck111 argument right Int64 zero copy
+findCheck111 result check11 Bool
+findCheck111 ownedBy none
+findCheck111 cleanedBy none
+findCheck111 borrows none
+findCheck111 catch none
+findCheck111 suppresses none
+
+lastAtStep1 is call
+lastAtStep1 in textDigits
+lastAtStep1 invokes machine.offset
+lastAtStep1 argument address machine.Address digits copy
+lastAtStep1 argument bytes Int64 count copy
+lastAtStep1 result lastAtPart1 machine.Address
+lastAtStep1 ownedBy none
+lastAtStep1 cleanedBy none
+lastAtStep1 borrows none
+lastAtStep1 catch none
+lastAtStep1 suppresses none
+
+lastAtStep2 is call
+lastAtStep2 in textDigits
+lastAtStep2 invokes math.negateInt64
+lastAtStep2 argument value Int64 one copy
+lastAtStep2 result lastAtPart2 Int64
+lastAtStep2 ownedBy none
+lastAtStep2 cleanedBy none
+lastAtStep2 borrows none
+lastAtStep2 catch none
+lastAtStep2 suppresses none
+
+findLastAt1 is call
+findLastAt1 in textDigits
+findLastAt1 invokes machine.offset
+findLastAt1 argument address machine.Address lastAtPart1 copy
+findLastAt1 argument bytes Int64 lastAtPart2 copy
+findLastAt1 result lastAt machine.Address
+findLastAt1 ownedBy none
+findLastAt1 cleanedBy none
+findLastAt1 borrows none
+findLastAt1 catch none
+findLastAt1 suppresses none
+
+readLast is call
+readLast in textDigits
+readLast invokes machine.loadByte
+readLast argument address machine.Address lastAt copy
+readLast result last Byte
+readLast ownedBy none
+readLast cleanedBy none
+readLast borrows none
+readLast catch none
+readLast suppresses none
+
+findCheck121 is call
+findCheck121 in textDigits
+findCheck121 invokes compare.equalByte
+findCheck121 argument left Byte last copy
+findCheck121 argument right Byte byte48 copy
+findCheck121 result check12 Bool
+findCheck121 ownedBy none
+findCheck121 cleanedBy none
+findCheck121 borrows none
+findCheck121 catch none
+findCheck121 suppresses none
+
+findCountNext21 is call
+findCountNext21 in textDigits
+findCountNext21 invokes math.subtractInt64
+findCountNext21 argument left Int64 count copy
+findCountNext21 argument right Int64 one copy
+findCountNext21 result countNext2 Int64
+findCountNext21 ownedBy none
+findCountNext21 cleanedBy none
+findCountNext21 borrows none
+findCountNext21 catch none
+findCountNext21 suppresses none
+
+findCountAt1 is call
+findCountAt1 in textDigits
+findCountAt1 invokes machine.offset
+findCountAt1 argument address machine.Address result copy
+findCountAt1 argument bytes Int64 eight copy
+findCountAt1 result countAt machine.Address
+findCountAt1 ownedBy none
+findCountAt1 cleanedBy none
+findCountAt1 borrows none
+findCountAt1 catch none
+findCountAt1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in textDigits
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address countAt copy
+doStoreInt64 argument value Int64 count copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+findPowerAt1 is call
+findPowerAt1 in textDigits
+findPowerAt1 invokes machine.offset
+findPowerAt1 argument address machine.Address result copy
+findPowerAt1 argument bytes Int64 sixteen copy
+findPowerAt1 result powerAt machine.Address
+findPowerAt1 ownedBy none
+findPowerAt1 cleanedBy none
+findPowerAt1 borrows none
+findPowerAt1 catch none
+findPowerAt1 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in textDigits
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address powerAt copy
+doStoreInt642 argument value Int64 power copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+compareDigits is operation
+compareDigits purpose "How 0.left * 10^leftPower compares with 0.right * 10^rightPower, both with no leading zero digit and some digit: -1, 0, or 1"
+compareDigits invariant none
+compareDigits typeParameter none
+compareDigits input left machine.Address copied
+compareDigits input leftCount Int64 copied
+compareDigits input leftPower Int64 copied
+compareDigits input right machine.Address copied
+compareDigits input rightCount Int64 copied
+compareDigits input rightPower Int64 copied
+compareDigits output Int64
+compareDigits outputOwnedBy none
+compareDigits raises none
+compareDigits effect use machine.memory
+compareDigits uses memoryAccess
+compareDigits memoryHeap false
+compareDigits async false
+compareDigits maxRecursion none
+compareDigits label begin loopKind none
+compareDigits label begin within none
+compareDigits label powerSame loopKind none
+compareDigits label powerSame within none
+compareDigits label eachDigit loopKind while
+compareDigits label eachDigit within none
+compareDigits label eachDigit maxIterations forever
+compareDigits label compareOne loopKind none
+compareDigits label compareOne within eachDigit
+compareDigits label notLess loopKind none
+compareDigits label notLess within eachDigit
+compareDigits label advance loopKind none
+compareDigits label advance within eachDigit
+compareDigits label giveLess loopKind none
+compareDigits label giveLess within none
+compareDigits label giveMore loopKind none
+compareDigits label giveMore within none
+compareDigits label giveSame loopKind none
+compareDigits label giveSame within none
+compareDigits let at Int64 0 mutable
+compareDigits let less Int64 -1 immutable
+compareDigits let same Int64 0 immutable
+compareDigits let more Int64 1 immutable
+compareDigits let one Int64 1 immutable
+compareDigits at begin do findCheck11
+compareDigits at begin branch if check1 goto giveLess else goto powerSame
+compareDigits at powerSame do findCheck21
+compareDigits at powerSame branch if check2 goto giveMore else goto eachDigit
+compareDigits at eachDigit do check3Step1
+compareDigits at eachDigit do check3Step2
+compareDigits at eachDigit do findCheck31
+compareDigits at eachDigit branch if check3 goto giveSame else goto compareOne
+compareDigits at compareOne do findLeftDigit1
+compareDigits at compareOne do findRightDigit1
+compareDigits at compareOne do findCheck41
+compareDigits at compareOne branch if check4 goto giveLess else goto notLess
+compareDigits at notLess do findCheck51
+compareDigits at notLess branch if check5 goto giveMore else goto advance
+compareDigits at advance do findAtNext11
+compareDigits at advance set at atNext1
+compareDigits at advance goto eachDigit
+compareDigits at giveLess return ok less
+compareDigits at giveMore return ok more
+compareDigits at giveSame return ok same
+
+findCheck11 is call
+findCheck11 in compareDigits
+findCheck11 invokes compare.lessThanInt64
+findCheck11 argument left Int64 leftPower copy
+findCheck11 argument right Int64 rightPower copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findCheck21 is call
+findCheck21 in compareDigits
+findCheck21 invokes compare.greaterThanInt64
+findCheck21 argument left Int64 leftPower copy
+findCheck21 argument right Int64 rightPower copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+check3Step1 is call
+check3Step1 in compareDigits
+check3Step1 invokes compare.greaterOrEqualInt64
+check3Step1 argument left Int64 at copy
+check3Step1 argument right Int64 leftCount copy
+check3Step1 result check3Part1 Bool
+check3Step1 ownedBy none
+check3Step1 cleanedBy none
+check3Step1 borrows none
+check3Step1 catch none
+check3Step1 suppresses none
+
+check3Step2 is call
+check3Step2 in compareDigits
+check3Step2 invokes compare.greaterOrEqualInt64
+check3Step2 argument left Int64 at copy
+check3Step2 argument right Int64 rightCount copy
+check3Step2 result check3Part2 Bool
+check3Step2 ownedBy none
+check3Step2 cleanedBy none
+check3Step2 borrows none
+check3Step2 catch none
+check3Step2 suppresses none
+
+findCheck31 is call
+findCheck31 in compareDigits
+findCheck31 invokes logic.and
+findCheck31 argument left Bool check3Part1 copy
+findCheck31 argument right Bool check3Part2 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+findLeftDigit1 is call
+findLeftDigit1 in compareDigits
+findLeftDigit1 invokes digitOrZero
+findLeftDigit1 argument digits machine.Address left copy
+findLeftDigit1 argument count Int64 leftCount copy
+findLeftDigit1 argument at Int64 at copy
+findLeftDigit1 result leftDigit Byte
+findLeftDigit1 ownedBy none
+findLeftDigit1 cleanedBy none
+findLeftDigit1 borrows none
+findLeftDigit1 catch none
+findLeftDigit1 suppresses none
+
+findRightDigit1 is call
+findRightDigit1 in compareDigits
+findRightDigit1 invokes digitOrZero
+findRightDigit1 argument digits machine.Address right copy
+findRightDigit1 argument count Int64 rightCount copy
+findRightDigit1 argument at Int64 at copy
+findRightDigit1 result rightDigit Byte
+findRightDigit1 ownedBy none
+findRightDigit1 cleanedBy none
+findRightDigit1 borrows none
+findRightDigit1 catch none
+findRightDigit1 suppresses none
+
+findCheck41 is call
+findCheck41 in compareDigits
+findCheck41 invokes compare.lessThanByte
+findCheck41 argument left Byte leftDigit copy
+findCheck41 argument right Byte rightDigit copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+findCheck51 is call
+findCheck51 in compareDigits
+findCheck51 invokes compare.greaterThanByte
+findCheck51 argument left Byte leftDigit copy
+findCheck51 argument right Byte rightDigit copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+findAtNext11 is call
+findAtNext11 in compareDigits
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+digitOrZero is operation
+digitOrZero purpose "The ASCII digit at a position of digits, or `0` past their count"
+digitOrZero invariant none
+digitOrZero typeParameter none
+digitOrZero input digits machine.Address copied
+digitOrZero input count Int64 copied
+digitOrZero input at Int64 copied
+digitOrZero output Byte
+digitOrZero outputOwnedBy none
+digitOrZero raises none
+digitOrZero effect use machine.memory
+digitOrZero uses memoryAccess
+digitOrZero memoryHeap false
+digitOrZero async false
+digitOrZero maxRecursion none
+digitOrZero label begin loopKind none
+digitOrZero label begin within none
+digitOrZero label read loopKind none
+digitOrZero label read within none
+digitOrZero label pad loopKind none
+digitOrZero label pad within none
+digitOrZero let zeroDigit Byte 48 immutable
+digitOrZero at begin do findCheck11
+digitOrZero at begin branch if check1 goto read else goto pad
+digitOrZero at read do readValue
+digitOrZero at read return ok value
+digitOrZero at pad return ok zeroDigit
+
+findCheck11 is call
+findCheck11 in digitOrZero
+findCheck11 invokes compare.lessThanInt64
+findCheck11 argument left Int64 at copy
+findCheck11 argument right Int64 count copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readValue is call
+readValue in digitOrZero
+readValue invokes clibrary.byteAt
+readValue argument base machine.Address digits copy
+readValue argument at Int64 at copy
+readValue result value Byte
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+sideOf is operation
+sideOf purpose "How (high * 2^64 + low) * 2^exponent, nonzero, compares with a text's value 0.digits * 10^power: -1 below it, 0 equal, 1 above"
+sideOf invariant none
+sideOf typeParameter none
+sideOf input high UInt64 copied
+sideOf input low UInt64 copied
+sideOf input exponent Int64 copied
+sideOf input digits machine.Address copied
+sideOf input count Int64 copied
+sideOf input power Int64 copied
+sideOf output Int64
+sideOf outputOwnedBy none
+sideOf raises none
+sideOf effect use machine.memory
+sideOf effect use system.calls
+sideOf uses memoryAccess
+sideOf uses systemCalls
+sideOf memoryHeap false
+sideOf async false
+sideOf maxRecursion none
+sideOf label begin loopKind none
+sideOf label begin within none
+sideOf let n24 Int64 24 immutable
+sideOf let eight Int64 8 immutable
+sideOf let sixteen Int64 16 immutable
+sideOf at begin do readMade
+sideOf at begin do doDecimalDigits
+sideOf at begin do readCandidate
+sideOf at begin do findCandidateCountAt1
+sideOf at begin do readCandidateCount
+sideOf at begin do findCandidateFractionAt1
+sideOf at begin do readCandidateFraction
+sideOf at begin do sideStep1
+sideOf at begin do findSide1
+sideOf at begin do doGive
+sideOf at begin do doGive2
+sideOf at begin return ok side
+
+readMade is call
+readMade in sideOf
+readMade invokes heap.take
+readMade argument bytes Int64 n24 copy
+readMade result made machine.Address
+readMade ownedBy none
+readMade cleanedBy none
+readMade borrows none
+readMade catch none
+readMade suppresses none
+
+doDecimalDigits is call
+doDecimalDigits in sideOf
+doDecimalDigits invokes decimalDigits
+doDecimalDigits argument high UInt64 high copy
+doDecimalDigits argument low UInt64 low copy
+doDecimalDigits argument exponent Int64 exponent copy
+doDecimalDigits argument result machine.Address made copy
+doDecimalDigits result none
+doDecimalDigits ownedBy none
+doDecimalDigits cleanedBy none
+doDecimalDigits borrows none
+doDecimalDigits catch none
+doDecimalDigits suppresses none
+
+readCandidate is call
+readCandidate in sideOf
+readCandidate invokes machine.loadAddress
+readCandidate argument address machine.Address made copy
+readCandidate result candidate machine.Address
+readCandidate ownedBy none
+readCandidate cleanedBy none
+readCandidate borrows none
+readCandidate catch none
+readCandidate suppresses none
+
+findCandidateCountAt1 is call
+findCandidateCountAt1 in sideOf
+findCandidateCountAt1 invokes machine.offset
+findCandidateCountAt1 argument address machine.Address made copy
+findCandidateCountAt1 argument bytes Int64 eight copy
+findCandidateCountAt1 result candidateCountAt machine.Address
+findCandidateCountAt1 ownedBy none
+findCandidateCountAt1 cleanedBy none
+findCandidateCountAt1 borrows none
+findCandidateCountAt1 catch none
+findCandidateCountAt1 suppresses none
+
+readCandidateCount is call
+readCandidateCount in sideOf
+readCandidateCount invokes machine.loadInt64
+readCandidateCount argument address machine.Address candidateCountAt copy
+readCandidateCount result candidateCount Int64
+readCandidateCount ownedBy none
+readCandidateCount cleanedBy none
+readCandidateCount borrows none
+readCandidateCount catch none
+readCandidateCount suppresses none
+
+findCandidateFractionAt1 is call
+findCandidateFractionAt1 in sideOf
+findCandidateFractionAt1 invokes machine.offset
+findCandidateFractionAt1 argument address machine.Address made copy
+findCandidateFractionAt1 argument bytes Int64 sixteen copy
+findCandidateFractionAt1 result candidateFractionAt machine.Address
+findCandidateFractionAt1 ownedBy none
+findCandidateFractionAt1 cleanedBy none
+findCandidateFractionAt1 borrows none
+findCandidateFractionAt1 catch none
+findCandidateFractionAt1 suppresses none
+
+readCandidateFraction is call
+readCandidateFraction in sideOf
+readCandidateFraction invokes machine.loadInt64
+readCandidateFraction argument address machine.Address candidateFractionAt copy
+readCandidateFraction result candidateFraction Int64
+readCandidateFraction ownedBy none
+readCandidateFraction cleanedBy none
+readCandidateFraction borrows none
+readCandidateFraction catch none
+readCandidateFraction suppresses none
+
+sideStep1 is call
+sideStep1 in sideOf
+sideStep1 invokes math.subtractInt64
+sideStep1 argument left Int64 candidateCount copy
+sideStep1 argument right Int64 candidateFraction copy
+sideStep1 result sidePart1 Int64
+sideStep1 ownedBy none
+sideStep1 cleanedBy none
+sideStep1 borrows none
+sideStep1 catch none
+sideStep1 suppresses none
+
+findSide1 is call
+findSide1 in sideOf
+findSide1 invokes compareDigits
+findSide1 argument left machine.Address candidate copy
+findSide1 argument leftCount Int64 candidateCount copy
+findSide1 argument leftPower Int64 sidePart1 copy
+findSide1 argument right machine.Address digits copy
+findSide1 argument rightCount Int64 count copy
+findSide1 argument rightPower Int64 power copy
+findSide1 result side Int64
+findSide1 ownedBy none
+findSide1 cleanedBy none
+findSide1 borrows none
+findSide1 catch none
+findSide1 suppresses none
+
+doGive is call
+doGive in sideOf
+doGive invokes heap.give
+doGive argument block machine.Address candidate copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in sideOf
+doGive2 invokes heap.give
+doGive2 argument block machine.Address made copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+decimalParts is operation
+decimalParts purpose "Put a decimal value 0.digits * 10^power (nonzero) in parts for a layout: the value's bits from its leading one down to two past the layout's precision, cut toward zero, and its power of two; gives 1 when the cut dropped something, else 0. A value far past the largest or below the least subnormal is put as a power of two past it"
+decimalParts invariant none
+decimalParts typeParameter none
+decimalParts input digits machine.Address copied
+decimalParts input count Int64 copied
+decimalParts input power Int64 copied
+decimalParts input parts machine.Address copied
+decimalParts input layout Int64 copied
+decimalParts output Int64
+decimalParts outputOwnedBy none
+decimalParts raises none
+decimalParts effect use machine.memory
+decimalParts effect use system.calls
+decimalParts uses memoryAccess
+decimalParts uses systemCalls
+decimalParts memoryHeap false
+decimalParts async false
+decimalParts maxRecursion none
+decimalParts label begin loopKind none
+decimalParts label begin within none
+decimalParts label huge loopKind none
+decimalParts label huge within none
+decimalParts label notHuge loopKind none
+decimalParts label notHuge within none
+decimalParts label tiny loopKind none
+decimalParts label tiny within none
+decimalParts label search loopKind none
+decimalParts label search within none
+decimalParts label lower loopKind while
+decimalParts label lower within none
+decimalParts label lower maxIterations forever
+decimalParts label stepDown loopKind none
+decimalParts label stepDown within lower
+decimalParts label raise loopKind while
+decimalParts label raise within none
+decimalParts label raise maxIterations forever
+decimalParts label stepUp loopKind none
+decimalParts label stepUp within raise
+decimalParts label found loopKind none
+decimalParts label found within none
+decimalParts label topHigh loopKind none
+decimalParts label topHigh within none
+decimalParts label topLow loopKind none
+decimalParts label topLow within none
+decimalParts label eachBit loopKind while
+decimalParts label eachBit within none
+decimalParts label eachBit maxIterations forever
+decimalParts label tryBit loopKind none
+decimalParts label tryBit within eachBit
+decimalParts label bitHigh loopKind none
+decimalParts label bitHigh within eachBit
+decimalParts label bitLow loopKind none
+decimalParts label bitLow within eachBit
+decimalParts label compareTrial loopKind none
+decimalParts label compareTrial within eachBit
+decimalParts label keepBit loopKind none
+decimalParts label keepBit within eachBit
+decimalParts label nextBit loopKind none
+decimalParts label nextBit within eachBit
+decimalParts label exactCut loopKind none
+decimalParts label exactCut within none
+decimalParts label cutDone loopKind none
+decimalParts label cutDone within none
+decimalParts label lastCheck loopKind none
+decimalParts label lastCheck within none
+decimalParts label exactLast loopKind none
+decimalParts label exactLast within none
+decimalParts label give loopKind none
+decimalParts label give within none
+decimalParts let top Int64 0 mutable
+decimalParts let bit Int64 0 mutable
+decimalParts let high UInt64 0 mutable
+decimalParts let low UInt64 0 mutable
+decimalParts let trialHigh UInt64 0 mutable
+decimalParts let trialLow UInt64 0 mutable
+decimalParts let dropped Int64 1 mutable
+decimalParts let exactly Int64 0 immutable
+decimalParts let oneBit UInt64 1 immutable
+decimalParts let noBits UInt64 0 immutable
+decimalParts let two Int64 2 immutable
+decimalParts let one Int64 1 immutable
+decimalParts let n3321928 Int64 3321928 immutable
+decimalParts let n1000000 Int64 1000000 immutable
+decimalParts let four Int64 4 immutable
+decimalParts let sixteen Int64 16 immutable
+decimalParts let eight Int64 8 immutable
+decimalParts let zero Int64 0 immutable
+decimalParts let sixtyFour Int64 64 immutable
+decimalParts let n65 Int64 65 immutable
+decimalParts at begin do readPrecision
+decimalParts at begin do readLeast
+decimalParts at begin do readGreatest
+decimalParts at begin do findWidth1
+decimalParts at begin do aboveStep1
+decimalParts at begin do aboveStep2
+decimalParts at begin do findAbove1
+decimalParts at begin do check1Step1
+decimalParts at begin do check1Step2
+decimalParts at begin do findCheck11
+decimalParts at begin branch if check1 goto huge else goto notHuge
+decimalParts at huge do doSetSignificand
+decimalParts at huge do doSetPartStep1
+decimalParts at huge do doSetPartStep2
+decimalParts at huge do doSetPart
+decimalParts at huge return ok dropped
+decimalParts at notHuge do belowStep1
+decimalParts at notHuge do findBelow1
+decimalParts at notHuge do check2Step1
+decimalParts at notHuge do findCheck21
+decimalParts at notHuge branch if check2 goto tiny else goto search
+decimalParts at tiny do doSetSignificand2
+decimalParts at tiny do doSetPartStep3
+decimalParts at tiny do doSetPart2
+decimalParts at tiny return ok dropped
+decimalParts at search set top above
+decimalParts at search goto lower
+decimalParts at lower do findDownSide1
+decimalParts at lower do findCheck31
+decimalParts at lower branch if check3 goto stepDown else goto raise
+decimalParts at stepDown do findTopNext11
+decimalParts at stepDown set top topNext1
+decimalParts at stepDown goto lower
+decimalParts at raise do upSideStep1
+decimalParts at raise do findUpSide1
+decimalParts at raise do findCheck41
+decimalParts at raise branch if check4 goto stepUp else goto found
+decimalParts at stepUp do findTopNext21
+decimalParts at stepUp set top topNext2
+decimalParts at stepUp goto raise
+decimalParts at found do scaleStep1
+decimalParts at found do findScale1
+decimalParts at found do findBitNext11
+decimalParts at found set bit bitNext1
+decimalParts at found do check5Step1
+decimalParts at found do findCheck51
+decimalParts at found branch if check5 goto topHigh else goto topLow
+decimalParts at topHigh do highStep1
+decimalParts at topHigh do findHighNext11
+decimalParts at topHigh set high highNext1
+decimalParts at topHigh goto eachBit
+decimalParts at topLow do lowStep1
+decimalParts at topLow do findLowNext11
+decimalParts at topLow set low lowNext1
+decimalParts at topLow goto eachBit
+decimalParts at eachBit do findCheck61
+decimalParts at eachBit branch if check6 goto cutDone else goto tryBit
+decimalParts at tryBit do findCheck71
+decimalParts at tryBit branch if check7 goto bitHigh else goto bitLow
+decimalParts at bitHigh do trialHighStep1
+decimalParts at bitHigh do trialHighStep2
+decimalParts at bitHigh do findTrialHighNext11
+decimalParts at bitHigh set trialHigh trialHighNext1
+decimalParts at bitHigh set trialLow low
+decimalParts at bitHigh goto compareTrial
+decimalParts at bitLow set trialHigh high
+decimalParts at bitLow do trialLowStep1
+decimalParts at bitLow do findTrialLowNext11
+decimalParts at bitLow set trialLow trialLowNext1
+decimalParts at bitLow goto compareTrial
+decimalParts at compareTrial do findSide1
+decimalParts at compareTrial do findCheck81
+decimalParts at compareTrial branch if check8 goto keepBit else goto nextBit
+decimalParts at keepBit set high trialHigh
+decimalParts at keepBit set low trialLow
+decimalParts at keepBit do findCheck91
+decimalParts at keepBit branch if check9 goto exactCut else goto nextBit
+decimalParts at nextBit do findBitNext21
+decimalParts at nextBit set bit bitNext2
+decimalParts at nextBit goto eachBit
+decimalParts at exactCut set dropped exactly
+decimalParts at exactCut goto cutDone
+decimalParts at cutDone do doSetSignificand3
+decimalParts at cutDone do doSetPart3
+decimalParts at cutDone do findCheck101
+decimalParts at cutDone branch if check10 goto lastCheck else goto give
+decimalParts at lastCheck do findLastSide1
+decimalParts at lastCheck do findCheck111
+decimalParts at lastCheck branch if check11 goto exactLast else goto give
+decimalParts at exactLast set dropped exactly
+decimalParts at exactLast goto give
+decimalParts at give return ok dropped
+
+readPrecision is call
+readPrecision in decimalParts
+readPrecision invokes clong.precisionOf
+readPrecision argument kind Int64 layout copy
+readPrecision result precision Int64
+readPrecision ownedBy none
+readPrecision cleanedBy none
+readPrecision borrows none
+readPrecision catch none
+readPrecision suppresses none
+
+readLeast is call
+readLeast in decimalParts
+readLeast invokes clong.leastPower
+readLeast argument kind Int64 layout copy
+readLeast result least Int64
+readLeast ownedBy none
+readLeast cleanedBy none
+readLeast borrows none
+readLeast catch none
+readLeast suppresses none
+
+readGreatest is call
+readGreatest in decimalParts
+readGreatest invokes clong.greatestPower
+readGreatest argument kind Int64 layout copy
+readGreatest result greatest Int64
+readGreatest ownedBy none
+readGreatest cleanedBy none
+readGreatest borrows none
+readGreatest catch none
+readGreatest suppresses none
+
+findWidth1 is call
+findWidth1 in decimalParts
+findWidth1 invokes math.addInt64
+findWidth1 argument left Int64 precision copy
+findWidth1 argument right Int64 two copy
+findWidth1 result width Int64
+findWidth1 ownedBy none
+findWidth1 cleanedBy none
+findWidth1 borrows none
+findWidth1 catch none
+findWidth1 suppresses none
+
+aboveStep1 is call
+aboveStep1 in decimalParts
+aboveStep1 invokes math.subtractInt64
+aboveStep1 argument left Int64 power copy
+aboveStep1 argument right Int64 one copy
+aboveStep1 result abovePart1 Int64
+aboveStep1 ownedBy none
+aboveStep1 cleanedBy none
+aboveStep1 borrows none
+aboveStep1 catch none
+aboveStep1 suppresses none
+
+aboveStep2 is call
+aboveStep2 in decimalParts
+aboveStep2 invokes math.multiplyInt64
+aboveStep2 argument left Int64 abovePart1 copy
+aboveStep2 argument right Int64 n3321928 copy
+aboveStep2 result abovePart2 Int64
+aboveStep2 ownedBy none
+aboveStep2 cleanedBy none
+aboveStep2 borrows none
+aboveStep2 catch none
+aboveStep2 suppresses none
+
+findAbove1 is call
+findAbove1 in decimalParts
+findAbove1 invokes math.divideInt64
+findAbove1 argument left Int64 abovePart2 copy
+findAbove1 argument right Int64 n1000000 copy
+findAbove1 result above Int64
+findAbove1 ownedBy none
+findAbove1 cleanedBy none
+findAbove1 borrows none
+findAbove1 catch none
+findAbove1 suppresses none
+
+check1Step1 is call
+check1Step1 in decimalParts
+check1Step1 invokes math.addInt64
+check1Step1 argument left Int64 greatest copy
+check1Step1 argument right Int64 precision copy
+check1Step1 result check1Part1 Int64
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in decimalParts
+check1Step2 invokes math.addInt64
+check1Step2 argument left Int64 check1Part1 copy
+check1Step2 argument right Int64 four copy
+check1Step2 result check1Part2 Int64
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+findCheck11 is call
+findCheck11 in decimalParts
+findCheck11 invokes compare.greaterThanInt64
+findCheck11 argument left Int64 above copy
+findCheck11 argument right Int64 check1Part2 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doSetSignificand is call
+doSetSignificand in decimalParts
+doSetSignificand invokes clong.setSignificand
+doSetSignificand argument parts machine.Address parts copy
+doSetSignificand argument high UInt64 noBits copy
+doSetSignificand argument low UInt64 oneBit copy
+doSetSignificand result none
+doSetSignificand ownedBy none
+doSetSignificand cleanedBy none
+doSetSignificand borrows none
+doSetSignificand catch none
+doSetSignificand suppresses none
+
+doSetPartStep1 is call
+doSetPartStep1 in decimalParts
+doSetPartStep1 invokes math.addInt64
+doSetPartStep1 argument left Int64 greatest copy
+doSetPartStep1 argument right Int64 precision copy
+doSetPartStep1 result doSetPartPart1 Int64
+doSetPartStep1 ownedBy none
+doSetPartStep1 cleanedBy none
+doSetPartStep1 borrows none
+doSetPartStep1 catch none
+doSetPartStep1 suppresses none
+
+doSetPartStep2 is call
+doSetPartStep2 in decimalParts
+doSetPartStep2 invokes math.addInt64
+doSetPartStep2 argument left Int64 doSetPartPart1 copy
+doSetPartStep2 argument right Int64 eight copy
+doSetPartStep2 result doSetPartPart2 Int64
+doSetPartStep2 ownedBy none
+doSetPartStep2 cleanedBy none
+doSetPartStep2 borrows none
+doSetPartStep2 catch none
+doSetPartStep2 suppresses none
+
+doSetPart is call
+doSetPart in decimalParts
+doSetPart invokes clong.setPart
+doSetPart argument parts machine.Address parts copy
+doSetPart argument offset Int64 sixteen copy
+doSetPart argument value Int64 doSetPartPart2 copy
+doSetPart result none
+doSetPart ownedBy none
+doSetPart cleanedBy none
+doSetPart borrows none
+doSetPart catch none
+doSetPart suppresses none
+
+belowStep1 is call
+belowStep1 in decimalParts
+belowStep1 invokes math.multiplyInt64
+belowStep1 argument left Int64 power copy
+belowStep1 argument right Int64 n3321928 copy
+belowStep1 result belowPart1 Int64
+belowStep1 ownedBy none
+belowStep1 cleanedBy none
+belowStep1 borrows none
+belowStep1 catch none
+belowStep1 suppresses none
+
+findBelow1 is call
+findBelow1 in decimalParts
+findBelow1 invokes math.divideInt64
+findBelow1 argument left Int64 belowPart1 copy
+findBelow1 argument right Int64 n1000000 copy
+findBelow1 result below Int64
+findBelow1 ownedBy none
+findBelow1 cleanedBy none
+findBelow1 borrows none
+findBelow1 catch none
+findBelow1 suppresses none
+
+check2Step1 is call
+check2Step1 in decimalParts
+check2Step1 invokes math.subtractInt64
+check2Step1 argument left Int64 least copy
+check2Step1 argument right Int64 four copy
+check2Step1 result check2Part1 Int64
+check2Step1 ownedBy none
+check2Step1 cleanedBy none
+check2Step1 borrows none
+check2Step1 catch none
+check2Step1 suppresses none
+
+findCheck21 is call
+findCheck21 in decimalParts
+findCheck21 invokes compare.lessThanInt64
+findCheck21 argument left Int64 below copy
+findCheck21 argument right Int64 check2Part1 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doSetSignificand2 is call
+doSetSignificand2 in decimalParts
+doSetSignificand2 invokes clong.setSignificand
+doSetSignificand2 argument parts machine.Address parts copy
+doSetSignificand2 argument high UInt64 noBits copy
+doSetSignificand2 argument low UInt64 oneBit copy
+doSetSignificand2 result none
+doSetSignificand2 ownedBy none
+doSetSignificand2 cleanedBy none
+doSetSignificand2 borrows none
+doSetSignificand2 catch none
+doSetSignificand2 suppresses none
+
+doSetPartStep3 is call
+doSetPartStep3 in decimalParts
+doSetPartStep3 invokes math.subtractInt64
+doSetPartStep3 argument left Int64 least copy
+doSetPartStep3 argument right Int64 eight copy
+doSetPartStep3 result doSetPartPart3 Int64
+doSetPartStep3 ownedBy none
+doSetPartStep3 cleanedBy none
+doSetPartStep3 borrows none
+doSetPartStep3 catch none
+doSetPartStep3 suppresses none
+
+doSetPart2 is call
+doSetPart2 in decimalParts
+doSetPart2 invokes clong.setPart
+doSetPart2 argument parts machine.Address parts copy
+doSetPart2 argument offset Int64 sixteen copy
+doSetPart2 argument value Int64 doSetPartPart3 copy
+doSetPart2 result none
+doSetPart2 ownedBy none
+doSetPart2 cleanedBy none
+doSetPart2 borrows none
+doSetPart2 catch none
+doSetPart2 suppresses none
+
+findDownSide1 is call
+findDownSide1 in decimalParts
+findDownSide1 invokes sideOf
+findDownSide1 argument high UInt64 noBits copy
+findDownSide1 argument low UInt64 oneBit copy
+findDownSide1 argument exponent Int64 top copy
+findDownSide1 argument digits machine.Address digits copy
+findDownSide1 argument count Int64 count copy
+findDownSide1 argument power Int64 power copy
+findDownSide1 result downSide Int64
+findDownSide1 ownedBy none
+findDownSide1 cleanedBy none
+findDownSide1 borrows none
+findDownSide1 catch none
+findDownSide1 suppresses none
+
+findCheck31 is call
+findCheck31 in decimalParts
+findCheck31 invokes compare.greaterThanInt64
+findCheck31 argument left Int64 downSide copy
+findCheck31 argument right Int64 zero copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+findTopNext11 is call
+findTopNext11 in decimalParts
+findTopNext11 invokes math.subtractInt64
+findTopNext11 argument left Int64 top copy
+findTopNext11 argument right Int64 one copy
+findTopNext11 result topNext1 Int64
+findTopNext11 ownedBy none
+findTopNext11 cleanedBy none
+findTopNext11 borrows none
+findTopNext11 catch none
+findTopNext11 suppresses none
+
+upSideStep1 is call
+upSideStep1 in decimalParts
+upSideStep1 invokes math.addInt64
+upSideStep1 argument left Int64 top copy
+upSideStep1 argument right Int64 one copy
+upSideStep1 result upSidePart1 Int64
+upSideStep1 ownedBy none
+upSideStep1 cleanedBy none
+upSideStep1 borrows none
+upSideStep1 catch none
+upSideStep1 suppresses none
+
+findUpSide1 is call
+findUpSide1 in decimalParts
+findUpSide1 invokes sideOf
+findUpSide1 argument high UInt64 noBits copy
+findUpSide1 argument low UInt64 oneBit copy
+findUpSide1 argument exponent Int64 upSidePart1 copy
+findUpSide1 argument digits machine.Address digits copy
+findUpSide1 argument count Int64 count copy
+findUpSide1 argument power Int64 power copy
+findUpSide1 result upSide Int64
+findUpSide1 ownedBy none
+findUpSide1 cleanedBy none
+findUpSide1 borrows none
+findUpSide1 catch none
+findUpSide1 suppresses none
+
+findCheck41 is call
+findCheck41 in decimalParts
+findCheck41 invokes compare.lessOrEqualInt64
+findCheck41 argument left Int64 upSide copy
+findCheck41 argument right Int64 zero copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+findTopNext21 is call
+findTopNext21 in decimalParts
+findTopNext21 invokes math.addInt64
+findTopNext21 argument left Int64 top copy
+findTopNext21 argument right Int64 one copy
+findTopNext21 result topNext2 Int64
+findTopNext21 ownedBy none
+findTopNext21 cleanedBy none
+findTopNext21 borrows none
+findTopNext21 catch none
+findTopNext21 suppresses none
+
+scaleStep1 is call
+scaleStep1 in decimalParts
+scaleStep1 invokes math.subtractInt64
+scaleStep1 argument left Int64 width copy
+scaleStep1 argument right Int64 one copy
+scaleStep1 result scalePart1 Int64
+scaleStep1 ownedBy none
+scaleStep1 cleanedBy none
+scaleStep1 borrows none
+scaleStep1 catch none
+scaleStep1 suppresses none
+
+findScale1 is call
+findScale1 in decimalParts
+findScale1 invokes math.subtractInt64
+findScale1 argument left Int64 top copy
+findScale1 argument right Int64 scalePart1 copy
+findScale1 result scale Int64
+findScale1 ownedBy none
+findScale1 cleanedBy none
+findScale1 borrows none
+findScale1 catch none
+findScale1 suppresses none
+
+findBitNext11 is call
+findBitNext11 in decimalParts
+findBitNext11 invokes math.subtractInt64
+findBitNext11 argument left Int64 width copy
+findBitNext11 argument right Int64 two copy
+findBitNext11 result bitNext1 Int64
+findBitNext11 ownedBy none
+findBitNext11 cleanedBy none
+findBitNext11 borrows none
+findBitNext11 catch none
+findBitNext11 suppresses none
+
+check5Step1 is call
+check5Step1 in decimalParts
+check5Step1 invokes math.subtractInt64
+check5Step1 argument left Int64 width copy
+check5Step1 argument right Int64 one copy
+check5Step1 result check5Part1 Int64
+check5Step1 ownedBy none
+check5Step1 cleanedBy none
+check5Step1 borrows none
+check5Step1 catch none
+check5Step1 suppresses none
+
+findCheck51 is call
+findCheck51 in decimalParts
+findCheck51 invokes compare.greaterOrEqualInt64
+findCheck51 argument left Int64 check5Part1 copy
+findCheck51 argument right Int64 sixtyFour copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+highStep1 is call
+highStep1 in decimalParts
+highStep1 invokes math.subtractInt64
+highStep1 argument left Int64 width copy
+highStep1 argument right Int64 n65 copy
+highStep1 result highPart1 Int64
+highStep1 ownedBy none
+highStep1 cleanedBy none
+highStep1 borrows none
+highStep1 catch none
+highStep1 suppresses none
+
+findHighNext11 is call
+findHighNext11 in decimalParts
+findHighNext11 invokes bits.shiftLeftUInt64
+findHighNext11 argument value UInt64 oneBit copy
+findHighNext11 argument amount Int64 highPart1 copy
+findHighNext11 result highNext1 UInt64
+findHighNext11 ownedBy none
+findHighNext11 cleanedBy none
+findHighNext11 borrows none
+findHighNext11 catch none
+findHighNext11 suppresses none
+
+lowStep1 is call
+lowStep1 in decimalParts
+lowStep1 invokes math.subtractInt64
+lowStep1 argument left Int64 width copy
+lowStep1 argument right Int64 one copy
+lowStep1 result lowPart1 Int64
+lowStep1 ownedBy none
+lowStep1 cleanedBy none
+lowStep1 borrows none
+lowStep1 catch none
+lowStep1 suppresses none
+
+findLowNext11 is call
+findLowNext11 in decimalParts
+findLowNext11 invokes bits.shiftLeftUInt64
+findLowNext11 argument value UInt64 oneBit copy
+findLowNext11 argument amount Int64 lowPart1 copy
+findLowNext11 result lowNext1 UInt64
+findLowNext11 ownedBy none
+findLowNext11 cleanedBy none
+findLowNext11 borrows none
+findLowNext11 catch none
+findLowNext11 suppresses none
+
+findCheck61 is call
+findCheck61 in decimalParts
+findCheck61 invokes compare.lessThanInt64
+findCheck61 argument left Int64 bit copy
+findCheck61 argument right Int64 zero copy
+findCheck61 result check6 Bool
+findCheck61 ownedBy none
+findCheck61 cleanedBy none
+findCheck61 borrows none
+findCheck61 catch none
+findCheck61 suppresses none
+
+findCheck71 is call
+findCheck71 in decimalParts
+findCheck71 invokes compare.greaterOrEqualInt64
+findCheck71 argument left Int64 bit copy
+findCheck71 argument right Int64 sixtyFour copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
+
+trialHighStep1 is call
+trialHighStep1 in decimalParts
+trialHighStep1 invokes math.subtractInt64
+trialHighStep1 argument left Int64 bit copy
+trialHighStep1 argument right Int64 sixtyFour copy
+trialHighStep1 result trialHighPart1 Int64
+trialHighStep1 ownedBy none
+trialHighStep1 cleanedBy none
+trialHighStep1 borrows none
+trialHighStep1 catch none
+trialHighStep1 suppresses none
+
+trialHighStep2 is call
+trialHighStep2 in decimalParts
+trialHighStep2 invokes bits.shiftLeftUInt64
+trialHighStep2 argument value UInt64 oneBit copy
+trialHighStep2 argument amount Int64 trialHighPart1 copy
+trialHighStep2 result trialHighPart2 UInt64
+trialHighStep2 ownedBy none
+trialHighStep2 cleanedBy none
+trialHighStep2 borrows none
+trialHighStep2 catch none
+trialHighStep2 suppresses none
+
+findTrialHighNext11 is call
+findTrialHighNext11 in decimalParts
+findTrialHighNext11 invokes bits.orUInt64
+findTrialHighNext11 argument left UInt64 high copy
+findTrialHighNext11 argument right UInt64 trialHighPart2 copy
+findTrialHighNext11 result trialHighNext1 UInt64
+findTrialHighNext11 ownedBy none
+findTrialHighNext11 cleanedBy none
+findTrialHighNext11 borrows none
+findTrialHighNext11 catch none
+findTrialHighNext11 suppresses none
+
+trialLowStep1 is call
+trialLowStep1 in decimalParts
+trialLowStep1 invokes bits.shiftLeftUInt64
+trialLowStep1 argument value UInt64 oneBit copy
+trialLowStep1 argument amount Int64 bit copy
+trialLowStep1 result trialLowPart1 UInt64
+trialLowStep1 ownedBy none
+trialLowStep1 cleanedBy none
+trialLowStep1 borrows none
+trialLowStep1 catch none
+trialLowStep1 suppresses none
+
+findTrialLowNext11 is call
+findTrialLowNext11 in decimalParts
+findTrialLowNext11 invokes bits.orUInt64
+findTrialLowNext11 argument left UInt64 low copy
+findTrialLowNext11 argument right UInt64 trialLowPart1 copy
+findTrialLowNext11 result trialLowNext1 UInt64
+findTrialLowNext11 ownedBy none
+findTrialLowNext11 cleanedBy none
+findTrialLowNext11 borrows none
+findTrialLowNext11 catch none
+findTrialLowNext11 suppresses none
+
+findSide1 is call
+findSide1 in decimalParts
+findSide1 invokes sideOf
+findSide1 argument high UInt64 trialHigh copy
+findSide1 argument low UInt64 trialLow copy
+findSide1 argument exponent Int64 scale copy
+findSide1 argument digits machine.Address digits copy
+findSide1 argument count Int64 count copy
+findSide1 argument power Int64 power copy
+findSide1 result side Int64
+findSide1 ownedBy none
+findSide1 cleanedBy none
+findSide1 borrows none
+findSide1 catch none
+findSide1 suppresses none
+
+findCheck81 is call
+findCheck81 in decimalParts
+findCheck81 invokes compare.lessOrEqualInt64
+findCheck81 argument left Int64 side copy
+findCheck81 argument right Int64 zero copy
+findCheck81 result check8 Bool
+findCheck81 ownedBy none
+findCheck81 cleanedBy none
+findCheck81 borrows none
+findCheck81 catch none
+findCheck81 suppresses none
+
+findCheck91 is call
+findCheck91 in decimalParts
+findCheck91 invokes compare.equalInt64
+findCheck91 argument left Int64 side copy
+findCheck91 argument right Int64 zero copy
+findCheck91 result check9 Bool
+findCheck91 ownedBy none
+findCheck91 cleanedBy none
+findCheck91 borrows none
+findCheck91 catch none
+findCheck91 suppresses none
+
+findBitNext21 is call
+findBitNext21 in decimalParts
+findBitNext21 invokes math.subtractInt64
+findBitNext21 argument left Int64 bit copy
+findBitNext21 argument right Int64 one copy
+findBitNext21 result bitNext2 Int64
+findBitNext21 ownedBy none
+findBitNext21 cleanedBy none
+findBitNext21 borrows none
+findBitNext21 catch none
+findBitNext21 suppresses none
+
+doSetSignificand3 is call
+doSetSignificand3 in decimalParts
+doSetSignificand3 invokes clong.setSignificand
+doSetSignificand3 argument parts machine.Address parts copy
+doSetSignificand3 argument high UInt64 high copy
+doSetSignificand3 argument low UInt64 low copy
+doSetSignificand3 result none
+doSetSignificand3 ownedBy none
+doSetSignificand3 cleanedBy none
+doSetSignificand3 borrows none
+doSetSignificand3 catch none
+doSetSignificand3 suppresses none
+
+doSetPart3 is call
+doSetPart3 in decimalParts
+doSetPart3 invokes clong.setPart
+doSetPart3 argument parts machine.Address parts copy
+doSetPart3 argument offset Int64 sixteen copy
+doSetPart3 argument value Int64 scale copy
+doSetPart3 result none
+doSetPart3 ownedBy none
+doSetPart3 cleanedBy none
+doSetPart3 borrows none
+doSetPart3 catch none
+doSetPart3 suppresses none
+
+findCheck101 is call
+findCheck101 in decimalParts
+findCheck101 invokes compare.lessThanInt64
+findCheck101 argument left Int64 bit copy
+findCheck101 argument right Int64 zero copy
+findCheck101 result check10 Bool
+findCheck101 ownedBy none
+findCheck101 cleanedBy none
+findCheck101 borrows none
+findCheck101 catch none
+findCheck101 suppresses none
+
+findLastSide1 is call
+findLastSide1 in decimalParts
+findLastSide1 invokes sideOf
+findLastSide1 argument high UInt64 high copy
+findLastSide1 argument low UInt64 low copy
+findLastSide1 argument exponent Int64 scale copy
+findLastSide1 argument digits machine.Address digits copy
+findLastSide1 argument count Int64 count copy
+findLastSide1 argument power Int64 power copy
+findLastSide1 result lastSide Int64
+findLastSide1 ownedBy none
+findLastSide1 cleanedBy none
+findLastSide1 borrows none
+findLastSide1 catch none
+findLastSide1 suppresses none
+
+findCheck111 is call
+findCheck111 in decimalParts
+findCheck111 invokes compare.equalInt64
+findCheck111 argument left Int64 lastSide copy
+findCheck111 argument right Int64 zero copy
+findCheck111 result check11 Bool
+findCheck111 ownedBy none
+findCheck111 cleanedBy none
+findCheck111 borrows none
+findCheck111 catch none
+findCheck111 suppresses none
+
+hexDigitOf is operation
+hexDigitOf purpose "The value of an ASCII hexadecimal digit, or -1 for any other byte"
+hexDigitOf invariant none
+hexDigitOf typeParameter none
+hexDigitOf input value Byte copied
+hexDigitOf output Int64
+hexDigitOf outputOwnedBy none
+hexDigitOf raises none
+hexDigitOf effect none
+hexDigitOf uses none
+hexDigitOf memoryHeap false
+hexDigitOf async false
+hexDigitOf maxRecursion none
+hexDigitOf label begin loopKind none
+hexDigitOf label begin within none
+hexDigitOf label decimalDigit loopKind none
+hexDigitOf label decimalDigit within none
+hexDigitOf label letterCheck loopKind none
+hexDigitOf label letterCheck within none
+hexDigitOf label letterDigit loopKind none
+hexDigitOf label letterDigit within none
+hexDigitOf label other loopKind none
+hexDigitOf label other within none
+hexDigitOf let notHex Int64 -1 immutable
+hexDigitOf let thirtyTwo Int64 32 immutable
+hexDigitOf let n48 Int64 48 immutable
+hexDigitOf let n57 Int64 57 immutable
+hexDigitOf let n97 Int64 97 immutable
+hexDigitOf let n102 Int64 102 immutable
+hexDigitOf let n87 Int64 87 immutable
+hexDigitOf at begin do findCode1
+hexDigitOf at begin do findFolded1
+hexDigitOf at begin do check1Step1
+hexDigitOf at begin do check1Step2
+hexDigitOf at begin do findCheck11
+hexDigitOf at begin branch if check1 goto decimalDigit else goto letterCheck
+hexDigitOf at decimalDigit do findDecimalValue1
+hexDigitOf at decimalDigit return ok decimalValue
+hexDigitOf at letterCheck do check2Step1
+hexDigitOf at letterCheck do check2Step2
+hexDigitOf at letterCheck do findCheck21
+hexDigitOf at letterCheck branch if check2 goto letterDigit else goto other
+hexDigitOf at letterDigit do findLetterValue1
+hexDigitOf at letterDigit return ok letterValue
+hexDigitOf at other return ok notHex
+
+findCode1 is call
+findCode1 in hexDigitOf
+findCode1 invokes convert.byteToInt64
+findCode1 argument value Byte value copy
+findCode1 result code Int64
+findCode1 ownedBy none
+findCode1 cleanedBy none
+findCode1 borrows none
+findCode1 catch none
+findCode1 suppresses none
+
+findFolded1 is call
+findFolded1 in hexDigitOf
+findFolded1 invokes bits.orInt64
+findFolded1 argument left Int64 code copy
+findFolded1 argument right Int64 thirtyTwo copy
+findFolded1 result folded Int64
+findFolded1 ownedBy none
+findFolded1 cleanedBy none
+findFolded1 borrows none
+findFolded1 catch none
+findFolded1 suppresses none
+
+check1Step1 is call
+check1Step1 in hexDigitOf
+check1Step1 invokes compare.greaterOrEqualInt64
+check1Step1 argument left Int64 code copy
+check1Step1 argument right Int64 n48 copy
+check1Step1 result check1Part1 Bool
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in hexDigitOf
+check1Step2 invokes compare.lessOrEqualInt64
+check1Step2 argument left Int64 code copy
+check1Step2 argument right Int64 n57 copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+findCheck11 is call
+findCheck11 in hexDigitOf
+findCheck11 invokes logic.and
+findCheck11 argument left Bool check1Part1 copy
+findCheck11 argument right Bool check1Part2 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findDecimalValue1 is call
+findDecimalValue1 in hexDigitOf
+findDecimalValue1 invokes math.subtractInt64
+findDecimalValue1 argument left Int64 code copy
+findDecimalValue1 argument right Int64 n48 copy
+findDecimalValue1 result decimalValue Int64
+findDecimalValue1 ownedBy none
+findDecimalValue1 cleanedBy none
+findDecimalValue1 borrows none
+findDecimalValue1 catch none
+findDecimalValue1 suppresses none
+
+check2Step1 is call
+check2Step1 in hexDigitOf
+check2Step1 invokes compare.greaterOrEqualInt64
+check2Step1 argument left Int64 folded copy
+check2Step1 argument right Int64 n97 copy
+check2Step1 result check2Part1 Bool
+check2Step1 ownedBy none
+check2Step1 cleanedBy none
+check2Step1 borrows none
+check2Step1 catch none
+check2Step1 suppresses none
+
+check2Step2 is call
+check2Step2 in hexDigitOf
+check2Step2 invokes compare.lessOrEqualInt64
+check2Step2 argument left Int64 folded copy
+check2Step2 argument right Int64 n102 copy
+check2Step2 result check2Part2 Bool
+check2Step2 ownedBy none
+check2Step2 cleanedBy none
+check2Step2 borrows none
+check2Step2 catch none
+check2Step2 suppresses none
+
+findCheck21 is call
+findCheck21 in hexDigitOf
+findCheck21 invokes logic.and
+findCheck21 argument left Bool check2Part1 copy
+findCheck21 argument right Bool check2Part2 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findLetterValue1 is call
+findLetterValue1 in hexDigitOf
+findLetterValue1 invokes math.subtractInt64
+findLetterValue1 argument left Int64 folded copy
+findLetterValue1 argument right Int64 n87 copy
+findLetterValue1 result letterValue Int64
+findLetterValue1 ownedBy none
+findLetterValue1 cleanedBy none
+findLetterValue1 borrows none
+findLetterValue1 catch none
+findLetterValue1 suppresses none
+
+hexParts is operation
+hexParts purpose "Put the hexadecimal number after a `0x` (hex digits with a point, then p, a sign, and decimal digits) in parts: its first 120 or so bits and its power of two; gives 1 when a nonzero digit did not fit, else 0"
+hexParts invariant none
+hexParts typeParameter none
+hexParts input text machine.Address copied
+hexParts input start Int64 copied
+hexParts input parts machine.Address copied
+hexParts output Int64
+hexParts outputOwnedBy none
+hexParts raises none
+hexParts effect use machine.memory
+hexParts uses memoryAccess
+hexParts memoryHeap false
+hexParts async false
+hexParts maxRecursion none
+hexParts label begin loopKind none
+hexParts label begin within none
+hexParts label eachDigit loopKind while
+hexParts label eachDigit within none
+hexParts label eachDigit maxIterations forever
+hexParts label takeDigit loopKind none
+hexParts label takeDigit within eachDigit
+hexParts label roomy loopKind none
+hexParts label roomy within eachDigit
+hexParts label fractionDigit loopKind none
+hexParts label fractionDigit within eachDigit
+hexParts label crowded loopKind none
+hexParts label crowded within eachDigit
+hexParts label sticky loopKind none
+hexParts label sticky within eachDigit
+hexParts label afterSticky loopKind none
+hexParts label afterSticky within eachDigit
+hexParts label wholeDigit loopKind none
+hexParts label wholeDigit within eachDigit
+hexParts label advance loopKind none
+hexParts label advance within eachDigit
+hexParts label notDigit loopKind none
+hexParts label notDigit within eachDigit
+hexParts label takePoint loopKind none
+hexParts label takePoint within eachDigit
+hexParts label powerCheck loopKind none
+hexParts label powerCheck within none
+hexParts label powerSign loopKind none
+hexParts label powerSign within none
+hexParts label minusPower loopKind none
+hexParts label minusPower within none
+hexParts label plusCheck loopKind none
+hexParts label plusCheck within none
+hexParts label plusPower loopKind none
+hexParts label plusPower within none
+hexParts label powerDigits loopKind while
+hexParts label powerDigits within none
+hexParts label powerDigits maxIterations forever
+hexParts label addPower loopKind none
+hexParts label addPower within powerDigits
+hexParts label growPower loopKind none
+hexParts label growPower within powerDigits
+hexParts label skipPower loopKind none
+hexParts label skipPower within powerDigits
+hexParts label applyPower loopKind none
+hexParts label applyPower within none
+hexParts label finish loopKind none
+hexParts label finish within none
+hexParts let place Int64 0 mutable
+hexParts let high UInt64 0 mutable
+hexParts let low UInt64 0 mutable
+hexParts let power Int64 0 mutable
+hexParts let dropped Int64 0 mutable
+hexParts let seenPoint Bool false mutable
+hexParts let scaled Int64 0 mutable
+hexParts let scaleSign Int64 1 mutable
+hexParts let digitsFrom Int64 0 mutable
+hexParts let zero Int64 0 immutable
+hexParts let n56 Int64 56 immutable
+hexParts let uInt640 UInt64 0 immutable
+hexParts let four Int64 4 immutable
+hexParts let n60 Int64 60 immutable
+hexParts let one Int64 1 immutable
+hexParts let byte46 Byte 46 immutable
+hexParts let yes Bool true immutable
+hexParts let byte32 Byte 32 immutable
+hexParts let byte112 Byte 112 immutable
+hexParts let byte45 Byte 45 immutable
+hexParts let minus1 Int64 -1 immutable
+hexParts let byte43 Byte 43 immutable
+hexParts let byte48 Byte 48 immutable
+hexParts let byte57 Byte 57 immutable
+hexParts let n1000000 Int64 1000000 immutable
+hexParts let ten Int64 10 immutable
+hexParts let n48 Int64 48 immutable
+hexParts let sixteen Int64 16 immutable
+hexParts at begin set place start
+hexParts at begin goto eachDigit
+hexParts at eachDigit do readCurrent
+hexParts at eachDigit do readDigit
+hexParts at eachDigit do findCheck11
+hexParts at eachDigit branch if check1 goto takeDigit else goto notDigit
+hexParts at takeDigit do check2Step1
+hexParts at takeDigit do findCheck21
+hexParts at takeDigit branch if check2 goto roomy else goto crowded
+hexParts at roomy do highStep1
+hexParts at roomy do highStep2
+hexParts at roomy do findHighNext11
+hexParts at roomy set high highNext1
+hexParts at roomy do lowStep1
+hexParts at roomy do lowStep2
+hexParts at roomy do findLowNext11
+hexParts at roomy set low lowNext1
+hexParts at roomy branch if seenPoint goto fractionDigit else goto advance
+hexParts at fractionDigit do findPowerNext11
+hexParts at fractionDigit set power powerNext1
+hexParts at fractionDigit goto advance
+hexParts at crowded do findCheck31
+hexParts at crowded branch if check3 goto sticky else goto afterSticky
+hexParts at sticky set dropped one
+hexParts at sticky goto afterSticky
+hexParts at afterSticky branch if seenPoint goto advance else goto wholeDigit
+hexParts at wholeDigit do findPowerNext21
+hexParts at wholeDigit set power powerNext2
+hexParts at wholeDigit goto advance
+hexParts at advance do findPlaceNext11
+hexParts at advance set place placeNext1
+hexParts at advance goto eachDigit
+hexParts at notDigit do check4Step1
+hexParts at notDigit do check4Step2
+hexParts at notDigit do findCheck41
+hexParts at notDigit branch if check4 goto takePoint else goto powerCheck
+hexParts at takePoint set seenPoint yes
+hexParts at takePoint do findPlaceNext21
+hexParts at takePoint set place placeNext2
+hexParts at takePoint goto eachDigit
+hexParts at powerCheck do check5Step1
+hexParts at powerCheck do findCheck51
+hexParts at powerCheck branch if check5 goto powerSign else goto finish
+hexParts at powerSign do findSignAt1
+hexParts at powerSign do readSignByte
+hexParts at powerSign set digitsFrom signAt
+hexParts at powerSign do findCheck61
+hexParts at powerSign branch if check6 goto minusPower else goto plusCheck
+hexParts at minusPower set scaleSign minus1
+hexParts at minusPower do findDigitsFromNext11
+hexParts at minusPower set digitsFrom digitsFromNext1
+hexParts at minusPower goto powerDigits
+hexParts at plusCheck do findCheck71
+hexParts at plusCheck branch if check7 goto plusPower else goto powerDigits
+hexParts at plusPower do findDigitsFromNext21
+hexParts at plusPower set digitsFrom digitsFromNext2
+hexParts at plusPower goto powerDigits
+hexParts at powerDigits do readPowerByte
+hexParts at powerDigits do check8Step1
+hexParts at powerDigits do check8Step2
+hexParts at powerDigits do findCheck81
+hexParts at powerDigits branch if check8 goto addPower else goto applyPower
+hexParts at addPower do findCheck91
+hexParts at addPower branch if check9 goto growPower else goto skipPower
+hexParts at growPower do scaledStep1
+hexParts at growPower do scaledStep2
+hexParts at growPower do scaledStep3
+hexParts at growPower do findScaledNext11
+hexParts at growPower set scaled scaledNext1
+hexParts at growPower goto skipPower
+hexParts at skipPower do findDigitsFromNext31
+hexParts at skipPower set digitsFrom digitsFromNext3
+hexParts at skipPower goto powerDigits
+hexParts at applyPower do powerStep1
+hexParts at applyPower do findPowerNext31
+hexParts at applyPower set power powerNext3
+hexParts at applyPower goto finish
+hexParts at finish do doSetSignificand
+hexParts at finish do doSetPart
+hexParts at finish return ok dropped
+
+readCurrent is call
+readCurrent in hexParts
+readCurrent invokes clibrary.byteAt
+readCurrent argument base machine.Address text copy
+readCurrent argument at Int64 place copy
+readCurrent result current Byte
+readCurrent ownedBy none
+readCurrent cleanedBy none
+readCurrent borrows none
+readCurrent catch none
+readCurrent suppresses none
+
+readDigit is call
+readDigit in hexParts
+readDigit invokes hexDigitOf
+readDigit argument value Byte current copy
+readDigit result digit Int64
+readDigit ownedBy none
+readDigit cleanedBy none
+readDigit borrows none
+readDigit catch none
+readDigit suppresses none
+
+findCheck11 is call
+findCheck11 in hexParts
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 digit copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+check2Step1 is call
+check2Step1 in hexParts
+check2Step1 invokes bits.shiftRightUInt64
+check2Step1 argument value UInt64 high copy
+check2Step1 argument amount Int64 n56 copy
+check2Step1 result check2Part1 UInt64
+check2Step1 ownedBy none
+check2Step1 cleanedBy none
+check2Step1 borrows none
+check2Step1 catch none
+check2Step1 suppresses none
+
+findCheck21 is call
+findCheck21 in hexParts
+findCheck21 invokes compare.equalUInt64
+findCheck21 argument left UInt64 check2Part1 copy
+findCheck21 argument right UInt64 uInt640 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+highStep1 is call
+highStep1 in hexParts
+highStep1 invokes bits.shiftLeftUInt64
+highStep1 argument value UInt64 high copy
+highStep1 argument amount Int64 four copy
+highStep1 result highPart1 UInt64
+highStep1 ownedBy none
+highStep1 cleanedBy none
+highStep1 borrows none
+highStep1 catch none
+highStep1 suppresses none
+
+highStep2 is call
+highStep2 in hexParts
+highStep2 invokes bits.shiftRightUInt64
+highStep2 argument value UInt64 low copy
+highStep2 argument amount Int64 n60 copy
+highStep2 result highPart2 UInt64
+highStep2 ownedBy none
+highStep2 cleanedBy none
+highStep2 borrows none
+highStep2 catch none
+highStep2 suppresses none
+
+findHighNext11 is call
+findHighNext11 in hexParts
+findHighNext11 invokes bits.orUInt64
+findHighNext11 argument left UInt64 highPart1 copy
+findHighNext11 argument right UInt64 highPart2 copy
+findHighNext11 result highNext1 UInt64
+findHighNext11 ownedBy none
+findHighNext11 cleanedBy none
+findHighNext11 borrows none
+findHighNext11 catch none
+findHighNext11 suppresses none
+
+lowStep1 is call
+lowStep1 in hexParts
+lowStep1 invokes bits.shiftLeftUInt64
+lowStep1 argument value UInt64 low copy
+lowStep1 argument amount Int64 four copy
+lowStep1 result lowPart1 UInt64
+lowStep1 ownedBy none
+lowStep1 cleanedBy none
+lowStep1 borrows none
+lowStep1 catch none
+lowStep1 suppresses none
+
+lowStep2 is call
+lowStep2 in hexParts
+lowStep2 invokes convert.int64ToUInt64
+lowStep2 argument value Int64 digit copy
+lowStep2 result lowPart2 UInt64
+lowStep2 ownedBy none
+lowStep2 cleanedBy none
+lowStep2 borrows none
+lowStep2 catch none
+lowStep2 suppresses none
+
+findLowNext11 is call
+findLowNext11 in hexParts
+findLowNext11 invokes bits.orUInt64
+findLowNext11 argument left UInt64 lowPart1 copy
+findLowNext11 argument right UInt64 lowPart2 copy
+findLowNext11 result lowNext1 UInt64
+findLowNext11 ownedBy none
+findLowNext11 cleanedBy none
+findLowNext11 borrows none
+findLowNext11 catch none
+findLowNext11 suppresses none
+
+findPowerNext11 is call
+findPowerNext11 in hexParts
+findPowerNext11 invokes math.subtractInt64
+findPowerNext11 argument left Int64 power copy
+findPowerNext11 argument right Int64 four copy
+findPowerNext11 result powerNext1 Int64
+findPowerNext11 ownedBy none
+findPowerNext11 cleanedBy none
+findPowerNext11 borrows none
+findPowerNext11 catch none
+findPowerNext11 suppresses none
+
+findCheck31 is call
+findCheck31 in hexParts
+findCheck31 invokes compare.notEqualInt64
+findCheck31 argument left Int64 digit copy
+findCheck31 argument right Int64 zero copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+findPowerNext21 is call
+findPowerNext21 in hexParts
+findPowerNext21 invokes math.addInt64
+findPowerNext21 argument left Int64 power copy
+findPowerNext21 argument right Int64 four copy
+findPowerNext21 result powerNext2 Int64
+findPowerNext21 ownedBy none
+findPowerNext21 cleanedBy none
+findPowerNext21 borrows none
+findPowerNext21 catch none
+findPowerNext21 suppresses none
+
+findPlaceNext11 is call
+findPlaceNext11 in hexParts
+findPlaceNext11 invokes math.addInt64
+findPlaceNext11 argument left Int64 place copy
+findPlaceNext11 argument right Int64 one copy
+findPlaceNext11 result placeNext1 Int64
+findPlaceNext11 ownedBy none
+findPlaceNext11 cleanedBy none
+findPlaceNext11 borrows none
+findPlaceNext11 catch none
+findPlaceNext11 suppresses none
+
+check4Step1 is call
+check4Step1 in hexParts
+check4Step1 invokes compare.equalByte
+check4Step1 argument left Byte current copy
+check4Step1 argument right Byte byte46 copy
+check4Step1 result check4Part1 Bool
+check4Step1 ownedBy none
+check4Step1 cleanedBy none
+check4Step1 borrows none
+check4Step1 catch none
+check4Step1 suppresses none
+
+check4Step2 is call
+check4Step2 in hexParts
+check4Step2 invokes logic.not
+check4Step2 argument value Bool seenPoint copy
+check4Step2 result check4Part2 Bool
+check4Step2 ownedBy none
+check4Step2 cleanedBy none
+check4Step2 borrows none
+check4Step2 catch none
+check4Step2 suppresses none
+
+findCheck41 is call
+findCheck41 in hexParts
+findCheck41 invokes logic.and
+findCheck41 argument left Bool check4Part1 copy
+findCheck41 argument right Bool check4Part2 copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+findPlaceNext21 is call
+findPlaceNext21 in hexParts
+findPlaceNext21 invokes math.addInt64
+findPlaceNext21 argument left Int64 place copy
+findPlaceNext21 argument right Int64 one copy
+findPlaceNext21 result placeNext2 Int64
+findPlaceNext21 ownedBy none
+findPlaceNext21 cleanedBy none
+findPlaceNext21 borrows none
+findPlaceNext21 catch none
+findPlaceNext21 suppresses none
+
+check5Step1 is call
+check5Step1 in hexParts
+check5Step1 invokes bits.orByte
+check5Step1 argument left Byte current copy
+check5Step1 argument right Byte byte32 copy
+check5Step1 result check5Part1 Byte
+check5Step1 ownedBy none
+check5Step1 cleanedBy none
+check5Step1 borrows none
+check5Step1 catch none
+check5Step1 suppresses none
+
+findCheck51 is call
+findCheck51 in hexParts
+findCheck51 invokes compare.equalByte
+findCheck51 argument left Byte check5Part1 copy
+findCheck51 argument right Byte byte112 copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+findSignAt1 is call
+findSignAt1 in hexParts
+findSignAt1 invokes math.addInt64
+findSignAt1 argument left Int64 place copy
+findSignAt1 argument right Int64 one copy
+findSignAt1 result signAt Int64
+findSignAt1 ownedBy none
+findSignAt1 cleanedBy none
+findSignAt1 borrows none
+findSignAt1 catch none
+findSignAt1 suppresses none
+
+readSignByte is call
+readSignByte in hexParts
+readSignByte invokes clibrary.byteAt
+readSignByte argument base machine.Address text copy
+readSignByte argument at Int64 signAt copy
+readSignByte result signByte Byte
+readSignByte ownedBy none
+readSignByte cleanedBy none
+readSignByte borrows none
+readSignByte catch none
+readSignByte suppresses none
+
+findCheck61 is call
+findCheck61 in hexParts
+findCheck61 invokes compare.equalByte
+findCheck61 argument left Byte signByte copy
+findCheck61 argument right Byte byte45 copy
+findCheck61 result check6 Bool
+findCheck61 ownedBy none
+findCheck61 cleanedBy none
+findCheck61 borrows none
+findCheck61 catch none
+findCheck61 suppresses none
+
+findDigitsFromNext11 is call
+findDigitsFromNext11 in hexParts
+findDigitsFromNext11 invokes math.addInt64
+findDigitsFromNext11 argument left Int64 signAt copy
+findDigitsFromNext11 argument right Int64 one copy
+findDigitsFromNext11 result digitsFromNext1 Int64
+findDigitsFromNext11 ownedBy none
+findDigitsFromNext11 cleanedBy none
+findDigitsFromNext11 borrows none
+findDigitsFromNext11 catch none
+findDigitsFromNext11 suppresses none
+
+findCheck71 is call
+findCheck71 in hexParts
+findCheck71 invokes compare.equalByte
+findCheck71 argument left Byte signByte copy
+findCheck71 argument right Byte byte43 copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
+
+findDigitsFromNext21 is call
+findDigitsFromNext21 in hexParts
+findDigitsFromNext21 invokes math.addInt64
+findDigitsFromNext21 argument left Int64 signAt copy
+findDigitsFromNext21 argument right Int64 one copy
+findDigitsFromNext21 result digitsFromNext2 Int64
+findDigitsFromNext21 ownedBy none
+findDigitsFromNext21 cleanedBy none
+findDigitsFromNext21 borrows none
+findDigitsFromNext21 catch none
+findDigitsFromNext21 suppresses none
+
+readPowerByte is call
+readPowerByte in hexParts
+readPowerByte invokes clibrary.byteAt
+readPowerByte argument base machine.Address text copy
+readPowerByte argument at Int64 digitsFrom copy
+readPowerByte result powerByte Byte
+readPowerByte ownedBy none
+readPowerByte cleanedBy none
+readPowerByte borrows none
+readPowerByte catch none
+readPowerByte suppresses none
+
+check8Step1 is call
+check8Step1 in hexParts
+check8Step1 invokes compare.greaterOrEqualByte
+check8Step1 argument left Byte powerByte copy
+check8Step1 argument right Byte byte48 copy
+check8Step1 result check8Part1 Bool
+check8Step1 ownedBy none
+check8Step1 cleanedBy none
+check8Step1 borrows none
+check8Step1 catch none
+check8Step1 suppresses none
+
+check8Step2 is call
+check8Step2 in hexParts
+check8Step2 invokes compare.lessOrEqualByte
+check8Step2 argument left Byte powerByte copy
+check8Step2 argument right Byte byte57 copy
+check8Step2 result check8Part2 Bool
+check8Step2 ownedBy none
+check8Step2 cleanedBy none
+check8Step2 borrows none
+check8Step2 catch none
+check8Step2 suppresses none
+
+findCheck81 is call
+findCheck81 in hexParts
+findCheck81 invokes logic.and
+findCheck81 argument left Bool check8Part1 copy
+findCheck81 argument right Bool check8Part2 copy
+findCheck81 result check8 Bool
+findCheck81 ownedBy none
+findCheck81 cleanedBy none
+findCheck81 borrows none
+findCheck81 catch none
+findCheck81 suppresses none
+
+findCheck91 is call
+findCheck91 in hexParts
+findCheck91 invokes compare.lessThanInt64
+findCheck91 argument left Int64 scaled copy
+findCheck91 argument right Int64 n1000000 copy
+findCheck91 result check9 Bool
+findCheck91 ownedBy none
+findCheck91 cleanedBy none
+findCheck91 borrows none
+findCheck91 catch none
+findCheck91 suppresses none
+
+scaledStep1 is call
+scaledStep1 in hexParts
+scaledStep1 invokes math.multiplyInt64
+scaledStep1 argument left Int64 scaled copy
+scaledStep1 argument right Int64 ten copy
+scaledStep1 result scaledPart1 Int64
+scaledStep1 ownedBy none
+scaledStep1 cleanedBy none
+scaledStep1 borrows none
+scaledStep1 catch none
+scaledStep1 suppresses none
+
+scaledStep2 is call
+scaledStep2 in hexParts
+scaledStep2 invokes convert.byteToInt64
+scaledStep2 argument value Byte powerByte copy
+scaledStep2 result scaledPart2 Int64
+scaledStep2 ownedBy none
+scaledStep2 cleanedBy none
+scaledStep2 borrows none
+scaledStep2 catch none
+scaledStep2 suppresses none
+
+scaledStep3 is call
+scaledStep3 in hexParts
+scaledStep3 invokes math.addInt64
+scaledStep3 argument left Int64 scaledPart1 copy
+scaledStep3 argument right Int64 scaledPart2 copy
+scaledStep3 result scaledPart3 Int64
+scaledStep3 ownedBy none
+scaledStep3 cleanedBy none
+scaledStep3 borrows none
+scaledStep3 catch none
+scaledStep3 suppresses none
+
+findScaledNext11 is call
+findScaledNext11 in hexParts
+findScaledNext11 invokes math.subtractInt64
+findScaledNext11 argument left Int64 scaledPart3 copy
+findScaledNext11 argument right Int64 n48 copy
+findScaledNext11 result scaledNext1 Int64
+findScaledNext11 ownedBy none
+findScaledNext11 cleanedBy none
+findScaledNext11 borrows none
+findScaledNext11 catch none
+findScaledNext11 suppresses none
+
+findDigitsFromNext31 is call
+findDigitsFromNext31 in hexParts
+findDigitsFromNext31 invokes math.addInt64
+findDigitsFromNext31 argument left Int64 digitsFrom copy
+findDigitsFromNext31 argument right Int64 one copy
+findDigitsFromNext31 result digitsFromNext3 Int64
+findDigitsFromNext31 ownedBy none
+findDigitsFromNext31 cleanedBy none
+findDigitsFromNext31 borrows none
+findDigitsFromNext31 catch none
+findDigitsFromNext31 suppresses none
+
+powerStep1 is call
+powerStep1 in hexParts
+powerStep1 invokes math.multiplyInt64
+powerStep1 argument left Int64 scaled copy
+powerStep1 argument right Int64 scaleSign copy
+powerStep1 result powerPart1 Int64
+powerStep1 ownedBy none
+powerStep1 cleanedBy none
+powerStep1 borrows none
+powerStep1 catch none
+powerStep1 suppresses none
+
+findPowerNext31 is call
+findPowerNext31 in hexParts
+findPowerNext31 invokes math.addInt64
+findPowerNext31 argument left Int64 power copy
+findPowerNext31 argument right Int64 powerPart1 copy
+findPowerNext31 result powerNext3 Int64
+findPowerNext31 ownedBy none
+findPowerNext31 cleanedBy none
+findPowerNext31 borrows none
+findPowerNext31 catch none
+findPowerNext31 suppresses none
+
+doSetSignificand is call
+doSetSignificand in hexParts
+doSetSignificand invokes clong.setSignificand
+doSetSignificand argument parts machine.Address parts copy
+doSetSignificand argument high UInt64 high copy
+doSetSignificand argument low UInt64 low copy
+doSetSignificand result none
+doSetSignificand ownedBy none
+doSetSignificand cleanedBy none
+doSetSignificand borrows none
+doSetSignificand catch none
+doSetSignificand suppresses none
+
+doSetPart is call
+doSetPart in hexParts
+doSetPart invokes clong.setPart
+doSetPart argument parts machine.Address parts copy
+doSetPart argument offset Int64 sixteen copy
+doSetPart argument value Int64 power copy
+doSetPart result none
+doSetPart ownedBy none
+doSetPart cleanedBy none
+doSetPart borrows none
+doSetPart catch none
+doSetPart suppresses none
+
+parseLongAs is operation
+parseLongAs purpose "strtold's work for a layout (0 double, 1 x87, 2 binary128, 3 float): the value of a C string's leading number, correctly rounded as the rounding mode rounds, written in the layout's bytes at an address, the end of what was read stored at `endAt` unless it is the address 0; ERANGE past the largest value and for a subnormal or zero that is not the text's exact value"
+parseLongAs invariant readsLikeStrtold "\"Reads what strtod reads, rounded once to the layout's precision\""
+parseLongAs typeParameter none
+parseLongAs input text machine.Address copied
+parseLongAs input endAt machine.Address copied
+parseLongAs input layout Int64 copied
+parseLongAs input target machine.Address copied
+parseLongAs output none
+parseLongAs outputOwnedBy none
+parseLongAs raises none
+parseLongAs effect use machine.memory
+parseLongAs effect use system.calls
+parseLongAs uses memoryAccess
+parseLongAs uses systemCalls
+parseLongAs memoryHeap false
+parseLongAs async false
+parseLongAs maxRecursion none
+parseLongAs label begin loopKind none
+parseLongAs label begin within none
+parseLongAs label storeEnd loopKind none
+parseLongAs label storeEnd within none
+parseLongAs label measured loopKind none
+parseLongAs label measured within none
+parseLongAs label spaces loopKind while
+parseLongAs label spaces within none
+parseLongAs label spaces maxIterations forever
+parseLongAs label skipSpace loopKind none
+parseLongAs label skipSpace within spaces
+parseLongAs label signCheck loopKind none
+parseLongAs label signCheck within none
+parseLongAs label minus loopKind none
+parseLongAs label minus within none
+parseLongAs label plusCheck loopKind none
+parseLongAs label plusCheck within none
+parseLongAs label plus loopKind none
+parseLongAs label plus within none
+parseLongAs label classify loopKind none
+parseLongAs label classify within none
+parseLongAs label special loopKind none
+parseLongAs label special within none
+parseLongAs label numeric loopKind none
+parseLongAs label numeric within none
+parseLongAs label hexadecimal loopKind none
+parseLongAs label hexadecimal within none
+parseLongAs label decimal loopKind none
+parseLongAs label decimal within none
+parseLongAs label zeroDigits loopKind none
+parseLongAs label zeroDigits within none
+parseLongAs label someDigits loopKind none
+parseLongAs label someDigits within none
+parseLongAs label rounded loopKind none
+parseLongAs label rounded within none
+parseLongAs label zeroValue loopKind none
+parseLongAs label zeroValue within none
+parseLongAs label settling loopKind none
+parseLongAs label settling within none
+parseLongAs label overflowed loopKind none
+parseLongAs label overflowed within none
+parseLongAs label tinyCheck loopKind none
+parseLongAs label tinyCheck within none
+parseLongAs label tiny loopKind none
+parseLongAs label tiny within none
+parseLongAs label underflowed loopKind none
+parseLongAs label underflowed within none
+parseLongAs label packed loopKind none
+parseLongAs label packed within none
+parseLongAs let at Int64 0 mutable
+parseLongAs let negative Int64 0 mutable
+parseLongAs let dropped Int64 0 mutable
+parseLongAs let rangeError Int32 34 immutable
+parseLongAs let eight Int64 8 immutable
+parseLongAs let zero Int64 0 immutable
+parseLongAs let one Int64 1 immutable
+parseLongAs let byte45 Byte 45 immutable
+parseLongAs let byte43 Byte 43 immutable
+parseLongAs let byte32 Byte 32 immutable
+parseLongAs let byte105 Byte 105 immutable
+parseLongAs let byte110 Byte 110 immutable
+parseLongAs let byte48 Byte 48 immutable
+parseLongAs let byte120 Byte 120 immutable
+parseLongAs let two Int64 2 immutable
+parseLongAs let n24 Int64 24 immutable
+parseLongAs let sixteen Int64 16 immutable
+parseLongAs let n128 Int64 128 immutable
+parseLongAs at begin do readErrnoAt
+parseLongAs at begin do readSaved
+parseLongAs at begin do readEndCell
+parseLongAs at begin do readDouble
+parseLongAs at begin do doStoreInt32
+parseLongAs at begin do readEndPlace
+parseLongAs at begin do doGive
+parseLongAs at begin do readNowhere
+parseLongAs at begin do readNoEnd
+parseLongAs at begin branch if noEnd goto measured else goto storeEnd
+parseLongAs at storeEnd do doStoreAddress
+parseLongAs at storeEnd goto measured
+parseLongAs at measured do readConsumed
+parseLongAs at measured do readParts
+parseLongAs at measured do findCheck11
+parseLongAs at measured branch if check1 goto packed else goto spaces
+parseLongAs at spaces do readLeading
+parseLongAs at spaces do readSpace
+parseLongAs at spaces branch if space goto skipSpace else goto signCheck
+parseLongAs at skipSpace do findAtNext11
+parseLongAs at skipSpace set at atNext1
+parseLongAs at skipSpace goto spaces
+parseLongAs at signCheck do findCheck21
+parseLongAs at signCheck branch if check2 goto minus else goto plusCheck
+parseLongAs at minus set negative one
+parseLongAs at minus do findAtNext21
+parseLongAs at minus set at atNext2
+parseLongAs at minus goto classify
+parseLongAs at plusCheck do findCheck31
+parseLongAs at plusCheck branch if check3 goto plus else goto classify
+parseLongAs at plus do findAtNext31
+parseLongAs at plus set at atNext3
+parseLongAs at plus goto classify
+parseLongAs at classify do doSetPart
+parseLongAs at classify do readFirst
+parseLongAs at classify do findFolded1
+parseLongAs at classify do check4Step1
+parseLongAs at classify do check4Step2
+parseLongAs at classify do findCheck41
+parseLongAs at classify branch if check4 goto special else goto numeric
+parseLongAs at special do readDoubleCell
+parseLongAs at special do doStoreFloat64
+parseLongAs at special do doUnpackAs
+parseLongAs at special do doGive2
+parseLongAs at special goto packed
+parseLongAs at numeric do secondStep1
+parseLongAs at numeric do findSecond1
+parseLongAs at numeric do check5Step1
+parseLongAs at numeric do check5Step2
+parseLongAs at numeric do check5Step3
+parseLongAs at numeric do check5Step4
+parseLongAs at numeric do check5Step5
+parseLongAs at numeric do check5Step6
+parseLongAs at numeric do findCheck51
+parseLongAs at numeric branch if check5 goto hexadecimal else goto decimal
+parseLongAs at hexadecimal do droppedStep1
+parseLongAs at hexadecimal do findDroppedNext11
+parseLongAs at hexadecimal set dropped droppedNext1
+parseLongAs at hexadecimal goto rounded
+parseLongAs at decimal do readInfo
+parseLongAs at decimal do doTextDigits
+parseLongAs at decimal do readDigits
+parseLongAs at decimal do findCountAt1
+parseLongAs at decimal do readCount
+parseLongAs at decimal do findPowerAt1
+parseLongAs at decimal do readPower
+parseLongAs at decimal do doGive3
+parseLongAs at decimal do findCheck61
+parseLongAs at decimal branch if check6 goto zeroDigits else goto someDigits
+parseLongAs at zeroDigits do doGive4
+parseLongAs at zeroDigits goto packed
+parseLongAs at someDigits do findDroppedNext21
+parseLongAs at someDigits set dropped droppedNext2
+parseLongAs at someDigits do doGive5
+parseLongAs at someDigits goto rounded
+parseLongAs at rounded do doSetPart2
+parseLongAs at rounded do readHigh
+parseLongAs at rounded do readLow
+parseLongAs at rounded do readScale
+parseLongAs at rounded do readLength
+parseLongAs at rounded do check7Step1
+parseLongAs at rounded do check7Step2
+parseLongAs at rounded do findCheck71
+parseLongAs at rounded branch if check7 goto zeroValue else goto settling
+parseLongAs at zeroValue do doSetPart3
+parseLongAs at zeroValue goto packed
+parseLongAs at settling do readPrecision
+parseLongAs at settling do readGreatest
+parseLongAs at settling do doSettleAs
+parseLongAs at settling do readKind
+parseLongAs at settling do check8Step1
+parseLongAs at settling do check8Step2
+parseLongAs at settling do check8Step3
+parseLongAs at settling do check8Step4
+parseLongAs at settling do check8Step5
+parseLongAs at settling do findCheck81
+parseLongAs at settling branch if check8 goto overflowed else goto tinyCheck
+parseLongAs at overflowed do doSetErrno
+parseLongAs at overflowed goto packed
+parseLongAs at tinyCheck do readSettledHigh
+parseLongAs at tinyCheck do readSettledLow
+parseLongAs at tinyCheck do readSettledLength
+parseLongAs at tinyCheck do check9Step1
+parseLongAs at tinyCheck do check9Step2
+parseLongAs at tinyCheck do findCheck91
+parseLongAs at tinyCheck branch if check9 goto tiny else goto packed
+parseLongAs at tiny do readSettledPower
+parseLongAs at tiny do cutStep1
+parseLongAs at tiny do cutStep2
+parseLongAs at tiny do findCut1
+parseLongAs at tiny do inexactStep1
+parseLongAs at tiny do inexactStep2
+parseLongAs at tiny do inexactStep3
+parseLongAs at tiny do inexactStep4
+parseLongAs at tiny do findInexact1
+parseLongAs at tiny branch if inexact goto underflowed else goto packed
+parseLongAs at underflowed do doSetErrno2
+parseLongAs at underflowed goto packed
+parseLongAs at packed do doPackAs
+parseLongAs at packed do doGive6
+parseLongAs at packed return ok none
+
+readErrnoAt is call
+readErrnoAt in parseLongAs
+readErrnoAt invokes clibrary.errnoCell
+readErrnoAt argument none
+readErrnoAt result errnoAt machine.Address
+readErrnoAt ownedBy none
+readErrnoAt cleanedBy none
+readErrnoAt borrows none
+readErrnoAt catch none
+readErrnoAt suppresses none
+
+readSaved is call
+readSaved in parseLongAs
+readSaved invokes machine.loadInt32
+readSaved argument address machine.Address errnoAt copy
+readSaved result saved Int32
+readSaved ownedBy none
+readSaved cleanedBy none
+readSaved borrows none
+readSaved catch none
+readSaved suppresses none
+
+readEndCell is call
+readEndCell in parseLongAs
+readEndCell invokes heap.take
+readEndCell argument bytes Int64 eight copy
+readEndCell result endCell machine.Address
+readEndCell ownedBy none
+readEndCell cleanedBy none
+readEndCell borrows none
+readEndCell catch none
+readEndCell suppresses none
+
+readDouble is call
+readDouble in parseLongAs
+readDouble invokes clibrary.parseReal
+readDouble argument text machine.Address text copy
+readDouble argument endAt machine.Address endCell copy
+readDouble result double Float64
+readDouble ownedBy none
+readDouble cleanedBy none
+readDouble borrows none
+readDouble catch none
+readDouble suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in parseLongAs
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address errnoAt copy
+doStoreInt32 argument value Int32 saved copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+readEndPlace is call
+readEndPlace in parseLongAs
+readEndPlace invokes machine.loadAddress
+readEndPlace argument address machine.Address endCell copy
+readEndPlace result endPlace machine.Address
+readEndPlace ownedBy none
+readEndPlace cleanedBy none
+readEndPlace borrows none
+readEndPlace catch none
+readEndPlace suppresses none
+
+doGive is call
+doGive in parseLongAs
+doGive invokes heap.give
+doGive argument block machine.Address endCell copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+readNowhere is call
+readNowhere in parseLongAs
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readNoEnd is call
+readNoEnd in parseLongAs
+readNoEnd invokes machine.equal
+readNoEnd argument left machine.Address endAt copy
+readNoEnd argument right machine.Address nowhere copy
+readNoEnd result noEnd Bool
+readNoEnd ownedBy none
+readNoEnd cleanedBy none
+readNoEnd borrows none
+readNoEnd catch none
+readNoEnd suppresses none
+
+doStoreAddress is call
+doStoreAddress in parseLongAs
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address endAt copy
+doStoreAddress argument value machine.Address endPlace copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+readConsumed is call
+readConsumed in parseLongAs
+readConsumed invokes machine.difference
+readConsumed argument left machine.Address endPlace copy
+readConsumed argument right machine.Address text copy
+readConsumed result consumed Int64
+readConsumed ownedBy none
+readConsumed cleanedBy none
+readConsumed borrows none
+readConsumed catch none
+readConsumed suppresses none
+
+readParts is call
+readParts in parseLongAs
+readParts invokes clong.partsNew
+readParts argument none
+readParts result parts machine.Address
+readParts ownedBy none
+readParts cleanedBy none
+readParts borrows none
+readParts catch none
+readParts suppresses none
+
+findCheck11 is call
+findCheck11 in parseLongAs
+findCheck11 invokes compare.equalInt64
+findCheck11 argument left Int64 consumed copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readLeading is call
+readLeading in parseLongAs
+readLeading invokes clibrary.byteAt
+readLeading argument base machine.Address text copy
+readLeading argument at Int64 at copy
+readLeading result leading Byte
+readLeading ownedBy none
+readLeading cleanedBy none
+readLeading borrows none
+readLeading catch none
+readLeading suppresses none
+
+readSpace is call
+readSpace in parseLongAs
+readSpace invokes clibrary.isSpaceByte
+readSpace argument value Byte leading copy
+readSpace result space Bool
+readSpace ownedBy none
+readSpace cleanedBy none
+readSpace borrows none
+readSpace catch none
+readSpace suppresses none
+
+findAtNext11 is call
+findAtNext11 in parseLongAs
+findAtNext11 invokes math.addInt64
+findAtNext11 argument left Int64 at copy
+findAtNext11 argument right Int64 one copy
+findAtNext11 result atNext1 Int64
+findAtNext11 ownedBy none
+findAtNext11 cleanedBy none
+findAtNext11 borrows none
+findAtNext11 catch none
+findAtNext11 suppresses none
+
+findCheck21 is call
+findCheck21 in parseLongAs
+findCheck21 invokes compare.equalByte
+findCheck21 argument left Byte leading copy
+findCheck21 argument right Byte byte45 copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+findAtNext21 is call
+findAtNext21 in parseLongAs
+findAtNext21 invokes math.addInt64
+findAtNext21 argument left Int64 at copy
+findAtNext21 argument right Int64 one copy
+findAtNext21 result atNext2 Int64
+findAtNext21 ownedBy none
+findAtNext21 cleanedBy none
+findAtNext21 borrows none
+findAtNext21 catch none
+findAtNext21 suppresses none
+
+findCheck31 is call
+findCheck31 in parseLongAs
+findCheck31 invokes compare.equalByte
+findCheck31 argument left Byte leading copy
+findCheck31 argument right Byte byte43 copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+findAtNext31 is call
+findAtNext31 in parseLongAs
+findAtNext31 invokes math.addInt64
+findAtNext31 argument left Int64 at copy
+findAtNext31 argument right Int64 one copy
+findAtNext31 result atNext3 Int64
+findAtNext31 ownedBy none
+findAtNext31 cleanedBy none
+findAtNext31 borrows none
+findAtNext31 catch none
+findAtNext31 suppresses none
+
+doSetPart is call
+doSetPart in parseLongAs
+doSetPart invokes clong.setPart
+doSetPart argument parts machine.Address parts copy
+doSetPart argument offset Int64 zero copy
+doSetPart argument value Int64 negative copy
+doSetPart result none
+doSetPart ownedBy none
+doSetPart cleanedBy none
+doSetPart borrows none
+doSetPart catch none
+doSetPart suppresses none
+
+readFirst is call
+readFirst in parseLongAs
+readFirst invokes clibrary.byteAt
+readFirst argument base machine.Address text copy
+readFirst argument at Int64 at copy
+readFirst result first Byte
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+findFolded1 is call
+findFolded1 in parseLongAs
+findFolded1 invokes bits.orByte
+findFolded1 argument left Byte first copy
+findFolded1 argument right Byte byte32 copy
+findFolded1 result folded Byte
+findFolded1 ownedBy none
+findFolded1 cleanedBy none
+findFolded1 borrows none
+findFolded1 catch none
+findFolded1 suppresses none
+
+check4Step1 is call
+check4Step1 in parseLongAs
+check4Step1 invokes compare.equalByte
+check4Step1 argument left Byte folded copy
+check4Step1 argument right Byte byte105 copy
+check4Step1 result check4Part1 Bool
+check4Step1 ownedBy none
+check4Step1 cleanedBy none
+check4Step1 borrows none
+check4Step1 catch none
+check4Step1 suppresses none
+
+check4Step2 is call
+check4Step2 in parseLongAs
+check4Step2 invokes compare.equalByte
+check4Step2 argument left Byte folded copy
+check4Step2 argument right Byte byte110 copy
+check4Step2 result check4Part2 Bool
+check4Step2 ownedBy none
+check4Step2 cleanedBy none
+check4Step2 borrows none
+check4Step2 catch none
+check4Step2 suppresses none
+
+findCheck41 is call
+findCheck41 in parseLongAs
+findCheck41 invokes logic.or
+findCheck41 argument left Bool check4Part1 copy
+findCheck41 argument right Bool check4Part2 copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+readDoubleCell is call
+readDoubleCell in parseLongAs
+readDoubleCell invokes heap.take
+readDoubleCell argument bytes Int64 eight copy
+readDoubleCell result doubleCell machine.Address
+readDoubleCell ownedBy none
+readDoubleCell cleanedBy none
+readDoubleCell borrows none
+readDoubleCell catch none
+readDoubleCell suppresses none
+
+doStoreFloat64 is call
+doStoreFloat64 in parseLongAs
+doStoreFloat64 invokes machine.storeFloat64
+doStoreFloat64 argument address machine.Address doubleCell copy
+doStoreFloat64 argument value Float64 double copy
+doStoreFloat64 result none
+doStoreFloat64 ownedBy none
+doStoreFloat64 cleanedBy none
+doStoreFloat64 borrows none
+doStoreFloat64 catch none
+doStoreFloat64 suppresses none
+
+doUnpackAs is call
+doUnpackAs in parseLongAs
+doUnpackAs invokes clong.unpackAs
+doUnpackAs argument source machine.Address doubleCell copy
+doUnpackAs argument parts machine.Address parts copy
+doUnpackAs argument layout Int64 zero copy
+doUnpackAs result none
+doUnpackAs ownedBy none
+doUnpackAs cleanedBy none
+doUnpackAs borrows none
+doUnpackAs catch none
+doUnpackAs suppresses none
+
+doGive2 is call
+doGive2 in parseLongAs
+doGive2 invokes heap.give
+doGive2 argument block machine.Address doubleCell copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+secondStep1 is call
+secondStep1 in parseLongAs
+secondStep1 invokes math.addInt64
+secondStep1 argument left Int64 at copy
+secondStep1 argument right Int64 one copy
+secondStep1 result secondPart1 Int64
+secondStep1 ownedBy none
+secondStep1 cleanedBy none
+secondStep1 borrows none
+secondStep1 catch none
+secondStep1 suppresses none
+
+findSecond1 is call
+findSecond1 in parseLongAs
+findSecond1 invokes clibrary.byteAt
+findSecond1 argument base machine.Address text copy
+findSecond1 argument at Int64 secondPart1 copy
+findSecond1 result second Byte
+findSecond1 ownedBy none
+findSecond1 cleanedBy none
+findSecond1 borrows none
+findSecond1 catch none
+findSecond1 suppresses none
+
+check5Step1 is call
+check5Step1 in parseLongAs
+check5Step1 invokes compare.equalByte
+check5Step1 argument left Byte first copy
+check5Step1 argument right Byte byte48 copy
+check5Step1 result check5Part1 Bool
+check5Step1 ownedBy none
+check5Step1 cleanedBy none
+check5Step1 borrows none
+check5Step1 catch none
+check5Step1 suppresses none
+
+check5Step2 is call
+check5Step2 in parseLongAs
+check5Step2 invokes bits.orByte
+check5Step2 argument left Byte second copy
+check5Step2 argument right Byte byte32 copy
+check5Step2 result check5Part2 Byte
+check5Step2 ownedBy none
+check5Step2 cleanedBy none
+check5Step2 borrows none
+check5Step2 catch none
+check5Step2 suppresses none
+
+check5Step3 is call
+check5Step3 in parseLongAs
+check5Step3 invokes compare.equalByte
+check5Step3 argument left Byte check5Part2 copy
+check5Step3 argument right Byte byte120 copy
+check5Step3 result check5Part3 Bool
+check5Step3 ownedBy none
+check5Step3 cleanedBy none
+check5Step3 borrows none
+check5Step3 catch none
+check5Step3 suppresses none
+
+check5Step4 is call
+check5Step4 in parseLongAs
+check5Step4 invokes logic.and
+check5Step4 argument left Bool check5Part1 copy
+check5Step4 argument right Bool check5Part3 copy
+check5Step4 result check5Part4 Bool
+check5Step4 ownedBy none
+check5Step4 cleanedBy none
+check5Step4 borrows none
+check5Step4 catch none
+check5Step4 suppresses none
+
+check5Step5 is call
+check5Step5 in parseLongAs
+check5Step5 invokes math.addInt64
+check5Step5 argument left Int64 at copy
+check5Step5 argument right Int64 one copy
+check5Step5 result check5Part5 Int64
+check5Step5 ownedBy none
+check5Step5 cleanedBy none
+check5Step5 borrows none
+check5Step5 catch none
+check5Step5 suppresses none
+
+check5Step6 is call
+check5Step6 in parseLongAs
+check5Step6 invokes compare.greaterThanInt64
+check5Step6 argument left Int64 consumed copy
+check5Step6 argument right Int64 check5Part5 copy
+check5Step6 result check5Part6 Bool
+check5Step6 ownedBy none
+check5Step6 cleanedBy none
+check5Step6 borrows none
+check5Step6 catch none
+check5Step6 suppresses none
+
+findCheck51 is call
+findCheck51 in parseLongAs
+findCheck51 invokes logic.and
+findCheck51 argument left Bool check5Part4 copy
+findCheck51 argument right Bool check5Part6 copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+droppedStep1 is call
+droppedStep1 in parseLongAs
+droppedStep1 invokes math.addInt64
+droppedStep1 argument left Int64 at copy
+droppedStep1 argument right Int64 two copy
+droppedStep1 result droppedPart1 Int64
+droppedStep1 ownedBy none
+droppedStep1 cleanedBy none
+droppedStep1 borrows none
+droppedStep1 catch none
+droppedStep1 suppresses none
+
+findDroppedNext11 is call
+findDroppedNext11 in parseLongAs
+findDroppedNext11 invokes hexParts
+findDroppedNext11 argument text machine.Address text copy
+findDroppedNext11 argument start Int64 droppedPart1 copy
+findDroppedNext11 argument parts machine.Address parts copy
+findDroppedNext11 result droppedNext1 Int64
+findDroppedNext11 ownedBy none
+findDroppedNext11 cleanedBy none
+findDroppedNext11 borrows none
+findDroppedNext11 catch none
+findDroppedNext11 suppresses none
+
+readInfo is call
+readInfo in parseLongAs
+readInfo invokes heap.take
+readInfo argument bytes Int64 n24 copy
+readInfo result info machine.Address
+readInfo ownedBy none
+readInfo cleanedBy none
+readInfo borrows none
+readInfo catch none
+readInfo suppresses none
+
+doTextDigits is call
+doTextDigits in parseLongAs
+doTextDigits invokes textDigits
+doTextDigits argument text machine.Address text copy
+doTextDigits argument result machine.Address info copy
+doTextDigits result none
+doTextDigits ownedBy none
+doTextDigits cleanedBy none
+doTextDigits borrows none
+doTextDigits catch none
+doTextDigits suppresses none
+
+readDigits is call
+readDigits in parseLongAs
+readDigits invokes machine.loadAddress
+readDigits argument address machine.Address info copy
+readDigits result digits machine.Address
+readDigits ownedBy none
+readDigits cleanedBy none
+readDigits borrows none
+readDigits catch none
+readDigits suppresses none
+
+findCountAt1 is call
+findCountAt1 in parseLongAs
+findCountAt1 invokes machine.offset
+findCountAt1 argument address machine.Address info copy
+findCountAt1 argument bytes Int64 eight copy
+findCountAt1 result countAt machine.Address
+findCountAt1 ownedBy none
+findCountAt1 cleanedBy none
+findCountAt1 borrows none
+findCountAt1 catch none
+findCountAt1 suppresses none
+
+readCount is call
+readCount in parseLongAs
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countAt copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findPowerAt1 is call
+findPowerAt1 in parseLongAs
+findPowerAt1 invokes machine.offset
+findPowerAt1 argument address machine.Address info copy
+findPowerAt1 argument bytes Int64 sixteen copy
+findPowerAt1 result powerAt machine.Address
+findPowerAt1 ownedBy none
+findPowerAt1 cleanedBy none
+findPowerAt1 borrows none
+findPowerAt1 catch none
+findPowerAt1 suppresses none
+
+readPower is call
+readPower in parseLongAs
+readPower invokes machine.loadInt64
+readPower argument address machine.Address powerAt copy
+readPower result power Int64
+readPower ownedBy none
+readPower cleanedBy none
+readPower borrows none
+readPower catch none
+readPower suppresses none
+
+doGive3 is call
+doGive3 in parseLongAs
+doGive3 invokes heap.give
+doGive3 argument block machine.Address info copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+findCheck61 is call
+findCheck61 in parseLongAs
+findCheck61 invokes compare.equalInt64
+findCheck61 argument left Int64 count copy
+findCheck61 argument right Int64 zero copy
+findCheck61 result check6 Bool
+findCheck61 ownedBy none
+findCheck61 cleanedBy none
+findCheck61 borrows none
+findCheck61 catch none
+findCheck61 suppresses none
+
+doGive4 is call
+doGive4 in parseLongAs
+doGive4 invokes heap.give
+doGive4 argument block machine.Address digits copy
+doGive4 result none
+doGive4 ownedBy none
+doGive4 cleanedBy none
+doGive4 borrows none
+doGive4 catch none
+doGive4 suppresses none
+
+findDroppedNext21 is call
+findDroppedNext21 in parseLongAs
+findDroppedNext21 invokes decimalParts
+findDroppedNext21 argument digits machine.Address digits copy
+findDroppedNext21 argument count Int64 count copy
+findDroppedNext21 argument power Int64 power copy
+findDroppedNext21 argument parts machine.Address parts copy
+findDroppedNext21 argument layout Int64 layout copy
+findDroppedNext21 result droppedNext2 Int64
+findDroppedNext21 ownedBy none
+findDroppedNext21 cleanedBy none
+findDroppedNext21 borrows none
+findDroppedNext21 catch none
+findDroppedNext21 suppresses none
+
+doGive5 is call
+doGive5 in parseLongAs
+doGive5 invokes heap.give
+doGive5 argument block machine.Address digits copy
+doGive5 result none
+doGive5 ownedBy none
+doGive5 cleanedBy none
+doGive5 borrows none
+doGive5 catch none
+doGive5 suppresses none
+
+doSetPart2 is call
+doSetPart2 in parseLongAs
+doSetPart2 invokes clong.setPart
+doSetPart2 argument parts machine.Address parts copy
+doSetPart2 argument offset Int64 eight copy
+doSetPart2 argument value Int64 one copy
+doSetPart2 result none
+doSetPart2 ownedBy none
+doSetPart2 cleanedBy none
+doSetPart2 borrows none
+doSetPart2 catch none
+doSetPart2 suppresses none
+
+readHigh is call
+readHigh in parseLongAs
+readHigh invokes clong.highOf
+readHigh argument parts machine.Address parts copy
+readHigh result high UInt64
+readHigh ownedBy none
+readHigh cleanedBy none
+readHigh borrows none
+readHigh catch none
+readHigh suppresses none
+
+readLow is call
+readLow in parseLongAs
+readLow invokes clong.lowOf
+readLow argument parts machine.Address parts copy
+readLow result low UInt64
+readLow ownedBy none
+readLow cleanedBy none
+readLow borrows none
+readLow catch none
+readLow suppresses none
+
+readScale is call
+readScale in parseLongAs
+readScale invokes clong.getPart
+readScale argument parts machine.Address parts copy
+readScale argument offset Int64 sixteen copy
+readScale result scale Int64
+readScale ownedBy none
+readScale cleanedBy none
+readScale borrows none
+readScale catch none
+readScale suppresses none
+
+readLength is call
+readLength in parseLongAs
+readLength invokes clong.bitLength
+readLength argument high UInt64 high copy
+readLength argument low UInt64 low copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+check7Step1 is call
+check7Step1 in parseLongAs
+check7Step1 invokes compare.equalInt64
+check7Step1 argument left Int64 length copy
+check7Step1 argument right Int64 zero copy
+check7Step1 result check7Part1 Bool
+check7Step1 ownedBy none
+check7Step1 cleanedBy none
+check7Step1 borrows none
+check7Step1 catch none
+check7Step1 suppresses none
+
+check7Step2 is call
+check7Step2 in parseLongAs
+check7Step2 invokes compare.equalInt64
+check7Step2 argument left Int64 dropped copy
+check7Step2 argument right Int64 zero copy
+check7Step2 result check7Part2 Bool
+check7Step2 ownedBy none
+check7Step2 cleanedBy none
+check7Step2 borrows none
+check7Step2 catch none
+check7Step2 suppresses none
+
+findCheck71 is call
+findCheck71 in parseLongAs
+findCheck71 invokes logic.and
+findCheck71 argument left Bool check7Part1 copy
+findCheck71 argument right Bool check7Part2 copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
+
+doSetPart3 is call
+doSetPart3 in parseLongAs
+doSetPart3 invokes clong.setPart
+doSetPart3 argument parts machine.Address parts copy
+doSetPart3 argument offset Int64 eight copy
+doSetPart3 argument value Int64 zero copy
+doSetPart3 result none
+doSetPart3 ownedBy none
+doSetPart3 cleanedBy none
+doSetPart3 borrows none
+doSetPart3 catch none
+doSetPart3 suppresses none
+
+readPrecision is call
+readPrecision in parseLongAs
+readPrecision invokes clong.precisionOf
+readPrecision argument kind Int64 layout copy
+readPrecision result precision Int64
+readPrecision ownedBy none
+readPrecision cleanedBy none
+readPrecision borrows none
+readPrecision catch none
+readPrecision suppresses none
+
+readGreatest is call
+readGreatest in parseLongAs
+readGreatest invokes clong.greatestPower
+readGreatest argument kind Int64 layout copy
+readGreatest result greatest Int64
+readGreatest ownedBy none
+readGreatest cleanedBy none
+readGreatest borrows none
+readGreatest catch none
+readGreatest suppresses none
+
+doSettleAs is call
+doSettleAs in parseLongAs
+doSettleAs invokes clong.settleAs
+doSettleAs argument parts machine.Address parts copy
+doSettleAs argument dropped Int64 dropped copy
+doSettleAs argument layout Int64 layout copy
+doSettleAs result none
+doSettleAs ownedBy none
+doSettleAs cleanedBy none
+doSettleAs borrows none
+doSettleAs catch none
+doSettleAs suppresses none
+
+readKind is call
+readKind in parseLongAs
+readKind invokes clong.getPart
+readKind argument parts machine.Address parts copy
+readKind argument offset Int64 eight copy
+readKind result kind Int64
+readKind ownedBy none
+readKind cleanedBy none
+readKind borrows none
+readKind catch none
+readKind suppresses none
+
+check8Step1 is call
+check8Step1 in parseLongAs
+check8Step1 invokes compare.equalInt64
+check8Step1 argument left Int64 kind copy
+check8Step1 argument right Int64 two copy
+check8Step1 result check8Part1 Bool
+check8Step1 ownedBy none
+check8Step1 cleanedBy none
+check8Step1 borrows none
+check8Step1 catch none
+check8Step1 suppresses none
+
+check8Step2 is call
+check8Step2 in parseLongAs
+check8Step2 invokes math.addInt64
+check8Step2 argument left Int64 length copy
+check8Step2 argument right Int64 scale copy
+check8Step2 result check8Part2 Int64
+check8Step2 ownedBy none
+check8Step2 cleanedBy none
+check8Step2 borrows none
+check8Step2 catch none
+check8Step2 suppresses none
+
+check8Step3 is call
+check8Step3 in parseLongAs
+check8Step3 invokes math.subtractInt64
+check8Step3 argument left Int64 check8Part2 copy
+check8Step3 argument right Int64 one copy
+check8Step3 result check8Part3 Int64
+check8Step3 ownedBy none
+check8Step3 cleanedBy none
+check8Step3 borrows none
+check8Step3 catch none
+check8Step3 suppresses none
+
+check8Step4 is call
+check8Step4 in parseLongAs
+check8Step4 invokes math.addInt64
+check8Step4 argument left Int64 greatest copy
+check8Step4 argument right Int64 precision copy
+check8Step4 result check8Part4 Int64
+check8Step4 ownedBy none
+check8Step4 cleanedBy none
+check8Step4 borrows none
+check8Step4 catch none
+check8Step4 suppresses none
+
+check8Step5 is call
+check8Step5 in parseLongAs
+check8Step5 invokes compare.greaterOrEqualInt64
+check8Step5 argument left Int64 check8Part3 copy
+check8Step5 argument right Int64 check8Part4 copy
+check8Step5 result check8Part5 Bool
+check8Step5 ownedBy none
+check8Step5 cleanedBy none
+check8Step5 borrows none
+check8Step5 catch none
+check8Step5 suppresses none
+
+findCheck81 is call
+findCheck81 in parseLongAs
+findCheck81 invokes logic.or
+findCheck81 argument left Bool check8Part1 copy
+findCheck81 argument right Bool check8Part5 copy
+findCheck81 result check8 Bool
+findCheck81 ownedBy none
+findCheck81 cleanedBy none
+findCheck81 borrows none
+findCheck81 catch none
+findCheck81 suppresses none
+
+doSetErrno is call
+doSetErrno in parseLongAs
+doSetErrno invokes clibrary.setErrno
+doSetErrno argument value Int32 rangeError copy
+doSetErrno result none
+doSetErrno ownedBy none
+doSetErrno cleanedBy none
+doSetErrno borrows none
+doSetErrno catch none
+doSetErrno suppresses none
+
+readSettledHigh is call
+readSettledHigh in parseLongAs
+readSettledHigh invokes clong.highOf
+readSettledHigh argument parts machine.Address parts copy
+readSettledHigh result settledHigh UInt64
+readSettledHigh ownedBy none
+readSettledHigh cleanedBy none
+readSettledHigh borrows none
+readSettledHigh catch none
+readSettledHigh suppresses none
+
+readSettledLow is call
+readSettledLow in parseLongAs
+readSettledLow invokes clong.lowOf
+readSettledLow argument parts machine.Address parts copy
+readSettledLow result settledLow UInt64
+readSettledLow ownedBy none
+readSettledLow cleanedBy none
+readSettledLow borrows none
+readSettledLow catch none
+readSettledLow suppresses none
+
+readSettledLength is call
+readSettledLength in parseLongAs
+readSettledLength invokes clong.bitLength
+readSettledLength argument high UInt64 settledHigh copy
+readSettledLength argument low UInt64 settledLow copy
+readSettledLength result settledLength Int64
+readSettledLength ownedBy none
+readSettledLength cleanedBy none
+readSettledLength borrows none
+readSettledLength catch none
+readSettledLength suppresses none
+
+check9Step1 is call
+check9Step1 in parseLongAs
+check9Step1 invokes compare.equalInt64
+check9Step1 argument left Int64 kind copy
+check9Step1 argument right Int64 zero copy
+check9Step1 result check9Part1 Bool
+check9Step1 ownedBy none
+check9Step1 cleanedBy none
+check9Step1 borrows none
+check9Step1 catch none
+check9Step1 suppresses none
+
+check9Step2 is call
+check9Step2 in parseLongAs
+check9Step2 invokes compare.lessThanInt64
+check9Step2 argument left Int64 settledLength copy
+check9Step2 argument right Int64 precision copy
+check9Step2 result check9Part2 Bool
+check9Step2 ownedBy none
+check9Step2 cleanedBy none
+check9Step2 borrows none
+check9Step2 catch none
+check9Step2 suppresses none
+
+findCheck91 is call
+findCheck91 in parseLongAs
+findCheck91 invokes logic.or
+findCheck91 argument left Bool check9Part1 copy
+findCheck91 argument right Bool check9Part2 copy
+findCheck91 result check9 Bool
+findCheck91 ownedBy none
+findCheck91 cleanedBy none
+findCheck91 borrows none
+findCheck91 catch none
+findCheck91 suppresses none
+
+readSettledPower is call
+readSettledPower in parseLongAs
+readSettledPower invokes clong.getPart
+readSettledPower argument parts machine.Address parts copy
+readSettledPower argument offset Int64 sixteen copy
+readSettledPower result settledPower Int64
+readSettledPower ownedBy none
+readSettledPower cleanedBy none
+readSettledPower borrows none
+readSettledPower catch none
+readSettledPower suppresses none
+
+cutStep1 is call
+cutStep1 in parseLongAs
+cutStep1 invokes math.subtractInt64
+cutStep1 argument left Int64 settledPower copy
+cutStep1 argument right Int64 scale copy
+cutStep1 result cutPart1 Int64
+cutStep1 ownedBy none
+cutStep1 cleanedBy none
+cutStep1 borrows none
+cutStep1 catch none
+cutStep1 suppresses none
+
+cutStep2 is call
+cutStep2 in parseLongAs
+cutStep2 invokes highestOf
+cutStep2 argument left Int64 cutPart1 copy
+cutStep2 argument right Int64 zero copy
+cutStep2 result cutPart2 Int64
+cutStep2 ownedBy none
+cutStep2 cleanedBy none
+cutStep2 borrows none
+cutStep2 catch none
+cutStep2 suppresses none
+
+findCut1 is call
+findCut1 in parseLongAs
+findCut1 invokes lowestOf
+findCut1 argument left Int64 cutPart2 copy
+findCut1 argument right Int64 n128 copy
+findCut1 result cut Int64
+findCut1 ownedBy none
+findCut1 cleanedBy none
+findCut1 borrows none
+findCut1 catch none
+findCut1 suppresses none
+
+inexactStep1 is call
+inexactStep1 in parseLongAs
+inexactStep1 invokes compare.notEqualInt64
+inexactStep1 argument left Int64 dropped copy
+inexactStep1 argument right Int64 zero copy
+inexactStep1 result inexactPart1 Bool
+inexactStep1 ownedBy none
+inexactStep1 cleanedBy none
+inexactStep1 borrows none
+inexactStep1 catch none
+inexactStep1 suppresses none
+
+inexactStep2 is call
+inexactStep2 in parseLongAs
+inexactStep2 invokes compare.equalInt64
+inexactStep2 argument left Int64 kind copy
+inexactStep2 argument right Int64 zero copy
+inexactStep2 result inexactPart2 Bool
+inexactStep2 ownedBy none
+inexactStep2 cleanedBy none
+inexactStep2 borrows none
+inexactStep2 catch none
+inexactStep2 suppresses none
+
+inexactStep3 is call
+inexactStep3 in parseLongAs
+inexactStep3 invokes logic.or
+inexactStep3 argument left Bool inexactPart1 copy
+inexactStep3 argument right Bool inexactPart2 copy
+inexactStep3 result inexactPart3 Bool
+inexactStep3 ownedBy none
+inexactStep3 cleanedBy none
+inexactStep3 borrows none
+inexactStep3 catch none
+inexactStep3 suppresses none
+
+inexactStep4 is call
+inexactStep4 in parseLongAs
+inexactStep4 invokes clong.lowBitsSet
+inexactStep4 argument high UInt64 high copy
+inexactStep4 argument low UInt64 low copy
+inexactStep4 argument count Int64 cut copy
+inexactStep4 result inexactPart4 Bool
+inexactStep4 ownedBy none
+inexactStep4 cleanedBy none
+inexactStep4 borrows none
+inexactStep4 catch none
+inexactStep4 suppresses none
+
+findInexact1 is call
+findInexact1 in parseLongAs
+findInexact1 invokes logic.or
+findInexact1 argument left Bool inexactPart3 copy
+findInexact1 argument right Bool inexactPart4 copy
+findInexact1 result inexact Bool
+findInexact1 ownedBy none
+findInexact1 cleanedBy none
+findInexact1 borrows none
+findInexact1 catch none
+findInexact1 suppresses none
+
+doSetErrno2 is call
+doSetErrno2 in parseLongAs
+doSetErrno2 invokes clibrary.setErrno
+doSetErrno2 argument value Int32 rangeError copy
+doSetErrno2 result none
+doSetErrno2 ownedBy none
+doSetErrno2 cleanedBy none
+doSetErrno2 borrows none
+doSetErrno2 catch none
+doSetErrno2 suppresses none
+
+doPackAs is call
+doPackAs in parseLongAs
+doPackAs invokes clong.packAs
+doPackAs argument parts machine.Address parts copy
+doPackAs argument target machine.Address target copy
+doPackAs argument layout Int64 layout copy
+doPackAs result none
+doPackAs ownedBy none
+doPackAs cleanedBy none
+doPackAs borrows none
+doPackAs catch none
+doPackAs suppresses none
+
+doGive6 is call
+doGive6 in parseLongAs
+doGive6 invokes heap.give
+doGive6 argument block machine.Address parts copy
+doGive6 result none
+doGive6 ownedBy none
+doGive6 cleanedBy none
+doGive6 borrows none
+doGive6 catch none
+doGive6 suppresses none
+
+lowestOf is operation
+lowestOf purpose "The smaller of two whole numbers"
+lowestOf invariant none
+lowestOf typeParameter none
+lowestOf input left Int64 copied
+lowestOf input right Int64 copied
+lowestOf output Int64
+lowestOf outputOwnedBy none
+lowestOf raises none
+lowestOf effect none
+lowestOf uses none
+lowestOf memoryHeap false
+lowestOf async false
+lowestOf maxRecursion none
+lowestOf label begin loopKind none
+lowestOf label begin within none
+lowestOf label giveLeft loopKind none
+lowestOf label giveLeft within none
+lowestOf label giveRight loopKind none
+lowestOf label giveRight within none
+lowestOf let none
+lowestOf at begin do findCheck11
+lowestOf at begin branch if check1 goto giveLeft else goto giveRight
+lowestOf at giveLeft return ok left
+lowestOf at giveRight return ok right
+
+findCheck11 is call
+findCheck11 in lowestOf
+findCheck11 invokes compare.lessThanInt64
+findCheck11 argument left Int64 left copy
+findCheck11 argument right Int64 right copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+highestOf is operation
+highestOf purpose "The larger of two whole numbers"
+highestOf invariant none
+highestOf typeParameter none
+highestOf input left Int64 copied
+highestOf input right Int64 copied
+highestOf output Int64
+highestOf outputOwnedBy none
+highestOf raises none
+highestOf effect none
+highestOf uses none
+highestOf memoryHeap false
+highestOf async false
+highestOf maxRecursion none
+highestOf label begin loopKind none
+highestOf label begin within none
+highestOf label giveLeft loopKind none
+highestOf label giveLeft within none
+highestOf label giveRight loopKind none
+highestOf label giveRight within none
+highestOf let none
+highestOf at begin do findCheck11
+highestOf at begin branch if check1 goto giveLeft else goto giveRight
+highestOf at giveLeft return ok left
+highestOf at giveRight return ok right
+
+findCheck11 is call
+findCheck11 in highestOf
+findCheck11 invokes compare.greaterThanInt64
+findCheck11 argument left Int64 left copy
+findCheck11 argument right Int64 right copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+parseLong is operation
+parseLong purpose "strtold: a C string's leading number as a long double, correctly rounded, with where it ends"
+parseLong invariant none
+parseLong typeParameter none
+parseLong input text machine.Address copied
+parseLong input endAt machine.Address copied
+parseLong output machine.LongDouble
+parseLong outputOwnedBy none
+parseLong raises none
+parseLong effect use machine.memory
+parseLong effect use system.calls
+parseLong uses memoryAccess
+parseLong uses systemCalls
+parseLong memoryHeap false
+parseLong async false
+parseLong maxRecursion none
+parseLong abi library "strtold"
+parseLong label begin loopKind none
+parseLong label begin within none
+parseLong let sixteen Int64 16 immutable
+parseLong at begin do readCell
+parseLong at begin do readLayout
+parseLong at begin do doParseLongAs
+parseLong at begin do readValue
+parseLong at begin do doGive
+parseLong at begin return ok value
+
+readCell is call
+readCell in parseLong
+readCell invokes heap.take
+readCell argument bytes Int64 sixteen copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+readLayout is call
+readLayout in parseLong
+readLayout invokes clong.format
+readLayout argument none
+readLayout result layout Int64
+readLayout ownedBy none
+readLayout cleanedBy none
+readLayout borrows none
+readLayout catch none
+readLayout suppresses none
+
+doParseLongAs is call
+doParseLongAs in parseLong
+doParseLongAs invokes parseLongAs
+doParseLongAs argument text machine.Address text copy
+doParseLongAs argument endAt machine.Address endAt copy
+doParseLongAs argument layout Int64 layout copy
+doParseLongAs argument target machine.Address cell copy
+doParseLongAs result none
+doParseLongAs ownedBy none
+doParseLongAs cleanedBy none
+doParseLongAs borrows none
+doParseLongAs catch none
+doParseLongAs suppresses none
+
+readValue is call
+readValue in parseLong
+readValue invokes machine.loadLongDouble
+readValue argument address machine.Address cell copy
+readValue result value machine.LongDouble
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+doGive is call
+doGive in parseLong
+doGive invokes heap.give
+doGive argument block machine.Address cell copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+scanLong is operation
+scanLong purpose "scanf's %Lf (and %Le %Lg %La): the text it collected read as strtold reads it, stored as a long double where the argument points"
+scanLong invariant storesLikeStrtold "\"Stores the bytes strtold's reading gives\""
+scanLong typeParameter none
+scanLong input text machine.Address copied
+scanLong input target machine.Address copied
+scanLong output none
+scanLong outputOwnedBy none
+scanLong raises none
+scanLong effect use machine.memory
+scanLong effect use system.calls
+scanLong uses memoryAccess
+scanLong uses systemCalls
+scanLong memoryHeap false
+scanLong async false
+scanLong maxRecursion none
+scanLong label begin loopKind none
+scanLong label begin within none
+scanLong let none
+scanLong at begin do readNowhere
+scanLong at begin do readLayout
+scanLong at begin do doParseLongAs
+scanLong at begin return ok none
+
+readNowhere is call
+readNowhere in scanLong
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readLayout is call
+readLayout in scanLong
+readLayout invokes clong.format
+readLayout argument none
+readLayout result layout Int64
+readLayout ownedBy none
+readLayout cleanedBy none
+readLayout borrows none
+readLayout catch none
+readLayout suppresses none
+
+doParseLongAs is call
+doParseLongAs in scanLong
+doParseLongAs invokes parseLongAs
+doParseLongAs argument text machine.Address text copy
+doParseLongAs argument endAt machine.Address nowhere copy
+doParseLongAs argument layout Int64 layout copy
+doParseLongAs argument target machine.Address target copy
+doParseLongAs result none
+doParseLongAs ownedBy none
+doParseLongAs cleanedBy none
+doParseLongAs borrows none
+doParseLongAs catch none
+doParseLongAs suppresses none
+
+parseWideLong is operation
+parseWideLong purpose "wcstold: a wide string's leading number as a long double, as strtold reads its ASCII characters, with the end stored as a wide place"
+parseWideLong invariant none
+parseWideLong typeParameter none
+parseWideLong input text machine.Address copied
+parseWideLong input endAt machine.Address copied
+parseWideLong output machine.LongDouble
+parseWideLong outputOwnedBy none
+parseWideLong raises none
+parseWideLong effect use machine.memory
+parseWideLong effect use system.calls
+parseWideLong uses memoryAccess
+parseWideLong uses systemCalls
+parseWideLong memoryHeap false
+parseWideLong async false
+parseWideLong maxRecursion none
+parseWideLong abi library "wcstold"
+parseWideLong label begin loopKind none
+parseWideLong label begin within none
+parseWideLong label measure loopKind while
+parseWideLong label measure within none
+parseWideLong label measure maxIterations forever
+parseWideLong label countUnit loopKind none
+parseWideLong label countUnit within measure
+parseWideLong label copyOut loopKind none
+parseWideLong label copyOut within none
+parseWideLong label copyEach loopKind while
+parseWideLong label copyEach within none
+parseWideLong label copyEach maxIterations forever
+parseWideLong label copyOne loopKind none
+parseWideLong label copyOne within copyEach
+parseWideLong label copyDone loopKind none
+parseWideLong label copyDone within none
+parseWideLong label storeEnd loopKind none
+parseWideLong label storeEnd within none
+parseWideLong label done loopKind none
+parseWideLong label done within none
+parseWideLong let units Int64 0 mutable
+parseWideLong let copied Int64 0 mutable
+parseWideLong let zeroByte Byte 0 immutable
+parseWideLong let four Int64 4 immutable
+parseWideLong let int320 Int32 0 immutable
+parseWideLong let int32128 Int32 128 immutable
+parseWideLong let one Int64 1 immutable
+parseWideLong let eight Int64 8 immutable
+parseWideLong let sixteen Int64 16 immutable
+parseWideLong at begin goto measure
+parseWideLong at measure do unitAtStep1
+parseWideLong at measure do findUnitAt1
+parseWideLong at measure do readUnit
+parseWideLong at measure do check1Step1
+parseWideLong at measure do check1Step2
+parseWideLong at measure do findCheck11
+parseWideLong at measure branch if check1 goto countUnit else goto copyOut
+parseWideLong at countUnit do findUnitsNext11
+parseWideLong at countUnit set units unitsNext1
+parseWideLong at countUnit goto measure
+parseWideLong at copyOut do blockStep1
+parseWideLong at copyOut do findBlock1
+parseWideLong at copyOut goto copyEach
+parseWideLong at copyEach do findCheck21
+parseWideLong at copyEach branch if check2 goto copyDone else goto copyOne
+parseWideLong at copyOne do sourceAtStep1
+parseWideLong at copyOne do findSourceAt1
+parseWideLong at copyOne do readWideUnit
+parseWideLong at copyOne do findPlaceAt1
+parseWideLong at copyOne do doStoreByteStep1
+parseWideLong at copyOne do doStoreByteStep2
+parseWideLong at copyOne do doStoreByte
+parseWideLong at copyOne do findCopiedNext11
+parseWideLong at copyOne set copied copiedNext1
+parseWideLong at copyOne goto copyEach
+parseWideLong at copyDone do findEndByteAt1
+parseWideLong at copyDone do doStoreByte2
+parseWideLong at copyDone do readEndCell
+parseWideLong at copyDone do readCell
+parseWideLong at copyDone do readLayout
+parseWideLong at copyDone do doParseLongAs
+parseWideLong at copyDone do readValue
+parseWideLong at copyDone do readEndPlace
+parseWideLong at copyDone do readConsumed
+parseWideLong at copyDone do readNowhere
+parseWideLong at copyDone do readNoEnd
+parseWideLong at copyDone do doGive
+parseWideLong at copyDone do doGive2
+parseWideLong at copyDone do doGive3
+parseWideLong at copyDone branch if noEnd goto done else goto storeEnd
+parseWideLong at storeEnd do wideEndStep1
+parseWideLong at storeEnd do findWideEnd1
+parseWideLong at storeEnd do doStoreAddress
+parseWideLong at storeEnd goto done
+parseWideLong at done return ok value
+
+unitAtStep1 is call
+unitAtStep1 in parseWideLong
+unitAtStep1 invokes math.multiplyInt64
+unitAtStep1 argument left Int64 units copy
+unitAtStep1 argument right Int64 four copy
+unitAtStep1 result unitAtPart1 Int64
+unitAtStep1 ownedBy none
+unitAtStep1 cleanedBy none
+unitAtStep1 borrows none
+unitAtStep1 catch none
+unitAtStep1 suppresses none
+
+findUnitAt1 is call
+findUnitAt1 in parseWideLong
+findUnitAt1 invokes machine.offset
+findUnitAt1 argument address machine.Address text copy
+findUnitAt1 argument bytes Int64 unitAtPart1 copy
+findUnitAt1 result unitAt machine.Address
+findUnitAt1 ownedBy none
+findUnitAt1 cleanedBy none
+findUnitAt1 borrows none
+findUnitAt1 catch none
+findUnitAt1 suppresses none
+
+readUnit is call
+readUnit in parseWideLong
+readUnit invokes machine.loadInt32
+readUnit argument address machine.Address unitAt copy
+readUnit result unit Int32
+readUnit ownedBy none
+readUnit cleanedBy none
+readUnit borrows none
+readUnit catch none
+readUnit suppresses none
+
+check1Step1 is call
+check1Step1 in parseWideLong
+check1Step1 invokes compare.greaterThanInt32
+check1Step1 argument left Int32 unit copy
+check1Step1 argument right Int32 int320 copy
+check1Step1 result check1Part1 Bool
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in parseWideLong
+check1Step2 invokes compare.lessThanInt32
+check1Step2 argument left Int32 unit copy
+check1Step2 argument right Int32 int32128 copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+findCheck11 is call
+findCheck11 in parseWideLong
+findCheck11 invokes logic.and
+findCheck11 argument left Bool check1Part1 copy
+findCheck11 argument right Bool check1Part2 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findUnitsNext11 is call
+findUnitsNext11 in parseWideLong
+findUnitsNext11 invokes math.addInt64
+findUnitsNext11 argument left Int64 units copy
+findUnitsNext11 argument right Int64 one copy
+findUnitsNext11 result unitsNext1 Int64
+findUnitsNext11 ownedBy none
+findUnitsNext11 cleanedBy none
+findUnitsNext11 borrows none
+findUnitsNext11 catch none
+findUnitsNext11 suppresses none
+
+blockStep1 is call
+blockStep1 in parseWideLong
+blockStep1 invokes math.addInt64
+blockStep1 argument left Int64 units copy
+blockStep1 argument right Int64 one copy
+blockStep1 result blockPart1 Int64
+blockStep1 ownedBy none
+blockStep1 cleanedBy none
+blockStep1 borrows none
+blockStep1 catch none
+blockStep1 suppresses none
+
+findBlock1 is call
+findBlock1 in parseWideLong
+findBlock1 invokes heap.take
+findBlock1 argument bytes Int64 blockPart1 copy
+findBlock1 result block machine.Address
+findBlock1 ownedBy none
+findBlock1 cleanedBy none
+findBlock1 borrows none
+findBlock1 catch none
+findBlock1 suppresses none
+
+findCheck21 is call
+findCheck21 in parseWideLong
+findCheck21 invokes compare.greaterOrEqualInt64
+findCheck21 argument left Int64 copied copy
+findCheck21 argument right Int64 units copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+sourceAtStep1 is call
+sourceAtStep1 in parseWideLong
+sourceAtStep1 invokes math.multiplyInt64
+sourceAtStep1 argument left Int64 copied copy
+sourceAtStep1 argument right Int64 four copy
+sourceAtStep1 result sourceAtPart1 Int64
+sourceAtStep1 ownedBy none
+sourceAtStep1 cleanedBy none
+sourceAtStep1 borrows none
+sourceAtStep1 catch none
+sourceAtStep1 suppresses none
+
+findSourceAt1 is call
+findSourceAt1 in parseWideLong
+findSourceAt1 invokes machine.offset
+findSourceAt1 argument address machine.Address text copy
+findSourceAt1 argument bytes Int64 sourceAtPart1 copy
+findSourceAt1 result sourceAt machine.Address
+findSourceAt1 ownedBy none
+findSourceAt1 cleanedBy none
+findSourceAt1 borrows none
+findSourceAt1 catch none
+findSourceAt1 suppresses none
+
+readWideUnit is call
+readWideUnit in parseWideLong
+readWideUnit invokes machine.loadInt32
+readWideUnit argument address machine.Address sourceAt copy
+readWideUnit result wideUnit Int32
+readWideUnit ownedBy none
+readWideUnit cleanedBy none
+readWideUnit borrows none
+readWideUnit catch none
+readWideUnit suppresses none
+
+findPlaceAt1 is call
+findPlaceAt1 in parseWideLong
+findPlaceAt1 invokes machine.offset
+findPlaceAt1 argument address machine.Address block copy
+findPlaceAt1 argument bytes Int64 copied copy
+findPlaceAt1 result placeAt machine.Address
+findPlaceAt1 ownedBy none
+findPlaceAt1 cleanedBy none
+findPlaceAt1 borrows none
+findPlaceAt1 catch none
+findPlaceAt1 suppresses none
+
+doStoreByteStep1 is call
+doStoreByteStep1 in parseWideLong
+doStoreByteStep1 invokes convert.int32ToInt64
+doStoreByteStep1 argument value Int32 wideUnit copy
+doStoreByteStep1 result doStoreBytePart1 Int64
+doStoreByteStep1 ownedBy none
+doStoreByteStep1 cleanedBy none
+doStoreByteStep1 borrows none
+doStoreByteStep1 catch none
+doStoreByteStep1 suppresses none
+
+doStoreByteStep2 is call
+doStoreByteStep2 in parseWideLong
+doStoreByteStep2 invokes convert.int64ToByte
+doStoreByteStep2 argument value Int64 doStoreBytePart1 copy
+doStoreByteStep2 result doStoreBytePart2 Byte
+doStoreByteStep2 ownedBy none
+doStoreByteStep2 cleanedBy none
+doStoreByteStep2 borrows none
+doStoreByteStep2 catch none
+doStoreByteStep2 suppresses none
+
+doStoreByte is call
+doStoreByte in parseWideLong
+doStoreByte invokes machine.storeByte
+doStoreByte argument address machine.Address placeAt copy
+doStoreByte argument value Byte doStoreBytePart2 copy
+doStoreByte result none
+doStoreByte ownedBy none
+doStoreByte cleanedBy none
+doStoreByte borrows none
+doStoreByte catch none
+doStoreByte suppresses none
+
+findCopiedNext11 is call
+findCopiedNext11 in parseWideLong
+findCopiedNext11 invokes math.addInt64
+findCopiedNext11 argument left Int64 copied copy
+findCopiedNext11 argument right Int64 one copy
+findCopiedNext11 result copiedNext1 Int64
+findCopiedNext11 ownedBy none
+findCopiedNext11 cleanedBy none
+findCopiedNext11 borrows none
+findCopiedNext11 catch none
+findCopiedNext11 suppresses none
+
+findEndByteAt1 is call
+findEndByteAt1 in parseWideLong
+findEndByteAt1 invokes machine.offset
+findEndByteAt1 argument address machine.Address block copy
+findEndByteAt1 argument bytes Int64 units copy
+findEndByteAt1 result endByteAt machine.Address
+findEndByteAt1 ownedBy none
+findEndByteAt1 cleanedBy none
+findEndByteAt1 borrows none
+findEndByteAt1 catch none
+findEndByteAt1 suppresses none
+
+doStoreByte2 is call
+doStoreByte2 in parseWideLong
+doStoreByte2 invokes machine.storeByte
+doStoreByte2 argument address machine.Address endByteAt copy
+doStoreByte2 argument value Byte zeroByte copy
+doStoreByte2 result none
+doStoreByte2 ownedBy none
+doStoreByte2 cleanedBy none
+doStoreByte2 borrows none
+doStoreByte2 catch none
+doStoreByte2 suppresses none
+
+readEndCell is call
+readEndCell in parseWideLong
+readEndCell invokes heap.take
+readEndCell argument bytes Int64 eight copy
+readEndCell result endCell machine.Address
+readEndCell ownedBy none
+readEndCell cleanedBy none
+readEndCell borrows none
+readEndCell catch none
+readEndCell suppresses none
+
+readCell is call
+readCell in parseWideLong
+readCell invokes heap.take
+readCell argument bytes Int64 sixteen copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+readLayout is call
+readLayout in parseWideLong
+readLayout invokes clong.format
+readLayout argument none
+readLayout result layout Int64
+readLayout ownedBy none
+readLayout cleanedBy none
+readLayout borrows none
+readLayout catch none
+readLayout suppresses none
+
+doParseLongAs is call
+doParseLongAs in parseWideLong
+doParseLongAs invokes parseLongAs
+doParseLongAs argument text machine.Address block copy
+doParseLongAs argument endAt machine.Address endCell copy
+doParseLongAs argument layout Int64 layout copy
+doParseLongAs argument target machine.Address cell copy
+doParseLongAs result none
+doParseLongAs ownedBy none
+doParseLongAs cleanedBy none
+doParseLongAs borrows none
+doParseLongAs catch none
+doParseLongAs suppresses none
+
+readValue is call
+readValue in parseWideLong
+readValue invokes machine.loadLongDouble
+readValue argument address machine.Address cell copy
+readValue result value machine.LongDouble
+readValue ownedBy none
+readValue cleanedBy none
+readValue borrows none
+readValue catch none
+readValue suppresses none
+
+readEndPlace is call
+readEndPlace in parseWideLong
+readEndPlace invokes machine.loadAddress
+readEndPlace argument address machine.Address endCell copy
+readEndPlace result endPlace machine.Address
+readEndPlace ownedBy none
+readEndPlace cleanedBy none
+readEndPlace borrows none
+readEndPlace catch none
+readEndPlace suppresses none
+
+readConsumed is call
+readConsumed in parseWideLong
+readConsumed invokes machine.difference
+readConsumed argument left machine.Address endPlace copy
+readConsumed argument right machine.Address block copy
+readConsumed result consumed Int64
+readConsumed ownedBy none
+readConsumed cleanedBy none
+readConsumed borrows none
+readConsumed catch none
+readConsumed suppresses none
+
+readNowhere is call
+readNowhere in parseWideLong
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readNoEnd is call
+readNoEnd in parseWideLong
+readNoEnd invokes machine.equal
+readNoEnd argument left machine.Address endAt copy
+readNoEnd argument right machine.Address nowhere copy
+readNoEnd result noEnd Bool
+readNoEnd ownedBy none
+readNoEnd cleanedBy none
+readNoEnd borrows none
+readNoEnd catch none
+readNoEnd suppresses none
+
+doGive is call
+doGive in parseWideLong
+doGive invokes heap.give
+doGive argument block machine.Address cell copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in parseWideLong
+doGive2 invokes heap.give
+doGive2 argument block machine.Address endCell copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doGive3 is call
+doGive3 in parseWideLong
+doGive3 invokes heap.give
+doGive3 argument block machine.Address block copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+wideEndStep1 is call
+wideEndStep1 in parseWideLong
+wideEndStep1 invokes math.multiplyInt64
+wideEndStep1 argument left Int64 consumed copy
+wideEndStep1 argument right Int64 four copy
+wideEndStep1 result wideEndPart1 Int64
+wideEndStep1 ownedBy none
+wideEndStep1 cleanedBy none
+wideEndStep1 borrows none
+wideEndStep1 catch none
+wideEndStep1 suppresses none
+
+findWideEnd1 is call
+findWideEnd1 in parseWideLong
+findWideEnd1 invokes machine.offset
+findWideEnd1 argument address machine.Address text copy
+findWideEnd1 argument bytes Int64 wideEndPart1 copy
+findWideEnd1 result wideEnd machine.Address
+findWideEnd1 ownedBy none
+findWideEnd1 cleanedBy none
+findWideEnd1 borrows none
+findWideEnd1 catch none
+findWideEnd1 suppresses none
+
+doStoreAddress is call
+doStoreAddress in parseWideLong
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address endAt copy
+doStoreAddress argument value machine.Address wideEnd copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
