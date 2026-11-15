@@ -1,20 +1,30 @@
 /* complex.h as glibc's libm gives it, against the library's: every function of double complex and float complex on
-   ordinary values (printed to 9 significant digits, so a difference of a few units in the last place of a result does
-   not show), on infinities and NaN (a NaN is printed as "nan" whatever its sign bit), and on the branch cuts, where
-   the sign of a zero imaginary part picks the side. */
+   ordinary values, on infinities and NaN (a NaN is printed as "nan" whatever its sign bit), and on the branch cuts, where
+   the sign of a zero imaginary part picks the side. A finite result of a double function is printed as its largest
+   part to 6 significant digits and each part as a fraction of it to 6 places (so a few units in the last place, and the
+   rounding noise of a part that cancels, do not show); a float function is not printed but compared with the double
+   function on the same value, within 3e-6 of the result's size (glibc's float functions are a few float ulps from the
+   exact value, and the library's closer), and the line says "agrees". */
 #include <complex.h>
 #include <math.h>
 #include <stdio.h>
+
+/* set while an argument is a NaN: the sign of an infinity that comes from it is not fixed by the standard */
+static int loose_infinity;
 
 static void number(double x) {
     if (isnan(x))
         printf("nan");
     else if (isinf(x))
-        printf(x < 0 ? "-inf" : "inf");
+        printf(x < 0 && !loose_infinity ? "-inf" : "inf");
     else if (x == 0)
         printf(signbit(x) ? "-0" : "0");
     else
         printf("%.9g", x);
+}
+
+static int finite_part(double x) {
+    return !isnan(x) && !isinf(x);
 }
 
 static void part(double x, int sign_matters) {
@@ -24,16 +34,58 @@ static void part(double x, int sign_matters) {
         number(x);
 }
 
+/* a finite complex number as its size and, as fractions of it, its parts */
 static void show(const char *what, double complex z, int signs) {
+    double re = creal(z), im = cimag(z);
     printf("%-26s (", what);
-    part(creal(z), signs);
-    printf(", ");
-    part(cimag(z), signs);
+    if (finite_part(re) && finite_part(im) && (re != 0 || im != 0)) {
+        double n = fmax(fabs(re), fabs(im));
+        double r = re / n, i = im / n;
+        printf("%.6g | ", n);
+        if (fabs(r) < 5e-7 && !(signs && re == 0))
+            printf("0");
+        else if (re == 0)
+            number(re);
+        else
+            printf("%.6f", r);
+        printf(", ");
+        if (fabs(i) < 5e-7 && !(signs && im == 0))
+            printf("0");
+        else if (im == 0)
+            number(im);
+        else
+            printf("%.6f", i);
+    } else {
+        part(re, signs);
+        printf(", ");
+        part(im, signs);
+    }
     printf(")\n");
 }
 
-static void showf(const char *what, float complex z, int signs) {
-    show(what, (double complex) (crealf(z) + I * cimagf(z)), signs);
+/* a float function against the double function on the same value */
+static void showf(const char *what, float complex z, double complex reference, int signs) {
+    double re = crealf(z), im = cimagf(z), rre = creal(reference), rim = cimag(reference);
+    int same_kind = isnan(re) == isnan(rre) && isinf(re) == isinf(rre) && isnan(im) == isnan(rim) &&
+                    isinf(im) == isinf(rim);
+    printf("%-26s ", what);
+    if (!same_kind || (!finite_part(rre) && re != rre && !isnan(re)) || (!finite_part(rim) && im != rim && !isnan(im))) {
+        printf("DIFFERS (%g, %g) from (%g, %g)\n", re, im, rre, rim);
+        return;
+    }
+    if (finite_part(rre) && finite_part(rim)) {
+        double n = fmax(fabs(rre), fabs(rim));
+        if (fabs(re - rre) > 3e-6 * n || fabs(im - rim) > 3e-6 * n) {
+            printf("DIFFERS (%g, %g) from (%g, %g)\n", re, im, rre, rim);
+            return;
+        }
+    }
+    (void) signs;
+    printf("agrees\n");
+}
+
+static void showf_real(const char *what, float x, double reference) {
+    printf("%-26s %s\n", what, fabs(x - reference) <= 3e-6 * fabs(reference) ? "agrees" : "DIFFERS");
 }
 
 static void show_real(const char *what, double x) {
@@ -74,25 +126,26 @@ int main(void) {
     for (i = 0; i < 5; i++) {
         float complex w = ordinaryf[i];
         printf("-- float (%g, %g)\n", crealf(w), cimagf(w));
-        show_real("cabsf", cabsf(w));
-        show_real("cargf", cargf(w));
-        showf("conjf", conjf(w), 1);
-        showf("cexpf", cexpf(w), 1);
-        showf("clogf", clogf(w), 1);
-        showf("csqrtf", csqrtf(w), 1);
-        showf("csinf", csinf(w), 1);
-        showf("ccosf", ccosf(w), 1);
-        showf("ctanf", ctanf(w), 1);
-        showf("casinf", casinf(w), 1);
-        showf("cacosf", cacosf(w), 1);
-        showf("catanf", catanf(w), 1);
-        showf("csinhf", csinhf(w), 1);
-        showf("ccoshf", ccoshf(w), 1);
-        showf("ctanhf", ctanhf(w), 1);
-        showf("casinhf", casinhf(w), 1);
-        showf("cacoshf", cacoshf(w), 1);
-        showf("catanhf", catanhf(w), 1);
-        showf("cpowf(w, 2)", cpowf(w, 2.0f), 1);
+        double complex d = (double complex) (crealf(w) + I * cimagf(w));
+        showf_real("cabsf", cabsf(w), cabs(d));
+        showf_real("cargf", cargf(w), carg(d));
+        showf("conjf", conjf(w), conj(d), 1);
+        showf("cexpf", cexpf(w), cexp(d), 1);
+        showf("clogf", clogf(w), clog(d), 1);
+        showf("csqrtf", csqrtf(w), csqrt(d), 1);
+        showf("csinf", csinf(w), csin(d), 1);
+        showf("ccosf", ccosf(w), ccos(d), 1);
+        showf("ctanf", ctanf(w), ctan(d), 1);
+        showf("casinf", casinf(w), casin(d), 1);
+        showf("cacosf", cacosf(w), cacos(d), 1);
+        showf("catanf", catanf(w), catan(d), 1);
+        showf("csinhf", csinhf(w), csinh(d), 1);
+        showf("ccoshf", ccoshf(w), ccosh(d), 1);
+        showf("ctanhf", ctanhf(w), ctanh(d), 1);
+        showf("casinhf", casinhf(w), casinh(d), 1);
+        showf("cacoshf", cacoshf(w), cacosh(d), 1);
+        showf("catanhf", catanhf(w), catanh(d), 1);
+        showf("cpowf(w, 2)", cpowf(w, 2.0f), cpow(d, 2.0), 1);
     }
 
     /* Annex G's special values: infinities and NaN in each part (zeros print without a sign) */
@@ -115,12 +168,15 @@ int main(void) {
             if (isinf(x) && isinf(y))
                 z = x + y * I;
             printf("== special %d %d\n", a, b);
+            loose_infinity = isnan(creal(z)) || isnan(cimag(z));
             show_real("cabs", cabs(z));
             show("cproj", cproj(z), 0);
 #define CALL(f) show(#f, f(z), 0);
             EACH(CALL)
 #undef CALL
         }
+
+    loose_infinity = 0;
 
     /* branch cuts: the sign of a zero imaginary part picks the side, so zeros print with their signs */
     show("clog(-1 + 0i)", clog(-one + zero * I), 1);

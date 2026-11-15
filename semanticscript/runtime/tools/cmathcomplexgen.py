@@ -616,7 +616,7 @@ def _asinh(x, y, xn, yn, xi, yi, xf, yf):
     if xn:
         return (x, y) if y == 0 else ("N", "N")
     if yn:
-        return ("A", "N") if x == 0 else ("N", "N")
+        return ("N", "N")
     if x == 0 and y == 0:
         return (x, y)
     return None

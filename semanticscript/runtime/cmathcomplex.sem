@@ -9084,8 +9084,6 @@ inverseHyperbolicSineParts label nanRealZero loopKind none
 inverseHyperbolicSineParts label nanRealZero within none
 inverseHyperbolicSineParts label nanImag loopKind none
 inverseHyperbolicSineParts label nanImag within none
-inverseHyperbolicSineParts label nanImagZero loopKind none
-inverseHyperbolicSineParts label nanImagZero within none
 inverseHyperbolicSineParts label nanBoth loopKind none
 inverseHyperbolicSineParts label nanBoth within none
 inverseHyperbolicSineParts label finite loopKind none
@@ -9127,11 +9125,7 @@ inverseHyperbolicSineParts at nanReal do findCheck11
 inverseHyperbolicSineParts at nanReal branch if check1 goto nanRealZero else goto nanBoth
 inverseHyperbolicSineParts at nanRealZero do makeNanRealZeroResult
 inverseHyperbolicSineParts at nanRealZero return ok nanRealZeroResult
-inverseHyperbolicSineParts at nanImag do findCheck21
-inverseHyperbolicSineParts at nanImag branch if check2 goto nanImagZero else goto nanBoth
-inverseHyperbolicSineParts at nanImagZero do findNanC1
-inverseHyperbolicSineParts at nanImagZero do makeNanImagZeroResult
-inverseHyperbolicSineParts at nanImagZero return ok nanImagZeroResult
+inverseHyperbolicSineParts at nanImag goto nanBoth
 inverseHyperbolicSineParts at nanBoth do findNanD1
 inverseHyperbolicSineParts at nanBoth do makeNanBothResult
 inverseHyperbolicSineParts at nanBoth return ok nanBothResult
@@ -9377,41 +9371,6 @@ makeNanRealZeroResult cleanedBy none
 makeNanRealZeroResult borrows none
 makeNanRealZeroResult catch none
 makeNanRealZeroResult suppresses none
-
-findCheck21 is call
-findCheck21 in inverseHyperbolicSineParts
-findCheck21 invokes compare.equalFloat64
-findCheck21 argument left Float64 x copy
-findCheck21 argument right Float64 real0000000000000000 copy
-findCheck21 result check2 Bool
-findCheck21 ownedBy none
-findCheck21 cleanedBy none
-findCheck21 borrows none
-findCheck21 catch none
-findCheck21 suppresses none
-
-findNanC1 is call
-findNanC1 in inverseHyperbolicSineParts
-findNanC1 invokes notANumber
-findNanC1 argument none
-findNanC1 result nanC Float64
-findNanC1 ownedBy none
-findNanC1 cleanedBy none
-findNanC1 borrows none
-findNanC1 catch none
-findNanC1 suppresses none
-
-makeNanImagZeroResult is call
-makeNanImagZeroResult in inverseHyperbolicSineParts
-makeNanImagZeroResult invokes Complex.new
-makeNanImagZeroResult argument real Float64 x copy
-makeNanImagZeroResult argument imag Float64 nanC copy
-makeNanImagZeroResult result nanImagZeroResult Complex
-makeNanImagZeroResult ownedBy none
-makeNanImagZeroResult cleanedBy none
-makeNanImagZeroResult borrows none
-makeNanImagZeroResult catch none
-makeNanImagZeroResult suppresses none
 
 findNanD1 is call
 findNanD1 in inverseHyperbolicSineParts
