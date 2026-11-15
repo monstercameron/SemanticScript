@@ -401,9 +401,14 @@ C_LIBRARY = {
     "fdiml", "nextafterl", "nexttowardl", "nexttoward", "nexttowardf", "fmodl", "remainderl", "remquol", "sqrtl",
     # D-174: strtold and wcstold, in cformat
     "strtold", "wcstold",
+    # D-187: complex.h (cmathcomplex)
+    "cexp", "clog", "csqrt", "csin", "ccos", "ctan", "casin", "cacos", "catan", "csinh", "ccosh", "ctanh", "casinh",
+    "cacosh", "catanh", "conj", "cproj", "cabs", "carg", "creal", "cimag", "cpow", "cexpf", "clogf", "csqrtf",
+    "csinf", "ccosf", "ctanf", "casinf", "cacosf", "catanf", "csinhf", "ccoshf", "ctanhf", "casinhf", "cacoshf",
+    "catanhf", "conjf", "cprojf", "cabsf", "cargf", "crealf", "cimagf", "cpowf",
 }
 # the modules whose `abi library` operations make up the C library (D-153, D-159, D-160, D-164, D-180)
-C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem", "cthreads.sem", "cextra.sem", "cwide.sem", "cmathbits.sem", "ctime.sem", "clong.sem", "cformat.sem")
+C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem", "cmathspecial.sem", "cmathtrig.sem", "cmathexp.sem", "cthreads.sem", "cextra.sem", "cwide.sem", "cmathbits.sem", "ctime.sem", "clong.sem", "cformat.sem", "cmathcomplex.sem")
 
 
 @pytest.mark.skipif(WINDOWS or not PLATFORM, reason="the runtime's loader maps ELF shared libraries on Linux")
@@ -778,9 +783,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 141 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 142 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "141 of 141 tests passed" in tested.stdout
+    assert "142 of 142 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

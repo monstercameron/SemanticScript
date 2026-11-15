@@ -1,0 +1,9 @@
+# complex.h written in SemanticScript, as glibc's libm gives it in the C locale (D-153, D-175): cabs, carg, cimag, creal,
+# conj, cproj, cexp, clog, cpow, csqrt, csin, ccos, ctan, casin, cacos, catan, csinh, ccosh, ctanh, casinh, cacosh,
+# catanh, and the f forms for float complex. Each is an `abi library` operation taking and giving a record of two Float64
+# (double complex) or two Float32 (float complex), which the compiler passes as the platform's C ABI passes a struct of
+# two floating-point numbers; reached through `ffi.open("c")` and by a mapped library's C imports. Every part is within
+# the bound stated in tests/test_c_cmathcomplex.py of the exact value, and Annex G's special values are exact.
+#
+# This module is generated from tools/cmathcomplex.dsl by tools/build.py; tools/cmathcomplexgen.py writes the blocks
+# of that file between its `@generated` marks (the sinh polynomial, the wrappers, and the tests).

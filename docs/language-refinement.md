@@ -2861,6 +2861,18 @@ with glibc. Decided by delegation:
   tm_zone stays valid. mktime searches as glibc's (gnulib's) does, tm_isdst -1 included. machine.state 25600 to
   26623. tzset and the tzname, timezone, and daylight globals are POSIX's, not ISO C's, and are left out.
 
+- **D-187** complex.h (`cmathcomplex`): cabs, carg, cimag, creal, conj, cproj, cexp, clog, cpow, csqrt, csin, ccos,
+  ctan, casin, cacos, catan, csinh, ccosh, ctanh, casinh, cacosh, catanh, and their `f` forms, each an `abi library`
+  operation on a record of two Float64 or two Float32 that the compiler passes as glibc's ABI passes a complex value
+  (D-175). Bounds per part: cabs and carg 1 ulp, clog and csqrt 2, cexp 3, csin, ccos, csinh, ccosh, casin, cacos,
+  casinh, cacosh, and catanh 4, ctan, ctanh, and catan 6 (measured at most 3); cpow, which is cexp(y clog x) with
+  C99's complex multiplication and Annex G's recovery of infinities, within (6 + 2|y log x|) 2^-53 of the result's
+  magnitude. csin, ccos, ctan, casin, and catan come from Annex G's identities through the hyperbolic forms; casinh,
+  cacosh, and cacos use Hull, Fairgrieve, and Tang's kernel; clog near |z| = 1 takes log1p of x^2 + y^2 - 1 summed in
+  double-double. Annex G's special values are exact, with the open signs chosen as glibc chooses them. errno is left
+  as the caller had it (C99's complex functions raise only floating-point exceptions). The `f` forms compute in
+  double and round each part once.
+
 ## The runtime in SemanticScript, the whole C library: stdio (2026-11-15)
 
 The runtime's C library (D-153) grows toward the whole ISO C library, written in SemanticScript and behaving as glibc
@@ -3708,6 +3720,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-184 | The runtime in SemanticScript, the whole C library: wchar.h, wctype.h, uchar.h, and the multibyte functions in the C locale, wchar_t 32 bits everywhere (by delegation) |
 | 2026-11-15 | D-185 | The runtime in SemanticScript, the whole C library: math.h's exact operations bit for bit, and fenv.h on the processor's own state (by delegation) |
 | 2026-11-15 | D-186 | The runtime in SemanticScript, the whole C library: time.h with the runtime's own reading of TZ, TZif files, and the Windows zone (by delegation) |
+| 2026-11-15 | D-187 | The runtime in SemanticScript, the whole C library: complex.h with Annex G's special values, through the complex ABI (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |
