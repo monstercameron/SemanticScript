@@ -109,6 +109,7 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   Known gap: strerror gives `Unknown error N` for every number for now.
 - Exit handlers (atexit, at_quick_exit, quick_exit, `_Exit`), ldiv and its kin returning a pair, setjmp and
   longjmp (routines the compiler emits), signal and raise, abort through SIGABRT, and system (D-162 to D-164).
+- The `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call, with glibc's overflow report (D-165).
 
 ### The runtime in SemanticScript: `ffi` everywhere
 

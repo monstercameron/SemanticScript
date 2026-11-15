@@ -22657,3 +22657,906 @@ doReleaseList cleanedBy none
 doReleaseList borrows none
 doReleaseList catch none
 doReleaseList suppresses none
+
+# ---------------------------------------------------------------- _FORTIFY_SOURCE's checked stdio (D-165)
+storeChecked is operation
+storeChecked purpose "Format into memory as sprintf (limit -1) or snprintf does, failing as __chk_fail does when the bound is past the target's size or (with no bound) the text and its 0 are"
+storeChecked invariant none
+storeChecked typeParameter none
+storeChecked input target machine.Address copied
+storeChecked input limit Int64 copied
+storeChecked input room Int64 copied
+storeChecked input format machine.Address copied
+storeChecked input list machine.Address copied
+storeChecked output Int32
+storeChecked outputOwnedBy none
+storeChecked raises none
+storeChecked effect use machine.memory
+storeChecked effect use system.calls
+storeChecked uses memoryAccess
+storeChecked uses systemCalls
+storeChecked memoryHeap false
+storeChecked async false
+storeChecked maxRecursion none
+storeChecked label begin loopKind none
+storeChecked label begin within none
+storeChecked label withBound loopKind none
+storeChecked label withBound within none
+storeChecked label withoutBound loopKind none
+storeChecked label withoutBound within none
+storeChecked label refuse loopKind none
+storeChecked label refuse within none
+storeChecked label copy loopKind none
+storeChecked label copy within none
+storeChecked let failure Int32 -1 immutable
+storeChecked let zero Int64 0 immutable
+storeChecked let one Int64 1 immutable
+storeChecked let byte0 Byte 0 immutable
+storeChecked at begin do findCheck11
+storeChecked at begin branch if check1 goto withBound else goto withoutBound
+storeChecked at withBound do doCheckFits
+storeChecked at withBound do readResult
+storeChecked at withBound return ok result
+storeChecked at withoutBound do readCursor
+storeChecked at withoutBound do readBuilder
+storeChecked at withoutBound do readCount
+storeChecked at withoutBound do readText
+storeChecked at withoutBound do readLength2
+storeChecked at withoutBound do doCursorFree
+storeChecked at withoutBound do findCheck21
+storeChecked at withoutBound branch if check2 goto refuse else goto copy
+storeChecked at refuse do doGive
+storeChecked at refuse do doGive2
+storeChecked at refuse return ok failure
+storeChecked at copy do doCheckFitsStep1
+storeChecked at copy do doCheckFits2
+storeChecked at copy do doCopy
+storeChecked at copy do findEndAt1
+storeChecked at copy do doStoreByte
+storeChecked at copy do doGive3
+storeChecked at copy do doGive4
+storeChecked at copy do findWritten1
+storeChecked at copy return ok written
+
+findCheck11 is call
+findCheck11 in storeChecked
+findCheck11 invokes compare.greaterOrEqualInt64
+findCheck11 argument left Int64 limit copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doCheckFits is call
+doCheckFits in storeChecked
+doCheckFits invokes clibrary.checkFits
+doCheckFits argument needed Int64 limit copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in storeChecked
+readResult invokes storeFormatted
+readResult argument target machine.Address target copy
+readResult argument limit Int64 limit copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+readCursor is call
+readCursor in storeChecked
+readCursor invokes cformat.cursorNew
+readCursor argument list machine.Address list copy
+readCursor result cursor machine.Address
+readCursor ownedBy none
+readCursor cleanedBy none
+readCursor borrows none
+readCursor catch none
+readCursor suppresses none
+
+readBuilder is call
+readBuilder in storeChecked
+readBuilder invokes wide.builderNew
+readBuilder argument none
+readBuilder result builder machine.Address
+readBuilder ownedBy none
+readBuilder cleanedBy none
+readBuilder borrows none
+readBuilder catch none
+readBuilder suppresses none
+
+readCount is call
+readCount in storeChecked
+readCount invokes cformat.formatAll
+readCount argument format machine.Address format copy
+readCount argument cursor machine.Address cursor copy
+readCount argument builder machine.Address builder copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readText is call
+readText in storeChecked
+readText invokes wide.builderText
+readText argument builder machine.Address builder copy
+readText result text machine.Address
+readText ownedBy none
+readText cleanedBy none
+readText borrows none
+readText catch none
+readText suppresses none
+
+readLength2 is call
+readLength2 in storeChecked
+readLength2 invokes wide.builderLength
+readLength2 argument builder machine.Address builder copy
+readLength2 result length Int64
+readLength2 ownedBy none
+readLength2 cleanedBy none
+readLength2 borrows none
+readLength2 catch none
+readLength2 suppresses none
+
+doCursorFree is call
+doCursorFree in storeChecked
+doCursorFree invokes cformat.cursorFree
+doCursorFree argument cursor machine.Address cursor copy
+doCursorFree result none
+doCursorFree ownedBy none
+doCursorFree cleanedBy none
+doCursorFree borrows none
+doCursorFree catch none
+doCursorFree suppresses none
+
+findCheck21 is call
+findCheck21 in storeChecked
+findCheck21 invokes compare.lessThanInt64
+findCheck21 argument left Int64 count copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doGive is call
+doGive in storeChecked
+doGive invokes heap.give
+doGive argument block machine.Address text copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in storeChecked
+doGive2 invokes heap.give
+doGive2 argument block machine.Address builder copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+doCheckFitsStep1 is call
+doCheckFitsStep1 in storeChecked
+doCheckFitsStep1 invokes math.addInt64
+doCheckFitsStep1 argument left Int64 length copy
+doCheckFitsStep1 argument right Int64 one copy
+doCheckFitsStep1 result doCheckFitsPart1 Int64
+doCheckFitsStep1 ownedBy none
+doCheckFitsStep1 cleanedBy none
+doCheckFitsStep1 borrows none
+doCheckFitsStep1 catch none
+doCheckFitsStep1 suppresses none
+
+doCheckFits2 is call
+doCheckFits2 in storeChecked
+doCheckFits2 invokes clibrary.checkFits
+doCheckFits2 argument needed Int64 doCheckFitsPart1 copy
+doCheckFits2 argument room Int64 room copy
+doCheckFits2 result none
+doCheckFits2 ownedBy none
+doCheckFits2 cleanedBy none
+doCheckFits2 borrows none
+doCheckFits2 catch none
+doCheckFits2 suppresses none
+
+doCopy is call
+doCopy in storeChecked
+doCopy invokes machine.copy
+doCopy argument target machine.Address target copy
+doCopy argument source machine.Address text copy
+doCopy argument bytes Int64 length copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+findEndAt1 is call
+findEndAt1 in storeChecked
+findEndAt1 invokes machine.offset
+findEndAt1 argument address machine.Address target copy
+findEndAt1 argument bytes Int64 length copy
+findEndAt1 result endAt machine.Address
+findEndAt1 ownedBy none
+findEndAt1 cleanedBy none
+findEndAt1 borrows none
+findEndAt1 catch none
+findEndAt1 suppresses none
+
+doStoreByte is call
+doStoreByte in storeChecked
+doStoreByte invokes machine.storeByte
+doStoreByte argument address machine.Address endAt copy
+doStoreByte argument value Byte byte0 copy
+doStoreByte result none
+doStoreByte ownedBy none
+doStoreByte cleanedBy none
+doStoreByte borrows none
+doStoreByte catch none
+doStoreByte suppresses none
+
+doGive3 is call
+doGive3 in storeChecked
+doGive3 invokes heap.give
+doGive3 argument block machine.Address text copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+doGive4 is call
+doGive4 in storeChecked
+doGive4 invokes heap.give
+doGive4 argument block machine.Address builder copy
+doGive4 result none
+doGive4 ownedBy none
+doGive4 cleanedBy none
+doGive4 borrows none
+doGive4 catch none
+doGive4 suppresses none
+
+findWritten1 is call
+findWritten1 in storeChecked
+findWritten1 invokes clibrary.lowInt32
+findWritten1 argument value Int64 count copy
+findWritten1 result written Int32
+findWritten1 ownedBy none
+findWritten1 cleanedBy none
+findWritten1 borrows none
+findWritten1 catch none
+findWritten1 suppresses none
+
+getLineChecked is operation
+getLineChecked purpose "__fgets_chk: fgets, failing as __chk_fail does when the count passes the buffer's size"
+getLineChecked invariant none
+getLineChecked typeParameter none
+getLineChecked input buffer machine.Address copied
+getLineChecked input room Int64 copied
+getLineChecked input limit Int32 copied
+getLineChecked input stream machine.Address copied
+getLineChecked output machine.Address
+getLineChecked outputOwnedBy none
+getLineChecked raises none
+getLineChecked effect use machine.memory
+getLineChecked effect use system.calls
+getLineChecked uses memoryAccess
+getLineChecked uses systemCalls
+getLineChecked memoryHeap false
+getLineChecked async false
+getLineChecked maxRecursion none
+getLineChecked abi library "__fgets_chk"
+getLineChecked label begin loopKind none
+getLineChecked label begin within none
+getLineChecked let none
+getLineChecked at begin do doCheckFitsStep1
+getLineChecked at begin do doCheckFits
+getLineChecked at begin do readResult
+getLineChecked at begin return ok result
+
+doCheckFitsStep1 is call
+doCheckFitsStep1 in getLineChecked
+doCheckFitsStep1 invokes convert.int32ToInt64
+doCheckFitsStep1 argument value Int32 limit copy
+doCheckFitsStep1 result doCheckFitsPart1 Int64
+doCheckFitsStep1 ownedBy none
+doCheckFitsStep1 cleanedBy none
+doCheckFitsStep1 borrows none
+doCheckFitsStep1 catch none
+doCheckFitsStep1 suppresses none
+
+doCheckFits is call
+doCheckFits in getLineChecked
+doCheckFits invokes clibrary.checkFits
+doCheckFits argument needed Int64 doCheckFitsPart1 copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in getLineChecked
+readResult invokes getLine
+readResult argument buffer machine.Address buffer copy
+readResult argument limit Int32 limit copy
+readResult argument stream machine.Address stream copy
+readResult result result machine.Address
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+readItemsChecked is operation
+readItemsChecked purpose "__fread_chk: fread, failing as __chk_fail does when the items pass the buffer's size"
+readItemsChecked invariant none
+readItemsChecked typeParameter none
+readItemsChecked input data machine.Address copied
+readItemsChecked input room Int64 copied
+readItemsChecked input size Int64 copied
+readItemsChecked input count Int64 copied
+readItemsChecked input stream machine.Address copied
+readItemsChecked output Int64
+readItemsChecked outputOwnedBy none
+readItemsChecked raises none
+readItemsChecked effect use machine.memory
+readItemsChecked effect use system.calls
+readItemsChecked uses memoryAccess
+readItemsChecked uses systemCalls
+readItemsChecked memoryHeap false
+readItemsChecked async false
+readItemsChecked maxRecursion none
+readItemsChecked abi library "__fread_chk"
+readItemsChecked label begin loopKind none
+readItemsChecked label begin within none
+readItemsChecked let none
+readItemsChecked at begin do findBytes1
+readItemsChecked at begin do doCheckFits
+readItemsChecked at begin do readResult
+readItemsChecked at begin return ok result
+
+findBytes1 is call
+findBytes1 in readItemsChecked
+findBytes1 invokes math.wrappingMultiplyInt64
+findBytes1 argument left Int64 size copy
+findBytes1 argument right Int64 count copy
+findBytes1 result bytes Int64
+findBytes1 ownedBy none
+findBytes1 cleanedBy none
+findBytes1 borrows none
+findBytes1 catch none
+findBytes1 suppresses none
+
+doCheckFits is call
+doCheckFits in readItemsChecked
+doCheckFits invokes clibrary.checkFits
+doCheckFits argument needed Int64 bytes copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in readItemsChecked
+readResult invokes readItems
+readResult argument data machine.Address data copy
+readResult argument size Int64 size copy
+readResult argument count Int64 count copy
+readResult argument stream machine.Address stream copy
+readResult result result Int64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+printChecked is operation
+printChecked purpose "__printf_chk: printf, the name glibc's headers call under _FORTIFY_SOURCE (the flag asks nothing more here)"
+printChecked invariant none
+printChecked typeParameter none
+printChecked input flag Int32 copied
+printChecked input format machine.Address copied
+printChecked output Int32
+printChecked outputOwnedBy none
+printChecked raises none
+printChecked effect use machine.memory
+printChecked effect use system.calls
+printChecked uses memoryAccess
+printChecked uses systemCalls
+printChecked memoryHeap false
+printChecked async false
+printChecked maxRecursion none
+printChecked abi library "__printf_chk" variadic
+printChecked label begin loopKind none
+printChecked label begin within none
+printChecked let none
+printChecked at begin do readList
+printChecked at begin do readOut
+printChecked at begin do readResult
+printChecked at begin return ok result
+
+readList is call
+readList in printChecked
+readList invokes machine.variadicStart
+readList argument none
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readOut is call
+readOut in printChecked
+readOut invokes stdoutStream
+readOut argument none
+readOut result out machine.Address
+readOut ownedBy none
+readOut cleanedBy none
+readOut borrows none
+readOut catch none
+readOut suppresses none
+
+readResult is call
+readResult in printChecked
+readResult invokes writeFormatted
+readResult argument stream machine.Address out copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+printToChecked is operation
+printToChecked purpose "__fprintf_chk: fprintf under _FORTIFY_SOURCE"
+printToChecked invariant none
+printToChecked typeParameter none
+printToChecked input stream machine.Address copied
+printToChecked input flag Int32 copied
+printToChecked input format machine.Address copied
+printToChecked output Int32
+printToChecked outputOwnedBy none
+printToChecked raises none
+printToChecked effect use machine.memory
+printToChecked effect use system.calls
+printToChecked uses memoryAccess
+printToChecked uses systemCalls
+printToChecked memoryHeap false
+printToChecked async false
+printToChecked maxRecursion none
+printToChecked abi library "__fprintf_chk" variadic
+printToChecked label begin loopKind none
+printToChecked label begin within none
+printToChecked let none
+printToChecked at begin do readList
+printToChecked at begin do readResult
+printToChecked at begin return ok result
+
+readList is call
+readList in printToChecked
+readList invokes machine.variadicStart
+readList argument none
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readResult is call
+readResult in printToChecked
+readResult invokes writeFormatted
+readResult argument stream machine.Address stream copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+printIntoChecked is operation
+printIntoChecked purpose "__sprintf_chk: sprintf, failing as __chk_fail does when the text and its 0 pass the target's size"
+printIntoChecked invariant none
+printIntoChecked typeParameter none
+printIntoChecked input target machine.Address copied
+printIntoChecked input flag Int32 copied
+printIntoChecked input room Int64 copied
+printIntoChecked input format machine.Address copied
+printIntoChecked output Int32
+printIntoChecked outputOwnedBy none
+printIntoChecked raises none
+printIntoChecked effect use machine.memory
+printIntoChecked effect use system.calls
+printIntoChecked uses memoryAccess
+printIntoChecked uses systemCalls
+printIntoChecked memoryHeap false
+printIntoChecked async false
+printIntoChecked maxRecursion none
+printIntoChecked abi library "__sprintf_chk" variadic
+printIntoChecked label begin loopKind none
+printIntoChecked label begin within none
+printIntoChecked let minus1 Int64 -1 immutable
+printIntoChecked at begin do readList
+printIntoChecked at begin do readResult
+printIntoChecked at begin return ok result
+
+readList is call
+readList in printIntoChecked
+readList invokes machine.variadicStart
+readList argument none
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readResult is call
+readResult in printIntoChecked
+readResult invokes storeChecked
+readResult argument target machine.Address target copy
+readResult argument limit Int64 minus1 copy
+readResult argument room Int64 room copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+printBoundedChecked is operation
+printBoundedChecked purpose "__snprintf_chk: snprintf, failing as __chk_fail does when its bound passes the target's size"
+printBoundedChecked invariant none
+printBoundedChecked typeParameter none
+printBoundedChecked input target machine.Address copied
+printBoundedChecked input limit Int64 copied
+printBoundedChecked input flag Int32 copied
+printBoundedChecked input room Int64 copied
+printBoundedChecked input format machine.Address copied
+printBoundedChecked output Int32
+printBoundedChecked outputOwnedBy none
+printBoundedChecked raises none
+printBoundedChecked effect use machine.memory
+printBoundedChecked effect use system.calls
+printBoundedChecked uses memoryAccess
+printBoundedChecked uses systemCalls
+printBoundedChecked memoryHeap false
+printBoundedChecked async false
+printBoundedChecked maxRecursion none
+printBoundedChecked abi library "__snprintf_chk" variadic
+printBoundedChecked label begin loopKind none
+printBoundedChecked label begin within none
+printBoundedChecked let none
+printBoundedChecked at begin do readList
+printBoundedChecked at begin do readResult
+printBoundedChecked at begin return ok result
+
+readList is call
+readList in printBoundedChecked
+readList invokes machine.variadicStart
+readList argument none
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readResult is call
+readResult in printBoundedChecked
+readResult invokes storeChecked
+readResult argument target machine.Address target copy
+readResult argument limit Int64 limit copy
+readResult argument room Int64 room copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+printListChecked is operation
+printListChecked purpose "__vprintf_chk: vprintf under _FORTIFY_SOURCE"
+printListChecked invariant none
+printListChecked typeParameter none
+printListChecked input flag Int32 copied
+printListChecked input format machine.Address copied
+printListChecked input arguments machine.Address copied
+printListChecked output Int32
+printListChecked outputOwnedBy none
+printListChecked raises none
+printListChecked effect use machine.memory
+printListChecked effect use system.calls
+printListChecked uses memoryAccess
+printListChecked uses systemCalls
+printListChecked memoryHeap false
+printListChecked async false
+printListChecked maxRecursion none
+printListChecked abi library "__vprintf_chk"
+printListChecked label begin loopKind none
+printListChecked label begin within none
+printListChecked let none
+printListChecked at begin do readList
+printListChecked at begin do readOut
+printListChecked at begin do readResult
+printListChecked at begin do doReleaseList
+printListChecked at begin return ok result
+
+readList is call
+readList in printListChecked
+readList invokes listFor
+readList argument list machine.Address arguments copy
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readOut is call
+readOut in printListChecked
+readOut invokes stdoutStream
+readOut argument none
+readOut result out machine.Address
+readOut ownedBy none
+readOut cleanedBy none
+readOut borrows none
+readOut catch none
+readOut suppresses none
+
+readResult is call
+readResult in printListChecked
+readResult invokes writeFormatted
+readResult argument stream machine.Address out copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doReleaseList is call
+doReleaseList in printListChecked
+doReleaseList invokes releaseList
+doReleaseList argument cell machine.Address list copy
+doReleaseList result none
+doReleaseList ownedBy none
+doReleaseList cleanedBy none
+doReleaseList borrows none
+doReleaseList catch none
+doReleaseList suppresses none
+
+printListToChecked is operation
+printListToChecked purpose "__vfprintf_chk: vfprintf under _FORTIFY_SOURCE"
+printListToChecked invariant none
+printListToChecked typeParameter none
+printListToChecked input stream machine.Address copied
+printListToChecked input flag Int32 copied
+printListToChecked input format machine.Address copied
+printListToChecked input arguments machine.Address copied
+printListToChecked output Int32
+printListToChecked outputOwnedBy none
+printListToChecked raises none
+printListToChecked effect use machine.memory
+printListToChecked effect use system.calls
+printListToChecked uses memoryAccess
+printListToChecked uses systemCalls
+printListToChecked memoryHeap false
+printListToChecked async false
+printListToChecked maxRecursion none
+printListToChecked abi library "__vfprintf_chk"
+printListToChecked label begin loopKind none
+printListToChecked label begin within none
+printListToChecked let none
+printListToChecked at begin do readList
+printListToChecked at begin do readResult
+printListToChecked at begin do doReleaseList
+printListToChecked at begin return ok result
+
+readList is call
+readList in printListToChecked
+readList invokes listFor
+readList argument list machine.Address arguments copy
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readResult is call
+readResult in printListToChecked
+readResult invokes writeFormatted
+readResult argument stream machine.Address stream copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doReleaseList is call
+doReleaseList in printListToChecked
+doReleaseList invokes releaseList
+doReleaseList argument cell machine.Address list copy
+doReleaseList result none
+doReleaseList ownedBy none
+doReleaseList cleanedBy none
+doReleaseList borrows none
+doReleaseList catch none
+doReleaseList suppresses none
+
+printListIntoChecked is operation
+printListIntoChecked purpose "__vsprintf_chk: vsprintf, failing when the text passes the target's size"
+printListIntoChecked invariant none
+printListIntoChecked typeParameter none
+printListIntoChecked input target machine.Address copied
+printListIntoChecked input flag Int32 copied
+printListIntoChecked input room Int64 copied
+printListIntoChecked input format machine.Address copied
+printListIntoChecked input arguments machine.Address copied
+printListIntoChecked output Int32
+printListIntoChecked outputOwnedBy none
+printListIntoChecked raises none
+printListIntoChecked effect use machine.memory
+printListIntoChecked effect use system.calls
+printListIntoChecked uses memoryAccess
+printListIntoChecked uses systemCalls
+printListIntoChecked memoryHeap false
+printListIntoChecked async false
+printListIntoChecked maxRecursion none
+printListIntoChecked abi library "__vsprintf_chk"
+printListIntoChecked label begin loopKind none
+printListIntoChecked label begin within none
+printListIntoChecked let minus1 Int64 -1 immutable
+printListIntoChecked at begin do readList
+printListIntoChecked at begin do readResult
+printListIntoChecked at begin do doReleaseList
+printListIntoChecked at begin return ok result
+
+readList is call
+readList in printListIntoChecked
+readList invokes listFor
+readList argument list machine.Address arguments copy
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readResult is call
+readResult in printListIntoChecked
+readResult invokes storeChecked
+readResult argument target machine.Address target copy
+readResult argument limit Int64 minus1 copy
+readResult argument room Int64 room copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doReleaseList is call
+doReleaseList in printListIntoChecked
+doReleaseList invokes releaseList
+doReleaseList argument cell machine.Address list copy
+doReleaseList result none
+doReleaseList ownedBy none
+doReleaseList cleanedBy none
+doReleaseList borrows none
+doReleaseList catch none
+doReleaseList suppresses none
+
+printListBoundedChecked is operation
+printListBoundedChecked purpose "__vsnprintf_chk: vsnprintf, failing when its bound passes the target's size"
+printListBoundedChecked invariant none
+printListBoundedChecked typeParameter none
+printListBoundedChecked input target machine.Address copied
+printListBoundedChecked input limit Int64 copied
+printListBoundedChecked input flag Int32 copied
+printListBoundedChecked input room Int64 copied
+printListBoundedChecked input format machine.Address copied
+printListBoundedChecked input arguments machine.Address copied
+printListBoundedChecked output Int32
+printListBoundedChecked outputOwnedBy none
+printListBoundedChecked raises none
+printListBoundedChecked effect use machine.memory
+printListBoundedChecked effect use system.calls
+printListBoundedChecked uses memoryAccess
+printListBoundedChecked uses systemCalls
+printListBoundedChecked memoryHeap false
+printListBoundedChecked async false
+printListBoundedChecked maxRecursion none
+printListBoundedChecked abi library "__vsnprintf_chk"
+printListBoundedChecked label begin loopKind none
+printListBoundedChecked label begin within none
+printListBoundedChecked let none
+printListBoundedChecked at begin do readList
+printListBoundedChecked at begin do readResult
+printListBoundedChecked at begin do doReleaseList
+printListBoundedChecked at begin return ok result
+
+readList is call
+readList in printListBoundedChecked
+readList invokes listFor
+readList argument list machine.Address arguments copy
+readList result list machine.Address
+readList ownedBy none
+readList cleanedBy none
+readList borrows none
+readList catch none
+readList suppresses none
+
+readResult is call
+readResult in printListBoundedChecked
+readResult invokes storeChecked
+readResult argument target machine.Address target copy
+readResult argument limit Int64 limit copy
+readResult argument room Int64 room copy
+readResult argument format machine.Address format copy
+readResult argument list machine.Address list copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+doReleaseList is call
+doReleaseList in printListBoundedChecked
+doReleaseList invokes releaseList
+doReleaseList argument cell machine.Address list copy
+doReleaseList result none
+doReleaseList ownedBy none
+doReleaseList cleanedBy none
+doReleaseList borrows none
+doReleaseList catch none
+doReleaseList suppresses none

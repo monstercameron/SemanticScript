@@ -2877,6 +2877,16 @@ does in the C locale. Step one is stdio, which needs variadic functions. Decided
   it) and `cmd.exe /c` on Windows (its exit code shifted into the same form); system(NULL) is 1 when /bin/sh exists
   (on Windows, always). Signal handlers' table is at machine.state 27952.
 
+- **D-165** The names glibc's headers call under `_FORTIFY_SOURCE` (on by default with optimization on Ubuntu):
+  `__printf_chk`, `__fprintf_chk`, `__sprintf_chk`, `__snprintf_chk`, `__vprintf_chk`, `__vfprintf_chk`,
+  `__vsprintf_chk`, `__vsnprintf_chk`, `__memcpy_chk`, `__memmove_chk`, `__memset_chk`, `__strcpy_chk`,
+  `__strncpy_chk`, `__strcat_chk`, `__strncat_chk`, `__fgets_chk`, `__fread_chk`, and `__chk_fail`. Each checks that
+  what it writes fits the size the compiler knows (sprintf's whole text and its 0; snprintf's and fgets's bound; the
+  bytes for the others), and otherwise writes glibc's `*** buffer overflow detected ***: terminated` to standard error
+  and aborts, as `__chk_fail` does; then it does what the unchecked function does. The printf ones' flag (which asks
+  glibc to refuse `%n` in writable memory) asks nothing more here. The wide-character ones belong with wchar.h's
+  functions. tests/test_cprograms.py builds every C program at -O0 and at -O2, so the second calls these names.
+
 ## The runtime in SemanticScript, the C library and a loader (2026-11-15)
 
 `ffi` was the one module an executable on Linux refused (D-145): `ffi.open("c")` asked for glibc, which a static
@@ -3479,6 +3489,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-153 to D-155 | The runtime in SemanticScript, `ffi` everywhere: a C library written in SemanticScript (ctype, string, stdlib, math basics, stdio writes, as glibc in the C locale) that `ffi.open("c")` binds on Windows and Linux, an ELF shared-library loader for Linux (eager binding, refusals that trap), `abi library` rows and `machine.cLibrary` (by delegation) |
 | 2026-11-15 | D-156 to D-161 | The runtime in SemanticScript, the whole C library, stdio: expressions in the runtime's DSL, variadic `abi library` rows and `machine.variadicStart`, x86_64 calls through references made as variadic ones, printf's engine with exact digits, FILE streams buffered as glibc's, scanf (strerror's messages a known gap), the C library as a C program's libc on Linux (`--kind clibrary`) (by delegation) |
 | 2026-11-15 | D-162 to D-164 | The runtime in SemanticScript, the whole C library: exit handlers and the div family, setjmp and longjmp as routines the compiler emits, signal, raise, abort, and system (by delegation) |
+| 2026-11-15 | D-165 | The runtime in SemanticScript, the whole C library: the `__*_chk` names `_FORTIFY_SOURCE` makes compiled code call (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

@@ -4522,6 +4522,7 @@ helpersTest verifies errorMessage describesErrno
 helpersTest verifies memoryFind findsByte
 helpersTest verifies charOf keepsLowByte
 helpersTest verifies runHandlers runsInReverse
+helpersTest verifies checkFits passesWhatFits
 helpersTest verifies divideWhole dividesTowardZero
 helpersTest verifies prepare pointsAtStreams
 helpersTest verifies isSpaceByte spacesLikeC
@@ -4565,6 +4566,7 @@ helpersTest let uInt6435 UInt64 35 immutable
 helpersTest let n1920 Int64 1920 immutable
 helpersTest let eight Int64 8 immutable
 helpersTest let zero Int64 0 immutable
+helpersTest let four Int64 4 immutable
 helpersTest let minus7 Int64 -7 immutable
 helpersTest let minus3 Int64 -3 immutable
 helpersTest let minus1 Int64 -1 immutable
@@ -4618,6 +4620,8 @@ helpersTest at begin do quickCellStep1
 helpersTest at begin do readQuickCell
 helpersTest at begin do readLeft
 helpersTest at begin do doAssertEqualInt645
+helpersTest at begin do doCheckFits
+helpersTest at begin do doCheckFits2
 helpersTest at begin do readPair
 helpersTest at begin do readQuotient
 helpersTest at begin do readRemainder
@@ -5197,6 +5201,30 @@ doAssertEqualInt645 cleanedBy none
 doAssertEqualInt645 borrows none
 doAssertEqualInt645 catch none
 doAssertEqualInt645 suppresses none
+
+doCheckFits is call
+doCheckFits in helpersTest
+doCheckFits invokes checkFits
+doCheckFits argument needed Int64 four copy
+doCheckFits argument room Int64 four copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+doCheckFits2 is call
+doCheckFits2 in helpersTest
+doCheckFits2 invokes checkFits
+doCheckFits2 argument needed Int64 zero copy
+doCheckFits2 argument room Int64 zero copy
+doCheckFits2 result none
+doCheckFits2 ownedBy none
+doCheckFits2 cleanedBy none
+doCheckFits2 borrows none
+doCheckFits2 catch none
+doCheckFits2 suppresses none
 
 readPair is call
 readPair in helpersTest

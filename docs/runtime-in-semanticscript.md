@@ -365,6 +365,7 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
 | stdlib.h | atexit, at_quick_exit, quick_exit, `_Exit`, exit running handlers, ldiv, lldiv, imaxdiv, system, abort through SIGABRT (D-162, D-164) | Done |
 | setjmp.h | setjmp, longjmp, and glibc's other names for them, routines the compiler emits (D-163) | Done |
 | signal.h | signal, raise: rt_sigaction on Linux, a table of handlers on Windows (D-164) | Done |
+| `_FORTIFY_SOURCE` | the `__*_chk` names of stdio.h and string.h, and `__chk_fail` with glibc's message (D-165) | Done |
 | string.h | strerror: `Unknown error N` for every number (glibc's messages are a known gap) | Gap |
 
 - **stdio** (D-159, D-160). `printf` and its kin read their arguments from the system's own `va_list` (x86_64 Linux,
@@ -386,5 +387,6 @@ which calls glibc, on Linux) and, on Linux, as the C library of C programs.
   stdio_files.c (writing, reading, positions, pushback, end of file, errors, r+ and a, rename, remove, tmpfile,
   setvbuf and setbuf), stdio_scanf.c (sscanf's conversions, scansets, widths, and scanf with getchar on standard
   input), process_jumps.c (setjmp and longjmp across 50 frames, signal and raise, atexit's order, ldiv and lldiv,
-  system's status).
+  system's status), fortify_checks.c (the checked functions, and an overflow glibc reports and aborts on); every
+  program is built at -O0 and at -O2, where `_FORTIFY_SOURCE` makes it call the `__*_chk` names.
 

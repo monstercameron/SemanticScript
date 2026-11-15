@@ -3440,6 +3440,216 @@ op scanTextListGlibc "__isoc99_vsscanf: read a C string by a format, from a va_l
   releaseList(list)
   return result
 
+## ---------------------------------------------------------------- _FORTIFY_SOURCE's checked stdio (D-165)
+
+op storeChecked "Format into memory as sprintf (limit -1) or snprintf does, failing as __chk_fail does when the bound is past the target's size or (with no bound) the text and its 0 are"
+  input target machine.Address copied
+  input limit Int64 copied
+  input room Int64 copied
+  input format machine.Address copied
+  input list machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let failure Int32 -1
+:begin
+  when limit >= 0 withBound withoutBound
+:withBound
+  clibrary.checkFits(limit, room)
+  result = storeFormatted(target, limit, format, list)
+  return result
+:withoutBound
+  cursor = cformat.cursorNew(list)
+  builder = wide.builderNew()
+  count = cformat.formatAll(format, cursor, builder)
+  text = wide.builderText(builder)
+  length = wide.builderLength(builder)
+  cformat.cursorFree(cursor)
+  when count < 0 refuse copy
+:refuse
+  heap.give(text)
+  heap.give(builder)
+  return failure
+:copy
+  clibrary.checkFits(length + 1, room)
+  machine.copy(target, text, length)
+  calc endAt = target + length
+  machine.storeByte(endAt, 0)
+  heap.give(text)
+  heap.give(builder)
+  calc written = clibrary.lowInt32(count)
+  return written
+
+op getLineChecked "__fgets_chk: fgets, failing as __chk_fail does when the count passes the buffer's size"
+  input buffer machine.Address copied
+  input room Int64 copied
+  input limit Int32 copied
+  input stream machine.Address copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__fgets_chk"
+:begin
+  clibrary.checkFits(convert.int32ToInt64(limit), room)
+  result = getLine(buffer, limit, stream)
+  return result
+
+op readItemsChecked "__fread_chk: fread, failing as __chk_fail does when the items pass the buffer's size"
+  input data machine.Address copied
+  input room Int64 copied
+  input size Int64 copied
+  input count Int64 copied
+  input stream machine.Address copied
+  output Int64
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__fread_chk"
+:begin
+  calc bytes = math.wrappingMultiplyInt64(size, count)
+  clibrary.checkFits(bytes, room)
+  result = readItems(data, size, count, stream)
+  return result
+
+op printChecked "__printf_chk: printf, the name glibc's headers call under _FORTIFY_SOURCE (the flag asks nothing more here)"
+  input flag Int32 copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__printf_chk" variadic
+:begin
+  list = machine.variadicStart()
+  out = stdoutStream()
+  result = writeFormatted(out, format, list)
+  return result
+
+op printToChecked "__fprintf_chk: fprintf under _FORTIFY_SOURCE"
+  input stream machine.Address copied
+  input flag Int32 copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__fprintf_chk" variadic
+:begin
+  list = machine.variadicStart()
+  result = writeFormatted(stream, format, list)
+  return result
+
+op printIntoChecked "__sprintf_chk: sprintf, failing as __chk_fail does when the text and its 0 pass the target's size"
+  input target machine.Address copied
+  input flag Int32 copied
+  input room Int64 copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__sprintf_chk" variadic
+:begin
+  list = machine.variadicStart()
+  result = storeChecked(target, -1, room, format, list)
+  return result
+
+op printBoundedChecked "__snprintf_chk: snprintf, failing as __chk_fail does when its bound passes the target's size"
+  input target machine.Address copied
+  input limit Int64 copied
+  input flag Int32 copied
+  input room Int64 copied
+  input format machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__snprintf_chk" variadic
+:begin
+  list = machine.variadicStart()
+  result = storeChecked(target, limit, room, format, list)
+  return result
+
+op printListChecked "__vprintf_chk: vprintf under _FORTIFY_SOURCE"
+  input flag Int32 copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__vprintf_chk"
+:begin
+  list = listFor(arguments)
+  out = stdoutStream()
+  result = writeFormatted(out, format, list)
+  releaseList(list)
+  return result
+
+op printListToChecked "__vfprintf_chk: vfprintf under _FORTIFY_SOURCE"
+  input stream machine.Address copied
+  input flag Int32 copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__vfprintf_chk"
+:begin
+  list = listFor(arguments)
+  result = writeFormatted(stream, format, list)
+  releaseList(list)
+  return result
+
+op printListIntoChecked "__vsprintf_chk: vsprintf, failing when the text passes the target's size"
+  input target machine.Address copied
+  input flag Int32 copied
+  input room Int64 copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__vsprintf_chk"
+:begin
+  list = listFor(arguments)
+  result = storeChecked(target, -1, room, format, list)
+  releaseList(list)
+  return result
+
+op printListBoundedChecked "__vsnprintf_chk: vsnprintf, failing when its bound passes the target's size"
+  input target machine.Address copied
+  input limit Int64 copied
+  input flag Int32 copied
+  input room Int64 copied
+  input format machine.Address copied
+  input arguments machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__vsnprintf_chk"
+:begin
+  list = listFor(arguments)
+  result = storeChecked(target, limit, room, format, list)
+  releaseList(list)
+  return result
+
 @tests
 
 op cText "A C string in a new heap block: a text's bytes and a 0"

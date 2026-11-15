@@ -1,7 +1,7 @@
 module clibrary "The C standard library written in SemanticScript: what ffi.open of c binds, and what a library the loader maps finds for its C imports (D-153)"
   path clibrary
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel memory output heap floats wide
-  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal runHandlers
+  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal runHandlers checkFits
 
 capability memoryAccess "Authority to read and write the memory C callers hand the library" use machine.memory none
 
@@ -3277,6 +3277,158 @@ op divideWhole "The quotient toward zero and the remainder of two whole numbers,
   pair = Quotient.new(quotient, remainder)
   return pair
 
+## ---------------------------------------------------------------- _FORTIFY_SOURCE's checked functions (D-165)
+##
+## glibc's headers, under _FORTIFY_SOURCE (on by default with optimization on Ubuntu), call `__memcpy_chk` and its
+## kin where the compiler knows the target's size. Each checks that what it writes fits that size, and otherwise
+## writes glibc's message to standard error and aborts, as glibc's __chk_fail does; then it does what the unchecked
+## function does.
+
+op checkFailed "__chk_fail: a checked function was asked to write past its buffer: glibc's message on standard error, then abort"
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__chk_fail"
+  let message String "*** buffer overflow detected ***: terminated\n"
+:begin
+  messageAt = machine.addressOfString(message)
+  bytes = string.byteLength(message)
+  writeStream(2, messageAt, bytes)
+  abortProcess()
+  return
+
+op checkFits "Fail as __chk_fail does when `needed` bytes do not fit in `room` (both as unsigned sizes)"
+  invariant passesWhatFits "Returns when the bytes fit, so the checked function goes on"
+  input needed Int64 copied
+  input room Int64 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+:begin
+  when convert.int64BitsToUInt64(needed) > convert.int64BitsToUInt64(room) fail fits
+:fail
+  checkFailed()
+  return
+:fits
+  return
+
+op memoryCopyChecked "__memcpy_chk: memcpy, when the bytes fit the target"
+  input target machine.Address copied
+  input source machine.Address copied
+  input bytes Int64 copied
+  input room Int64 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__memcpy_chk"
+:begin
+  checkFits(bytes, room)
+  result = memoryCopy(target, source, bytes)
+  return result
+
+op memoryMoveChecked "__memmove_chk: memmove, when the bytes fit the target"
+  input target machine.Address copied
+  input source machine.Address copied
+  input bytes Int64 copied
+  input room Int64 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__memmove_chk"
+:begin
+  checkFits(bytes, room)
+  result = memoryMove(target, source, bytes)
+  return result
+
+op memorySetChecked "__memset_chk: memset, when the bytes fit the target"
+  input target machine.Address copied
+  input value Int32 copied
+  input bytes Int64 copied
+  input room Int64 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__memset_chk"
+:begin
+  checkFits(bytes, room)
+  result = memorySet(target, value, bytes)
+  return result
+
+op stringCopyChecked "__strcpy_chk: strcpy, when the text and its 0 fit the target"
+  input target machine.Address copied
+  input source machine.Address copied
+  input room Int64 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__strcpy_chk"
+:begin
+  length = cStringLength(source)
+  checkFits(length + 1, room)
+  result = stringCopy(target, source)
+  return result
+
+op stringCopyBoundedChecked "__strncpy_chk: strncpy, when its count fits the target"
+  input target machine.Address copied
+  input source machine.Address copied
+  input count Int64 copied
+  input room Int64 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__strncpy_chk"
+:begin
+  checkFits(count, room)
+  result = stringCopyBounded(target, source, count)
+  return result
+
+op stringAppendChecked "__strcat_chk: strcat, when both texts and the 0 fit the target"
+  input target machine.Address copied
+  input source machine.Address copied
+  input room Int64 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__strcat_chk"
+:begin
+  had = cStringLength(target)
+  adds = cStringLength(source)
+  checkFits(had + adds + 1, room)
+  result = stringAppend(target, source)
+  return result
+
+op stringAppendBoundedChecked "__strncat_chk: strncat, when the target's text, what is appended, and the 0 fit the target"
+  input target machine.Address copied
+  input source machine.Address copied
+  input count Int64 copied
+  input room Int64 copied
+  output machine.Address
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "__strncat_chk"
+:begin
+  had = cStringLength(target)
+  adds = boundedLength(source, count)
+  checkFits(had + adds + 1, room)
+  result = stringAppendBounded(target, source, count)
+  return result
+
 @tests
 
 ## Tests write C strings in the last 4 KiB of machine.state (from byte 61440), which the runtime's own state never
@@ -3777,6 +3929,7 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   verifies memoryFind findsByte
   verifies charOf keepsLowByte
   verifies runHandlers runsInReverse
+  verifies checkFits passesWhatFits
   verifies divideWhole dividesTowardZero
   verifies prepare pointsAtStreams
   verifies isSpaceByte spacesLikeC
@@ -3830,6 +3983,8 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   quickCell = kernel.stateAt(quickListAt + 8)
   left = machine.loadInt64(quickCell)
   test.assertEqualInt64(0, left)
+  checkFits(4, 4)
+  checkFits(0, 0)
   pair = divideWhole(-7, 2)
   quotient = Quotient.quotient(pair)
   remainder = Quotient.remainder(pair)

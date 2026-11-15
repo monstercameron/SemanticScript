@@ -41,6 +41,7 @@ clibrary exports digitOf
 clibrary exports parseWhole
 clibrary exports parseReal
 clibrary exports runHandlers
+clibrary exports checkFits
 
 memoryAccess is capability
 memoryAccess purpose "Authority to read and write the memory C callers hand the library"
@@ -16309,3 +16310,636 @@ makePair cleanedBy none
 makePair borrows none
 makePair catch none
 makePair suppresses none
+
+# ---------------------------------------------------------------- _FORTIFY_SOURCE's checked functions (D-165)
+#
+# glibc's headers, under _FORTIFY_SOURCE (on by default with optimization on Ubuntu), call `__memcpy_chk` and its
+# kin where the compiler knows the target's size. Each checks that what it writes fits that size, and otherwise
+# writes glibc's message to standard error and aborts, as glibc's __chk_fail does; then it does what the unchecked
+# function does.
+checkFailed is operation
+checkFailed purpose "__chk_fail: a checked function was asked to write past its buffer: glibc's message on standard error, then abort"
+checkFailed invariant none
+checkFailed typeParameter none
+checkFailed input none
+checkFailed output none
+checkFailed outputOwnedBy none
+checkFailed raises none
+checkFailed effect use machine.memory
+checkFailed effect use system.calls
+checkFailed uses memoryAccess
+checkFailed uses systemCalls
+checkFailed memoryHeap false
+checkFailed async false
+checkFailed maxRecursion none
+checkFailed abi library "__chk_fail"
+checkFailed label begin loopKind none
+checkFailed label begin within none
+checkFailed let message String "*** buffer overflow detected ***: terminated\n" immutable
+checkFailed let two Int64 2 immutable
+checkFailed at begin do readMessageAt
+checkFailed at begin do readBytes
+checkFailed at begin do readUnusedWriteStream
+checkFailed at begin do doAbortProcess
+checkFailed at begin return ok none
+
+readMessageAt is call
+readMessageAt in checkFailed
+readMessageAt invokes machine.addressOfString
+readMessageAt argument text String message lend
+readMessageAt result messageAt machine.Address
+readMessageAt ownedBy none
+readMessageAt cleanedBy none
+readMessageAt borrows none
+readMessageAt catch none
+readMessageAt suppresses none
+
+readBytes is call
+readBytes in checkFailed
+readBytes invokes string.byteLength
+readBytes argument text String message lend
+readBytes result bytes Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+readUnusedWriteStream is call
+readUnusedWriteStream in checkFailed
+readUnusedWriteStream invokes writeStream
+readUnusedWriteStream argument stream Int64 two copy
+readUnusedWriteStream argument text machine.Address messageAt copy
+readUnusedWriteStream argument bytes Int64 bytes copy
+readUnusedWriteStream result unusedWriteStream Int32
+readUnusedWriteStream ownedBy none
+readUnusedWriteStream cleanedBy none
+readUnusedWriteStream borrows none
+readUnusedWriteStream catch none
+readUnusedWriteStream suppresses none
+
+doAbortProcess is call
+doAbortProcess in checkFailed
+doAbortProcess invokes abortProcess
+doAbortProcess argument none
+doAbortProcess result none
+doAbortProcess ownedBy none
+doAbortProcess cleanedBy none
+doAbortProcess borrows none
+doAbortProcess catch none
+doAbortProcess suppresses none
+
+checkFits is operation
+checkFits purpose "Fail as __chk_fail does when `needed` bytes do not fit in `room` (both as unsigned sizes)"
+checkFits invariant passesWhatFits "\"Returns when the bytes fit, so the checked function goes on\""
+checkFits typeParameter none
+checkFits input needed Int64 copied
+checkFits input room Int64 copied
+checkFits output none
+checkFits outputOwnedBy none
+checkFits raises none
+checkFits effect use machine.memory
+checkFits effect use system.calls
+checkFits uses memoryAccess
+checkFits uses systemCalls
+checkFits memoryHeap false
+checkFits async false
+checkFits maxRecursion none
+checkFits label begin loopKind none
+checkFits label begin within none
+checkFits label fail loopKind none
+checkFits label fail within none
+checkFits label fits loopKind none
+checkFits label fits within none
+checkFits let none
+checkFits at begin do check1Step1
+checkFits at begin do check1Step2
+checkFits at begin do findCheck11
+checkFits at begin branch if check1 goto fail else goto fits
+checkFits at fail do doCheckFailed
+checkFits at fail return ok none
+checkFits at fits return ok none
+
+check1Step1 is call
+check1Step1 in checkFits
+check1Step1 invokes convert.int64BitsToUInt64
+check1Step1 argument value Int64 needed copy
+check1Step1 result check1Part1 UInt64
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in checkFits
+check1Step2 invokes convert.int64BitsToUInt64
+check1Step2 argument value Int64 room copy
+check1Step2 result check1Part2 UInt64
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+findCheck11 is call
+findCheck11 in checkFits
+findCheck11 invokes compare.greaterThanUInt64
+findCheck11 argument left UInt64 check1Part1 copy
+findCheck11 argument right UInt64 check1Part2 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doCheckFailed is call
+doCheckFailed in checkFits
+doCheckFailed invokes checkFailed
+doCheckFailed argument none
+doCheckFailed result none
+doCheckFailed ownedBy none
+doCheckFailed cleanedBy none
+doCheckFailed borrows none
+doCheckFailed catch none
+doCheckFailed suppresses none
+
+memoryCopyChecked is operation
+memoryCopyChecked purpose "__memcpy_chk: memcpy, when the bytes fit the target"
+memoryCopyChecked invariant none
+memoryCopyChecked typeParameter none
+memoryCopyChecked input target machine.Address copied
+memoryCopyChecked input source machine.Address copied
+memoryCopyChecked input bytes Int64 copied
+memoryCopyChecked input room Int64 copied
+memoryCopyChecked output machine.Address
+memoryCopyChecked outputOwnedBy none
+memoryCopyChecked raises none
+memoryCopyChecked effect use machine.memory
+memoryCopyChecked effect use system.calls
+memoryCopyChecked uses memoryAccess
+memoryCopyChecked uses systemCalls
+memoryCopyChecked memoryHeap false
+memoryCopyChecked async false
+memoryCopyChecked maxRecursion none
+memoryCopyChecked abi library "__memcpy_chk"
+memoryCopyChecked label begin loopKind none
+memoryCopyChecked label begin within none
+memoryCopyChecked let none
+memoryCopyChecked at begin do doCheckFits
+memoryCopyChecked at begin do readResult
+memoryCopyChecked at begin return ok result
+
+doCheckFits is call
+doCheckFits in memoryCopyChecked
+doCheckFits invokes checkFits
+doCheckFits argument needed Int64 bytes copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in memoryCopyChecked
+readResult invokes memoryCopy
+readResult argument target machine.Address target copy
+readResult argument source machine.Address source copy
+readResult argument bytes Int64 bytes copy
+readResult result result machine.Address
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+memoryMoveChecked is operation
+memoryMoveChecked purpose "__memmove_chk: memmove, when the bytes fit the target"
+memoryMoveChecked invariant none
+memoryMoveChecked typeParameter none
+memoryMoveChecked input target machine.Address copied
+memoryMoveChecked input source machine.Address copied
+memoryMoveChecked input bytes Int64 copied
+memoryMoveChecked input room Int64 copied
+memoryMoveChecked output machine.Address
+memoryMoveChecked outputOwnedBy none
+memoryMoveChecked raises none
+memoryMoveChecked effect use machine.memory
+memoryMoveChecked effect use system.calls
+memoryMoveChecked uses memoryAccess
+memoryMoveChecked uses systemCalls
+memoryMoveChecked memoryHeap false
+memoryMoveChecked async false
+memoryMoveChecked maxRecursion none
+memoryMoveChecked abi library "__memmove_chk"
+memoryMoveChecked label begin loopKind none
+memoryMoveChecked label begin within none
+memoryMoveChecked let none
+memoryMoveChecked at begin do doCheckFits
+memoryMoveChecked at begin do readResult
+memoryMoveChecked at begin return ok result
+
+doCheckFits is call
+doCheckFits in memoryMoveChecked
+doCheckFits invokes checkFits
+doCheckFits argument needed Int64 bytes copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in memoryMoveChecked
+readResult invokes memoryMove
+readResult argument target machine.Address target copy
+readResult argument source machine.Address source copy
+readResult argument bytes Int64 bytes copy
+readResult result result machine.Address
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+memorySetChecked is operation
+memorySetChecked purpose "__memset_chk: memset, when the bytes fit the target"
+memorySetChecked invariant none
+memorySetChecked typeParameter none
+memorySetChecked input target machine.Address copied
+memorySetChecked input value Int32 copied
+memorySetChecked input bytes Int64 copied
+memorySetChecked input room Int64 copied
+memorySetChecked output machine.Address
+memorySetChecked outputOwnedBy none
+memorySetChecked raises none
+memorySetChecked effect use machine.memory
+memorySetChecked effect use system.calls
+memorySetChecked uses memoryAccess
+memorySetChecked uses systemCalls
+memorySetChecked memoryHeap false
+memorySetChecked async false
+memorySetChecked maxRecursion none
+memorySetChecked abi library "__memset_chk"
+memorySetChecked label begin loopKind none
+memorySetChecked label begin within none
+memorySetChecked let none
+memorySetChecked at begin do doCheckFits
+memorySetChecked at begin do readResult
+memorySetChecked at begin return ok result
+
+doCheckFits is call
+doCheckFits in memorySetChecked
+doCheckFits invokes checkFits
+doCheckFits argument needed Int64 bytes copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in memorySetChecked
+readResult invokes memorySet
+readResult argument target machine.Address target copy
+readResult argument value Int32 value copy
+readResult argument bytes Int64 bytes copy
+readResult result result machine.Address
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+stringCopyChecked is operation
+stringCopyChecked purpose "__strcpy_chk: strcpy, when the text and its 0 fit the target"
+stringCopyChecked invariant none
+stringCopyChecked typeParameter none
+stringCopyChecked input target machine.Address copied
+stringCopyChecked input source machine.Address copied
+stringCopyChecked input room Int64 copied
+stringCopyChecked output machine.Address
+stringCopyChecked outputOwnedBy none
+stringCopyChecked raises none
+stringCopyChecked effect use machine.memory
+stringCopyChecked effect use system.calls
+stringCopyChecked uses memoryAccess
+stringCopyChecked uses systemCalls
+stringCopyChecked memoryHeap false
+stringCopyChecked async false
+stringCopyChecked maxRecursion none
+stringCopyChecked abi library "__strcpy_chk"
+stringCopyChecked label begin loopKind none
+stringCopyChecked label begin within none
+stringCopyChecked let one Int64 1 immutable
+stringCopyChecked at begin do readLength
+stringCopyChecked at begin do doCheckFitsStep1
+stringCopyChecked at begin do doCheckFits
+stringCopyChecked at begin do readResult
+stringCopyChecked at begin return ok result
+
+readLength is call
+readLength in stringCopyChecked
+readLength invokes cStringLength
+readLength argument text machine.Address source copy
+readLength result length Int64
+readLength ownedBy none
+readLength cleanedBy none
+readLength borrows none
+readLength catch none
+readLength suppresses none
+
+doCheckFitsStep1 is call
+doCheckFitsStep1 in stringCopyChecked
+doCheckFitsStep1 invokes math.addInt64
+doCheckFitsStep1 argument left Int64 length copy
+doCheckFitsStep1 argument right Int64 one copy
+doCheckFitsStep1 result doCheckFitsPart1 Int64
+doCheckFitsStep1 ownedBy none
+doCheckFitsStep1 cleanedBy none
+doCheckFitsStep1 borrows none
+doCheckFitsStep1 catch none
+doCheckFitsStep1 suppresses none
+
+doCheckFits is call
+doCheckFits in stringCopyChecked
+doCheckFits invokes checkFits
+doCheckFits argument needed Int64 doCheckFitsPart1 copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in stringCopyChecked
+readResult invokes stringCopy
+readResult argument target machine.Address target copy
+readResult argument source machine.Address source copy
+readResult result result machine.Address
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+stringCopyBoundedChecked is operation
+stringCopyBoundedChecked purpose "__strncpy_chk: strncpy, when its count fits the target"
+stringCopyBoundedChecked invariant none
+stringCopyBoundedChecked typeParameter none
+stringCopyBoundedChecked input target machine.Address copied
+stringCopyBoundedChecked input source machine.Address copied
+stringCopyBoundedChecked input count Int64 copied
+stringCopyBoundedChecked input room Int64 copied
+stringCopyBoundedChecked output machine.Address
+stringCopyBoundedChecked outputOwnedBy none
+stringCopyBoundedChecked raises none
+stringCopyBoundedChecked effect use machine.memory
+stringCopyBoundedChecked effect use system.calls
+stringCopyBoundedChecked uses memoryAccess
+stringCopyBoundedChecked uses systemCalls
+stringCopyBoundedChecked memoryHeap false
+stringCopyBoundedChecked async false
+stringCopyBoundedChecked maxRecursion none
+stringCopyBoundedChecked abi library "__strncpy_chk"
+stringCopyBoundedChecked label begin loopKind none
+stringCopyBoundedChecked label begin within none
+stringCopyBoundedChecked let none
+stringCopyBoundedChecked at begin do doCheckFits
+stringCopyBoundedChecked at begin do readResult
+stringCopyBoundedChecked at begin return ok result
+
+doCheckFits is call
+doCheckFits in stringCopyBoundedChecked
+doCheckFits invokes checkFits
+doCheckFits argument needed Int64 count copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in stringCopyBoundedChecked
+readResult invokes stringCopyBounded
+readResult argument target machine.Address target copy
+readResult argument source machine.Address source copy
+readResult argument most Int64 count copy
+readResult result result machine.Address
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+stringAppendChecked is operation
+stringAppendChecked purpose "__strcat_chk: strcat, when both texts and the 0 fit the target"
+stringAppendChecked invariant none
+stringAppendChecked typeParameter none
+stringAppendChecked input target machine.Address copied
+stringAppendChecked input source machine.Address copied
+stringAppendChecked input room Int64 copied
+stringAppendChecked output machine.Address
+stringAppendChecked outputOwnedBy none
+stringAppendChecked raises none
+stringAppendChecked effect use machine.memory
+stringAppendChecked effect use system.calls
+stringAppendChecked uses memoryAccess
+stringAppendChecked uses systemCalls
+stringAppendChecked memoryHeap false
+stringAppendChecked async false
+stringAppendChecked maxRecursion none
+stringAppendChecked abi library "__strcat_chk"
+stringAppendChecked label begin loopKind none
+stringAppendChecked label begin within none
+stringAppendChecked let one Int64 1 immutable
+stringAppendChecked at begin do readHad
+stringAppendChecked at begin do readAdds
+stringAppendChecked at begin do doCheckFitsStep1
+stringAppendChecked at begin do doCheckFitsStep2
+stringAppendChecked at begin do doCheckFits
+stringAppendChecked at begin do readResult
+stringAppendChecked at begin return ok result
+
+readHad is call
+readHad in stringAppendChecked
+readHad invokes cStringLength
+readHad argument text machine.Address target copy
+readHad result had Int64
+readHad ownedBy none
+readHad cleanedBy none
+readHad borrows none
+readHad catch none
+readHad suppresses none
+
+readAdds is call
+readAdds in stringAppendChecked
+readAdds invokes cStringLength
+readAdds argument text machine.Address source copy
+readAdds result adds Int64
+readAdds ownedBy none
+readAdds cleanedBy none
+readAdds borrows none
+readAdds catch none
+readAdds suppresses none
+
+doCheckFitsStep1 is call
+doCheckFitsStep1 in stringAppendChecked
+doCheckFitsStep1 invokes math.addInt64
+doCheckFitsStep1 argument left Int64 had copy
+doCheckFitsStep1 argument right Int64 adds copy
+doCheckFitsStep1 result doCheckFitsPart1 Int64
+doCheckFitsStep1 ownedBy none
+doCheckFitsStep1 cleanedBy none
+doCheckFitsStep1 borrows none
+doCheckFitsStep1 catch none
+doCheckFitsStep1 suppresses none
+
+doCheckFitsStep2 is call
+doCheckFitsStep2 in stringAppendChecked
+doCheckFitsStep2 invokes math.addInt64
+doCheckFitsStep2 argument left Int64 doCheckFitsPart1 copy
+doCheckFitsStep2 argument right Int64 one copy
+doCheckFitsStep2 result doCheckFitsPart2 Int64
+doCheckFitsStep2 ownedBy none
+doCheckFitsStep2 cleanedBy none
+doCheckFitsStep2 borrows none
+doCheckFitsStep2 catch none
+doCheckFitsStep2 suppresses none
+
+doCheckFits is call
+doCheckFits in stringAppendChecked
+doCheckFits invokes checkFits
+doCheckFits argument needed Int64 doCheckFitsPart2 copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in stringAppendChecked
+readResult invokes stringAppend
+readResult argument target machine.Address target copy
+readResult argument source machine.Address source copy
+readResult result result machine.Address
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+stringAppendBoundedChecked is operation
+stringAppendBoundedChecked purpose "__strncat_chk: strncat, when the target's text, what is appended, and the 0 fit the target"
+stringAppendBoundedChecked invariant none
+stringAppendBoundedChecked typeParameter none
+stringAppendBoundedChecked input target machine.Address copied
+stringAppendBoundedChecked input source machine.Address copied
+stringAppendBoundedChecked input count Int64 copied
+stringAppendBoundedChecked input room Int64 copied
+stringAppendBoundedChecked output machine.Address
+stringAppendBoundedChecked outputOwnedBy none
+stringAppendBoundedChecked raises none
+stringAppendBoundedChecked effect use machine.memory
+stringAppendBoundedChecked effect use system.calls
+stringAppendBoundedChecked uses memoryAccess
+stringAppendBoundedChecked uses systemCalls
+stringAppendBoundedChecked memoryHeap false
+stringAppendBoundedChecked async false
+stringAppendBoundedChecked maxRecursion none
+stringAppendBoundedChecked abi library "__strncat_chk"
+stringAppendBoundedChecked label begin loopKind none
+stringAppendBoundedChecked label begin within none
+stringAppendBoundedChecked let one Int64 1 immutable
+stringAppendBoundedChecked at begin do readHad
+stringAppendBoundedChecked at begin do readAdds
+stringAppendBoundedChecked at begin do doCheckFitsStep1
+stringAppendBoundedChecked at begin do doCheckFitsStep2
+stringAppendBoundedChecked at begin do doCheckFits
+stringAppendBoundedChecked at begin do readResult
+stringAppendBoundedChecked at begin return ok result
+
+readHad is call
+readHad in stringAppendBoundedChecked
+readHad invokes cStringLength
+readHad argument text machine.Address target copy
+readHad result had Int64
+readHad ownedBy none
+readHad cleanedBy none
+readHad borrows none
+readHad catch none
+readHad suppresses none
+
+readAdds is call
+readAdds in stringAppendBoundedChecked
+readAdds invokes boundedLength
+readAdds argument text machine.Address source copy
+readAdds argument most Int64 count copy
+readAdds result adds Int64
+readAdds ownedBy none
+readAdds cleanedBy none
+readAdds borrows none
+readAdds catch none
+readAdds suppresses none
+
+doCheckFitsStep1 is call
+doCheckFitsStep1 in stringAppendBoundedChecked
+doCheckFitsStep1 invokes math.addInt64
+doCheckFitsStep1 argument left Int64 had copy
+doCheckFitsStep1 argument right Int64 adds copy
+doCheckFitsStep1 result doCheckFitsPart1 Int64
+doCheckFitsStep1 ownedBy none
+doCheckFitsStep1 cleanedBy none
+doCheckFitsStep1 borrows none
+doCheckFitsStep1 catch none
+doCheckFitsStep1 suppresses none
+
+doCheckFitsStep2 is call
+doCheckFitsStep2 in stringAppendBoundedChecked
+doCheckFitsStep2 invokes math.addInt64
+doCheckFitsStep2 argument left Int64 doCheckFitsPart1 copy
+doCheckFitsStep2 argument right Int64 one copy
+doCheckFitsStep2 result doCheckFitsPart2 Int64
+doCheckFitsStep2 ownedBy none
+doCheckFitsStep2 cleanedBy none
+doCheckFitsStep2 borrows none
+doCheckFitsStep2 catch none
+doCheckFitsStep2 suppresses none
+
+doCheckFits is call
+doCheckFits in stringAppendBoundedChecked
+doCheckFits invokes checkFits
+doCheckFits argument needed Int64 doCheckFitsPart2 copy
+doCheckFits argument room Int64 room copy
+doCheckFits result none
+doCheckFits ownedBy none
+doCheckFits cleanedBy none
+doCheckFits borrows none
+doCheckFits catch none
+doCheckFits suppresses none
+
+readResult is call
+readResult in stringAppendBoundedChecked
+readResult invokes stringAppendBounded
+readResult argument target machine.Address target copy
+readResult argument source machine.Address source copy
+readResult argument most Int64 count copy
+readResult result result machine.Address
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none

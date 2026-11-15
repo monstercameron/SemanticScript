@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(ROOT, "semanticscript", "compiler"))
 # what a program reads on standard input
 STDIN = {"stdio_scanf": "Z 77 word x\n"}
 # the compiler's options: each program is built both ways at each level
-LEVELS = ["-O0"]
+LEVELS = ["-O0", "-O2"]  # -O2 brings _FORTIFY_SOURCE (Ubuntu turns it on), so glibc's headers call the __*_chk names
 
 
 def _linux_cc():

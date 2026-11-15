@@ -348,6 +348,10 @@ C_LIBRARY = {
     # D-162 to D-164: exit handlers, the div family, non-local jumps, signals, system
     "atexit", "at_quick_exit", "quick_exit", "_Exit", "ldiv", "lldiv", "imaxdiv", "setjmp", "_setjmp", "__sigsetjmp",
     "longjmp", "_longjmp", "siglongjmp", "__longjmp_chk", "signal", "raise", "system",
+    # D-165: what glibc's headers call under _FORTIFY_SOURCE
+    "__chk_fail", "__memcpy_chk", "__memmove_chk", "__memset_chk", "__strcpy_chk", "__strncpy_chk", "__strcat_chk",
+    "__strncat_chk", "__printf_chk", "__fprintf_chk", "__sprintf_chk", "__snprintf_chk", "__vprintf_chk",
+    "__vfprintf_chk", "__vsprintf_chk", "__vsnprintf_chk", "__fgets_chk", "__fread_chk",
 }
 # the modules whose `abi library` operations make up the C library (D-153, D-159, D-160, D-164)
 C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem")
