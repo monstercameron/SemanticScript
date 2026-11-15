@@ -60,7 +60,9 @@ def test_cextra_matches_the_models(tmp_path):
     assert len(got) == len(want) and bad == [], (len(got), len(want), bad[:20])
     if not base.WINDOWS:
         jit = base._jit(project)
-        assert (jit.returncode, jit.stdout, jit.stderr) == (ran.returncode, ran.stdout, ran.stderr)
+        assert (jit.returncode, jit.stderr) == (ran.returncode, ran.stderr)
+        # errno does not survive a ctypes call, so it is compared with the models above, not with refined run
+        assert cextratour.without_errno(jit.stdout.splitlines()) == cextratour.without_errno(got)
 
 
 @base.needs_windows_cc

@@ -27,7 +27,8 @@ sys.path.insert(0, os.path.join(ROOT, "docs", "refined-examples", "stage0", "too
 # the names this module adds to the runtime's C library (the test compares them with the .sem files)
 NAMES = ["strtok", "strtok_r", "strsep", "strcoll", "strxfrm", "memccpy", "mempcpy", "stpcpy", "stpncpy",
          "strchrnul", "memrchr", "rand", "srand", "rand_r", "strtof", "aligned_alloc", "posix_memalign", "setlocale",
-         "localeconv", "__assert_fail", "imaxabs", "strtoimax", "strtoumax", "wcstoimax", "wcstoumax"]
+         "localeconv", "__assert_fail", "imaxabs", "strtoimax", "strtoumax", "wcstoimax", "wcstoumax", "__isoc23_strtoimax",
+         "__isoc23_strtoumax", "__isoc23_wcstoimax", "__isoc23_wcstoumax"]
 
 SEEDS = [1, 0, 12345, 42, 2147483647, -1, -2147483648, 987654321]
 SEED_COUNT = 10
@@ -251,6 +252,7 @@ class Program:
     def __init__(self):
         self.lines: list[str] = []
         self.out: list[str] = []
+        self.errno_lines: list[int] = []
         self.n = 0
 
     def uid(self, prefix: str) -> str:
@@ -325,6 +327,7 @@ class Program:
         c = self.call32("memcmp", "errnoAt", self.ptr(ERRNO_ZERO), 4)
         code = self.uid("e")
         self.emit(f"{self.uid('g')}: {code} = errnoCode({a}, {b}, {c})")
+        self.errno_lines.append(len(self.out))
         self.say(code, expected)
 
 
@@ -780,10 +783,11 @@ def build_program() -> Program:
     p.put_text(SRC, b"C")
     p.put_text(DST, b"POSIX")
     p.put_text(TEXT, b"xx_NOWHERE")
-    current = p.call("setlocale", 6, "nowhere")
-    p.say(p.sign_of(p.call32("strcmp", current, p.ptr(SRC))), 0)
+    # the first call puts glibc in the C locale: under refined run the process is Python's, which has set its own
     named = p.call("setlocale", 6, p.ptr(DST))
     p.say(p.sign_of(p.call32("strcmp", named, p.ptr(SRC))), 0)
+    current = p.call("setlocale", 6, "nowhere")
+    p.say(p.sign_of(p.call32("strcmp", current, p.ptr(SRC))), 0)
     named = p.call("setlocale", 2, p.ptr(SRC))
     p.say(p.sign_of(p.call32("strcmp", named, p.ptr(SRC))), 0)
     refused = p.call("setlocale", 6, p.ptr(TEXT))
@@ -926,6 +930,13 @@ def write_project(folder: str) -> None:
 
 def expected() -> list[str]:
     return build_program().out
+
+
+def without_errno(lines: list[str]) -> list[str]:
+    """The tour's output less the lines that show errno: under refined run the call goes through ctypes, which does
+    not keep errno from one call to the next, so errno is compared only in the executable against the models."""
+    skip = set(build_program().errno_lines)
+    return [line for i, line in enumerate(lines) if i not in skip]
 
 
 # ---------------------------------------------------------------- the assertion program
