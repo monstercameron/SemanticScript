@@ -1367,7 +1367,7 @@ op lgammaValue "lgamma without the sign's store: ln |gamma(x)| within 0.5001 ulp
 :negative
   when magnitude >= 0x1p52 pole checkInteger
 :pole
-  storeSignWork(1)
+  storeSignWork(-1)
   clibrary.setErrno(34)
   calc poleInfinity = convert.uint64BitsToFloat64(9218868437227405312)
   return poleInfinity
@@ -2478,7 +2478,7 @@ test lgammaTest "lgamma and lgammaf give the correctly rounded value (within 1 u
   calc okq26 = sameBits(9218868437227405312, q26)
   test.assertTrue(okq26)
   calc s26 = machine.loadInt32(cell26)
-  test.assertTrue(s26 == 1)
+  test.assertTrue(s26 == -1)
   calc r27 = logGamma(-0x1.4000000000000p+2)
   calc okr27 = sameBits(9218868437227405312, r27)
   test.assertTrue(okr27)
@@ -2487,7 +2487,7 @@ test lgammaTest "lgamma and lgammaf give the correctly rounded value (within 1 u
   calc okq27 = sameBits(9218868437227405312, q27)
   test.assertTrue(okq27)
   calc s27 = machine.loadInt32(cell27)
-  test.assertTrue(s27 == 1)
+  test.assertTrue(s27 == -1)
   calc r28 = logGamma(convert.uint64BitsToFloat64(9218868437227405312))
   calc okr28 = sameBits(9218868437227405312, r28)
   test.assertTrue(okr28)

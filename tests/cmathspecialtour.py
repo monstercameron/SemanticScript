@@ -430,8 +430,11 @@ for _base in DOUBLE_FUNCTIONS:
     CALLS += [(_base, _base, x) for x in TOUR_INPUTS[_base]]
 for _base in DOUBLE_FUNCTIONS:
     CALLS += [(_base + "f", _base, x) for x in float_inputs(_base)]
-LGAMMA_R_INPUTS = [x for x in TOUR_INPUTS["lgamma"][::3]]
-LGAMMAF_R_INPUTS = [to_float32(x) for x in TOUR_INPUTS["lgamma"][::5]]
+# the poles' signs, small and huge, odd and even, decide which rule glibc follows there
+POLES = [-0.0, -1.0, -2.0, -3.0, -27.0, -28.0, -29.0, -(2.0 ** 51) - 1.0, -(2.0 ** 52), -(2.0 ** 53), -1e15, -1e300]
+LGAMMA_R_INPUTS = [x for x in TOUR_INPUTS["lgamma"][::3]] + POLES
+LGAMMAF_R_INPUTS = ([to_float32(x) for x in TOUR_INPUTS["lgamma"][::5]]
+                    + [-0.0, -1.0, -2.0, -3.0, -(2.0 ** 23) - 1.0, -(2.0 ** 24), -(2.0 ** 52)])
 CALLS += [("lgamma_r", "lgamma", x) for x in LGAMMA_R_INPUTS]
 CALLS += [("lgammaf_r", "lgamma", x) for x in LGAMMAF_R_INPUTS]
 
@@ -606,7 +609,10 @@ def write_project(folder: str) -> None:
 
 
 def expected_sign(x: float) -> int:
-    """The sign lgamma_r stores: 1 at NaN, infinity and the negative whole numbers, -1 at -0, else gamma(x)'s sign."""
-    if math.isnan(x) or math.isinf(x) or (x < 0 and x == math.floor(x)):
+    """The sign lgamma_r stores: 1 at NaN and infinity, -1 at -0 and at every negative whole number (glibc's, as its
+    CI run showed for -1e15 and -2^52), else gamma(x)'s sign."""
+    if math.isnan(x) or math.isinf(x):
         return 1
+    if x < 0 and x == math.floor(x):
+        return -1
     return lgamma_sign(x)

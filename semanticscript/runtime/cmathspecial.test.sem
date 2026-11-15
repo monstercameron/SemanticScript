@@ -12191,7 +12191,7 @@ doAssertTrueStep26 is call
 doAssertTrueStep26 in lgammaTest
 doAssertTrueStep26 invokes compare.equalInt32
 doAssertTrueStep26 argument left Int32 s26 copy
-doAssertTrueStep26 argument right Int32 int321 copy
+doAssertTrueStep26 argument right Int32 int32Minus1 copy
 doAssertTrueStep26 result doAssertTruePart26 Bool
 doAssertTrueStep26 ownedBy none
 doAssertTrueStep26 cleanedBy none
@@ -12305,7 +12305,7 @@ doAssertTrueStep27 is call
 doAssertTrueStep27 in lgammaTest
 doAssertTrueStep27 invokes compare.equalInt32
 doAssertTrueStep27 argument left Int32 s27 copy
-doAssertTrueStep27 argument right Int32 int321 copy
+doAssertTrueStep27 argument right Int32 int32Minus1 copy
 doAssertTrueStep27 result doAssertTruePart27 Bool
 doAssertTrueStep27 ownedBy none
 doAssertTrueStep27 cleanedBy none

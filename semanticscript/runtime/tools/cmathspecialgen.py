@@ -793,7 +793,7 @@ def build_gamma():
     o.calc("signBit", "convert.uint64BitsToInt64(convert.float64BitsToUInt64(value) >> 63)")
     o.add("storeSignWork(1 - 2 * signBit)", "clibrary.setErrno(34)", f"calc poleZero = convert.uint64BitsToFloat64({INFBITS})", "return poleZero",
           ":other", "when value < 0.0 negative positive", ":negative", "when magnitude >= 0x1p52 pole checkInteger", ":pole",
-          "storeSignWork(1)", "clibrary.setErrno(34)", f"calc poleInfinity = convert.uint64BitsToFloat64({INFBITS})", "return poleInfinity", ":checkInteger",
+          "storeSignWork(-1)", "clibrary.setErrno(34)", f"calc poleInfinity = convert.uint64BitsToFloat64({INFBITS})", "return poleInfinity", ":checkInteger",
           "calc truncated = convert.int64ToFloat64(convert.float64ToInt64(magnitude))", "when truncated == magnitude pole compute",
           ":positive", "when value == 1.0 zeroResult checkTwo", ":checkTwo", "when value == 2.0 zeroResult compute", ":zeroResult", "storeSignWork(1)", "return nothing", ":compute")
     o.dd("lgammaCore", "lh", None, "value")
@@ -986,7 +986,7 @@ def build_tests():
                 elif x == 0:
                     m = ref.lgamma_sign(x)
                 elif x < 0 and x == math.floor(x):
-                    m = 1
+                    m = -1
                 else:
                     m = ref.lgamma_sign(x)
                 t += [f"  cell{n} = storeScratch()", f"  calc q{n} = logGammaSigned({literal(x)}, cell{n})"]
@@ -1000,7 +1000,7 @@ def build_tests():
             t.append(f"  calc g{n} = convert.float32ToFloat64(f{n})")
             t += check_lines(f"g{n}", e, True, n)
             if base == "lgamma":
-                m = 1 if xf != xf or math.isinf(xf) or (xf < 0 and xf == math.floor(xf)) else ref.lgamma_sign(xf)
+                m = -1 if xf < 0 and xf == math.floor(xf) else 1 if xf != xf or math.isinf(xf) else ref.lgamma_sign(xf)
                 t += [f"  cell{n} = storeScratch()", f"  calc h{n} = logGammaSignedFloat(convert.float64ToFloat32({literal(xf)}), cell{n})",
                       f"  calc i{n} = convert.float32ToFloat64(h{n})"]
                 t += check_lines(f"i{n}", e, True, n)

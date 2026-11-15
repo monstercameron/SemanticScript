@@ -14385,6 +14385,7 @@ lgammaValue let two Int64 2 immutable
 lgammaValue let int3234 Int32 34 immutable
 lgammaValue let uInt649218868437227405312 UInt64 9218868437227405312 immutable
 lgammaValue let real4330000000000000 Float64 4503599627370496.0 immutable
+lgammaValue let minus1 Int64 -1 immutable
 lgammaValue let real3ff0000000000000 Float64 1.0 immutable
 lgammaValue let real4000000000000000 Float64 2.0 immutable
 lgammaValue at begin do findCheck11
@@ -14644,7 +14645,7 @@ findCheck51 suppresses none
 doStoreSignWork4 is call
 doStoreSignWork4 in lgammaValue
 doStoreSignWork4 invokes storeSignWork
-doStoreSignWork4 argument value Int64 one copy
+doStoreSignWork4 argument value Int64 minus1 copy
 doStoreSignWork4 result none
 doStoreSignWork4 ownedBy none
 doStoreSignWork4 cleanedBy none
