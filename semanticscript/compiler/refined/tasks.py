@@ -34,7 +34,22 @@ TASK_STACK_BYTES = 64 * 1024 * 1024
 POLL_SECONDS = 0.05
 DEADLOCK_POLLS = 6  # how many quiet polls in a row it takes to call a wait a deadlock
 
-_sched = threading.Condition()
+
+
+class _Scheduler(threading.Condition):
+    """The scheduler's lock and condition, counting every wake-up: a waiter that was woken by a change (a task that
+    ended, a send, a cancel) has not seen a quiet poll, however briefly every thread looked idle at that moment."""
+
+    def __init__(self):
+        super().__init__()
+        self.changes = 0
+
+    def notify_all(self):
+        self.changes += 1
+        super().notify_all()
+
+
+_sched = _Scheduler()
 _stack_lock = threading.Lock()
 _tls = threading.local()
 _state = {"active": 0, "timed": 0}
@@ -105,6 +120,7 @@ def wait_until(ready: Callable[[], bool], deadline: Optional[float], what: str, 
     Returns "ready", "timedOut", or "cancelled"; traps on a deadlock."""
     quiet = 0
     with _sched:
+        seen = _sched.changes
         while True:
             if ready():
                 return "ready"
@@ -115,10 +131,13 @@ def wait_until(ready: Callable[[], bool], deadline: Optional[float], what: str, 
             _state["active"] -= 1
             if deadline is not None:
                 _state["timed"] += 1
-            if _state["active"] == 0 and _state["timed"] == 0:
+            # a deadlock is a stretch of polls with no thread active, no deadline, and no change at all: a wait woken
+            # by a change (a task that just ended, and whose joiner has not run yet) starts the count again
+            if _state["active"] == 0 and _state["timed"] == 0 and _sched.changes == seen:
                 quiet += 1
             else:
                 quiet = 0
+            seen = _sched.changes
             if quiet >= DEADLOCK_POLLS:
                 _state["active"] += 1
                 others = sorted(set(_waiting.values()) - {what})

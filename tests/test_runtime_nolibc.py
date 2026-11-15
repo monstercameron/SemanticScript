@@ -553,7 +553,9 @@ def test_executables_hold_only_what_they_use(tmp_path):
     ran, jit = _same_as_jit(hello)
     assert ran == jit and ran[1] == "Hello, world!\n"
     small = os.path.getsize(os.path.join(hello, "program.exe"))
-    assert small < 48 * 1024, small
+    # D-150: GNU ld lays an AArch64 executable out on 64 KiB pages, so its segments start 64 KiB apart
+    import platform
+    assert small < (48 if platform.machine().lower() not in ("aarch64", "arm64") or WINDOWS else 160) * 1024, small
     project = caselib.materialize(CASES["11-concurrency/parallel"], str(tmp_path / "parallel"))
     ran, jit = _same_as_jit(project)
     assert ran == jit and os.path.getsize(os.path.join(project, "program.exe")) > small

@@ -2712,7 +2712,10 @@ The five modules stage 4 left to `refined run` (D-137) moved into `semanticscrip
   (the caller owns them); a trap needs no release, since the system closes a process's sockets as it ends. The
   scope check of D-38 now covers `net.tcp` (the port's decimal text against the text after the scope's last colon)
   and `net.outbound` (address_within). Winsock's rows are named `winsock<Name>` beside Linux's system calls of the
-  same names. tests/nettour.py prints exactly what `refined run` prints.
+  same names. tests/nettour.py prints exactly what `refined run` prints. Writing it found a false deadlock in
+  `refined run` itself (tasks.py): a joiner woken as a task ended could see every thread idle for an instant, and six
+  such wake-ups in a row (a task that runs many short waits, each its own thread) read as a deadlock on a slow
+  machine; a poll now counts as quiet only when nothing changed since the last one.
 - **D-149** Names are resolved as Python's create_connection resolves them, IPv4 only (where getaddrinfo would also
   give IPv6 addresses, the executable tries the IPv4 ones, which is what reaches an IPv4 listener): on Windows by
   ws2_32's getaddrinfo with AF_INET hints; on Linux, with no C library to call, by a resolver written in the runtime:
