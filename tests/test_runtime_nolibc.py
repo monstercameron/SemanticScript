@@ -345,9 +345,12 @@ C_LIBRARY = {
     "tmpnam", "perror", "printf", "fprintf", "sprintf", "snprintf", "vprintf", "vfprintf", "vsprintf", "vsnprintf",
     "scanf", "fscanf", "sscanf", "vscanf", "vfscanf", "vsscanf", "__isoc99_scanf", "__isoc99_fscanf",
     "__isoc99_sscanf", "__isoc99_vscanf", "__isoc99_vfscanf", "__isoc99_vsscanf",
+    # D-162 to D-164: exit handlers, the div family, non-local jumps, signals, system
+    "atexit", "at_quick_exit", "quick_exit", "_Exit", "ldiv", "lldiv", "imaxdiv", "setjmp", "_setjmp", "__sigsetjmp",
+    "longjmp", "_longjmp", "siglongjmp", "__longjmp_chk", "signal", "raise", "system",
 }
-# the modules whose `abi library` operations make up the C library (D-153, D-159, D-160)
-C_MODULES = ("clibrary.sem", "cstreams.sem")
+# the modules whose `abi library` operations make up the C library (D-153, D-159, D-160, D-164)
+C_MODULES = ("clibrary.sem", "cstreams.sem", "cprocess.sem")
 
 
 @pytest.mark.skipif(WINDOWS or not PLATFORM, reason="the runtime's loader maps ELF shared libraries on Linux")
@@ -722,9 +725,9 @@ def test_runtime_project_checks_and_passes_its_tests():
     triple = default_triple()
     if os.name != "nt" and not (triple.split("-")[0] in ("x86_64", "aarch64") and "linux" in triple):
         pytest.skip("the runtime's system targets are Windows functions and x86_64 and AArch64 Linux system calls")
-    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 80 tests, each compiled in a process of its own
+    tested = caselib.refined("test", RUNTIME, timeout=1800)  # 81 tests, each compiled in a process of its own
     assert tested.returncode == 0, tested.stdout + tested.stderr
-    assert "80 of 80 tests passed" in tested.stdout
+    assert "81 of 81 tests passed" in tested.stdout
 
 
 def test_runtime_sources_are_generated_from_their_dsl():

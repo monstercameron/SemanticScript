@@ -330,8 +330,9 @@ def runtime_object(output: str) -> tuple[bool, str]:
     return True, f"wrote {output} (the runtime in SemanticScript, {len(data)} bytes, {machine})"
 
 
-# D-161: the C library as a C program's libc on Linux: `_start` keeps the kernel's stack, readies the library, runs the
-# program's init arrays, calls main(argc, argv, envp), and exits with what main gives; the data symbols are globals of
+# D-161: the C library as a C program's libc on Linux: `_start` keeps the kernel's stack, readies the library, registers
+# the program's fini array with atexit (so it runs after every handler the program registers, as glibc's), runs its
+# init arrays, calls main(argc, argv, envp), and exits with what main gives; the data symbols are globals of
 # the object, filled before main from the cells in machine.state the library keeps them in (their values never change:
 # freopen reuses a stream's FILE)
 _C_START_ASM = {
@@ -350,6 +351,25 @@ declare void @exit(i32)
 @__preinit_array_end = external hidden global [0 x ptr]
 @__init_array_start = external hidden global [0 x ptr]
 @__init_array_end = external hidden global [0 x ptr]
+@__fini_array_start = external hidden global [0 x ptr]
+@__fini_array_end = external hidden global [0 x ptr]
+declare i32 @atexit(ptr)
+
+define internal void @refined_c_fini() {
+entry:
+  br label %head
+head:
+  %at = phi ptr [ @__fini_array_end, %entry ], [ %back, %body ]
+  %done = icmp ule ptr %at, @__fini_array_start
+  br i1 %done, label %out, label %body
+body:
+  %back = getelementptr ptr, ptr %at, i64 -1
+  %fn = load ptr, ptr %back
+  call void %fn()
+  br label %head
+out:
+  ret void
+}
 
 define internal void @refined_c_run_array(ptr %from, ptr %to, i32 %argc, ptr %argv, ptr %envp) {
 entry:
@@ -376,6 +396,7 @@ entry:
   %argv = getelementptr i8, ptr %stack, i64 8
   %words = add i64 %count, 1
   %envp = getelementptr ptr, ptr %argv, i64 %words
+  %registered = call i32 @atexit(ptr @refined_c_fini)
   call void @refined_c_run_array(ptr @__preinit_array_start, ptr @__preinit_array_end, i32 %argc, ptr %argv, ptr %envp)
   call void @refined_c_run_array(ptr @__init_array_start, ptr @__init_array_end, i32 %argc, ptr %argv, ptr %envp)
   %code = call i32 @main(i32 %argc, ptr %argv, ptr %envp)

@@ -107,6 +107,8 @@ based on [Keep a Changelog](https://keepachangelog.com/).
   `variadic`; on x86_64 calls through references are made as variadic calls, so
   printf works through `ffi` with doubles. The runtime's DSL takes expressions.
   Known gap: strerror gives `Unknown error N` for every number for now.
+- Exit handlers (atexit, at_quick_exit, quick_exit, `_Exit`), ldiv and its kin returning a pair, setjmp and
+  longjmp (routines the compiler emits), signal and raise, abort through SIGABRT, and system (D-162 to D-164).
 
 ### The runtime in SemanticScript: `ffi` everywhere
 

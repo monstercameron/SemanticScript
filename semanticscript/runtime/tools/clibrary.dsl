@@ -1,7 +1,7 @@
 module clibrary "The C standard library written in SemanticScript: what ffi.open of c binds, and what a library the loader maps finds for its C imports (D-153)"
   path clibrary
   imports standard.machine standard.system standard.string standard.math standard.compare standard.convert standard.bits standard.logic standard.test kernel memory output heap floats wide
-  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal
+  exports prepare lookup cStringLength cLibraryName byteAt setErrno lowInt32 boundedLength errorText errorMessage memoryFind charOf isSpaceByte digitOf parseWhole parseReal runHandlers
 
 capability memoryAccess "Authority to read and write the memory C callers hand the library" use machine.memory none
 
@@ -40,6 +40,14 @@ constant environmentAt "Where the block getenv last gave on Windows is kept, in 
 constant realAt "Where strtod reads a Float64 into, in machine.state" Int64 1608
 
 constant hexBitsAt "Where a hexadecimal strtod puts the bits it made, in machine.state" Int64 1616
+
+constant exitListAt "Where the list of atexit's handlers is kept (its block, how many, how many it holds), in machine.state (D-162)" Int64 27904
+
+constant quickListAt "Where the list of at_quick_exit's handlers is kept, in machine.state" Int64 27928
+
+record Quotient "ldiv_t, lldiv_t, and imaxdiv_t: a quotient and a remainder (D-157's pair, returned in two registers)"
+  field quotient Int64
+  field remainder Int64
 
 constant errorTextAt "Where strerror writes its text, in machine.state (D-160): 64 bytes" Int64 1792
 
@@ -2777,7 +2785,6 @@ op abortProcess "abort: on Linux SIGABRT with its default action, so the process
   effect use system.calls
   uses memoryAccess
   uses systemCalls
-  abi library "abort"
 :begin
   osCheck: onLinux = system.linux()
   if onLinux linuxAbort windowsAbort
@@ -2813,15 +2820,19 @@ op finalize "__cxa_finalize: what a library's destructors register is never run 
 :begin
   return
 
-op registerAtExit "__cxa_atexit: a library's destructor registered for the end of the process, which is never run (as at _exit); 0 for success"
+op registerAtExit "__cxa_atexit: a function exit calls with an argument, after those registered later (atexit's own list, as glibc keeps one); 0"
   input function machine.Address copied
   input argument machine.Address copied
   input handle machine.Address copied
   output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
   abi library "__cxa_atexit"
-  let ok Int32 0
 :begin
-  return ok
+  result = registerHandler(exitListAt, function, argument)
+  return result
 
 ## ---------------------------------------------------------------- math.h
 
@@ -3118,6 +3129,153 @@ op floatRemainderC "fmod, as the C library names it: the exact remainder with th
 :begin
   remainderIt: remainder = floatRemainder(x, y)
   return remainder
+
+## ---------------------------------------------------------------- exit handlers (D-162)
+
+op registerHandler "Add a handler (a function and the argument it is called with) to the list kept at a place of machine.state: the list's block, how many, how many it holds; 0, or -1 when there is no memory"
+  input listAt Int64 copied
+  input function machine.Address copied
+  input argument machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  let fine Int32 0
+:begin
+  listCell = kernel.stateAt(listAt)
+  calc countCell = listCell + 8
+  calc capacityCell = listCell + 16
+  count = machine.loadInt64(countCell)
+  capacity = machine.loadInt64(capacityCell)
+  when count < capacity store grow
+:grow
+  calc larger = capacity * 2 + 32
+  block = machine.loadAddress(listCell)
+  calc grown = heap.resize(block, larger * 16)
+  machine.storeAddress(listCell, grown)
+  machine.storeInt64(capacityCell, larger)
+  goto store
+:store
+  entries = machine.loadAddress(listCell)
+  calc entryAt = entries + count * 16
+  machine.storeAddress(entryAt, function)
+  calc argumentAt = entryAt + 8
+  machine.storeAddress(argumentAt, argument)
+  machine.storeInt64(countCell, count + 1)
+  return fine
+
+op runHandlers "Call the handlers of a list, the last registered first, each with its argument (one registered while they run runs too), and empty it"
+  invariant runsInReverse "Handlers run in the reverse of the order they were registered"
+  input listAt Int64 copied
+  effect use machine.memory
+  uses memoryAccess
+:begin
+  listCell = kernel.stateAt(listAt)
+  calc countCell = listCell + 8
+  goto eachHandler
+:eachHandler loop=while max=forever
+  count = machine.loadInt64(countCell)
+  when count <= 0 done call
+:call in=eachHandler
+  calc last = count - 1
+  machine.storeInt64(countCell, last)
+  entries = machine.loadAddress(listCell)
+  calc entryAt = entries + last * 16
+  function = machine.loadAddress(entryAt)
+  calc argumentAt = entryAt + 8
+  argument = machine.loadAddress(argumentAt)
+  machine.callWithAddress(function, argument)
+  goto eachHandler
+:done
+  return
+
+op atExit "atexit: register a function exit calls, the last registered first; 0"
+  input function machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "atexit"
+:begin
+  nowhere = machine.zero()
+  result = registerHandler(exitListAt, function, nowhere)
+  return result
+
+op atQuickExit "at_quick_exit: register a function quick_exit calls, the last registered first; 0"
+  input function machine.Address copied
+  output Int32
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "at_quick_exit"
+:begin
+  nowhere = machine.zero()
+  result = registerHandler(quickListAt, function, nowhere)
+  return result
+
+op quickExit "quick_exit: call the at_quick_exit functions, then end the process at once, flushing nothing"
+  input code Int32 copied
+  effect use machine.memory
+  effect use system.calls
+  uses memoryAccess
+  uses systemCalls
+  abi library "quick_exit"
+:begin
+  runHandlers(quickListAt)
+  endProcess(code)
+  return
+
+op exitAtOnce "_Exit: end the process at once"
+  input code Int32 copied
+  effect use system.calls
+  uses systemCalls
+  abi library "_Exit"
+:begin
+  endProcess(code)
+  return
+
+## ---------------------------------------------------------------- division of longs (D-157's pairs)
+
+op longDivide "ldiv: a long's quotient (toward zero) and remainder, as ldiv_t"
+  input numerator Int64 copied
+  input denominator Int64 copied
+  output Quotient
+  abi library "ldiv"
+:begin
+  pair = divideWhole(numerator, denominator)
+  return pair
+
+op longLongDivide "lldiv: a long long's quotient and remainder, as lldiv_t"
+  input numerator Int64 copied
+  input denominator Int64 copied
+  output Quotient
+  abi library "lldiv"
+:begin
+  pair = divideWhole(numerator, denominator)
+  return pair
+
+op widestDivide "imaxdiv: an intmax_t's quotient and remainder, as imaxdiv_t"
+  input numerator Int64 copied
+  input denominator Int64 copied
+  output Quotient
+  abi library "imaxdiv"
+:begin
+  pair = divideWhole(numerator, denominator)
+  return pair
+
+op divideWhole "The quotient toward zero and the remainder of two whole numbers, as a pair"
+  invariant dividesTowardZero "The quotient is truncated and quotient * denominator + remainder is the numerator"
+  input numerator Int64 copied
+  input denominator Int64 copied
+  output Quotient
+:begin
+  calc quotient = numerator / denominator
+  calc remainder = numerator % denominator
+  pair = Quotient.new(quotient, remainder)
+  return pair
 
 @tests
 
@@ -3618,12 +3776,17 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   verifies errorMessage describesErrno
   verifies memoryFind findsByte
   verifies charOf keepsLowByte
+  verifies runHandlers runsInReverse
+  verifies divideWhole dividesTowardZero
   verifies prepare pointsAtStreams
   verifies isSpaceByte spacesLikeC
   verifies digitOf readsDigits
   effect use machine.memory
+  effect use system.calls
   uses memoryAccess
+  uses systemCalls
   let sample String "hello"
+  let absText String "abs"
 :begin
   place = firstScratch(sample)
   second = byteAt(place, 1)
@@ -3660,5 +3823,17 @@ test helpersTest "The pieces the other C library modules call: a byte at an offs
   stdinValue = machine.loadAddress(stdinCell)
   stdinFile = kernel.stateAt(1920)
   test.assertTrue(stdinValue == stdinFile)
+  absName = machine.addressOfString(absText)
+  absAt = lookup(absName, 3)
+  registerHandler(quickListAt, absAt, absAt)
+  runHandlers(quickListAt)
+  quickCell = kernel.stateAt(quickListAt + 8)
+  left = machine.loadInt64(quickCell)
+  test.assertEqualInt64(0, left)
+  pair = divideWhole(-7, 2)
+  quotient = Quotient.quotient(pair)
+  remainder = Quotient.remainder(pair)
+  test.assertEqualInt64(-3, quotient)
+  test.assertEqualInt64(-1, remainder)
   setErrno(0)
   return

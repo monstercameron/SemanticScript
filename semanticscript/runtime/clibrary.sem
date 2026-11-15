@@ -40,6 +40,7 @@ clibrary exports isSpaceByte
 clibrary exports digitOf
 clibrary exports parseWhole
 clibrary exports parseReal
+clibrary exports runHandlers
 
 memoryAccess is capability
 memoryAccess purpose "Authority to read and write the memory C callers hand the library"
@@ -118,6 +119,22 @@ hexBitsAt is constant
 hexBitsAt purpose "Where a hexadecimal strtod puts the bits it made, in machine.state"
 hexBitsAt type Int64
 hexBitsAt value 1616
+
+exitListAt is constant
+exitListAt purpose "Where the list of atexit's handlers is kept (its block, how many, how many it holds), in machine.state (D-162)"
+exitListAt type Int64
+exitListAt value 27904
+
+quickListAt is constant
+quickListAt purpose "Where the list of at_quick_exit's handlers is kept, in machine.state"
+quickListAt type Int64
+quickListAt value 27928
+
+Quotient is record
+Quotient purpose "ldiv_t, lldiv_t, and imaxdiv_t: a quotient and a remainder (D-157's pair, returned in two registers)"
+Quotient typeParameter none
+Quotient field quotient Int64
+Quotient field remainder Int64
 
 errorTextAt is constant
 errorTextAt purpose "Where strerror writes its text, in machine.state (D-160): 64 bytes"
@@ -13604,7 +13621,6 @@ abortProcess uses systemCalls
 abortProcess memoryHeap false
 abortProcess async false
 abortProcess maxRecursion none
-abortProcess abi library "abort"
 abortProcess label begin loopKind none
 abortProcess label begin within none
 abortProcess label linuxAbort loopKind none
@@ -13812,7 +13828,7 @@ finalize let none
 finalize at begin return ok none
 
 registerAtExit is operation
-registerAtExit purpose "__cxa_atexit: a library's destructor registered for the end of the process, which is never run (as at _exit); 0 for success"
+registerAtExit purpose "__cxa_atexit: a function exit calls with an argument, after those registered later (atexit's own list, as glibc keeps one); 0"
 registerAtExit invariant none
 registerAtExit typeParameter none
 registerAtExit input function machine.Address copied
@@ -13821,16 +13837,32 @@ registerAtExit input handle machine.Address copied
 registerAtExit output Int32
 registerAtExit outputOwnedBy none
 registerAtExit raises none
-registerAtExit effect none
-registerAtExit uses none
+registerAtExit effect use machine.memory
+registerAtExit effect use system.calls
+registerAtExit uses memoryAccess
+registerAtExit uses systemCalls
 registerAtExit memoryHeap false
 registerAtExit async false
 registerAtExit maxRecursion none
 registerAtExit abi library "__cxa_atexit"
 registerAtExit label begin loopKind none
 registerAtExit label begin within none
-registerAtExit let ok Int32 0 immutable
-registerAtExit at begin return ok ok
+registerAtExit let none
+registerAtExit at begin do readResult
+registerAtExit at begin return ok result
+
+readResult is call
+readResult in registerAtExit
+readResult invokes registerHandler
+readResult argument listAt Int64 exitListAt copy
+readResult argument function machine.Address function copy
+readResult argument argument machine.Address argument copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
 
 # ---------------------------------------------------------------- math.h
 floatAbsolute is operation
@@ -15452,3 +15484,828 @@ remainderIt cleanedBy none
 remainderIt borrows none
 remainderIt catch none
 remainderIt suppresses none
+
+# ---------------------------------------------------------------- exit handlers (D-162)
+registerHandler is operation
+registerHandler purpose "Add a handler (a function and the argument it is called with) to the list kept at a place of machine.state: the list's block, how many, how many it holds; 0, or -1 when there is no memory"
+registerHandler invariant none
+registerHandler typeParameter none
+registerHandler input listAt Int64 copied
+registerHandler input function machine.Address copied
+registerHandler input argument machine.Address copied
+registerHandler output Int32
+registerHandler outputOwnedBy none
+registerHandler raises none
+registerHandler effect use machine.memory
+registerHandler effect use system.calls
+registerHandler uses memoryAccess
+registerHandler uses systemCalls
+registerHandler memoryHeap false
+registerHandler async false
+registerHandler maxRecursion none
+registerHandler label begin loopKind none
+registerHandler label begin within none
+registerHandler label grow loopKind none
+registerHandler label grow within none
+registerHandler label store loopKind none
+registerHandler label store within none
+registerHandler let fine Int32 0 immutable
+registerHandler let eight Int64 8 immutable
+registerHandler let sixteen Int64 16 immutable
+registerHandler let two Int64 2 immutable
+registerHandler let thirtyTwo Int64 32 immutable
+registerHandler let one Int64 1 immutable
+registerHandler at begin do readListCell
+registerHandler at begin do findCountCell1
+registerHandler at begin do findCapacityCell1
+registerHandler at begin do readCount
+registerHandler at begin do readCapacity
+registerHandler at begin do findCheck11
+registerHandler at begin branch if check1 goto store else goto grow
+registerHandler at grow do largerStep1
+registerHandler at grow do findLarger1
+registerHandler at grow do readBlock
+registerHandler at grow do grownStep1
+registerHandler at grow do findGrown1
+registerHandler at grow do doStoreAddress
+registerHandler at grow do doStoreInt64
+registerHandler at grow goto store
+registerHandler at store do readEntries
+registerHandler at store do entryAtStep1
+registerHandler at store do findEntryAt1
+registerHandler at store do doStoreAddress2
+registerHandler at store do findArgumentAt1
+registerHandler at store do doStoreAddress3
+registerHandler at store do doStoreInt64Step1
+registerHandler at store do doStoreInt642
+registerHandler at store return ok fine
+
+readListCell is call
+readListCell in registerHandler
+readListCell invokes kernel.stateAt
+readListCell argument offset Int64 listAt copy
+readListCell result listCell machine.Address
+readListCell ownedBy none
+readListCell cleanedBy none
+readListCell borrows none
+readListCell catch none
+readListCell suppresses none
+
+findCountCell1 is call
+findCountCell1 in registerHandler
+findCountCell1 invokes machine.offset
+findCountCell1 argument address machine.Address listCell copy
+findCountCell1 argument bytes Int64 eight copy
+findCountCell1 result countCell machine.Address
+findCountCell1 ownedBy none
+findCountCell1 cleanedBy none
+findCountCell1 borrows none
+findCountCell1 catch none
+findCountCell1 suppresses none
+
+findCapacityCell1 is call
+findCapacityCell1 in registerHandler
+findCapacityCell1 invokes machine.offset
+findCapacityCell1 argument address machine.Address listCell copy
+findCapacityCell1 argument bytes Int64 sixteen copy
+findCapacityCell1 result capacityCell machine.Address
+findCapacityCell1 ownedBy none
+findCapacityCell1 cleanedBy none
+findCapacityCell1 borrows none
+findCapacityCell1 catch none
+findCapacityCell1 suppresses none
+
+readCount is call
+readCount in registerHandler
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countCell copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+readCapacity is call
+readCapacity in registerHandler
+readCapacity invokes machine.loadInt64
+readCapacity argument address machine.Address capacityCell copy
+readCapacity result capacity Int64
+readCapacity ownedBy none
+readCapacity cleanedBy none
+readCapacity borrows none
+readCapacity catch none
+readCapacity suppresses none
+
+findCheck11 is call
+findCheck11 in registerHandler
+findCheck11 invokes compare.lessThanInt64
+findCheck11 argument left Int64 count copy
+findCheck11 argument right Int64 capacity copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+largerStep1 is call
+largerStep1 in registerHandler
+largerStep1 invokes math.multiplyInt64
+largerStep1 argument left Int64 capacity copy
+largerStep1 argument right Int64 two copy
+largerStep1 result largerPart1 Int64
+largerStep1 ownedBy none
+largerStep1 cleanedBy none
+largerStep1 borrows none
+largerStep1 catch none
+largerStep1 suppresses none
+
+findLarger1 is call
+findLarger1 in registerHandler
+findLarger1 invokes math.addInt64
+findLarger1 argument left Int64 largerPart1 copy
+findLarger1 argument right Int64 thirtyTwo copy
+findLarger1 result larger Int64
+findLarger1 ownedBy none
+findLarger1 cleanedBy none
+findLarger1 borrows none
+findLarger1 catch none
+findLarger1 suppresses none
+
+readBlock is call
+readBlock in registerHandler
+readBlock invokes machine.loadAddress
+readBlock argument address machine.Address listCell copy
+readBlock result block machine.Address
+readBlock ownedBy none
+readBlock cleanedBy none
+readBlock borrows none
+readBlock catch none
+readBlock suppresses none
+
+grownStep1 is call
+grownStep1 in registerHandler
+grownStep1 invokes math.multiplyInt64
+grownStep1 argument left Int64 larger copy
+grownStep1 argument right Int64 sixteen copy
+grownStep1 result grownPart1 Int64
+grownStep1 ownedBy none
+grownStep1 cleanedBy none
+grownStep1 borrows none
+grownStep1 catch none
+grownStep1 suppresses none
+
+findGrown1 is call
+findGrown1 in registerHandler
+findGrown1 invokes heap.resize
+findGrown1 argument block machine.Address block copy
+findGrown1 argument bytes Int64 grownPart1 copy
+findGrown1 result grown machine.Address
+findGrown1 ownedBy none
+findGrown1 cleanedBy none
+findGrown1 borrows none
+findGrown1 catch none
+findGrown1 suppresses none
+
+doStoreAddress is call
+doStoreAddress in registerHandler
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address listCell copy
+doStoreAddress argument value machine.Address grown copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in registerHandler
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address capacityCell copy
+doStoreInt64 argument value Int64 larger copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+readEntries is call
+readEntries in registerHandler
+readEntries invokes machine.loadAddress
+readEntries argument address machine.Address listCell copy
+readEntries result entries machine.Address
+readEntries ownedBy none
+readEntries cleanedBy none
+readEntries borrows none
+readEntries catch none
+readEntries suppresses none
+
+entryAtStep1 is call
+entryAtStep1 in registerHandler
+entryAtStep1 invokes math.multiplyInt64
+entryAtStep1 argument left Int64 count copy
+entryAtStep1 argument right Int64 sixteen copy
+entryAtStep1 result entryAtPart1 Int64
+entryAtStep1 ownedBy none
+entryAtStep1 cleanedBy none
+entryAtStep1 borrows none
+entryAtStep1 catch none
+entryAtStep1 suppresses none
+
+findEntryAt1 is call
+findEntryAt1 in registerHandler
+findEntryAt1 invokes machine.offset
+findEntryAt1 argument address machine.Address entries copy
+findEntryAt1 argument bytes Int64 entryAtPart1 copy
+findEntryAt1 result entryAt machine.Address
+findEntryAt1 ownedBy none
+findEntryAt1 cleanedBy none
+findEntryAt1 borrows none
+findEntryAt1 catch none
+findEntryAt1 suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in registerHandler
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address entryAt copy
+doStoreAddress2 argument value machine.Address function copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+findArgumentAt1 is call
+findArgumentAt1 in registerHandler
+findArgumentAt1 invokes machine.offset
+findArgumentAt1 argument address machine.Address entryAt copy
+findArgumentAt1 argument bytes Int64 eight copy
+findArgumentAt1 result argumentAt machine.Address
+findArgumentAt1 ownedBy none
+findArgumentAt1 cleanedBy none
+findArgumentAt1 borrows none
+findArgumentAt1 catch none
+findArgumentAt1 suppresses none
+
+doStoreAddress3 is call
+doStoreAddress3 in registerHandler
+doStoreAddress3 invokes machine.storeAddress
+doStoreAddress3 argument address machine.Address argumentAt copy
+doStoreAddress3 argument value machine.Address argument copy
+doStoreAddress3 result none
+doStoreAddress3 ownedBy none
+doStoreAddress3 cleanedBy none
+doStoreAddress3 borrows none
+doStoreAddress3 catch none
+doStoreAddress3 suppresses none
+
+doStoreInt64Step1 is call
+doStoreInt64Step1 in registerHandler
+doStoreInt64Step1 invokes math.addInt64
+doStoreInt64Step1 argument left Int64 count copy
+doStoreInt64Step1 argument right Int64 one copy
+doStoreInt64Step1 result doStoreInt64Part1 Int64
+doStoreInt64Step1 ownedBy none
+doStoreInt64Step1 cleanedBy none
+doStoreInt64Step1 borrows none
+doStoreInt64Step1 catch none
+doStoreInt64Step1 suppresses none
+
+doStoreInt642 is call
+doStoreInt642 in registerHandler
+doStoreInt642 invokes machine.storeInt64
+doStoreInt642 argument address machine.Address countCell copy
+doStoreInt642 argument value Int64 doStoreInt64Part1 copy
+doStoreInt642 result none
+doStoreInt642 ownedBy none
+doStoreInt642 cleanedBy none
+doStoreInt642 borrows none
+doStoreInt642 catch none
+doStoreInt642 suppresses none
+
+runHandlers is operation
+runHandlers purpose "Call the handlers of a list, the last registered first, each with its argument (one registered while they run runs too), and empty it"
+runHandlers invariant runsInReverse "\"Handlers run in the reverse of the order they were registered\""
+runHandlers typeParameter none
+runHandlers input listAt Int64 copied
+runHandlers output none
+runHandlers outputOwnedBy none
+runHandlers raises none
+runHandlers effect use machine.memory
+runHandlers uses memoryAccess
+runHandlers memoryHeap false
+runHandlers async false
+runHandlers maxRecursion none
+runHandlers label begin loopKind none
+runHandlers label begin within none
+runHandlers label eachHandler loopKind while
+runHandlers label eachHandler within none
+runHandlers label eachHandler maxIterations forever
+runHandlers label call loopKind none
+runHandlers label call within eachHandler
+runHandlers label done loopKind none
+runHandlers label done within none
+runHandlers let eight Int64 8 immutable
+runHandlers let zero Int64 0 immutable
+runHandlers let one Int64 1 immutable
+runHandlers let sixteen Int64 16 immutable
+runHandlers at begin do readListCell
+runHandlers at begin do findCountCell1
+runHandlers at begin goto eachHandler
+runHandlers at eachHandler do readCount
+runHandlers at eachHandler do findCheck11
+runHandlers at eachHandler branch if check1 goto done else goto call
+runHandlers at call do findLast1
+runHandlers at call do doStoreInt64
+runHandlers at call do readEntries
+runHandlers at call do entryAtStep1
+runHandlers at call do findEntryAt1
+runHandlers at call do readFunction
+runHandlers at call do findArgumentAt1
+runHandlers at call do readArgument
+runHandlers at call do doCallWithAddress
+runHandlers at call goto eachHandler
+runHandlers at done return ok none
+
+readListCell is call
+readListCell in runHandlers
+readListCell invokes kernel.stateAt
+readListCell argument offset Int64 listAt copy
+readListCell result listCell machine.Address
+readListCell ownedBy none
+readListCell cleanedBy none
+readListCell borrows none
+readListCell catch none
+readListCell suppresses none
+
+findCountCell1 is call
+findCountCell1 in runHandlers
+findCountCell1 invokes machine.offset
+findCountCell1 argument address machine.Address listCell copy
+findCountCell1 argument bytes Int64 eight copy
+findCountCell1 result countCell machine.Address
+findCountCell1 ownedBy none
+findCountCell1 cleanedBy none
+findCountCell1 borrows none
+findCountCell1 catch none
+findCountCell1 suppresses none
+
+readCount is call
+readCount in runHandlers
+readCount invokes machine.loadInt64
+readCount argument address machine.Address countCell copy
+readCount result count Int64
+readCount ownedBy none
+readCount cleanedBy none
+readCount borrows none
+readCount catch none
+readCount suppresses none
+
+findCheck11 is call
+findCheck11 in runHandlers
+findCheck11 invokes compare.lessOrEqualInt64
+findCheck11 argument left Int64 count copy
+findCheck11 argument right Int64 zero copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+findLast1 is call
+findLast1 in runHandlers
+findLast1 invokes math.subtractInt64
+findLast1 argument left Int64 count copy
+findLast1 argument right Int64 one copy
+findLast1 result last Int64
+findLast1 ownedBy none
+findLast1 cleanedBy none
+findLast1 borrows none
+findLast1 catch none
+findLast1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in runHandlers
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address countCell copy
+doStoreInt64 argument value Int64 last copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+readEntries is call
+readEntries in runHandlers
+readEntries invokes machine.loadAddress
+readEntries argument address machine.Address listCell copy
+readEntries result entries machine.Address
+readEntries ownedBy none
+readEntries cleanedBy none
+readEntries borrows none
+readEntries catch none
+readEntries suppresses none
+
+entryAtStep1 is call
+entryAtStep1 in runHandlers
+entryAtStep1 invokes math.multiplyInt64
+entryAtStep1 argument left Int64 last copy
+entryAtStep1 argument right Int64 sixteen copy
+entryAtStep1 result entryAtPart1 Int64
+entryAtStep1 ownedBy none
+entryAtStep1 cleanedBy none
+entryAtStep1 borrows none
+entryAtStep1 catch none
+entryAtStep1 suppresses none
+
+findEntryAt1 is call
+findEntryAt1 in runHandlers
+findEntryAt1 invokes machine.offset
+findEntryAt1 argument address machine.Address entries copy
+findEntryAt1 argument bytes Int64 entryAtPart1 copy
+findEntryAt1 result entryAt machine.Address
+findEntryAt1 ownedBy none
+findEntryAt1 cleanedBy none
+findEntryAt1 borrows none
+findEntryAt1 catch none
+findEntryAt1 suppresses none
+
+readFunction is call
+readFunction in runHandlers
+readFunction invokes machine.loadAddress
+readFunction argument address machine.Address entryAt copy
+readFunction result function machine.Address
+readFunction ownedBy none
+readFunction cleanedBy none
+readFunction borrows none
+readFunction catch none
+readFunction suppresses none
+
+findArgumentAt1 is call
+findArgumentAt1 in runHandlers
+findArgumentAt1 invokes machine.offset
+findArgumentAt1 argument address machine.Address entryAt copy
+findArgumentAt1 argument bytes Int64 eight copy
+findArgumentAt1 result argumentAt machine.Address
+findArgumentAt1 ownedBy none
+findArgumentAt1 cleanedBy none
+findArgumentAt1 borrows none
+findArgumentAt1 catch none
+findArgumentAt1 suppresses none
+
+readArgument is call
+readArgument in runHandlers
+readArgument invokes machine.loadAddress
+readArgument argument address machine.Address argumentAt copy
+readArgument result argument machine.Address
+readArgument ownedBy none
+readArgument cleanedBy none
+readArgument borrows none
+readArgument catch none
+readArgument suppresses none
+
+doCallWithAddress is call
+doCallWithAddress in runHandlers
+doCallWithAddress invokes machine.callWithAddress
+doCallWithAddress argument function machine.Address function copy
+doCallWithAddress argument argument machine.Address argument copy
+doCallWithAddress result none
+doCallWithAddress ownedBy none
+doCallWithAddress cleanedBy none
+doCallWithAddress borrows none
+doCallWithAddress catch none
+doCallWithAddress suppresses none
+
+atExit is operation
+atExit purpose "atexit: register a function exit calls, the last registered first; 0"
+atExit invariant none
+atExit typeParameter none
+atExit input function machine.Address copied
+atExit output Int32
+atExit outputOwnedBy none
+atExit raises none
+atExit effect use machine.memory
+atExit effect use system.calls
+atExit uses memoryAccess
+atExit uses systemCalls
+atExit memoryHeap false
+atExit async false
+atExit maxRecursion none
+atExit abi library "atexit"
+atExit label begin loopKind none
+atExit label begin within none
+atExit let none
+atExit at begin do readNowhere
+atExit at begin do readResult
+atExit at begin return ok result
+
+readNowhere is call
+readNowhere in atExit
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readResult is call
+readResult in atExit
+readResult invokes registerHandler
+readResult argument listAt Int64 exitListAt copy
+readResult argument function machine.Address function copy
+readResult argument argument machine.Address nowhere copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+atQuickExit is operation
+atQuickExit purpose "at_quick_exit: register a function quick_exit calls, the last registered first; 0"
+atQuickExit invariant none
+atQuickExit typeParameter none
+atQuickExit input function machine.Address copied
+atQuickExit output Int32
+atQuickExit outputOwnedBy none
+atQuickExit raises none
+atQuickExit effect use machine.memory
+atQuickExit effect use system.calls
+atQuickExit uses memoryAccess
+atQuickExit uses systemCalls
+atQuickExit memoryHeap false
+atQuickExit async false
+atQuickExit maxRecursion none
+atQuickExit abi library "at_quick_exit"
+atQuickExit label begin loopKind none
+atQuickExit label begin within none
+atQuickExit let none
+atQuickExit at begin do readNowhere
+atQuickExit at begin do readResult
+atQuickExit at begin return ok result
+
+readNowhere is call
+readNowhere in atQuickExit
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readResult is call
+readResult in atQuickExit
+readResult invokes registerHandler
+readResult argument listAt Int64 quickListAt copy
+readResult argument function machine.Address function copy
+readResult argument argument machine.Address nowhere copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+quickExit is operation
+quickExit purpose "quick_exit: call the at_quick_exit functions, then end the process at once, flushing nothing"
+quickExit invariant none
+quickExit typeParameter none
+quickExit input code Int32 copied
+quickExit output none
+quickExit outputOwnedBy none
+quickExit raises none
+quickExit effect use machine.memory
+quickExit effect use system.calls
+quickExit uses memoryAccess
+quickExit uses systemCalls
+quickExit memoryHeap false
+quickExit async false
+quickExit maxRecursion none
+quickExit abi library "quick_exit"
+quickExit label begin loopKind none
+quickExit label begin within none
+quickExit let none
+quickExit at begin do doRunHandlers
+quickExit at begin do doEndProcess
+quickExit at begin return ok none
+
+doRunHandlers is call
+doRunHandlers in quickExit
+doRunHandlers invokes runHandlers
+doRunHandlers argument listAt Int64 quickListAt copy
+doRunHandlers result none
+doRunHandlers ownedBy none
+doRunHandlers cleanedBy none
+doRunHandlers borrows none
+doRunHandlers catch none
+doRunHandlers suppresses none
+
+doEndProcess is call
+doEndProcess in quickExit
+doEndProcess invokes endProcess
+doEndProcess argument code Int32 code copy
+doEndProcess result none
+doEndProcess ownedBy none
+doEndProcess cleanedBy none
+doEndProcess borrows none
+doEndProcess catch none
+doEndProcess suppresses none
+
+exitAtOnce is operation
+exitAtOnce purpose "_Exit: end the process at once"
+exitAtOnce invariant none
+exitAtOnce typeParameter none
+exitAtOnce input code Int32 copied
+exitAtOnce output none
+exitAtOnce outputOwnedBy none
+exitAtOnce raises none
+exitAtOnce effect use system.calls
+exitAtOnce uses systemCalls
+exitAtOnce memoryHeap false
+exitAtOnce async false
+exitAtOnce maxRecursion none
+exitAtOnce abi library "_Exit"
+exitAtOnce label begin loopKind none
+exitAtOnce label begin within none
+exitAtOnce let none
+exitAtOnce at begin do doEndProcess
+exitAtOnce at begin return ok none
+
+doEndProcess is call
+doEndProcess in exitAtOnce
+doEndProcess invokes endProcess
+doEndProcess argument code Int32 code copy
+doEndProcess result none
+doEndProcess ownedBy none
+doEndProcess cleanedBy none
+doEndProcess borrows none
+doEndProcess catch none
+doEndProcess suppresses none
+
+# ---------------------------------------------------------------- division of longs (D-157's pairs)
+longDivide is operation
+longDivide purpose "ldiv: a long's quotient (toward zero) and remainder, as ldiv_t"
+longDivide invariant none
+longDivide typeParameter none
+longDivide input numerator Int64 copied
+longDivide input denominator Int64 copied
+longDivide output Quotient
+longDivide outputOwnedBy none
+longDivide raises none
+longDivide effect none
+longDivide uses none
+longDivide memoryHeap false
+longDivide async false
+longDivide maxRecursion none
+longDivide abi library "ldiv"
+longDivide label begin loopKind none
+longDivide label begin within none
+longDivide let none
+longDivide at begin do readPair
+longDivide at begin return ok pair
+
+readPair is call
+readPair in longDivide
+readPair invokes divideWhole
+readPair argument numerator Int64 numerator copy
+readPair argument denominator Int64 denominator copy
+readPair result pair Quotient
+readPair ownedBy none
+readPair cleanedBy none
+readPair borrows none
+readPair catch none
+readPair suppresses none
+
+longLongDivide is operation
+longLongDivide purpose "lldiv: a long long's quotient and remainder, as lldiv_t"
+longLongDivide invariant none
+longLongDivide typeParameter none
+longLongDivide input numerator Int64 copied
+longLongDivide input denominator Int64 copied
+longLongDivide output Quotient
+longLongDivide outputOwnedBy none
+longLongDivide raises none
+longLongDivide effect none
+longLongDivide uses none
+longLongDivide memoryHeap false
+longLongDivide async false
+longLongDivide maxRecursion none
+longLongDivide abi library "lldiv"
+longLongDivide label begin loopKind none
+longLongDivide label begin within none
+longLongDivide let none
+longLongDivide at begin do readPair
+longLongDivide at begin return ok pair
+
+readPair is call
+readPair in longLongDivide
+readPair invokes divideWhole
+readPair argument numerator Int64 numerator copy
+readPair argument denominator Int64 denominator copy
+readPair result pair Quotient
+readPair ownedBy none
+readPair cleanedBy none
+readPair borrows none
+readPair catch none
+readPair suppresses none
+
+widestDivide is operation
+widestDivide purpose "imaxdiv: an intmax_t's quotient and remainder, as imaxdiv_t"
+widestDivide invariant none
+widestDivide typeParameter none
+widestDivide input numerator Int64 copied
+widestDivide input denominator Int64 copied
+widestDivide output Quotient
+widestDivide outputOwnedBy none
+widestDivide raises none
+widestDivide effect none
+widestDivide uses none
+widestDivide memoryHeap false
+widestDivide async false
+widestDivide maxRecursion none
+widestDivide abi library "imaxdiv"
+widestDivide label begin loopKind none
+widestDivide label begin within none
+widestDivide let none
+widestDivide at begin do readPair
+widestDivide at begin return ok pair
+
+readPair is call
+readPair in widestDivide
+readPair invokes divideWhole
+readPair argument numerator Int64 numerator copy
+readPair argument denominator Int64 denominator copy
+readPair result pair Quotient
+readPair ownedBy none
+readPair cleanedBy none
+readPair borrows none
+readPair catch none
+readPair suppresses none
+
+divideWhole is operation
+divideWhole purpose "The quotient toward zero and the remainder of two whole numbers, as a pair"
+divideWhole invariant dividesTowardZero "\"The quotient is truncated and quotient * denominator + remainder is the numerator\""
+divideWhole typeParameter none
+divideWhole input numerator Int64 copied
+divideWhole input denominator Int64 copied
+divideWhole output Quotient
+divideWhole outputOwnedBy none
+divideWhole raises none
+divideWhole effect none
+divideWhole uses none
+divideWhole memoryHeap false
+divideWhole async false
+divideWhole maxRecursion none
+divideWhole label begin loopKind none
+divideWhole label begin within none
+divideWhole let none
+divideWhole at begin do findQuotient1
+divideWhole at begin do findRemainder1
+divideWhole at begin do makePair
+divideWhole at begin return ok pair
+
+findQuotient1 is call
+findQuotient1 in divideWhole
+findQuotient1 invokes math.divideInt64
+findQuotient1 argument left Int64 numerator copy
+findQuotient1 argument right Int64 denominator copy
+findQuotient1 result quotient Int64
+findQuotient1 ownedBy none
+findQuotient1 cleanedBy none
+findQuotient1 borrows none
+findQuotient1 catch none
+findQuotient1 suppresses none
+
+findRemainder1 is call
+findRemainder1 in divideWhole
+findRemainder1 invokes math.remainderInt64
+findRemainder1 argument left Int64 numerator copy
+findRemainder1 argument right Int64 denominator copy
+findRemainder1 result remainder Int64
+findRemainder1 ownedBy none
+findRemainder1 cleanedBy none
+findRemainder1 borrows none
+findRemainder1 catch none
+findRemainder1 suppresses none
+
+makePair is call
+makePair in divideWhole
+makePair invokes Quotient.new
+makePair argument quotient Int64 quotient copy
+makePair argument remainder Int64 remainder copy
+makePair result pair Quotient
+makePair ownedBy none
+makePair cleanedBy none
+makePair borrows none
+makePair catch none
+makePair suppresses none

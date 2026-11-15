@@ -4521,6 +4521,8 @@ helpersTest verifies errorText namesErrors
 helpersTest verifies errorMessage describesErrno
 helpersTest verifies memoryFind findsByte
 helpersTest verifies charOf keepsLowByte
+helpersTest verifies runHandlers runsInReverse
+helpersTest verifies divideWhole dividesTowardZero
 helpersTest verifies prepare pointsAtStreams
 helpersTest verifies isSpaceByte spacesLikeC
 helpersTest verifies digitOf readsDigits
@@ -4530,13 +4532,16 @@ helpersTest output none
 helpersTest outputOwnedBy none
 helpersTest raises none
 helpersTest effect use machine.memory
+helpersTest effect use system.calls
 helpersTest uses memoryAccess
+helpersTest uses systemCalls
 helpersTest memoryHeap false
 helpersTest async false
 helpersTest maxRecursion none
 helpersTest label begin loopKind none
 helpersTest label begin within none
 helpersTest let sample String "hello" immutable
+helpersTest let absText String "abs" immutable
 helpersTest let one Int64 1 immutable
 helpersTest let byte101 Byte 101 immutable
 helpersTest let int3234 Int32 34 immutable
@@ -4558,6 +4563,11 @@ helpersTest let byte9 Byte 9 immutable
 helpersTest let byte90 Byte 90 immutable
 helpersTest let uInt6435 UInt64 35 immutable
 helpersTest let n1920 Int64 1920 immutable
+helpersTest let eight Int64 8 immutable
+helpersTest let zero Int64 0 immutable
+helpersTest let minus7 Int64 -7 immutable
+helpersTest let minus3 Int64 -3 immutable
+helpersTest let minus1 Int64 -1 immutable
 helpersTest at begin do readPlace
 helpersTest at begin do readSecond
 helpersTest at begin do doAssertTrueStep1
@@ -4600,6 +4610,19 @@ helpersTest at begin do readStdinValue
 helpersTest at begin do readStdinFile
 helpersTest at begin do doAssertTrueStep7
 helpersTest at begin do doAssertTrue8
+helpersTest at begin do readAbsName
+helpersTest at begin do readAbsAt
+helpersTest at begin do readUnusedRegisterHandler
+helpersTest at begin do doRunHandlers
+helpersTest at begin do quickCellStep1
+helpersTest at begin do readQuickCell
+helpersTest at begin do readLeft
+helpersTest at begin do doAssertEqualInt645
+helpersTest at begin do readPair
+helpersTest at begin do readQuotient
+helpersTest at begin do readRemainder
+helpersTest at begin do doAssertEqualInt646
+helpersTest at begin do doAssertEqualInt647
 helpersTest at begin do doSetErrno4
 helpersTest at begin return ok none
 
@@ -5081,6 +5104,157 @@ doAssertTrue8 cleanedBy none
 doAssertTrue8 borrows none
 doAssertTrue8 catch none
 doAssertTrue8 suppresses none
+
+readAbsName is call
+readAbsName in helpersTest
+readAbsName invokes machine.addressOfString
+readAbsName argument text String absText lend
+readAbsName result absName machine.Address
+readAbsName ownedBy none
+readAbsName cleanedBy none
+readAbsName borrows none
+readAbsName catch none
+readAbsName suppresses none
+
+readAbsAt is call
+readAbsAt in helpersTest
+readAbsAt invokes lookup
+readAbsAt argument name machine.Address absName copy
+readAbsAt argument bytes Int64 three copy
+readAbsAt result absAt machine.Address
+readAbsAt ownedBy none
+readAbsAt cleanedBy none
+readAbsAt borrows none
+readAbsAt catch none
+readAbsAt suppresses none
+
+readUnusedRegisterHandler is call
+readUnusedRegisterHandler in helpersTest
+readUnusedRegisterHandler invokes registerHandler
+readUnusedRegisterHandler argument listAt Int64 quickListAt copy
+readUnusedRegisterHandler argument function machine.Address absAt copy
+readUnusedRegisterHandler argument argument machine.Address absAt copy
+readUnusedRegisterHandler result unusedRegisterHandler Int32
+readUnusedRegisterHandler ownedBy none
+readUnusedRegisterHandler cleanedBy none
+readUnusedRegisterHandler borrows none
+readUnusedRegisterHandler catch none
+readUnusedRegisterHandler suppresses none
+
+doRunHandlers is call
+doRunHandlers in helpersTest
+doRunHandlers invokes runHandlers
+doRunHandlers argument listAt Int64 quickListAt copy
+doRunHandlers result none
+doRunHandlers ownedBy none
+doRunHandlers cleanedBy none
+doRunHandlers borrows none
+doRunHandlers catch none
+doRunHandlers suppresses none
+
+quickCellStep1 is call
+quickCellStep1 in helpersTest
+quickCellStep1 invokes math.addInt64
+quickCellStep1 argument left Int64 quickListAt copy
+quickCellStep1 argument right Int64 eight copy
+quickCellStep1 result quickCellPart1 Int64
+quickCellStep1 ownedBy none
+quickCellStep1 cleanedBy none
+quickCellStep1 borrows none
+quickCellStep1 catch none
+quickCellStep1 suppresses none
+
+readQuickCell is call
+readQuickCell in helpersTest
+readQuickCell invokes kernel.stateAt
+readQuickCell argument offset Int64 quickCellPart1 copy
+readQuickCell result quickCell machine.Address
+readQuickCell ownedBy none
+readQuickCell cleanedBy none
+readQuickCell borrows none
+readQuickCell catch none
+readQuickCell suppresses none
+
+readLeft is call
+readLeft in helpersTest
+readLeft invokes machine.loadInt64
+readLeft argument address machine.Address quickCell copy
+readLeft result left Int64
+readLeft ownedBy none
+readLeft cleanedBy none
+readLeft borrows none
+readLeft catch none
+readLeft suppresses none
+
+doAssertEqualInt645 is call
+doAssertEqualInt645 in helpersTest
+doAssertEqualInt645 invokes test.assertEqualInt64
+doAssertEqualInt645 argument expected Int64 zero copy
+doAssertEqualInt645 argument actual Int64 left copy
+doAssertEqualInt645 result none
+doAssertEqualInt645 ownedBy none
+doAssertEqualInt645 cleanedBy none
+doAssertEqualInt645 borrows none
+doAssertEqualInt645 catch none
+doAssertEqualInt645 suppresses none
+
+readPair is call
+readPair in helpersTest
+readPair invokes divideWhole
+readPair argument numerator Int64 minus7 copy
+readPair argument denominator Int64 two copy
+readPair result pair Quotient
+readPair ownedBy none
+readPair cleanedBy none
+readPair borrows none
+readPair catch none
+readPair suppresses none
+
+readQuotient is call
+readQuotient in helpersTest
+readQuotient invokes Quotient.quotient
+readQuotient argument record Quotient pair copy
+readQuotient result quotient Int64
+readQuotient ownedBy none
+readQuotient cleanedBy none
+readQuotient borrows none
+readQuotient catch none
+readQuotient suppresses none
+
+readRemainder is call
+readRemainder in helpersTest
+readRemainder invokes Quotient.remainder
+readRemainder argument record Quotient pair copy
+readRemainder result remainder Int64
+readRemainder ownedBy none
+readRemainder cleanedBy none
+readRemainder borrows none
+readRemainder catch none
+readRemainder suppresses none
+
+doAssertEqualInt646 is call
+doAssertEqualInt646 in helpersTest
+doAssertEqualInt646 invokes test.assertEqualInt64
+doAssertEqualInt646 argument expected Int64 minus3 copy
+doAssertEqualInt646 argument actual Int64 quotient copy
+doAssertEqualInt646 result none
+doAssertEqualInt646 ownedBy none
+doAssertEqualInt646 cleanedBy none
+doAssertEqualInt646 borrows none
+doAssertEqualInt646 catch none
+doAssertEqualInt646 suppresses none
+
+doAssertEqualInt647 is call
+doAssertEqualInt647 in helpersTest
+doAssertEqualInt647 invokes test.assertEqualInt64
+doAssertEqualInt647 argument expected Int64 minus1 copy
+doAssertEqualInt647 argument actual Int64 remainder copy
+doAssertEqualInt647 result none
+doAssertEqualInt647 ownedBy none
+doAssertEqualInt647 cleanedBy none
+doAssertEqualInt647 borrows none
+doAssertEqualInt647 catch none
+doAssertEqualInt647 suppresses none
 
 doSetErrno4 is call
 doSetErrno4 in helpersTest

@@ -2018,7 +2018,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   system.exitProcess(code)
   return
 
-op exitProcess "exit: write what every stream holds, then end the process with a status"
+op exitProcess "exit: call the atexit and __cxa_atexit functions, the last registered first, write what every stream holds, then end the process with a status (D-162)"
   input code Int32 copied
   effect use machine.memory
   effect use system.calls
@@ -2026,6 +2026,7 @@ op exitProcess "exit: write what every stream holds, then end the process with a
   uses systemCalls
   abi library "exit"
 :begin
+  clibrary.runHandlers(27904)
   flushAll()
   endProcess(code)
   return

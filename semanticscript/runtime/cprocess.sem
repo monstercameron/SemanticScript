@@ -1,0 +1,2423 @@
+# setjmp.h, signal.h, abort, and system for the runtime's C library, written in SemanticScript (D-163,
+# D-164).
+#
+# This module is generated from tools/cprocess.dsl by tools/build.py.
+
+cprocess is module
+cprocess purpose "setjmp.h, signal.h, abort, and system for the runtime's C library: jumps back to a setjmp, signal handlers, raise, and commands run by the shell (D-163, D-164)"
+cprocess path cprocess
+cprocess imports standard.machine
+cprocess imports standard.system
+cprocess imports standard.string
+cprocess imports standard.math
+cprocess imports standard.compare
+cprocess imports standard.convert
+cprocess imports standard.bits
+cprocess imports standard.logic
+cprocess imports standard.test
+cprocess imports kernel
+cprocess imports heap
+cprocess imports wide
+cprocess imports clibrary
+cprocess exports none
+
+memoryAccess is capability
+memoryAccess purpose "Authority to read and write jump buffers, handler tables, and the memory C callers hand the library"
+memoryAccess grants use machine.memory none
+
+systemCalls is capability
+systemCalls purpose "Authority to install signal handlers, send signals, run the shell, and end the process"
+systemCalls grants use system.calls none
+
+# D-164: signal installs a handler with rt_sigaction on Linux, as glibc's signal does (BSD semantics: SA_RESTART, the
+# handler stays installed, the signal is blocked while its handler runs), returning through the runtime's restorer;
+# raise is kill(getpid(), sig), so a handler runs before raise returns. Windows has no such signals: there the library
+# keeps a table of handlers (glibc's signal numbers), and raise calls the signal's handler, ignores it for SIG_IGN, and
+# for SIG_DFL ends the process with exit code 3, as the Microsoft C runtime's raise does; nothing outside raise and
+# abort delivers a signal on Windows. abort raises SIGABRT, so a handler runs; if it returns, the default action is
+# taken. machine.state bytes 27952 to 28479 belong to this module: from 27960 the Windows handler of each signal, 1 to 64.
+handlersAt is constant
+handlersAt purpose "Where the Windows handler of signal 0 would be, in machine.state; signal n's is 8n bytes on"
+handlersAt type Int64
+handlersAt value 27952
+
+forever is constant
+forever purpose "The bound of a loop that ends when its work does"
+forever type Int64
+forever value 9223372036854775807
+
+invalidError is constant
+invalidError purpose "EINVAL: an argument the function does not take"
+invalidError type Int32
+invalidError value 22
+
+endProcess is operation
+endProcess purpose "End the process with an exit code: ExitProcess on Windows, exit_group on Linux (D-138)"
+endProcess invariant none
+endProcess typeParameter none
+endProcess input code Int32 copied
+endProcess output none
+endProcess outputOwnedBy none
+endProcess raises none
+endProcess effect use system.calls
+endProcess uses systemCalls
+endProcess memoryHeap false
+endProcess async false
+endProcess maxRecursion none
+endProcess label begin loopKind none
+endProcess label begin within none
+endProcess label linuxExit loopKind none
+endProcess label linuxExit within none
+endProcess label windowsExit loopKind none
+endProcess label windowsExit within none
+endProcess let none
+endProcess at begin do readOnLinux
+endProcess at begin branch if onLinux goto linuxExit else goto windowsExit
+endProcess at linuxExit do findWideCode1
+endProcess at linuxExit do readUnusedExitGroup
+endProcess at linuxExit return ok none
+endProcess at windowsExit do doExitProcess
+endProcess at windowsExit return ok none
+
+readOnLinux is call
+readOnLinux in endProcess
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+findWideCode1 is call
+findWideCode1 in endProcess
+findWideCode1 invokes convert.int32ToInt64
+findWideCode1 argument value Int32 code copy
+findWideCode1 result wideCode Int64
+findWideCode1 ownedBy none
+findWideCode1 cleanedBy none
+findWideCode1 borrows none
+findWideCode1 catch none
+findWideCode1 suppresses none
+
+readUnusedExitGroup is call
+readUnusedExitGroup in endProcess
+readUnusedExitGroup invokes system.exitGroup
+readUnusedExitGroup argument code Int64 wideCode copy
+readUnusedExitGroup result unusedExitGroup Int64
+readUnusedExitGroup ownedBy none
+readUnusedExitGroup cleanedBy none
+readUnusedExitGroup borrows none
+readUnusedExitGroup catch none
+readUnusedExitGroup suppresses none
+
+doExitProcess is call
+doExitProcess in endProcess
+doExitProcess invokes system.exitProcess
+doExitProcess argument code Int32 code copy
+doExitProcess result none
+doExitProcess ownedBy none
+doExitProcess cleanedBy none
+doExitProcess borrows none
+doExitProcess catch none
+doExitProcess suppresses none
+
+# ---------------------------------------------------------------- setjmp.h (D-163)
+saveJump is operation
+saveJump purpose "setjmp: keep where its caller is, to come back by longjmp; 0 now (the compiler emits this operation as the routine itself)"
+saveJump invariant none
+saveJump typeParameter none
+saveJump input buffer machine.Address copied
+saveJump output Int32
+saveJump outputOwnedBy none
+saveJump raises none
+saveJump effect use machine.memory
+saveJump uses memoryAccess
+saveJump memoryHeap false
+saveJump async false
+saveJump maxRecursion none
+saveJump abi library "setjmp"
+saveJump label begin loopKind none
+saveJump label begin within none
+saveJump let none
+saveJump at begin do readResult
+saveJump at begin return ok result
+
+readResult is call
+readResult in saveJump
+readResult invokes machine.saveContext
+readResult argument buffer machine.Address buffer copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+saveJumpBare is operation
+saveJumpBare purpose "_setjmp: setjmp, the name glibc's setjmp macro calls"
+saveJumpBare invariant none
+saveJumpBare typeParameter none
+saveJumpBare input buffer machine.Address copied
+saveJumpBare output Int32
+saveJumpBare outputOwnedBy none
+saveJumpBare raises none
+saveJumpBare effect use machine.memory
+saveJumpBare uses memoryAccess
+saveJumpBare memoryHeap false
+saveJumpBare async false
+saveJumpBare maxRecursion none
+saveJumpBare abi library "_setjmp"
+saveJumpBare label begin loopKind none
+saveJumpBare label begin within none
+saveJumpBare let none
+saveJumpBare at begin do readResult
+saveJumpBare at begin return ok result
+
+readResult is call
+readResult in saveJumpBare
+readResult invokes machine.saveContext
+readResult argument buffer machine.Address buffer copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+saveJumpMasked is operation
+saveJumpMasked purpose "__sigsetjmp: setjmp, the name sigsetjmp calls; the signal mask is not kept (D-163)"
+saveJumpMasked invariant none
+saveJumpMasked typeParameter none
+saveJumpMasked input buffer machine.Address copied
+saveJumpMasked input saveMask Int32 copied
+saveJumpMasked output Int32
+saveJumpMasked outputOwnedBy none
+saveJumpMasked raises none
+saveJumpMasked effect use machine.memory
+saveJumpMasked uses memoryAccess
+saveJumpMasked memoryHeap false
+saveJumpMasked async false
+saveJumpMasked maxRecursion none
+saveJumpMasked abi library "__sigsetjmp"
+saveJumpMasked label begin loopKind none
+saveJumpMasked label begin within none
+saveJumpMasked let none
+saveJumpMasked at begin do readResult
+saveJumpMasked at begin return ok result
+
+readResult is call
+readResult in saveJumpMasked
+readResult invokes machine.saveContext
+readResult argument buffer machine.Address buffer copy
+readResult result result Int32
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+jump is operation
+jump purpose "longjmp: return from the setjmp that filled a buffer again, with a value (1 for 0)"
+jump invariant none
+jump typeParameter none
+jump input buffer machine.Address copied
+jump input value Int32 copied
+jump output none
+jump outputOwnedBy none
+jump raises none
+jump effect use machine.memory
+jump uses memoryAccess
+jump memoryHeap false
+jump async false
+jump maxRecursion none
+jump abi library "longjmp"
+jump label begin loopKind none
+jump label begin within none
+jump let none
+jump at begin do doResumeContext
+jump at begin return ok none
+
+doResumeContext is call
+doResumeContext in jump
+doResumeContext invokes machine.resumeContext
+doResumeContext argument buffer machine.Address buffer copy
+doResumeContext argument value Int32 value copy
+doResumeContext result none
+doResumeContext ownedBy none
+doResumeContext cleanedBy none
+doResumeContext borrows none
+doResumeContext catch none
+doResumeContext suppresses none
+
+jumpBare is operation
+jumpBare purpose "_longjmp: longjmp"
+jumpBare invariant none
+jumpBare typeParameter none
+jumpBare input buffer machine.Address copied
+jumpBare input value Int32 copied
+jumpBare output none
+jumpBare outputOwnedBy none
+jumpBare raises none
+jumpBare effect use machine.memory
+jumpBare uses memoryAccess
+jumpBare memoryHeap false
+jumpBare async false
+jumpBare maxRecursion none
+jumpBare abi library "_longjmp"
+jumpBare label begin loopKind none
+jumpBare label begin within none
+jumpBare let none
+jumpBare at begin do doResumeContext
+jumpBare at begin return ok none
+
+doResumeContext is call
+doResumeContext in jumpBare
+doResumeContext invokes machine.resumeContext
+doResumeContext argument buffer machine.Address buffer copy
+doResumeContext argument value Int32 value copy
+doResumeContext result none
+doResumeContext ownedBy none
+doResumeContext cleanedBy none
+doResumeContext borrows none
+doResumeContext catch none
+doResumeContext suppresses none
+
+jumpMasked is operation
+jumpMasked purpose "siglongjmp: longjmp (no signal mask was kept)"
+jumpMasked invariant none
+jumpMasked typeParameter none
+jumpMasked input buffer machine.Address copied
+jumpMasked input value Int32 copied
+jumpMasked output none
+jumpMasked outputOwnedBy none
+jumpMasked raises none
+jumpMasked effect use machine.memory
+jumpMasked uses memoryAccess
+jumpMasked memoryHeap false
+jumpMasked async false
+jumpMasked maxRecursion none
+jumpMasked abi library "siglongjmp"
+jumpMasked label begin loopKind none
+jumpMasked label begin within none
+jumpMasked let none
+jumpMasked at begin do doResumeContext
+jumpMasked at begin return ok none
+
+doResumeContext is call
+doResumeContext in jumpMasked
+doResumeContext invokes machine.resumeContext
+doResumeContext argument buffer machine.Address buffer copy
+doResumeContext argument value Int32 value copy
+doResumeContext result none
+doResumeContext ownedBy none
+doResumeContext cleanedBy none
+doResumeContext borrows none
+doResumeContext catch none
+doResumeContext suppresses none
+
+jumpChecked is operation
+jumpChecked purpose "__longjmp_chk: longjmp, the name glibc's headers call under _FORTIFY_SOURCE"
+jumpChecked invariant none
+jumpChecked typeParameter none
+jumpChecked input buffer machine.Address copied
+jumpChecked input value Int32 copied
+jumpChecked output none
+jumpChecked outputOwnedBy none
+jumpChecked raises none
+jumpChecked effect use machine.memory
+jumpChecked uses memoryAccess
+jumpChecked memoryHeap false
+jumpChecked async false
+jumpChecked maxRecursion none
+jumpChecked abi library "__longjmp_chk"
+jumpChecked label begin loopKind none
+jumpChecked label begin within none
+jumpChecked let none
+jumpChecked at begin do doResumeContext
+jumpChecked at begin return ok none
+
+doResumeContext is call
+doResumeContext in jumpChecked
+doResumeContext invokes machine.resumeContext
+doResumeContext argument buffer machine.Address buffer copy
+doResumeContext argument value Int32 value copy
+doResumeContext result none
+doResumeContext ownedBy none
+doResumeContext cleanedBy none
+doResumeContext borrows none
+doResumeContext catch none
+doResumeContext suppresses none
+
+# ---------------------------------------------------------------- signal.h (D-164)
+handlerCell is operation
+handlerCell purpose "The cell of a signal's Windows handler"
+handlerCell invariant none
+handlerCell typeParameter none
+handlerCell input signalNumber Int32 copied
+handlerCell output machine.Address
+handlerCell outputOwnedBy none
+handlerCell raises none
+handlerCell effect use machine.memory
+handlerCell uses memoryAccess
+handlerCell memoryHeap false
+handlerCell async false
+handlerCell maxRecursion none
+handlerCell label begin loopKind none
+handlerCell label begin within none
+handlerCell let eight Int64 8 immutable
+handlerCell at begin do cellStep1
+handlerCell at begin do cellStep2
+handlerCell at begin do cellStep3
+handlerCell at begin do findCell1
+handlerCell at begin return ok cell
+
+cellStep1 is call
+cellStep1 in handlerCell
+cellStep1 invokes convert.int32ToInt64
+cellStep1 argument value Int32 signalNumber copy
+cellStep1 result cellPart1 Int64
+cellStep1 ownedBy none
+cellStep1 cleanedBy none
+cellStep1 borrows none
+cellStep1 catch none
+cellStep1 suppresses none
+
+cellStep2 is call
+cellStep2 in handlerCell
+cellStep2 invokes math.multiplyInt64
+cellStep2 argument left Int64 cellPart1 copy
+cellStep2 argument right Int64 eight copy
+cellStep2 result cellPart2 Int64
+cellStep2 ownedBy none
+cellStep2 cleanedBy none
+cellStep2 borrows none
+cellStep2 catch none
+cellStep2 suppresses none
+
+cellStep3 is call
+cellStep3 in handlerCell
+cellStep3 invokes math.addInt64
+cellStep3 argument left Int64 handlersAt copy
+cellStep3 argument right Int64 cellPart2 copy
+cellStep3 result cellPart3 Int64
+cellStep3 ownedBy none
+cellStep3 cleanedBy none
+cellStep3 borrows none
+cellStep3 catch none
+cellStep3 suppresses none
+
+findCell1 is call
+findCell1 in handlerCell
+findCell1 invokes kernel.stateAt
+findCell1 argument offset Int64 cellPart3 copy
+findCell1 result cell machine.Address
+findCell1 ownedBy none
+findCell1 cleanedBy none
+findCell1 borrows none
+findCell1 catch none
+findCell1 suppresses none
+
+setHandler is operation
+setHandler purpose "signal: install a handler for a signal (SIG_DFL 0, SIG_IGN 1, or a function), giving the one before it; SIG_ERR (-1) with EINVAL for a signal that has none (below 1, above 64, SIGKILL, SIGSTOP)"
+setHandler invariant installsHandlers "\"The handler given is the one the next call gives back\""
+setHandler typeParameter none
+setHandler input signalNumber Int32 copied
+setHandler input handler machine.Address copied
+setHandler output machine.Address
+setHandler outputOwnedBy none
+setHandler raises none
+setHandler effect use machine.memory
+setHandler effect use system.calls
+setHandler uses memoryAccess
+setHandler uses systemCalls
+setHandler memoryHeap false
+setHandler async false
+setHandler maxRecursion none
+setHandler abi library "signal"
+setHandler label begin loopKind none
+setHandler label begin within none
+setHandler label refuse loopKind none
+setHandler label refuse within none
+setHandler label install loopKind none
+setHandler label install within none
+setHandler label windows loopKind none
+setHandler label windows within none
+setHandler label linux loopKind none
+setHandler label linux within none
+setHandler label failed loopKind none
+setHandler label failed within none
+setHandler label done loopKind none
+setHandler label done within none
+setHandler let minus1 Int64 -1 immutable
+setHandler let int321 Int32 1 immutable
+setHandler let int3264 Int32 64 immutable
+setHandler let int329 Int32 9 immutable
+setHandler let int3219 Int32 19 immutable
+setHandler let thirtyTwo Int64 32 immutable
+setHandler let eight Int64 8 immutable
+setHandler let n335544320 Int64 335544320 immutable
+setHandler let sixteen Int64 16 immutable
+setHandler let zero Int64 0 immutable
+setHandler at begin do findRefused1
+setHandler at begin do check1Step1
+setHandler at begin do check1Step2
+setHandler at begin do check1Step3
+setHandler at begin do check1Step4
+setHandler at begin do check1Step5
+setHandler at begin do check1Step6
+setHandler at begin do findCheck11
+setHandler at begin branch if check1 goto refuse else goto install
+setHandler at refuse do doSetErrno
+setHandler at refuse return ok refused
+setHandler at install do readOnLinux
+setHandler at install branch if onLinux goto linux else goto windows
+setHandler at windows do readCell
+setHandler at windows do readPrevious
+setHandler at windows do doStoreAddress
+setHandler at windows return ok previous
+setHandler at linux do readAction
+setHandler at linux do readOld
+setHandler at linux do doStoreAddress2
+setHandler at linux do findFlagsAt1
+setHandler at linux do doStoreInt64
+setHandler at linux do findRestorerAt1
+setHandler at linux do readRestorer
+setHandler at linux do doStoreAddress3
+setHandler at linux do findWideSignal1
+setHandler at linux do readResult
+setHandler at linux do readOldHandler
+setHandler at linux do doGive
+setHandler at linux do doGive2
+setHandler at linux do findCheck21
+setHandler at linux branch if check2 goto failed else goto done
+setHandler at failed do doSetErrnoStep1
+setHandler at failed do doSetErrnoStep2
+setHandler at failed do doSetErrno2
+setHandler at failed return ok refused
+setHandler at done return ok oldHandler
+
+findRefused1 is call
+findRefused1 in setHandler
+findRefused1 invokes machine.fromInt64
+findRefused1 argument value Int64 minus1 copy
+findRefused1 result refused machine.Address
+findRefused1 ownedBy none
+findRefused1 cleanedBy none
+findRefused1 borrows none
+findRefused1 catch none
+findRefused1 suppresses none
+
+check1Step1 is call
+check1Step1 in setHandler
+check1Step1 invokes compare.lessThanInt32
+check1Step1 argument left Int32 signalNumber copy
+check1Step1 argument right Int32 int321 copy
+check1Step1 result check1Part1 Bool
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in setHandler
+check1Step2 invokes compare.greaterThanInt32
+check1Step2 argument left Int32 signalNumber copy
+check1Step2 argument right Int32 int3264 copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+check1Step3 is call
+check1Step3 in setHandler
+check1Step3 invokes logic.or
+check1Step3 argument left Bool check1Part1 copy
+check1Step3 argument right Bool check1Part2 copy
+check1Step3 result check1Part3 Bool
+check1Step3 ownedBy none
+check1Step3 cleanedBy none
+check1Step3 borrows none
+check1Step3 catch none
+check1Step3 suppresses none
+
+check1Step4 is call
+check1Step4 in setHandler
+check1Step4 invokes compare.equalInt32
+check1Step4 argument left Int32 signalNumber copy
+check1Step4 argument right Int32 int329 copy
+check1Step4 result check1Part4 Bool
+check1Step4 ownedBy none
+check1Step4 cleanedBy none
+check1Step4 borrows none
+check1Step4 catch none
+check1Step4 suppresses none
+
+check1Step5 is call
+check1Step5 in setHandler
+check1Step5 invokes logic.or
+check1Step5 argument left Bool check1Part3 copy
+check1Step5 argument right Bool check1Part4 copy
+check1Step5 result check1Part5 Bool
+check1Step5 ownedBy none
+check1Step5 cleanedBy none
+check1Step5 borrows none
+check1Step5 catch none
+check1Step5 suppresses none
+
+check1Step6 is call
+check1Step6 in setHandler
+check1Step6 invokes compare.equalInt32
+check1Step6 argument left Int32 signalNumber copy
+check1Step6 argument right Int32 int3219 copy
+check1Step6 result check1Part6 Bool
+check1Step6 ownedBy none
+check1Step6 cleanedBy none
+check1Step6 borrows none
+check1Step6 catch none
+check1Step6 suppresses none
+
+findCheck11 is call
+findCheck11 in setHandler
+findCheck11 invokes logic.or
+findCheck11 argument left Bool check1Part5 copy
+findCheck11 argument right Bool check1Part6 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doSetErrno is call
+doSetErrno in setHandler
+doSetErrno invokes clibrary.setErrno
+doSetErrno argument value Int32 invalidError copy
+doSetErrno result none
+doSetErrno ownedBy none
+doSetErrno cleanedBy none
+doSetErrno borrows none
+doSetErrno catch none
+doSetErrno suppresses none
+
+readOnLinux is call
+readOnLinux in setHandler
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readCell is call
+readCell in setHandler
+readCell invokes handlerCell
+readCell argument signalNumber Int32 signalNumber copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+readPrevious is call
+readPrevious in setHandler
+readPrevious invokes machine.loadAddress
+readPrevious argument address machine.Address cell copy
+readPrevious result previous machine.Address
+readPrevious ownedBy none
+readPrevious cleanedBy none
+readPrevious borrows none
+readPrevious catch none
+readPrevious suppresses none
+
+doStoreAddress is call
+doStoreAddress in setHandler
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address cell copy
+doStoreAddress argument value machine.Address handler copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+readAction is call
+readAction in setHandler
+readAction invokes heap.take
+readAction argument bytes Int64 thirtyTwo copy
+readAction result action machine.Address
+readAction ownedBy none
+readAction cleanedBy none
+readAction borrows none
+readAction catch none
+readAction suppresses none
+
+readOld is call
+readOld in setHandler
+readOld invokes heap.take
+readOld argument bytes Int64 thirtyTwo copy
+readOld result old machine.Address
+readOld ownedBy none
+readOld cleanedBy none
+readOld borrows none
+readOld catch none
+readOld suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in setHandler
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address action copy
+doStoreAddress2 argument value machine.Address handler copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+findFlagsAt1 is call
+findFlagsAt1 in setHandler
+findFlagsAt1 invokes machine.offset
+findFlagsAt1 argument address machine.Address action copy
+findFlagsAt1 argument bytes Int64 eight copy
+findFlagsAt1 result flagsAt machine.Address
+findFlagsAt1 ownedBy none
+findFlagsAt1 cleanedBy none
+findFlagsAt1 borrows none
+findFlagsAt1 catch none
+findFlagsAt1 suppresses none
+
+doStoreInt64 is call
+doStoreInt64 in setHandler
+doStoreInt64 invokes machine.storeInt64
+doStoreInt64 argument address machine.Address flagsAt copy
+doStoreInt64 argument value Int64 n335544320 copy
+doStoreInt64 result none
+doStoreInt64 ownedBy none
+doStoreInt64 cleanedBy none
+doStoreInt64 borrows none
+doStoreInt64 catch none
+doStoreInt64 suppresses none
+
+findRestorerAt1 is call
+findRestorerAt1 in setHandler
+findRestorerAt1 invokes machine.offset
+findRestorerAt1 argument address machine.Address action copy
+findRestorerAt1 argument bytes Int64 sixteen copy
+findRestorerAt1 result restorerAt machine.Address
+findRestorerAt1 ownedBy none
+findRestorerAt1 cleanedBy none
+findRestorerAt1 borrows none
+findRestorerAt1 catch none
+findRestorerAt1 suppresses none
+
+readRestorer is call
+readRestorer in setHandler
+readRestorer invokes machine.signalRestorer
+readRestorer argument none
+readRestorer result restorer machine.Address
+readRestorer ownedBy none
+readRestorer cleanedBy none
+readRestorer borrows none
+readRestorer catch none
+readRestorer suppresses none
+
+doStoreAddress3 is call
+doStoreAddress3 in setHandler
+doStoreAddress3 invokes machine.storeAddress
+doStoreAddress3 argument address machine.Address restorerAt copy
+doStoreAddress3 argument value machine.Address restorer copy
+doStoreAddress3 result none
+doStoreAddress3 ownedBy none
+doStoreAddress3 cleanedBy none
+doStoreAddress3 borrows none
+doStoreAddress3 catch none
+doStoreAddress3 suppresses none
+
+findWideSignal1 is call
+findWideSignal1 in setHandler
+findWideSignal1 invokes convert.int32ToInt64
+findWideSignal1 argument value Int32 signalNumber copy
+findWideSignal1 result wideSignal Int64
+findWideSignal1 ownedBy none
+findWideSignal1 cleanedBy none
+findWideSignal1 borrows none
+findWideSignal1 catch none
+findWideSignal1 suppresses none
+
+readResult is call
+readResult in setHandler
+readResult invokes system.rtSigaction
+readResult argument signal Int64 wideSignal copy
+readResult argument action machine.Address action copy
+readResult argument old machine.Address old copy
+readResult argument maskBytes Int64 eight copy
+readResult result result Int64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+readOldHandler is call
+readOldHandler in setHandler
+readOldHandler invokes machine.loadAddress
+readOldHandler argument address machine.Address old copy
+readOldHandler result oldHandler machine.Address
+readOldHandler ownedBy none
+readOldHandler cleanedBy none
+readOldHandler borrows none
+readOldHandler catch none
+readOldHandler suppresses none
+
+doGive is call
+doGive in setHandler
+doGive invokes heap.give
+doGive argument block machine.Address action copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in setHandler
+doGive2 invokes heap.give
+doGive2 argument block machine.Address old copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+findCheck21 is call
+findCheck21 in setHandler
+findCheck21 invokes compare.lessThanInt64
+findCheck21 argument left Int64 result copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doSetErrnoStep1 is call
+doSetErrnoStep1 in setHandler
+doSetErrnoStep1 invokes math.subtractInt64
+doSetErrnoStep1 argument left Int64 zero copy
+doSetErrnoStep1 argument right Int64 result copy
+doSetErrnoStep1 result doSetErrnoPart1 Int64
+doSetErrnoStep1 ownedBy none
+doSetErrnoStep1 cleanedBy none
+doSetErrnoStep1 borrows none
+doSetErrnoStep1 catch none
+doSetErrnoStep1 suppresses none
+
+doSetErrnoStep2 is call
+doSetErrnoStep2 in setHandler
+doSetErrnoStep2 invokes clibrary.lowInt32
+doSetErrnoStep2 argument value Int64 doSetErrnoPart1 copy
+doSetErrnoStep2 result doSetErrnoPart2 Int32
+doSetErrnoStep2 ownedBy none
+doSetErrnoStep2 cleanedBy none
+doSetErrnoStep2 borrows none
+doSetErrnoStep2 catch none
+doSetErrnoStep2 suppresses none
+
+doSetErrno2 is call
+doSetErrno2 in setHandler
+doSetErrno2 invokes clibrary.setErrno
+doSetErrno2 argument value Int32 doSetErrnoPart2 copy
+doSetErrno2 result none
+doSetErrno2 ownedBy none
+doSetErrno2 cleanedBy none
+doSetErrno2 borrows none
+doSetErrno2 catch none
+doSetErrno2 suppresses none
+
+raiseSignal is operation
+raiseSignal purpose "raise: send a signal to the process, so its handler runs before raise returns (on Windows, the table's handler, SIG_IGN nothing, SIG_DFL the end of the process with exit code 3); 0, or -1 with EINVAL for a number that is no signal"
+raiseSignal invariant raisesSignals "\"A handler installed for the signal runs, with the signal's number\""
+raiseSignal typeParameter none
+raiseSignal input signalNumber Int32 copied
+raiseSignal output Int32
+raiseSignal outputOwnedBy none
+raiseSignal raises none
+raiseSignal effect use machine.memory
+raiseSignal effect use system.calls
+raiseSignal uses memoryAccess
+raiseSignal uses systemCalls
+raiseSignal memoryHeap false
+raiseSignal async false
+raiseSignal maxRecursion none
+raiseSignal abi library "raise"
+raiseSignal label begin loopKind none
+raiseSignal label begin within none
+raiseSignal label refuse loopKind none
+raiseSignal label refuse within none
+raiseSignal label send loopKind none
+raiseSignal label send within none
+raiseSignal label linux loopKind none
+raiseSignal label linux within none
+raiseSignal label failed loopKind none
+raiseSignal label failed within none
+raiseSignal label sent loopKind none
+raiseSignal label sent within none
+raiseSignal label windows loopKind none
+raiseSignal label windows within none
+raiseSignal label ignored loopKind none
+raiseSignal label ignored within none
+raiseSignal label notIgnored loopKind none
+raiseSignal label notIgnored within none
+raiseSignal label defaultAction loopKind none
+raiseSignal label defaultAction within none
+raiseSignal label call loopKind none
+raiseSignal label call within none
+raiseSignal let fine Int32 0 immutable
+raiseSignal let failure Int32 -1 immutable
+raiseSignal let int321 Int32 1 immutable
+raiseSignal let int3264 Int32 64 immutable
+raiseSignal let zero Int64 0 immutable
+raiseSignal let one Int64 1 immutable
+raiseSignal let int323 Int32 3 immutable
+raiseSignal at begin do check1Step1
+raiseSignal at begin do check1Step2
+raiseSignal at begin do findCheck11
+raiseSignal at begin branch if check1 goto refuse else goto send
+raiseSignal at refuse do doSetErrno
+raiseSignal at refuse return ok failure
+raiseSignal at send do readOnLinux
+raiseSignal at send branch if onLinux goto linux else goto windows
+raiseSignal at linux do readSelf
+raiseSignal at linux do findWideSignal1
+raiseSignal at linux do readResult
+raiseSignal at linux do findCheck21
+raiseSignal at linux branch if check2 goto failed else goto sent
+raiseSignal at failed do doSetErrnoStep1
+raiseSignal at failed do doSetErrnoStep2
+raiseSignal at failed do doSetErrno2
+raiseSignal at failed return ok failure
+raiseSignal at sent return ok fine
+raiseSignal at windows do readCell
+raiseSignal at windows do readHandler
+raiseSignal at windows do findHandlerValue1
+raiseSignal at windows do findCheck31
+raiseSignal at windows branch if check3 goto ignored else goto notIgnored
+raiseSignal at ignored return ok fine
+raiseSignal at notIgnored do findCheck41
+raiseSignal at notIgnored branch if check4 goto defaultAction else goto call
+raiseSignal at defaultAction do doEndProcess
+raiseSignal at defaultAction return ok fine
+raiseSignal at call do argumentStep1
+raiseSignal at call do findArgument1
+raiseSignal at call do doCallWithAddress
+raiseSignal at call return ok fine
+
+check1Step1 is call
+check1Step1 in raiseSignal
+check1Step1 invokes compare.lessThanInt32
+check1Step1 argument left Int32 signalNumber copy
+check1Step1 argument right Int32 int321 copy
+check1Step1 result check1Part1 Bool
+check1Step1 ownedBy none
+check1Step1 cleanedBy none
+check1Step1 borrows none
+check1Step1 catch none
+check1Step1 suppresses none
+
+check1Step2 is call
+check1Step2 in raiseSignal
+check1Step2 invokes compare.greaterThanInt32
+check1Step2 argument left Int32 signalNumber copy
+check1Step2 argument right Int32 int3264 copy
+check1Step2 result check1Part2 Bool
+check1Step2 ownedBy none
+check1Step2 cleanedBy none
+check1Step2 borrows none
+check1Step2 catch none
+check1Step2 suppresses none
+
+findCheck11 is call
+findCheck11 in raiseSignal
+findCheck11 invokes logic.or
+findCheck11 argument left Bool check1Part1 copy
+findCheck11 argument right Bool check1Part2 copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+doSetErrno is call
+doSetErrno in raiseSignal
+doSetErrno invokes clibrary.setErrno
+doSetErrno argument value Int32 invalidError copy
+doSetErrno result none
+doSetErrno ownedBy none
+doSetErrno cleanedBy none
+doSetErrno borrows none
+doSetErrno catch none
+doSetErrno suppresses none
+
+readOnLinux is call
+readOnLinux in raiseSignal
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readSelf is call
+readSelf in raiseSignal
+readSelf invokes system.getpid
+readSelf argument none
+readSelf result self Int64
+readSelf ownedBy none
+readSelf cleanedBy none
+readSelf borrows none
+readSelf catch none
+readSelf suppresses none
+
+findWideSignal1 is call
+findWideSignal1 in raiseSignal
+findWideSignal1 invokes convert.int32ToInt64
+findWideSignal1 argument value Int32 signalNumber copy
+findWideSignal1 result wideSignal Int64
+findWideSignal1 ownedBy none
+findWideSignal1 cleanedBy none
+findWideSignal1 borrows none
+findWideSignal1 catch none
+findWideSignal1 suppresses none
+
+readResult is call
+readResult in raiseSignal
+readResult invokes system.kill
+readResult argument pid Int64 self copy
+readResult argument signal Int64 wideSignal copy
+readResult result result Int64
+readResult ownedBy none
+readResult cleanedBy none
+readResult borrows none
+readResult catch none
+readResult suppresses none
+
+findCheck21 is call
+findCheck21 in raiseSignal
+findCheck21 invokes compare.lessThanInt64
+findCheck21 argument left Int64 result copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+doSetErrnoStep1 is call
+doSetErrnoStep1 in raiseSignal
+doSetErrnoStep1 invokes math.subtractInt64
+doSetErrnoStep1 argument left Int64 zero copy
+doSetErrnoStep1 argument right Int64 result copy
+doSetErrnoStep1 result doSetErrnoPart1 Int64
+doSetErrnoStep1 ownedBy none
+doSetErrnoStep1 cleanedBy none
+doSetErrnoStep1 borrows none
+doSetErrnoStep1 catch none
+doSetErrnoStep1 suppresses none
+
+doSetErrnoStep2 is call
+doSetErrnoStep2 in raiseSignal
+doSetErrnoStep2 invokes clibrary.lowInt32
+doSetErrnoStep2 argument value Int64 doSetErrnoPart1 copy
+doSetErrnoStep2 result doSetErrnoPart2 Int32
+doSetErrnoStep2 ownedBy none
+doSetErrnoStep2 cleanedBy none
+doSetErrnoStep2 borrows none
+doSetErrnoStep2 catch none
+doSetErrnoStep2 suppresses none
+
+doSetErrno2 is call
+doSetErrno2 in raiseSignal
+doSetErrno2 invokes clibrary.setErrno
+doSetErrno2 argument value Int32 doSetErrnoPart2 copy
+doSetErrno2 result none
+doSetErrno2 ownedBy none
+doSetErrno2 cleanedBy none
+doSetErrno2 borrows none
+doSetErrno2 catch none
+doSetErrno2 suppresses none
+
+readCell is call
+readCell in raiseSignal
+readCell invokes handlerCell
+readCell argument signalNumber Int32 signalNumber copy
+readCell result cell machine.Address
+readCell ownedBy none
+readCell cleanedBy none
+readCell borrows none
+readCell catch none
+readCell suppresses none
+
+readHandler is call
+readHandler in raiseSignal
+readHandler invokes machine.loadAddress
+readHandler argument address machine.Address cell copy
+readHandler result handler machine.Address
+readHandler ownedBy none
+readHandler cleanedBy none
+readHandler borrows none
+readHandler catch none
+readHandler suppresses none
+
+findHandlerValue1 is call
+findHandlerValue1 in raiseSignal
+findHandlerValue1 invokes machine.toInt64
+findHandlerValue1 argument address machine.Address handler copy
+findHandlerValue1 result handlerValue Int64
+findHandlerValue1 ownedBy none
+findHandlerValue1 cleanedBy none
+findHandlerValue1 borrows none
+findHandlerValue1 catch none
+findHandlerValue1 suppresses none
+
+findCheck31 is call
+findCheck31 in raiseSignal
+findCheck31 invokes compare.equalInt64
+findCheck31 argument left Int64 handlerValue copy
+findCheck31 argument right Int64 one copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+findCheck41 is call
+findCheck41 in raiseSignal
+findCheck41 invokes compare.equalInt64
+findCheck41 argument left Int64 handlerValue copy
+findCheck41 argument right Int64 zero copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+doEndProcess is call
+doEndProcess in raiseSignal
+doEndProcess invokes endProcess
+doEndProcess argument code Int32 int323 copy
+doEndProcess result none
+doEndProcess ownedBy none
+doEndProcess cleanedBy none
+doEndProcess borrows none
+doEndProcess catch none
+doEndProcess suppresses none
+
+argumentStep1 is call
+argumentStep1 in raiseSignal
+argumentStep1 invokes convert.int32ToInt64
+argumentStep1 argument value Int32 signalNumber copy
+argumentStep1 result argumentPart1 Int64
+argumentStep1 ownedBy none
+argumentStep1 cleanedBy none
+argumentStep1 borrows none
+argumentStep1 catch none
+argumentStep1 suppresses none
+
+findArgument1 is call
+findArgument1 in raiseSignal
+findArgument1 invokes machine.fromInt64
+findArgument1 argument value Int64 argumentPart1 copy
+findArgument1 result argument machine.Address
+findArgument1 ownedBy none
+findArgument1 cleanedBy none
+findArgument1 borrows none
+findArgument1 catch none
+findArgument1 suppresses none
+
+doCallWithAddress is call
+doCallWithAddress in raiseSignal
+doCallWithAddress invokes machine.callWithAddress
+doCallWithAddress argument function machine.Address handler copy
+doCallWithAddress argument argument machine.Address argument copy
+doCallWithAddress result none
+doCallWithAddress ownedBy none
+doCallWithAddress cleanedBy none
+doCallWithAddress borrows none
+doCallWithAddress catch none
+doCallWithAddress suppresses none
+
+abortProcess is operation
+abortProcess purpose "abort: raise SIGABRT, so a handler runs; if it returns, SIGABRT's default action: the end of the process by the signal on Linux, exit code 3 on Windows"
+abortProcess invariant none
+abortProcess typeParameter none
+abortProcess input none
+abortProcess output none
+abortProcess outputOwnedBy none
+abortProcess raises none
+abortProcess effect use machine.memory
+abortProcess effect use system.calls
+abortProcess uses memoryAccess
+abortProcess uses systemCalls
+abortProcess memoryHeap false
+abortProcess async false
+abortProcess maxRecursion none
+abortProcess abi library "abort"
+abortProcess label begin loopKind none
+abortProcess label begin within none
+abortProcess label linux loopKind none
+abortProcess label linux within none
+abortProcess label windows loopKind none
+abortProcess label windows within none
+abortProcess let int326 Int32 6 immutable
+abortProcess let thirtyTwo Int64 32 immutable
+abortProcess let six Int64 6 immutable
+abortProcess let eight Int64 8 immutable
+abortProcess let int32134 Int32 134 immutable
+abortProcess let int323 Int32 3 immutable
+abortProcess at begin do readUnusedRaiseSignal
+abortProcess at begin do readOnLinux
+abortProcess at begin branch if onLinux goto linux else goto windows
+abortProcess at linux do readAction
+abortProcess at linux do readNowhere
+abortProcess at linux do readUnusedRtSigaction
+abortProcess at linux do readSelf
+abortProcess at linux do readUnusedKill
+abortProcess at linux do doEndProcess
+abortProcess at linux return ok none
+abortProcess at windows do doEndProcess2
+abortProcess at windows return ok none
+
+readUnusedRaiseSignal is call
+readUnusedRaiseSignal in abortProcess
+readUnusedRaiseSignal invokes raiseSignal
+readUnusedRaiseSignal argument signalNumber Int32 int326 copy
+readUnusedRaiseSignal result unusedRaiseSignal Int32
+readUnusedRaiseSignal ownedBy none
+readUnusedRaiseSignal cleanedBy none
+readUnusedRaiseSignal borrows none
+readUnusedRaiseSignal catch none
+readUnusedRaiseSignal suppresses none
+
+readOnLinux is call
+readOnLinux in abortProcess
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+readAction is call
+readAction in abortProcess
+readAction invokes heap.take
+readAction argument bytes Int64 thirtyTwo copy
+readAction result action machine.Address
+readAction ownedBy none
+readAction cleanedBy none
+readAction borrows none
+readAction catch none
+readAction suppresses none
+
+readNowhere is call
+readNowhere in abortProcess
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readUnusedRtSigaction is call
+readUnusedRtSigaction in abortProcess
+readUnusedRtSigaction invokes system.rtSigaction
+readUnusedRtSigaction argument signal Int64 six copy
+readUnusedRtSigaction argument action machine.Address action copy
+readUnusedRtSigaction argument old machine.Address nowhere copy
+readUnusedRtSigaction argument maskBytes Int64 eight copy
+readUnusedRtSigaction result unusedRtSigaction Int64
+readUnusedRtSigaction ownedBy none
+readUnusedRtSigaction cleanedBy none
+readUnusedRtSigaction borrows none
+readUnusedRtSigaction catch none
+readUnusedRtSigaction suppresses none
+
+readSelf is call
+readSelf in abortProcess
+readSelf invokes system.getpid
+readSelf argument none
+readSelf result self Int64
+readSelf ownedBy none
+readSelf cleanedBy none
+readSelf borrows none
+readSelf catch none
+readSelf suppresses none
+
+readUnusedKill is call
+readUnusedKill in abortProcess
+readUnusedKill invokes system.kill
+readUnusedKill argument pid Int64 self copy
+readUnusedKill argument signal Int64 six copy
+readUnusedKill result unusedKill Int64
+readUnusedKill ownedBy none
+readUnusedKill cleanedBy none
+readUnusedKill borrows none
+readUnusedKill catch none
+readUnusedKill suppresses none
+
+doEndProcess is call
+doEndProcess in abortProcess
+doEndProcess invokes endProcess
+doEndProcess argument code Int32 int32134 copy
+doEndProcess result none
+doEndProcess ownedBy none
+doEndProcess cleanedBy none
+doEndProcess borrows none
+doEndProcess catch none
+doEndProcess suppresses none
+
+doEndProcess2 is call
+doEndProcess2 in abortProcess
+doEndProcess2 invokes endProcess
+doEndProcess2 argument code Int32 int323 copy
+doEndProcess2 result none
+doEndProcess2 ownedBy none
+doEndProcess2 cleanedBy none
+doEndProcess2 borrows none
+doEndProcess2 catch none
+doEndProcess2 suppresses none
+
+# ---------------------------------------------------------------- system (D-162)
+runCommand is operation
+runCommand purpose "system: run a command with the system's shell and wait for it: /bin/sh -c on Linux (the wait status, as glibc gives it; 127 << 8 when the shell cannot run), cmd.exe /c on Windows (its exit code << 8, the same form); NULL asks whether there is a shell: 1 when /bin/sh exists on Linux, 1 on Windows"
+runCommand invariant runsShell "\"A command's exit code comes back in the wait status's second byte\""
+runCommand typeParameter none
+runCommand input command machine.Address copied
+runCommand output Int32
+runCommand outputOwnedBy none
+runCommand raises none
+runCommand effect use machine.memory
+runCommand effect use system.calls
+runCommand uses memoryAccess
+runCommand uses systemCalls
+runCommand memoryHeap false
+runCommand async false
+runCommand maxRecursion none
+runCommand abi library "system"
+runCommand label begin loopKind none
+runCommand label begin within none
+runCommand label ask loopKind none
+runCommand label ask within none
+runCommand label askLinux loopKind none
+runCommand label askLinux within none
+runCommand label hasShell loopKind none
+runCommand label hasShell within none
+runCommand label noShell loopKind none
+runCommand label noShell within none
+runCommand label run loopKind none
+runCommand label run within none
+runCommand label linux loopKind none
+runCommand label linux within none
+runCommand label inChild loopKind none
+runCommand label inChild within none
+runCommand label parent loopKind none
+runCommand label parent within none
+runCommand label forkFailed loopKind none
+runCommand label forkFailed within none
+runCommand label wait loopKind none
+runCommand label wait within none
+runCommand label waiting loopKind while
+runCommand label waiting within none
+runCommand label waiting maxIterations forever
+runCommand label waitDone loopKind none
+runCommand label waitDone within none
+runCommand label waitFailed loopKind none
+runCommand label waitFailed within none
+runCommand label reported loopKind none
+runCommand label reported within none
+runCommand label windows loopKind none
+runCommand label windows within none
+runCommand label createFailed loopKind none
+runCommand label createFailed within none
+runCommand label waitWindows loopKind none
+runCommand label waitWindows within none
+runCommand let shellPath String "/bin/sh" immutable
+runCommand let shellName String "sh" immutable
+runCommand let dashC String "-c" immutable
+runCommand let windowsPrefix String "cmd.exe /c " immutable
+runCommand let failure Int32 -1 immutable
+runCommand let present Int32 1 immutable
+runCommand let absent Int32 0 immutable
+runCommand let n160 Int64 160 immutable
+runCommand let minus100 Int64 -100 immutable
+runCommand let zero Int64 0 immutable
+runCommand let thirtyTwo Int64 32 immutable
+runCommand let eight Int64 8 immutable
+runCommand let sixteen Int64 16 immutable
+runCommand let n127 Int64 127 immutable
+runCommand let minus4 Int64 -4 immutable
+runCommand let eleven Int64 11 immutable
+runCommand let one Int64 1 immutable
+runCommand let n104 Int64 104 immutable
+runCommand let int32104 Int32 104 immutable
+runCommand let n24 Int64 24 immutable
+runCommand let int321 Int32 1 immutable
+runCommand let int320 Int32 0 immutable
+runCommand let int322 Int32 2 immutable
+runCommand let int32Minus1 Int32 -1 immutable
+runCommand let n255 Int64 255 immutable
+runCommand at begin do readNowhere
+runCommand at begin do readOnLinux
+runCommand at begin do findCheck11
+runCommand at begin branch if check1 goto ask else goto run
+runCommand at ask branch if onLinux goto askLinux else goto hasShell
+runCommand at askLinux do readPath
+runCommand at askLinux do readStatBlock
+runCommand at askLinux do readFound
+runCommand at askLinux do doGive
+runCommand at askLinux do doGive2
+runCommand at askLinux do findCheck21
+runCommand at askLinux branch if check2 goto hasShell else goto noShell
+runCommand at hasShell return ok present
+runCommand at noShell return ok absent
+runCommand at run branch if onLinux goto linux else goto windows
+runCommand at linux do readShell
+runCommand at linux do readName
+runCommand at linux do readFlag
+runCommand at linux do readArguments
+runCommand at linux do doStoreAddress
+runCommand at linux do findSecondAt1
+runCommand at linux do doStoreAddress2
+runCommand at linux do findThirdAt1
+runCommand at linux do doStoreAddress3
+runCommand at linux do readEnvironment
+runCommand at linux do readChild
+runCommand at linux do findCheck31
+runCommand at linux branch if check3 goto inChild else goto parent
+runCommand at inChild do readUnusedExecve
+runCommand at inChild do readUnusedExit
+runCommand at inChild return ok failure
+runCommand at parent do doGive3
+runCommand at parent do doGive4
+runCommand at parent do doGive5
+runCommand at parent do doGive6
+runCommand at parent do findCheck41
+runCommand at parent branch if check4 goto forkFailed else goto wait
+runCommand at forkFailed do doSetErrnoStep1
+runCommand at forkFailed do doSetErrnoStep2
+runCommand at forkFailed do doSetErrno
+runCommand at forkFailed return ok failure
+runCommand at wait do readStatusCell
+runCommand at wait goto waiting
+runCommand at waiting do readWaited
+runCommand at waiting do findCheck51
+runCommand at waiting branch if check5 goto waiting else goto waitDone
+runCommand at waitDone do readStatus
+runCommand at waitDone do doGive7
+runCommand at waitDone do findCheck61
+runCommand at waitDone branch if check6 goto waitFailed else goto reported
+runCommand at waitFailed do doSetErrnoStep3
+runCommand at waitFailed do doSetErrnoStep4
+runCommand at waitFailed do doSetErrno2
+runCommand at waitFailed return ok failure
+runCommand at reported return ok status
+runCommand at windows do readPrefixAt
+runCommand at windows do readCommandLength
+runCommand at windows do findLineBytes1
+runCommand at windows do lineStep1
+runCommand at windows do readLine
+runCommand at windows do doCopy
+runCommand at windows do findCommandAt1
+runCommand at windows do doCopy2
+runCommand at windows do readWideLine
+runCommand at windows do doGive8
+runCommand at windows do readStartup
+runCommand at windows do doStoreInt32
+runCommand at windows do readInformation
+runCommand at windows do readCreated
+runCommand at windows do doGive9
+runCommand at windows do doGive10
+runCommand at windows do findCheck71
+runCommand at windows branch if check7 goto createFailed else goto waitWindows
+runCommand at createFailed do doGive11
+runCommand at createFailed do doSetErrno3
+runCommand at createFailed return ok failure
+runCommand at waitWindows do readProcess
+runCommand at waitWindows do findThreadAt1
+runCommand at waitWindows do readThread
+runCommand at waitWindows do readUnusedWaitForSingleObject
+runCommand at waitWindows do readCodeCell
+runCommand at waitWindows do readUnusedGetExitCodeProcess
+runCommand at waitWindows do readCode
+runCommand at waitWindows do doGive12
+runCommand at waitWindows do readUnusedCloseHandle
+runCommand at waitWindows do readUnusedCloseHandle2
+runCommand at waitWindows do doGive13
+runCommand at waitWindows do shiftedStep1
+runCommand at waitWindows do shiftedStep2
+runCommand at waitWindows do shiftedStep3
+runCommand at waitWindows do findShifted1
+runCommand at waitWindows return ok shifted
+
+readNowhere is call
+readNowhere in runCommand
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readOnLinux is call
+readOnLinux in runCommand
+readOnLinux invokes system.linux
+readOnLinux argument none
+readOnLinux result onLinux Bool
+readOnLinux ownedBy none
+readOnLinux cleanedBy none
+readOnLinux borrows none
+readOnLinux catch none
+readOnLinux suppresses none
+
+findCheck11 is call
+findCheck11 in runCommand
+findCheck11 invokes machine.equal
+findCheck11 argument left machine.Address command copy
+findCheck11 argument right machine.Address nowhere copy
+findCheck11 result check1 Bool
+findCheck11 ownedBy none
+findCheck11 cleanedBy none
+findCheck11 borrows none
+findCheck11 catch none
+findCheck11 suppresses none
+
+readPath is call
+readPath in runCommand
+readPath invokes cTextOf
+readPath argument text String shellPath lend
+readPath result path machine.Address
+readPath ownedBy none
+readPath cleanedBy none
+readPath borrows none
+readPath catch none
+readPath suppresses none
+
+readStatBlock is call
+readStatBlock in runCommand
+readStatBlock invokes heap.take
+readStatBlock argument bytes Int64 n160 copy
+readStatBlock result statBlock machine.Address
+readStatBlock ownedBy none
+readStatBlock cleanedBy none
+readStatBlock borrows none
+readStatBlock catch none
+readStatBlock suppresses none
+
+readFound is call
+readFound in runCommand
+readFound invokes system.newfstatat
+readFound argument directory Int64 minus100 copy
+readFound argument path machine.Address path copy
+readFound argument status machine.Address statBlock copy
+readFound argument flags Int64 zero copy
+readFound result found Int64
+readFound ownedBy none
+readFound cleanedBy none
+readFound borrows none
+readFound catch none
+readFound suppresses none
+
+doGive is call
+doGive in runCommand
+doGive invokes heap.give
+doGive argument block machine.Address statBlock copy
+doGive result none
+doGive ownedBy none
+doGive cleanedBy none
+doGive borrows none
+doGive catch none
+doGive suppresses none
+
+doGive2 is call
+doGive2 in runCommand
+doGive2 invokes heap.give
+doGive2 argument block machine.Address path copy
+doGive2 result none
+doGive2 ownedBy none
+doGive2 cleanedBy none
+doGive2 borrows none
+doGive2 catch none
+doGive2 suppresses none
+
+findCheck21 is call
+findCheck21 in runCommand
+findCheck21 invokes compare.equalInt64
+findCheck21 argument left Int64 found copy
+findCheck21 argument right Int64 zero copy
+findCheck21 result check2 Bool
+findCheck21 ownedBy none
+findCheck21 cleanedBy none
+findCheck21 borrows none
+findCheck21 catch none
+findCheck21 suppresses none
+
+readShell is call
+readShell in runCommand
+readShell invokes cTextOf
+readShell argument text String shellPath lend
+readShell result shell machine.Address
+readShell ownedBy none
+readShell cleanedBy none
+readShell borrows none
+readShell catch none
+readShell suppresses none
+
+readName is call
+readName in runCommand
+readName invokes cTextOf
+readName argument text String shellName lend
+readName result name machine.Address
+readName ownedBy none
+readName cleanedBy none
+readName borrows none
+readName catch none
+readName suppresses none
+
+readFlag is call
+readFlag in runCommand
+readFlag invokes cTextOf
+readFlag argument text String dashC lend
+readFlag result flag machine.Address
+readFlag ownedBy none
+readFlag cleanedBy none
+readFlag borrows none
+readFlag catch none
+readFlag suppresses none
+
+readArguments is call
+readArguments in runCommand
+readArguments invokes heap.take
+readArguments argument bytes Int64 thirtyTwo copy
+readArguments result arguments machine.Address
+readArguments ownedBy none
+readArguments cleanedBy none
+readArguments borrows none
+readArguments catch none
+readArguments suppresses none
+
+doStoreAddress is call
+doStoreAddress in runCommand
+doStoreAddress invokes machine.storeAddress
+doStoreAddress argument address machine.Address arguments copy
+doStoreAddress argument value machine.Address name copy
+doStoreAddress result none
+doStoreAddress ownedBy none
+doStoreAddress cleanedBy none
+doStoreAddress borrows none
+doStoreAddress catch none
+doStoreAddress suppresses none
+
+findSecondAt1 is call
+findSecondAt1 in runCommand
+findSecondAt1 invokes machine.offset
+findSecondAt1 argument address machine.Address arguments copy
+findSecondAt1 argument bytes Int64 eight copy
+findSecondAt1 result secondAt machine.Address
+findSecondAt1 ownedBy none
+findSecondAt1 cleanedBy none
+findSecondAt1 borrows none
+findSecondAt1 catch none
+findSecondAt1 suppresses none
+
+doStoreAddress2 is call
+doStoreAddress2 in runCommand
+doStoreAddress2 invokes machine.storeAddress
+doStoreAddress2 argument address machine.Address secondAt copy
+doStoreAddress2 argument value machine.Address flag copy
+doStoreAddress2 result none
+doStoreAddress2 ownedBy none
+doStoreAddress2 cleanedBy none
+doStoreAddress2 borrows none
+doStoreAddress2 catch none
+doStoreAddress2 suppresses none
+
+findThirdAt1 is call
+findThirdAt1 in runCommand
+findThirdAt1 invokes machine.offset
+findThirdAt1 argument address machine.Address arguments copy
+findThirdAt1 argument bytes Int64 sixteen copy
+findThirdAt1 result thirdAt machine.Address
+findThirdAt1 ownedBy none
+findThirdAt1 cleanedBy none
+findThirdAt1 borrows none
+findThirdAt1 catch none
+findThirdAt1 suppresses none
+
+doStoreAddress3 is call
+doStoreAddress3 in runCommand
+doStoreAddress3 invokes machine.storeAddress
+doStoreAddress3 argument address machine.Address thirdAt copy
+doStoreAddress3 argument value machine.Address command copy
+doStoreAddress3 result none
+doStoreAddress3 ownedBy none
+doStoreAddress3 cleanedBy none
+doStoreAddress3 borrows none
+doStoreAddress3 catch none
+doStoreAddress3 suppresses none
+
+readEnvironment is call
+readEnvironment in runCommand
+readEnvironment invokes kernel.environmentVector
+readEnvironment argument none
+readEnvironment result environment machine.Address
+readEnvironment ownedBy none
+readEnvironment cleanedBy none
+readEnvironment borrows none
+readEnvironment catch none
+readEnvironment suppresses none
+
+readChild is call
+readChild in runCommand
+readChild invokes system.fork
+readChild argument none
+readChild result child Int64
+readChild ownedBy none
+readChild cleanedBy none
+readChild borrows none
+readChild catch none
+readChild suppresses none
+
+findCheck31 is call
+findCheck31 in runCommand
+findCheck31 invokes compare.equalInt64
+findCheck31 argument left Int64 child copy
+findCheck31 argument right Int64 zero copy
+findCheck31 result check3 Bool
+findCheck31 ownedBy none
+findCheck31 cleanedBy none
+findCheck31 borrows none
+findCheck31 catch none
+findCheck31 suppresses none
+
+readUnusedExecve is call
+readUnusedExecve in runCommand
+readUnusedExecve invokes system.execve
+readUnusedExecve argument path machine.Address shell copy
+readUnusedExecve argument arguments machine.Address arguments copy
+readUnusedExecve argument environment machine.Address environment copy
+readUnusedExecve result unusedExecve Int64
+readUnusedExecve ownedBy none
+readUnusedExecve cleanedBy none
+readUnusedExecve borrows none
+readUnusedExecve catch none
+readUnusedExecve suppresses none
+
+readUnusedExit is call
+readUnusedExit in runCommand
+readUnusedExit invokes system.exit
+readUnusedExit argument code Int64 n127 copy
+readUnusedExit result unusedExit Int64
+readUnusedExit ownedBy none
+readUnusedExit cleanedBy none
+readUnusedExit borrows none
+readUnusedExit catch none
+readUnusedExit suppresses none
+
+doGive3 is call
+doGive3 in runCommand
+doGive3 invokes heap.give
+doGive3 argument block machine.Address shell copy
+doGive3 result none
+doGive3 ownedBy none
+doGive3 cleanedBy none
+doGive3 borrows none
+doGive3 catch none
+doGive3 suppresses none
+
+doGive4 is call
+doGive4 in runCommand
+doGive4 invokes heap.give
+doGive4 argument block machine.Address name copy
+doGive4 result none
+doGive4 ownedBy none
+doGive4 cleanedBy none
+doGive4 borrows none
+doGive4 catch none
+doGive4 suppresses none
+
+doGive5 is call
+doGive5 in runCommand
+doGive5 invokes heap.give
+doGive5 argument block machine.Address flag copy
+doGive5 result none
+doGive5 ownedBy none
+doGive5 cleanedBy none
+doGive5 borrows none
+doGive5 catch none
+doGive5 suppresses none
+
+doGive6 is call
+doGive6 in runCommand
+doGive6 invokes heap.give
+doGive6 argument block machine.Address arguments copy
+doGive6 result none
+doGive6 ownedBy none
+doGive6 cleanedBy none
+doGive6 borrows none
+doGive6 catch none
+doGive6 suppresses none
+
+findCheck41 is call
+findCheck41 in runCommand
+findCheck41 invokes compare.lessThanInt64
+findCheck41 argument left Int64 child copy
+findCheck41 argument right Int64 zero copy
+findCheck41 result check4 Bool
+findCheck41 ownedBy none
+findCheck41 cleanedBy none
+findCheck41 borrows none
+findCheck41 catch none
+findCheck41 suppresses none
+
+doSetErrnoStep1 is call
+doSetErrnoStep1 in runCommand
+doSetErrnoStep1 invokes math.subtractInt64
+doSetErrnoStep1 argument left Int64 zero copy
+doSetErrnoStep1 argument right Int64 child copy
+doSetErrnoStep1 result doSetErrnoPart1 Int64
+doSetErrnoStep1 ownedBy none
+doSetErrnoStep1 cleanedBy none
+doSetErrnoStep1 borrows none
+doSetErrnoStep1 catch none
+doSetErrnoStep1 suppresses none
+
+doSetErrnoStep2 is call
+doSetErrnoStep2 in runCommand
+doSetErrnoStep2 invokes clibrary.lowInt32
+doSetErrnoStep2 argument value Int64 doSetErrnoPart1 copy
+doSetErrnoStep2 result doSetErrnoPart2 Int32
+doSetErrnoStep2 ownedBy none
+doSetErrnoStep2 cleanedBy none
+doSetErrnoStep2 borrows none
+doSetErrnoStep2 catch none
+doSetErrnoStep2 suppresses none
+
+doSetErrno is call
+doSetErrno in runCommand
+doSetErrno invokes clibrary.setErrno
+doSetErrno argument value Int32 doSetErrnoPart2 copy
+doSetErrno result none
+doSetErrno ownedBy none
+doSetErrno cleanedBy none
+doSetErrno borrows none
+doSetErrno catch none
+doSetErrno suppresses none
+
+readStatusCell is call
+readStatusCell in runCommand
+readStatusCell invokes heap.take
+readStatusCell argument bytes Int64 eight copy
+readStatusCell result statusCell machine.Address
+readStatusCell ownedBy none
+readStatusCell cleanedBy none
+readStatusCell borrows none
+readStatusCell catch none
+readStatusCell suppresses none
+
+readWaited is call
+readWaited in runCommand
+readWaited invokes system.wait4
+readWaited argument pid Int64 child copy
+readWaited argument status machine.Address statusCell copy
+readWaited argument options Int64 zero copy
+readWaited argument usage machine.Address nowhere copy
+readWaited result waited Int64
+readWaited ownedBy none
+readWaited cleanedBy none
+readWaited borrows none
+readWaited catch none
+readWaited suppresses none
+
+findCheck51 is call
+findCheck51 in runCommand
+findCheck51 invokes compare.equalInt64
+findCheck51 argument left Int64 waited copy
+findCheck51 argument right Int64 minus4 copy
+findCheck51 result check5 Bool
+findCheck51 ownedBy none
+findCheck51 cleanedBy none
+findCheck51 borrows none
+findCheck51 catch none
+findCheck51 suppresses none
+
+readStatus is call
+readStatus in runCommand
+readStatus invokes machine.loadInt32
+readStatus argument address machine.Address statusCell copy
+readStatus result status Int32
+readStatus ownedBy none
+readStatus cleanedBy none
+readStatus borrows none
+readStatus catch none
+readStatus suppresses none
+
+doGive7 is call
+doGive7 in runCommand
+doGive7 invokes heap.give
+doGive7 argument block machine.Address statusCell copy
+doGive7 result none
+doGive7 ownedBy none
+doGive7 cleanedBy none
+doGive7 borrows none
+doGive7 catch none
+doGive7 suppresses none
+
+findCheck61 is call
+findCheck61 in runCommand
+findCheck61 invokes compare.lessThanInt64
+findCheck61 argument left Int64 waited copy
+findCheck61 argument right Int64 zero copy
+findCheck61 result check6 Bool
+findCheck61 ownedBy none
+findCheck61 cleanedBy none
+findCheck61 borrows none
+findCheck61 catch none
+findCheck61 suppresses none
+
+doSetErrnoStep3 is call
+doSetErrnoStep3 in runCommand
+doSetErrnoStep3 invokes math.subtractInt64
+doSetErrnoStep3 argument left Int64 zero copy
+doSetErrnoStep3 argument right Int64 waited copy
+doSetErrnoStep3 result doSetErrnoPart3 Int64
+doSetErrnoStep3 ownedBy none
+doSetErrnoStep3 cleanedBy none
+doSetErrnoStep3 borrows none
+doSetErrnoStep3 catch none
+doSetErrnoStep3 suppresses none
+
+doSetErrnoStep4 is call
+doSetErrnoStep4 in runCommand
+doSetErrnoStep4 invokes clibrary.lowInt32
+doSetErrnoStep4 argument value Int64 doSetErrnoPart3 copy
+doSetErrnoStep4 result doSetErrnoPart4 Int32
+doSetErrnoStep4 ownedBy none
+doSetErrnoStep4 cleanedBy none
+doSetErrnoStep4 borrows none
+doSetErrnoStep4 catch none
+doSetErrnoStep4 suppresses none
+
+doSetErrno2 is call
+doSetErrno2 in runCommand
+doSetErrno2 invokes clibrary.setErrno
+doSetErrno2 argument value Int32 doSetErrnoPart4 copy
+doSetErrno2 result none
+doSetErrno2 ownedBy none
+doSetErrno2 cleanedBy none
+doSetErrno2 borrows none
+doSetErrno2 catch none
+doSetErrno2 suppresses none
+
+readPrefixAt is call
+readPrefixAt in runCommand
+readPrefixAt invokes machine.addressOfString
+readPrefixAt argument text String windowsPrefix lend
+readPrefixAt result prefixAt machine.Address
+readPrefixAt ownedBy none
+readPrefixAt cleanedBy none
+readPrefixAt borrows none
+readPrefixAt catch none
+readPrefixAt suppresses none
+
+readCommandLength is call
+readCommandLength in runCommand
+readCommandLength invokes clibrary.cStringLength
+readCommandLength argument text machine.Address command copy
+readCommandLength result commandLength Int64
+readCommandLength ownedBy none
+readCommandLength cleanedBy none
+readCommandLength borrows none
+readCommandLength catch none
+readCommandLength suppresses none
+
+findLineBytes1 is call
+findLineBytes1 in runCommand
+findLineBytes1 invokes math.addInt64
+findLineBytes1 argument left Int64 eleven copy
+findLineBytes1 argument right Int64 commandLength copy
+findLineBytes1 result lineBytes Int64
+findLineBytes1 ownedBy none
+findLineBytes1 cleanedBy none
+findLineBytes1 borrows none
+findLineBytes1 catch none
+findLineBytes1 suppresses none
+
+lineStep1 is call
+lineStep1 in runCommand
+lineStep1 invokes math.addInt64
+lineStep1 argument left Int64 lineBytes copy
+lineStep1 argument right Int64 one copy
+lineStep1 result linePart1 Int64
+lineStep1 ownedBy none
+lineStep1 cleanedBy none
+lineStep1 borrows none
+lineStep1 catch none
+lineStep1 suppresses none
+
+readLine is call
+readLine in runCommand
+readLine invokes heap.take
+readLine argument bytes Int64 linePart1 copy
+readLine result line machine.Address
+readLine ownedBy none
+readLine cleanedBy none
+readLine borrows none
+readLine catch none
+readLine suppresses none
+
+doCopy is call
+doCopy in runCommand
+doCopy invokes machine.copy
+doCopy argument target machine.Address line copy
+doCopy argument source machine.Address prefixAt copy
+doCopy argument bytes Int64 eleven copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none
+
+findCommandAt1 is call
+findCommandAt1 in runCommand
+findCommandAt1 invokes machine.offset
+findCommandAt1 argument address machine.Address line copy
+findCommandAt1 argument bytes Int64 eleven copy
+findCommandAt1 result commandAt machine.Address
+findCommandAt1 ownedBy none
+findCommandAt1 cleanedBy none
+findCommandAt1 borrows none
+findCommandAt1 catch none
+findCommandAt1 suppresses none
+
+doCopy2 is call
+doCopy2 in runCommand
+doCopy2 invokes machine.copy
+doCopy2 argument target machine.Address commandAt copy
+doCopy2 argument source machine.Address command copy
+doCopy2 argument bytes Int64 commandLength copy
+doCopy2 result none
+doCopy2 ownedBy none
+doCopy2 cleanedBy none
+doCopy2 borrows none
+doCopy2 catch none
+doCopy2 suppresses none
+
+readWideLine is call
+readWideLine in runCommand
+readWideLine invokes wide.widen
+readWideLine argument text machine.Address line copy
+readWideLine argument bytes Int64 lineBytes copy
+readWideLine result wideLine machine.Address
+readWideLine ownedBy none
+readWideLine cleanedBy none
+readWideLine borrows none
+readWideLine catch none
+readWideLine suppresses none
+
+doGive8 is call
+doGive8 in runCommand
+doGive8 invokes heap.give
+doGive8 argument block machine.Address line copy
+doGive8 result none
+doGive8 ownedBy none
+doGive8 cleanedBy none
+doGive8 borrows none
+doGive8 catch none
+doGive8 suppresses none
+
+readStartup is call
+readStartup in runCommand
+readStartup invokes heap.take
+readStartup argument bytes Int64 n104 copy
+readStartup result startup machine.Address
+readStartup ownedBy none
+readStartup cleanedBy none
+readStartup borrows none
+readStartup catch none
+readStartup suppresses none
+
+doStoreInt32 is call
+doStoreInt32 in runCommand
+doStoreInt32 invokes machine.storeInt32
+doStoreInt32 argument address machine.Address startup copy
+doStoreInt32 argument value Int32 int32104 copy
+doStoreInt32 result none
+doStoreInt32 ownedBy none
+doStoreInt32 cleanedBy none
+doStoreInt32 borrows none
+doStoreInt32 catch none
+doStoreInt32 suppresses none
+
+readInformation is call
+readInformation in runCommand
+readInformation invokes heap.take
+readInformation argument bytes Int64 n24 copy
+readInformation result information machine.Address
+readInformation ownedBy none
+readInformation cleanedBy none
+readInformation borrows none
+readInformation catch none
+readInformation suppresses none
+
+readCreated is call
+readCreated in runCommand
+readCreated invokes system.createProcessW
+readCreated argument application machine.Address nowhere copy
+readCreated argument commandLine machine.Address wideLine copy
+readCreated argument processSecurity machine.Address nowhere copy
+readCreated argument threadSecurity machine.Address nowhere copy
+readCreated argument inherit Int32 int321 copy
+readCreated argument flags Int32 int320 copy
+readCreated argument environment machine.Address nowhere copy
+readCreated argument directory machine.Address nowhere copy
+readCreated argument startup machine.Address startup copy
+readCreated argument information machine.Address information copy
+readCreated result created Int32
+readCreated ownedBy none
+readCreated cleanedBy none
+readCreated borrows none
+readCreated catch none
+readCreated suppresses none
+
+doGive9 is call
+doGive9 in runCommand
+doGive9 invokes heap.give
+doGive9 argument block machine.Address wideLine copy
+doGive9 result none
+doGive9 ownedBy none
+doGive9 cleanedBy none
+doGive9 borrows none
+doGive9 catch none
+doGive9 suppresses none
+
+doGive10 is call
+doGive10 in runCommand
+doGive10 invokes heap.give
+doGive10 argument block machine.Address startup copy
+doGive10 result none
+doGive10 ownedBy none
+doGive10 cleanedBy none
+doGive10 borrows none
+doGive10 catch none
+doGive10 suppresses none
+
+findCheck71 is call
+findCheck71 in runCommand
+findCheck71 invokes compare.equalInt32
+findCheck71 argument left Int32 created copy
+findCheck71 argument right Int32 int320 copy
+findCheck71 result check7 Bool
+findCheck71 ownedBy none
+findCheck71 cleanedBy none
+findCheck71 borrows none
+findCheck71 catch none
+findCheck71 suppresses none
+
+doGive11 is call
+doGive11 in runCommand
+doGive11 invokes heap.give
+doGive11 argument block machine.Address information copy
+doGive11 result none
+doGive11 ownedBy none
+doGive11 cleanedBy none
+doGive11 borrows none
+doGive11 catch none
+doGive11 suppresses none
+
+doSetErrno3 is call
+doSetErrno3 in runCommand
+doSetErrno3 invokes clibrary.setErrno
+doSetErrno3 argument value Int32 int322 copy
+doSetErrno3 result none
+doSetErrno3 ownedBy none
+doSetErrno3 cleanedBy none
+doSetErrno3 borrows none
+doSetErrno3 catch none
+doSetErrno3 suppresses none
+
+readProcess is call
+readProcess in runCommand
+readProcess invokes machine.loadAddress
+readProcess argument address machine.Address information copy
+readProcess result process machine.Address
+readProcess ownedBy none
+readProcess cleanedBy none
+readProcess borrows none
+readProcess catch none
+readProcess suppresses none
+
+findThreadAt1 is call
+findThreadAt1 in runCommand
+findThreadAt1 invokes machine.offset
+findThreadAt1 argument address machine.Address information copy
+findThreadAt1 argument bytes Int64 eight copy
+findThreadAt1 result threadAt machine.Address
+findThreadAt1 ownedBy none
+findThreadAt1 cleanedBy none
+findThreadAt1 borrows none
+findThreadAt1 catch none
+findThreadAt1 suppresses none
+
+readThread is call
+readThread in runCommand
+readThread invokes machine.loadAddress
+readThread argument address machine.Address threadAt copy
+readThread result thread machine.Address
+readThread ownedBy none
+readThread cleanedBy none
+readThread borrows none
+readThread catch none
+readThread suppresses none
+
+readUnusedWaitForSingleObject is call
+readUnusedWaitForSingleObject in runCommand
+readUnusedWaitForSingleObject invokes system.waitForSingleObject
+readUnusedWaitForSingleObject argument handle machine.Address process copy
+readUnusedWaitForSingleObject argument milliseconds Int32 int32Minus1 copy
+readUnusedWaitForSingleObject result unusedWaitForSingleObject Int32
+readUnusedWaitForSingleObject ownedBy none
+readUnusedWaitForSingleObject cleanedBy none
+readUnusedWaitForSingleObject borrows none
+readUnusedWaitForSingleObject catch none
+readUnusedWaitForSingleObject suppresses none
+
+readCodeCell is call
+readCodeCell in runCommand
+readCodeCell invokes heap.take
+readCodeCell argument bytes Int64 eight copy
+readCodeCell result codeCell machine.Address
+readCodeCell ownedBy none
+readCodeCell cleanedBy none
+readCodeCell borrows none
+readCodeCell catch none
+readCodeCell suppresses none
+
+readUnusedGetExitCodeProcess is call
+readUnusedGetExitCodeProcess in runCommand
+readUnusedGetExitCodeProcess invokes system.getExitCodeProcess
+readUnusedGetExitCodeProcess argument process machine.Address process copy
+readUnusedGetExitCodeProcess argument code machine.Address codeCell copy
+readUnusedGetExitCodeProcess result unusedGetExitCodeProcess Int32
+readUnusedGetExitCodeProcess ownedBy none
+readUnusedGetExitCodeProcess cleanedBy none
+readUnusedGetExitCodeProcess borrows none
+readUnusedGetExitCodeProcess catch none
+readUnusedGetExitCodeProcess suppresses none
+
+readCode is call
+readCode in runCommand
+readCode invokes machine.loadInt32
+readCode argument address machine.Address codeCell copy
+readCode result code Int32
+readCode ownedBy none
+readCode cleanedBy none
+readCode borrows none
+readCode catch none
+readCode suppresses none
+
+doGive12 is call
+doGive12 in runCommand
+doGive12 invokes heap.give
+doGive12 argument block machine.Address codeCell copy
+doGive12 result none
+doGive12 ownedBy none
+doGive12 cleanedBy none
+doGive12 borrows none
+doGive12 catch none
+doGive12 suppresses none
+
+readUnusedCloseHandle is call
+readUnusedCloseHandle in runCommand
+readUnusedCloseHandle invokes system.closeHandle
+readUnusedCloseHandle argument handle machine.Address process copy
+readUnusedCloseHandle result unusedCloseHandle Int32
+readUnusedCloseHandle ownedBy none
+readUnusedCloseHandle cleanedBy none
+readUnusedCloseHandle borrows none
+readUnusedCloseHandle catch none
+readUnusedCloseHandle suppresses none
+
+readUnusedCloseHandle2 is call
+readUnusedCloseHandle2 in runCommand
+readUnusedCloseHandle2 invokes system.closeHandle
+readUnusedCloseHandle2 argument handle machine.Address thread copy
+readUnusedCloseHandle2 result unusedCloseHandle2 Int32
+readUnusedCloseHandle2 ownedBy none
+readUnusedCloseHandle2 cleanedBy none
+readUnusedCloseHandle2 borrows none
+readUnusedCloseHandle2 catch none
+readUnusedCloseHandle2 suppresses none
+
+doGive13 is call
+doGive13 in runCommand
+doGive13 invokes heap.give
+doGive13 argument block machine.Address information copy
+doGive13 result none
+doGive13 ownedBy none
+doGive13 cleanedBy none
+doGive13 borrows none
+doGive13 catch none
+doGive13 suppresses none
+
+shiftedStep1 is call
+shiftedStep1 in runCommand
+shiftedStep1 invokes convert.int32ToInt64
+shiftedStep1 argument value Int32 code copy
+shiftedStep1 result shiftedPart1 Int64
+shiftedStep1 ownedBy none
+shiftedStep1 cleanedBy none
+shiftedStep1 borrows none
+shiftedStep1 catch none
+shiftedStep1 suppresses none
+
+shiftedStep2 is call
+shiftedStep2 in runCommand
+shiftedStep2 invokes bits.andInt64
+shiftedStep2 argument left Int64 shiftedPart1 copy
+shiftedStep2 argument right Int64 n255 copy
+shiftedStep2 result shiftedPart2 Int64
+shiftedStep2 ownedBy none
+shiftedStep2 cleanedBy none
+shiftedStep2 borrows none
+shiftedStep2 catch none
+shiftedStep2 suppresses none
+
+shiftedStep3 is call
+shiftedStep3 in runCommand
+shiftedStep3 invokes bits.shiftLeftInt64
+shiftedStep3 argument value Int64 shiftedPart2 copy
+shiftedStep3 argument amount Int64 eight copy
+shiftedStep3 result shiftedPart3 Int64
+shiftedStep3 ownedBy none
+shiftedStep3 cleanedBy none
+shiftedStep3 borrows none
+shiftedStep3 catch none
+shiftedStep3 suppresses none
+
+findShifted1 is call
+findShifted1 in runCommand
+findShifted1 invokes clibrary.lowInt32
+findShifted1 argument value Int64 shiftedPart3 copy
+findShifted1 result shifted Int32
+findShifted1 ownedBy none
+findShifted1 cleanedBy none
+findShifted1 borrows none
+findShifted1 catch none
+findShifted1 suppresses none
+
+cTextOf is operation
+cTextOf purpose "A text as a C string in a new heap block"
+cTextOf invariant none
+cTextOf typeParameter none
+cTextOf input text String borrowed
+cTextOf output machine.Address
+cTextOf outputOwnedBy none
+cTextOf raises none
+cTextOf effect use machine.memory
+cTextOf effect use system.calls
+cTextOf uses memoryAccess
+cTextOf uses systemCalls
+cTextOf memoryHeap false
+cTextOf async false
+cTextOf maxRecursion none
+cTextOf label begin loopKind none
+cTextOf label begin within none
+cTextOf let one Int64 1 immutable
+cTextOf at begin do readBytes
+cTextOf at begin do blockStep1
+cTextOf at begin do findBlock1
+cTextOf at begin do readAt
+cTextOf at begin do doCopy
+cTextOf at begin return ok block
+
+readBytes is call
+readBytes in cTextOf
+readBytes invokes string.byteLength
+readBytes argument text String text lend
+readBytes result bytes Int64
+readBytes ownedBy none
+readBytes cleanedBy none
+readBytes borrows none
+readBytes catch none
+readBytes suppresses none
+
+blockStep1 is call
+blockStep1 in cTextOf
+blockStep1 invokes math.addInt64
+blockStep1 argument left Int64 bytes copy
+blockStep1 argument right Int64 one copy
+blockStep1 result blockPart1 Int64
+blockStep1 ownedBy none
+blockStep1 cleanedBy none
+blockStep1 borrows none
+blockStep1 catch none
+blockStep1 suppresses none
+
+findBlock1 is call
+findBlock1 in cTextOf
+findBlock1 invokes heap.take
+findBlock1 argument bytes Int64 blockPart1 copy
+findBlock1 result block machine.Address
+findBlock1 ownedBy none
+findBlock1 cleanedBy none
+findBlock1 borrows none
+findBlock1 catch none
+findBlock1 suppresses none
+
+readAt is call
+readAt in cTextOf
+readAt invokes machine.addressOfString
+readAt argument text String text lend
+readAt result at machine.Address
+readAt ownedBy none
+readAt cleanedBy none
+readAt borrows none
+readAt catch none
+readAt suppresses none
+
+doCopy is call
+doCopy in cTextOf
+doCopy invokes machine.copy
+doCopy argument target machine.Address block copy
+doCopy argument source machine.Address at copy
+doCopy argument bytes Int64 bytes copy
+doCopy result none
+doCopy ownedBy none
+doCopy cleanedBy none
+doCopy borrows none
+doCopy catch none
+doCopy suppresses none

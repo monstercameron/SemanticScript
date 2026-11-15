@@ -1,0 +1,227 @@
+# Tests of the `cprocess` module; generated from tools/cprocess.dsl by tools/build.py. They run under
+# `refined test`, where machine and system targets work in the JIT's own process.
+
+signalTest is test
+signalTest purpose "signal gives back the handler it replaced, and raise of an ignored signal returns 0; system(NULL) finds a shell"
+signalTest verifies setHandler installsHandlers
+signalTest verifies raiseSignal raisesSignals
+signalTest verifies runCommand runsShell
+signalTest typeParameter none
+signalTest input none
+signalTest output none
+signalTest outputOwnedBy none
+signalTest raises none
+signalTest effect use machine.memory
+signalTest effect use system.calls
+signalTest uses memoryAccess
+signalTest uses systemCalls
+signalTest memoryHeap false
+signalTest async false
+signalTest maxRecursion none
+signalTest label begin loopKind none
+signalTest label begin within none
+signalTest let one Int64 1 immutable
+signalTest let int3210 Int32 10 immutable
+signalTest let int320 Int32 0 immutable
+signalTest let int321 Int32 1 immutable
+signalTest let int32Minus1 Int32 -1 immutable
+signalTest at begin do readIgnore
+signalTest at begin do readFirst
+signalTest at begin do readSecond
+signalTest at begin do doAssertTrueStep1
+signalTest at begin do doAssertTrue
+signalTest at begin do readRaised
+signalTest at begin do doAssertTrueStep2
+signalTest at begin do doAssertTrue2
+signalTest at begin do readUnusedSetHandler
+signalTest at begin do readNowhere
+signalTest at begin do readShell
+signalTest at begin do doAssertTrueStep3
+signalTest at begin do doAssertTrue3
+signalTest at begin do readBad
+signalTest at begin do doAssertTrueStep4
+signalTest at begin do doAssertTrue4
+signalTest at begin return ok none
+
+readIgnore is call
+readIgnore in signalTest
+readIgnore invokes machine.fromInt64
+readIgnore argument value Int64 one copy
+readIgnore result ignore machine.Address
+readIgnore ownedBy none
+readIgnore cleanedBy none
+readIgnore borrows none
+readIgnore catch none
+readIgnore suppresses none
+
+readFirst is call
+readFirst in signalTest
+readFirst invokes setHandler
+readFirst argument signalNumber Int32 int3210 copy
+readFirst argument handler machine.Address ignore copy
+readFirst result first machine.Address
+readFirst ownedBy none
+readFirst cleanedBy none
+readFirst borrows none
+readFirst catch none
+readFirst suppresses none
+
+readSecond is call
+readSecond in signalTest
+readSecond invokes setHandler
+readSecond argument signalNumber Int32 int3210 copy
+readSecond argument handler machine.Address ignore copy
+readSecond result second machine.Address
+readSecond ownedBy none
+readSecond cleanedBy none
+readSecond borrows none
+readSecond catch none
+readSecond suppresses none
+
+doAssertTrueStep1 is call
+doAssertTrueStep1 in signalTest
+doAssertTrueStep1 invokes machine.equal
+doAssertTrueStep1 argument left machine.Address second copy
+doAssertTrueStep1 argument right machine.Address ignore copy
+doAssertTrueStep1 result doAssertTruePart1 Bool
+doAssertTrueStep1 ownedBy none
+doAssertTrueStep1 cleanedBy none
+doAssertTrueStep1 borrows none
+doAssertTrueStep1 catch none
+doAssertTrueStep1 suppresses none
+
+doAssertTrue is call
+doAssertTrue in signalTest
+doAssertTrue invokes test.assertTrue
+doAssertTrue argument value Bool doAssertTruePart1 copy
+doAssertTrue result none
+doAssertTrue ownedBy none
+doAssertTrue cleanedBy none
+doAssertTrue borrows none
+doAssertTrue catch none
+doAssertTrue suppresses none
+
+readRaised is call
+readRaised in signalTest
+readRaised invokes raiseSignal
+readRaised argument signalNumber Int32 int3210 copy
+readRaised result raised Int32
+readRaised ownedBy none
+readRaised cleanedBy none
+readRaised borrows none
+readRaised catch none
+readRaised suppresses none
+
+doAssertTrueStep2 is call
+doAssertTrueStep2 in signalTest
+doAssertTrueStep2 invokes compare.equalInt32
+doAssertTrueStep2 argument left Int32 raised copy
+doAssertTrueStep2 argument right Int32 int320 copy
+doAssertTrueStep2 result doAssertTruePart2 Bool
+doAssertTrueStep2 ownedBy none
+doAssertTrueStep2 cleanedBy none
+doAssertTrueStep2 borrows none
+doAssertTrueStep2 catch none
+doAssertTrueStep2 suppresses none
+
+doAssertTrue2 is call
+doAssertTrue2 in signalTest
+doAssertTrue2 invokes test.assertTrue
+doAssertTrue2 argument value Bool doAssertTruePart2 copy
+doAssertTrue2 result none
+doAssertTrue2 ownedBy none
+doAssertTrue2 cleanedBy none
+doAssertTrue2 borrows none
+doAssertTrue2 catch none
+doAssertTrue2 suppresses none
+
+readUnusedSetHandler is call
+readUnusedSetHandler in signalTest
+readUnusedSetHandler invokes setHandler
+readUnusedSetHandler argument signalNumber Int32 int3210 copy
+readUnusedSetHandler argument handler machine.Address first copy
+readUnusedSetHandler result unusedSetHandler machine.Address
+readUnusedSetHandler ownedBy none
+readUnusedSetHandler cleanedBy none
+readUnusedSetHandler borrows none
+readUnusedSetHandler catch none
+readUnusedSetHandler suppresses none
+
+readNowhere is call
+readNowhere in signalTest
+readNowhere invokes machine.zero
+readNowhere argument none
+readNowhere result nowhere machine.Address
+readNowhere ownedBy none
+readNowhere cleanedBy none
+readNowhere borrows none
+readNowhere catch none
+readNowhere suppresses none
+
+readShell is call
+readShell in signalTest
+readShell invokes runCommand
+readShell argument command machine.Address nowhere copy
+readShell result shell Int32
+readShell ownedBy none
+readShell cleanedBy none
+readShell borrows none
+readShell catch none
+readShell suppresses none
+
+doAssertTrueStep3 is call
+doAssertTrueStep3 in signalTest
+doAssertTrueStep3 invokes compare.equalInt32
+doAssertTrueStep3 argument left Int32 shell copy
+doAssertTrueStep3 argument right Int32 int321 copy
+doAssertTrueStep3 result doAssertTruePart3 Bool
+doAssertTrueStep3 ownedBy none
+doAssertTrueStep3 cleanedBy none
+doAssertTrueStep3 borrows none
+doAssertTrueStep3 catch none
+doAssertTrueStep3 suppresses none
+
+doAssertTrue3 is call
+doAssertTrue3 in signalTest
+doAssertTrue3 invokes test.assertTrue
+doAssertTrue3 argument value Bool doAssertTruePart3 copy
+doAssertTrue3 result none
+doAssertTrue3 ownedBy none
+doAssertTrue3 cleanedBy none
+doAssertTrue3 borrows none
+doAssertTrue3 catch none
+doAssertTrue3 suppresses none
+
+readBad is call
+readBad in signalTest
+readBad invokes raiseSignal
+readBad argument signalNumber Int32 int320 copy
+readBad result bad Int32
+readBad ownedBy none
+readBad cleanedBy none
+readBad borrows none
+readBad catch none
+readBad suppresses none
+
+doAssertTrueStep4 is call
+doAssertTrueStep4 in signalTest
+doAssertTrueStep4 invokes compare.equalInt32
+doAssertTrueStep4 argument left Int32 bad copy
+doAssertTrueStep4 argument right Int32 int32Minus1 copy
+doAssertTrueStep4 result doAssertTruePart4 Bool
+doAssertTrueStep4 ownedBy none
+doAssertTrueStep4 cleanedBy none
+doAssertTrueStep4 borrows none
+doAssertTrueStep4 catch none
+doAssertTrueStep4 suppresses none
+
+doAssertTrue4 is call
+doAssertTrue4 in signalTest
+doAssertTrue4 invokes test.assertTrue
+doAssertTrue4 argument value Bool doAssertTruePart4 copy
+doAssertTrue4 result none
+doAssertTrue4 ownedBy none
+doAssertTrue4 cleanedBy none
+doAssertTrue4 borrows none
+doAssertTrue4 catch none
+doAssertTrue4 suppresses none

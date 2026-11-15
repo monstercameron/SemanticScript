@@ -2855,6 +2855,28 @@ does in the C locale. Step one is stdio, which needs variadic functions. Decided
   library through `ffi`. tests/test_cprograms.py compiles each program in tests/cprograms with the system's gcc and
   glibc's headers, links it both ways, and requires the same output, error output, and exit code, byte for byte.
 
+- **D-162** exit calls the functions atexit and `__cxa_atexit` registered, the last first (one registered while they
+  run runs too), then flushes every stream, then ends the process; quick_exit calls at_quick_exit's and ends the
+  process without flushing; `_Exit` ends it at once. A C program's fini array is registered with atexit before its
+  init arrays run, so it runs after every handler the program registers, as glibc's. ldiv, lldiv, and imaxdiv give
+  D-157's pair (two registers on Linux). The lists are kept at machine.state 27904 and 27928.
+- **D-163** setjmp, `_setjmp`, `__sigsetjmp`, longjmp, `_longjmp`, siglongjmp, and `__longjmp_chk` are `abi library`
+  operations whose one call is `machine.saveContext` or `machine.resumeContext`: the compiler emits each as the
+  routine itself, a naked function of a few instructions, since only the routine sees its caller's frame. The buffer
+  (glibc's `jmp_buf`, opaque to programs) holds the callee-saved registers, the stack pointer, and the return address
+  (x86_64: rbx, rbp, r12 to r15; AArch64: x19 to x30, sp, d8 to d15); longjmp with 0 returns 1. The signal mask is
+  neither kept nor restored, so sigsetjmp's `savemask` changes nothing. On Windows the routines trap: a program
+  reaches the library through `ffi` there, and a foreign call cannot return twice.
+- **D-164** signal installs a handler with rt_sigaction as glibc's signal does (SA_RESTART, the handler stays, the
+  runtime's restorer), giving the handler before it, and SIG_ERR with EINVAL for a number that has none (SIGKILL and
+  SIGSTOP included); raise is kill(getpid(), sig), so a handler runs before raise returns. On Windows there are no
+  such signals: the library keeps a table of handlers (glibc's numbers), raise calls the handler, ignores SIG_IGN, and
+  for SIG_DFL ends the process with exit code 3 as the Microsoft runtime does; nothing else delivers a signal there.
+  abort raises SIGABRT, so a handler runs, then takes the default action (the end of the process by SIGABRT on Linux,
+  exit code 3 on Windows). system runs `/bin/sh -c` on Linux (fork, execve, wait4: the wait status, as glibc gives
+  it) and `cmd.exe /c` on Windows (its exit code shifted into the same form); system(NULL) is 1 when /bin/sh exists
+  (on Windows, always). Signal handlers' table is at machine.state 27952.
+
 ## The runtime in SemanticScript, the C library and a loader (2026-11-15)
 
 `ffi` was the one module an executable on Linux refused (D-145): `ffi.open("c")` asked for glibc, which a static
@@ -3456,6 +3478,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-15 | D-144 to D-152 | The runtime in SemanticScript, the rest of the library: "no C library" worded (OS interfaces ws2_32 and bcrypt allowed, never a CRT), the platform limits (ffi on Linux, macOS), `random` (CPython's Mersenne Twister, the system's secure source), `signal` (console control handler, rt_sigaction), `net` (non-blocking sockets through the scheduler, a resolver for Linux), `json` (CPython's scanner and encoder, shared counted values), `http`, AArch64 Linux (by delegation) |
 | 2026-11-15 | D-153 to D-155 | The runtime in SemanticScript, `ffi` everywhere: a C library written in SemanticScript (ctype, string, stdlib, math basics, stdio writes, as glibc in the C locale) that `ffi.open("c")` binds on Windows and Linux, an ELF shared-library loader for Linux (eager binding, refusals that trap), `abi library` rows and `machine.cLibrary` (by delegation) |
 | 2026-11-15 | D-156 to D-161 | The runtime in SemanticScript, the whole C library, stdio: expressions in the runtime's DSL, variadic `abi library` rows and `machine.variadicStart`, x86_64 calls through references made as variadic ones, printf's engine with exact digits, FILE streams buffered as glibc's, scanf (strerror's messages a known gap), the C library as a C program's libc on Linux (`--kind clibrary`) (by delegation) |
+| 2026-11-15 | D-162 to D-164 | The runtime in SemanticScript, the whole C library: exit handlers and the div family, setjmp and longjmp as routines the compiler emits, signal, raise, abort, and system (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

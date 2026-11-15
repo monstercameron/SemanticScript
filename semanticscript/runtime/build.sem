@@ -33,6 +33,7 @@ runtime includesModule clibrary
 runtime includesModule cformat
 runtime includesModule cstreams
 runtime includesModule cstart
+runtime includesModule cprocess
 runtime includesModule loader
 runtime includesModule tasks
 runtime includesModule interrupts

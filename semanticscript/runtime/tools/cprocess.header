@@ -1,0 +1,4 @@
+# setjmp.h, signal.h, abort, and system for the runtime's C library, written in SemanticScript (D-163,
+# D-164).
+#
+# This module is generated from tools/cprocess.dsl by tools/build.py.

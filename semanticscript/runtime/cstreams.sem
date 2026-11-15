@@ -12478,7 +12478,7 @@ doExitProcess catch none
 doExitProcess suppresses none
 
 exitProcess is operation
-exitProcess purpose "exit: write what every stream holds, then end the process with a status"
+exitProcess purpose "exit: call the atexit and __cxa_atexit functions, the last registered first, write what every stream holds, then end the process with a status (D-162)"
 exitProcess invariant none
 exitProcess typeParameter none
 exitProcess input code Int32 copied
@@ -12495,10 +12495,22 @@ exitProcess maxRecursion none
 exitProcess abi library "exit"
 exitProcess label begin loopKind none
 exitProcess label begin within none
-exitProcess let none
+exitProcess let n27904 Int64 27904 immutable
+exitProcess at begin do doRunHandlers
 exitProcess at begin do readUnusedFlushAll
 exitProcess at begin do doEndProcess
 exitProcess at begin return ok none
+
+doRunHandlers is call
+doRunHandlers in exitProcess
+doRunHandlers invokes clibrary.runHandlers
+doRunHandlers argument listAt Int64 n27904 copy
+doRunHandlers result none
+doRunHandlers ownedBy none
+doRunHandlers cleanedBy none
+doRunHandlers borrows none
+doRunHandlers catch none
+doRunHandlers suppresses none
 
 readUnusedFlushAll is call
 readUnusedFlushAll in exitProcess
