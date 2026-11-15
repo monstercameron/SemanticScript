@@ -2583,6 +2583,69 @@ modules (`slots`, `wide`, `tasks`, `files`, `processes`) and additions to
   Mersenne Twister), and `signal` (an interrupt arrives on a thread of its own
   through a handler whose address the language does not give out).
 
+## The runtime in SemanticScript, stage 5 (2026-11-14)
+
+Stage 5 of `docs/runtime-in-semanticscript.md` made the runtime in SemanticScript the only runtime of standalone
+executables, on Windows and on x86_64 Linux, deleted `native_runtime.c`, and linked stage0's C with the runtime
+built from SemanticScript. Decided by delegation:
+
+- **D-138** Linux is reached through raw system calls. `system` gains one row per system call the runtime uses,
+  named after it (`system.read`, `system.openat`, `system.mmap`, `system.wait4`, `system.pidfdOpen`, ...; the table
+  is `LINUX_CALLS` in library.py), every input an `Int64` or a `machine.Address` and every output the kernel's
+  `Int64` result, a negative errno when the call fails; each is one `syscall` instruction (LLVM inline assembly,
+  x86_64 numbers and registers). `system.linux()` is a constant of the target triple. A runtime module asks it
+  and takes the Windows path (kernel32) or the Linux path, the same module and the same messages either way; the
+  backend lowers a target of the other system to a trap that refers to nothing, and native.py folds the constant
+  (SROA, SCCP, CFG simplification) before dropping what nothing reaches, so an executable holds one system's code
+  (`hello` went from 23 KB to 14 KB on Windows). A new first module, `kernel`, holds what many modules share:
+  memory from the system (VirtualAlloc or an anonymous mmap), the errno of a result, Linux's clocks and sleep,
+  and what a Linux process starts with (argc, argv, envp). Each module that ends the process has its own
+  `endProcess` (ExitProcess or exit_group), since an exported operation must have a tested invariant and ending
+  the process cannot be tested. On Linux the file calls keep the errno of the last failure where Windows asks
+  GetLastError, so the claims, scopes, and error classification are the same code on both; paths are resolved as
+  `posixpath.realpath` resolves them (one component at a time, links followed, at most 40), names are compared as
+  they are, a directory opened for reading is EISDIR as Python's `open` makes it, and a lock is `flock`.
+- **D-139** Stacks on Linux are the runtime's own. Three `machine` targets switch them, each a few instructions
+  of module assembly for the architecture (x86_64 System V, and AArch64): `switchStack` keeps the running stack
+  at a save slot and resumes another, `startStack` keeps it and runs `function(argument)` on a fresh stack,
+  `runEntryOnStack` runs the program's entry on a fresh stack and gives its exit code. The process entry is a
+  `_start` of module assembly that hands `refined_entry` the stack the kernel started it with; `refined_entry`
+  keeps argc, argv, and envp, ignores SIGPIPE (as Python does, so a write to a closed pipe is EPIPE), maps a
+  stack of 256 MiB (MAP_NORESERVE, pages given as they are touched) and runs the program on it with the same
+  floor as on Windows. A task's fiber is a 64 MiB stack of its own started with `startStack`; what a task waits
+  on outside the program is a descriptor (stored as the descriptor plus one, 0 being none) that `poll` watches:
+  a child's pidfd, standard input. Linking is `-nostdlib -nostartfiles -static`, the entry `_start`, and libgcc;
+  the executable has no dynamic section and no interpreter.
+- **D-140** Linux has no process heap, so the runtime keeps its own (the `heap` module's Linux path): a block of
+  up to 4 KiB with its header is one of nine sizes cut from 64 KiB chunks of an anonymous mmap and goes back to
+  that size's free list; a larger one is a mapping of its own. Every block is zeroed when it is handed out, as
+  HEAP_ZERO_MEMORY makes it on Windows. `ffi` is refused on Linux (R901): loading a C library needs the C
+  library's dynamic loader, which an executable with no C library does not have. Child processes start as
+  `_posixsubprocess` starts them: the program, or each PATH directory joined with it (`/bin:/usr/bin` when PATH
+  is not set), made ready before `fork`; in the child SIGPIPE goes back to its default, the pipes become its
+  standard streams, and `execve` is tried with each name; the first error that is not ENOENT or ENOTDIR (or the
+  last) comes back on a close-on-exec pipe. A child ended by a signal exits with minus the signal, as
+  `Popen.returncode` has it; this program's ends of a captured child's pipes are non-blocking.
+- **D-141** The runtime in SemanticScript is the only runtime: `refined build --kind executable` links it on
+  Windows and on x86_64 Linux; `--runtime semanticscript` is still accepted and changes nothing; `--runtime c`
+  is gone with `native_runtime.c`. macOS is refused with a diagnostic (R901): there is no CI to validate a
+  system layer for it, so none is written; run the program with `refined run` there. Linux on another
+  architecture is refused the same way (the system call numbers and registers are x86_64's).
+- **D-142** stage0's C links the runtime built from SemanticScript. `refined build semanticscript/runtime --kind
+  runtime --output runtime.o` writes the runtime as a standalone object for the C compiler's platform, every
+  `abi c` operation an external symbol and `refined_program_main` left undefined; stage0's emitted C defines
+  `int32_t refined_program_main(void)` (the runtime's `refined_entry` reads the command line itself) where it
+  wrote `main` and `refined_start`, and calls no C library function (its prelude declares `memcpy` and `memset`,
+  which the runtime defines, and measures C strings itself). stage0 links with `runtime.o -nostdlib -nostartfiles
+  -Wl,-e,refined_entry -Wl,--stack,268435456 -lkernel32 -lgcc` on Windows and `runtime.o -nostdlib -nostartfiles
+  -static -fno-stack-protector -lgcc` on Linux (the stack protector reads a canary through the thread pointer,
+  which only the C library sets up).
+- **D-143** With `native_runtime.c` gone, what tests read from it they read from the runtime: the host targets
+  from its `hostTargets` table, the error variants' numbers from the constants named `<module>.<Enum>.<variant>,
+  numbered from 1`. D-80 to D-85 are superseded where they describe the C runtime: a task now runs on a fiber
+  until it waits (D-133), a captured child's pipes are pumped between tasks with no helper thread (D-136), and
+  channels, secrets, crypto, and (on Windows) foreign libraries work in executables.
+
 ## Data structures for self-hosting (2026-11-14)
 
 A compiler written in the language needs tokens and AST nodes (records and
@@ -2778,6 +2841,12 @@ items with a `Better T` passed in, and keeps the winner through `pick` at its
 own `T`; it runs at `Int64` and at `Byte`, under the JIT and as an executable.
 
 ### Standalone executables with the host library (D-80 to D-85)
+
+Superseded where they describe `native_runtime.c`, which stage 5 deleted (D-141, D-143): executables now link
+the runtime in SemanticScript, whose tasks wait on fibers (D-133, so `group-first-failure` holds in an executable
+too), whose captured children are pumped between tasks with no helper thread (D-136), and which implements
+channels, secrets, crypto, and on Windows foreign libraries (D-137). What D-80 to D-85 promise about behaviour
+(the same variants, payloads, scopes, claims, traps, and region accounting as `refined run`) still holds.
 
 Roadmap items 1, 2, 3, and 15 of `docs/self-hosting-gaps.md`: a program that
 reads its arguments and files, builds text, keeps maps, and runs a child
@@ -3077,6 +3146,7 @@ enforcement steps because they build on the checked core:
 | 2026-11-14 | D-120 to D-124 | The runtime in SemanticScript, stage 1: the `use` effect for `machine.memory` and `system.calls`, the `machine` and `system` modules, `abi c` exports, executables linked with no C library (by delegation) |
 | 2026-11-14 | D-126 to D-130 | The runtime in SemanticScript, stage 2: host dispatch by target number, Float64 bit conversions, the process heap, floating-point text as `refined run` writes it (C runtime fixed), host objects and R901 for host targets (by delegation) |
 | 2026-11-14 | D-131 to D-137 | The runtime in SemanticScript, stages 3 and 4: `machine.taskEntry`, kernel32 rows for files, processes, time, and fibers, tasks on fibers with deadlock detection and cancellation, test callbacks, one-module executables, channels, secrets, crypto, foreign libraries (by delegation) |
+| 2026-11-14 | D-138 to D-143 | The runtime in SemanticScript, stage 5: Linux through raw system calls (`LINUX_CALLS`, `system.linux`), the runtime's own stacks and heap on Linux, `ffi` refused there, the only runtime (macOS refused), stage0's C linking the runtime object, `native_runtime.c` deleted (by delegation) |
 
 | 2026-11-14 | D-70 to D-73 | Whole-character slices, `string.Position` and `advancePosition`, `byte.isPunctuation`, debugger shows records and enums; the lexer example (by delegation) |
 | 2026-11-14 | D-90 to D-94 | Targets for every integer type, text and bytes without the host, instances `in` a generic operation, sets of text read in order, generic operation types (by delegation) |

@@ -2,7 +2,7 @@
 
 stage0 reads a project (its build.sem and the modules it includes), checks that the program is in the stage0 subset,
 writes it as C, and builds it with the C compiler through `process.run`, linked with the runtime of refined
-executables (native_runtime.c). Each executable it builds must print what `refined run` prints for the same sample
+executables, the runtime in SemanticScript as an object, and no C library (D-142). Each executable it builds must print what `refined run` prints for the same sample
 and exit with the same code, traps included: a loop that passes its bound, a recursion that passes its maxRecursion,
 a list read past its end, and a file read outside a capability's scope.
 
@@ -21,9 +21,7 @@ SUITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "suite")
 sys.path.insert(0, SUITE)
 
 import caselib  # noqa: E402
-from conftest import EXE, STAGE0, c_compiler  # noqa: E402
-
-RUNTIME = os.path.join(caselib.ROOT, "semanticscript", "compiler", "refined", "native_runtime.c")
+from conftest import EXE, LINK, STAGE0, c_compiler  # noqa: E402
 
 # what each sample prints and its exit code, under `refined run` and as an executable
 SAMPLES = {
@@ -87,8 +85,6 @@ REFUSED = {
 UNDER_REFINED_RUN = ["maps", "modules", "boundaries", "words"]
 
 CC = c_compiler()
-# what stage0 passes the C compiler after the C file: the runtime to link, and on Windows the library it needs
-LINK = [RUNTIME] + (["-lshell32"] if os.name == "nt" else [])
 
 
 @pytest.fixture(scope="module")

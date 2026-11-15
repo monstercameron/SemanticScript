@@ -72,8 +72,10 @@ The subset grows only as the compiler's own source needs it.
 
 ## Architecture
 
-- Emitted C links `native_runtime.c`, the runtime standalone executables
-  already use. Host targets go through its single entry point,
+- Emitted C links the runtime standalone executables use, the runtime in
+  SemanticScript as an object (`refined build semanticscript/runtime --kind
+  runtime`), with no C library (D-142; it linked `native_runtime.c` until
+  that was deleted). Host targets go through its single entry point,
   `refined_host(name, n, args, results, payload)`, with values flattened to
   64-bit slots exactly as `codegen.py` does; traps go through `refined_trap`
   so messages match the JIT; regions use the runtime's arena functions.

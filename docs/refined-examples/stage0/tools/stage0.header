@@ -1,8 +1,10 @@
 # stage0: the first stage of a SemanticScript compiler written in SemanticScript.
 #
 #     cd docs/refined-examples/stage0
-#     refined run . -- samples/hello build/hello gcc \
-#         ../../../semanticscript/compiler/refined/native_runtime.c [-lshell32]
+#     refined build ../../../semanticscript/runtime --kind runtime --output build/runtime.o
+#     refined run . -- samples/hello build/hello gcc build/runtime.o \
+#         -nostdlib -nostartfiles -Wl,-e,refined_entry -lkernel32 -lgcc     (Windows)
+#         -nostdlib -nostartfiles -static -fno-stack-protector -lgcc       (Linux)
 #
 # It reads the project directory named by the first argument: its build.sem
 # names the modules (`includesModule`, in order) and the entry
@@ -15,9 +17,9 @@
 # (emitc) to the second argument with `.c` added, and runs the C compiler named
 # by the third argument (gcc when there is none) to build the second argument
 # as an executable. Every argument after the compiler's name is passed to it
-# after the C file: the runtime of refined executables (native_runtime.c),
-# which the C file is linked with, and any flags the platform needs (on
-# Windows, `-lshell32` for the runtime's command line).
+# after the C file: the runtime of refined executables (the runtime in
+# SemanticScript as an object), which the C file is linked with, and the
+# flags that link it with no C library (D-142).
 #
 # A diagnostic names the file the word is in and the line within that file:
 # each file's text starts at a known offset and line of the program text.

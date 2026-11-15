@@ -799,10 +799,10 @@ def render() -> str:
             "- Capability scopes on computed arguments are enforced at run time only.",
             "- Foreign functions (`ffi`) are limited to numbers and `Bool` with no shared memory; what the C code "
             "does inside is outside the language's guarantees.",
-            "- Standalone executables implement the host library natively except `net`, `http`, `channel`, `json`, "
-            "`crypto`, `secret`, `random`, `signal`, and `ffi`; programs calling those are refused (R901) rather "
-            "than built (D-81). In an executable a task runs to its end when started, so a waiting task is never "
-            "cancelled (D-83).",
+            "- Standalone executables link the runtime in SemanticScript and no C library (Windows and x86_64 "
+            "Linux, D-141); it implements the host library except `net`, `http`, `json`, `random`, and `signal`, "
+            "and `ffi` on Linux, and programs calling those are refused (R901) rather than built (D-137, D-140). "
+            "Tasks wait there as under `refined run`: a waiting task is cancelled by a sibling's failure (D-133).",
             "- Running out of a region is a safe trap (D-49), not a typed error: every allocation would otherwise be "
             "fallible. The trap happens before any memory is written and names the region; a program sizes its "
             "regions for what it allocates.",

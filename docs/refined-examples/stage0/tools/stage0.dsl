@@ -349,7 +349,7 @@ op reportProblem "Write a problem on standard error as `<path><what>`"
   writeIt: console.writeError(message) ~ "The exit code already says what happened; a message that cannot be written changes nothing"
   return
 
-op addExtraArguments "Pass every command-line argument after the compiler's name to the C compiler: the runtime to link (native_runtime.c), then any flags"
+op addExtraArguments "Pass every command-line argument after the compiler's name to the C compiler: the runtime to link (the runtime in SemanticScript as an object), then any flags"
   input arguments process.Arguments borrowedMutable
   input count Int64 copied
   input region Region borrowed
@@ -388,7 +388,7 @@ op main "Compile the project named on the command line to C and build it with th
   uses cCompilers
   async
   region store 17179869184
-  let usageText String "usage: refined run <stage0> -- <project> build/<name> [cc|gcc|clang [native_runtime.c [flags...]]]"
+  let usageText String "usage: refined run <stage0> -- <project> build/<name> [cc|gcc|clang [runtime.o [flags...]]]"
   let defaultCompiler String "gcc"
   let buildName String "/build.sem"
   let cSuffix String ".c"

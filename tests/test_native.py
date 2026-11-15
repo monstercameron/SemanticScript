@@ -530,19 +530,30 @@ def test_examples_run_as_executables_with_arguments(tmp_path):
 
 
 def test_native_targets_and_error_numbers_agree_with_the_library():
-    """D-80: the C runtime's target table names only library targets, marks the same scoped parameter as host.py,
-    and numbers every error variant it raises as library.py orders them."""
+    """D-80, D-143: the runtime's `hostTargets` table names only library targets and marks the same scoped parameter
+    as host.py, and every error variant the runtime raises is numbered as library.py orders it (its constants
+    `<module>.<Enum>.<variant>, numbered from 1`)."""
     from refined import host
     from refined.library import LIBRARY
-    from refined.native import RUNTIME_C, native_targets
-    native = native_targets()
-    assert native and set(native) <= set(host.HANDLERS), set(native) - set(host.HANDLERS)
-    for name, scoped in native.items():
+    from refined.native import RUNTIME_PROJECT, runtime_host_targets
+    targets = runtime_host_targets()
+    assert targets and targets <= set(host.HANDLERS), targets - set(host.HANDLERS)
+    with open(os.path.join(RUNTIME_PROJECT, "host.sem"), encoding="utf-8") as fh:
+        table = fh.read()
+    for name in targets:
+        row = re.search(rf'^hostTargets cell (\w+) name "{re.escape(name)}"$', table, re.M).group(1)
+        scoped = int(re.search(rf"^hostTargets cell {row} scoped (-?\d+)$", table, re.M).group(1))
         assert scoped == host.SCOPED.get(name, -1), name
-    with open(RUNTIME_C, encoding="utf-8") as fh:
-        source = fh.read()
-    errors = re.findall(r"#define ERR_(\w+?)_(\w+?)_(\w+) (\d+)", source)
-    assert len(errors) >= 20
+    errors = []
+    for file in sorted(os.listdir(RUNTIME_PROJECT)):
+        if file.endswith(".sem") and not file.endswith(".test.sem"):
+            with open(os.path.join(RUNTIME_PROJECT, file), encoding="utf-8") as fh:
+                text = fh.read()
+            for name, mod, enum, variant in re.findall(
+                    r'^(\w+) purpose "(\w+)\.(\w+)\.(\w+), numbered from 1"$', text, re.M):
+                number = re.search(rf"^{name} value (\d+)$", text, re.M).group(1)
+                errors.append((mod, enum, variant, number))
+    assert len(errors) >= 20, errors
     for mod, enum, variant, number in errors:
         variants = [v for v, _p in LIBRARY[mod]["types"][enum].variants]
         assert variants.index(variant) + 1 == int(number), (mod, enum, variant)

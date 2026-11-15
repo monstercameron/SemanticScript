@@ -255,7 +255,7 @@ def emitc_tests(stage0):
     bad_where = f"{bad_line}:{bad_column}: this call target is outside the stage0 subset (math.wrappingMultiplyInt64)"
     no_entry_where = f"{squares.split(chr(10)).index('squares is module') + 1}:1: the module has no main operation (squares)"
     snippets = [
-        ("mainWrapper", "int main(int argc, char **argv) {\n  refined_start(argc, argv);\n  return o_squares_main();\n}\n"),
+        ("mainWrapper", "int32_t refined_program_main(void) {\n  return o_squares_main();\n}\n"),
         ("signature", "static int o_squares_main(void) {\n"),
         ("constantText", "static const int64_t k_squares_limit = 5;\n"),
         ("constantRead", "  int64_t v_limit = k_squares_limit;\n"),

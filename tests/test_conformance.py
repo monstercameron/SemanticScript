@@ -62,10 +62,9 @@ def test_conformance(g, check, tmp_path):
         assert check.detail in proc.stdout.splitlines(), proc.stdout
 
 
-# D-83: an executable runs a task to its end when it is started (D-37), so a sibling's failure cannot cut a
-# waiting task short; only timing-dependent cancellation differs, and those checks run under the JIT only.
-SEQUENTIAL_TASKS = {"group-first-failure": "a ten-second sleep is cancelled by its sibling's failure"}
-RUNNING = [(g, c) for g, c in CHECKS if c.kind in ("run", "trap") and c.id not in SEQUENTIAL_TASKS]
+# D-133: a task in an executable waits on a fiber of its own, so a sibling's failure cuts a waiting task short there
+# too (`group-first-failure`), and every check that runs a program runs as an executable.
+RUNNING = [(g, c) for g, c in CHECKS if c.kind in ("run", "trap")]
 
 
 def _has_cc() -> bool:
@@ -75,7 +74,8 @@ def _has_cc() -> bool:
 
 @pytest.mark.skipif(not _has_cc(), reason="linking an executable needs a C compiler")
 def test_conformance_as_executables(tmp_path):
-    """D-80: every check that runs a program behaves the same as a standalone executable as under `refined run`:
+    """D-80, D-141: every check that runs a program behaves the same as a standalone executable (the runtime in
+    SemanticScript) as under `refined run`:
     the same output, errors, and exit code (D-51 releasing files at a trap, D-52 one writer per file, D-49 region
     traps, D-38 scopes)."""
     from concurrent.futures import ThreadPoolExecutor

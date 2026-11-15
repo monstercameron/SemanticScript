@@ -287,7 +287,7 @@ class Backend:
 
     def callback(self, name: str):
         """A runtime function: the program's own `abi c` operation of that symbol when it is the runtime, otherwise a
-        declaration the runtime (runtime.py, native_runtime.c, or semanticscript/runtime) resolves."""
+        declaration the runtime (runtime.py under the JIT, semanticscript/runtime in an executable) resolves."""
         want = CALLBACKS[name]
         # the runtime's own tests, under `refined test`, report through the test runner's callbacks; only the
         # runtime object built for an executable calls its own assertions and instrumentation (D-134)

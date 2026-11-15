@@ -20,12 +20,7 @@ SUITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "suite")
 sys.path.insert(0, SUITE)
 
 import caselib  # noqa: E402
-from conftest import EXE, c_compiler  # noqa: E402
-
-# what stage0 passes the C compiler after the C file: the runtime the C is linked with, and on Windows the library
-# the runtime needs for the command line
-LINK = [os.path.join(caselib.ROOT, "semanticscript", "compiler", "refined", "native_runtime.c")] + \
-    (["-lshell32"] if os.name == "nt" else [])
+from conftest import EXE, LINK, c_compiler  # noqa: E402
 # the number of single-file suite programs the self-hosted compiler builds correctly; raise it as the subset grows
 COVERAGE_FLOOR = 14
 _LOCATED = re.compile(r"^[^\n:]+\.sem:\d+:\d+: .+\n$")

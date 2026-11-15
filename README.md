@@ -133,13 +133,16 @@ Every item still open is listed at the end of
 `docs/refined-examples/stage0` is a SemanticScript-to-C compiler written in
 SemanticScript, and it compiles itself. Build it once with the Python
 compiler, then let it build itself (a C compiler named `cc`, `gcc`, or
-`clang` on PATH; `-lshell32` on Windows only):
+`clang` on PATH). Its C links the runtime in SemanticScript as an object,
+with no C library; on Linux use `-nostdlib -nostartfiles -static
+-fno-stack-protector -lgcc` for the flags:
 
 ```text
 cd docs/refined-examples/stage0
 python ../../../semanticscript/compiler/refined build . --kind executable --output stage0
-./stage0 . build/stage0b gcc ../../../semanticscript/compiler/refined/native_runtime.c -lshell32
-./build/stage0b . build/stage0c gcc ../../../semanticscript/compiler/refined/native_runtime.c -lshell32
+python ../../../semanticscript/compiler/refined build ../../../semanticscript/runtime --kind runtime --output runtime.o
+./stage0 . build/stage0b gcc runtime.o -nostdlib -nostartfiles -Wl,-e,refined_entry -lkernel32 -lgcc
+./build/stage0b . build/stage0c gcc runtime.o -nostdlib -nostartfiles -Wl,-e,refined_entry -lkernel32 -lgcc
 ```
 
 `build/stage0c.c` is byte-identical to `build/stage0b.c`: the fixed point
@@ -159,7 +162,7 @@ bar and its status are in [docs/self-hosting-plan.md](docs/self-hosting-plan.md)
 | `refined run PATH [-- ARGS]` | Compile and run the entry (`--trace`, `--coverage`, `--profile`, `--debug --break M.OP`) |
 | `refined test PATH` | Run every test, each in its own process |
 | `refined bench PATH --runs N` | Time repeated runs |
-| `refined build PATH --output F` | A standalone executable, or an object, assembly, or WebAssembly (`--kind`) for any target (`--target`) |
+| `refined build PATH --output F` | A standalone executable with no C library (Windows, x86_64 Linux), or an object, assembly, or WebAssembly (`--kind`) for any target (`--target`) |
 | `refined fmt PATH [--check]` | Format sources |
 | `refined repl` | Type rows, then check and run them |
 | `refined lsp` | Language server on stdin and stdout |

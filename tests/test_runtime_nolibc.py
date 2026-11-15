@@ -1,7 +1,7 @@
-"""The runtime in SemanticScript, stages 1 to 4 (docs/runtime-in-semanticscript.md, D-120 to D-136).
+"""The runtime in SemanticScript, stages 1 to 5 (docs/runtime-in-semanticscript.md, D-120 to D-143).
 
-`refined build --kind executable --runtime semanticscript` links a program with the runtime project in
-semanticscript/runtime and no C library. These tests hold it to the bar's first parts: what links behaves exactly
+`refined build --kind executable` links a program with the runtime project in semanticscript/runtime and no C
+library, on Windows and on x86_64 Linux; it is the only runtime (D-141). These tests hold it to the bar's first parts: what links behaves exactly
 as `refined run` does (output, exit code, trap report), the executable imports from KERNEL32.dll alone, a program
 that needs what the runtime does not provide yet is refused before linking, the runtime project checks and passes
 its own tests, and the primitive layer (`machine`, `system`, `abi c`) is held to its rules by the checker. Stage 2
@@ -57,7 +57,7 @@ needs_windows_cc = pytest.mark.skipif(not PLATFORM, reason="the runtime in Seman
 
 
 def _build(project: str, exe: str) -> subprocess.CompletedProcess:
-    return caselib.refined("build", project, "--kind", "executable", "--runtime", "semanticscript", "--output", exe)
+    return caselib.refined("build", project, "--kind", "executable", "--output", exe)
 
 
 def _jit(project: str, args=(), stdin: str = "") -> subprocess.CompletedProcess:
@@ -231,14 +231,16 @@ def test_suite_programs_link_or_are_refused(tmp_path):
 @needs_windows_cc
 def test_program_needing_more_runtime_is_refused(tmp_path):
     """18 Static linking: a program that needs a host target the runtime in SemanticScript does not provide (here
-    JSON, D-137) is refused before linking, naming the targets, as the C runtime refuses it."""
+    JSON, D-137) is refused before linking, naming the targets; `--runtime semanticscript`, still accepted (D-141),
+    changes nothing."""
     project = caselib.materialize(CASES["19-stdlib/json"], str(tmp_path / "json"))
     exe = os.path.join(project, "program.exe")
     built = _build(project, exe)
     assert built.returncode != 0 and "R901" in built.stdout and "`json.parse`" in built.stdout, built.stdout
     assert "does not provide yet" in built.stdout and not os.path.exists(exe)
-    with_c = caselib.refined("build", project, "--kind", "executable", "--output", exe)
-    assert with_c.returncode != 0 and "R901" in with_c.stdout, with_c.stdout
+    compatible = caselib.refined("build", project, "--kind", "executable", "--runtime", "semanticscript", "--output",
+                                 exe)
+    assert compatible.returncode != 0 and compatible.stdout == built.stdout, compatible.stdout
 
 
 # ---------------------------------------------------------------- floating-point text and the host library (stage 2)
@@ -251,24 +253,22 @@ def test_float_text_matches_python_over_a_large_table(tmp_path):
     Python's repr does, both with console.writeFloatLine and string.fromFloat64, and reads thousands of texts (shortest
     and 17- and 26-digit forms, exact halfway points between neighbouring doubles and texts a hair off them, long
     integers, texts too large or not numbers) exactly as Python's float() does; `refined run` uses both, so the
-    executable agrees with it. The C runtime gives the same text."""
+    executable agrees with it."""
     formats, parses = floattable.format_values(7, 1500), floattable.parse_texts(11, 1500)
     project = str(tmp_path / "floats")
     floattable.write_project(project, formats, parses)
     caselib.approve(project)
     expected = floattable.expected_output(formats, parses)
-    for runtime in ("semanticscript", "c"):
-        exe = os.path.join(project, f"program-{runtime}.exe")
-        built = caselib.refined("build", project, "--kind", "executable", "--runtime", runtime, "--output", exe)
-        assert built.returncode == 0, built.stdout
-        if runtime == "semanticscript":
-            assert_no_libc(exe)
-        ran = _exe(exe, project)
-        assert ran.returncode == 0 and ran.stderr == "", (runtime, ran.stderr)
-        got = ran.stdout.splitlines()
-        assert len(got) == len(expected), (runtime, len(got), len(expected))
-        wrong = [(i, want, have) for i, (want, have) in enumerate(zip(expected, got)) if want != have]
-        assert not wrong, (runtime, len(wrong), wrong[:10])
+    exe = os.path.join(project, "program.exe")
+    built = _build(project, exe)
+    assert built.returncode == 0, built.stdout
+    assert_no_libc(exe)
+    ran = _exe(exe, project)
+    assert ran.returncode == 0 and ran.stderr == "", ran.stderr
+    got = ran.stdout.splitlines()
+    assert len(got) == len(expected), (len(got), len(expected))
+    wrong = [(i, want, have) for i, (want, have) in enumerate(zip(expected, got)) if want != have]
+    assert not wrong, (len(wrong), wrong[:10])
 
 
 @needs_windows_cc
@@ -388,33 +388,47 @@ def test_stage0_samples_without_libc(tmp_path):
     assert len(results) >= 20
 
 
-@pytest.mark.skipif(not WINDOWS, reason="stage0's executables link the C runtime, which needs shell32 here")
+@needs_windows_cc
 def test_stage0_compiler_without_libc(tmp_path, stage0_native):
-    """Roadmap: stage0, the compiler written in SemanticScript, built with the runtime in SemanticScript and no C
-    library, compiles samples exactly as stage0 built with the C runtime does: the same output, errors, and exit
-    code, and the same C (its executables still link the C runtime until stage 5)."""
+    """Roadmap, D-142: stage0, the compiler written in SemanticScript, is an executable with no C library, and the
+    executables it builds link the runtime in SemanticScript as an object with no C library too, and do what their
+    samples do under `refined run`."""
+    from conftest import LINK, c_compiler
+    from test_stage0 import SAMPLES
+    assert_no_libc(stage0_native)
     stage0 = os.path.join(EXAMPLES, "stage0")
-    exe = str(tmp_path / "stage0ss.exe")
-    built = caselib.refined("build", stage0, "--kind", "executable", "--runtime", "semanticscript", "--output", exe,
-                            timeout=1800)
-    assert built.returncode == 0, built.stdout + built.stderr
-    assert_no_libc(exe)
-    from conftest import c_compiler
-    link = [os.path.join(caselib.ROOT, "semanticscript", "compiler", "refined", "native_runtime.c"), "-lshell32"]
     for sample in ("hello", "maps", "files", "lists"):
-        outcomes = []
-        for name, compiler in (("ss", exe), ("c", stage0_native)):
-            work = str(tmp_path / f"{name}-{sample}")
-            shutil.copytree(stage0, work, ignore=shutil.ignore_patterns("build", ".refined-cache"))
-            proc = subprocess.run([compiler, f"samples/{sample}", f"build/{sample}", c_compiler(), *link],
-                                  capture_output=True, text=True, cwd=work, timeout=600)
-            assert proc.returncode == 0, (name, sample, proc.stdout, proc.stderr)
-            with open(os.path.join(work, "build", sample + ".c"), encoding="utf-8") as fh:
-                c_text = fh.read()
-            ran = subprocess.run([os.path.join(work, "build", sample + ".exe")], capture_output=True, text=True,
-                                 cwd=work, timeout=60)
-            outcomes.append((proc.stdout, proc.stderr, c_text, ran.returncode, ran.stdout, ran.stderr))
-        assert outcomes[0] == outcomes[1], sample
+        work = str(tmp_path / sample)
+        shutil.copytree(stage0, work, ignore=shutil.ignore_patterns("build", ".refined-cache"))
+        proc = subprocess.run([stage0_native, f"samples/{sample}", f"build/{sample}", c_compiler(), *LINK],
+                              capture_output=True, text=True, cwd=work, timeout=600)
+        assert proc.returncode == 0, (sample, proc.stdout, proc.stderr)
+        built = os.path.join(work, "build", sample + (".exe" if os.name == "nt" else ""))
+        assert_no_libc(built)
+        ran = subprocess.run([built], capture_output=True, text=True, cwd=work, timeout=60)
+        assert (ran.stdout, ran.returncode) == SAMPLES[sample], (sample, ran.stderr)
+
+
+@needs_windows_cc
+def test_executables_link_no_c_library(tmp_path):
+    """Bar point 2 (D-124, D-139): an executable links no C library. On Windows its import table names KERNEL32.dll
+    alone; on Linux it is a static ELF file with no dynamic section and no interpreter, and nothing of the C library
+    is in it. The runtime object stage0 links (`--kind runtime`) defines `refined_entry` and leaves only the
+    program's `refined_program_main` for the C to define."""
+    hello = str(tmp_path / "hello")
+    shutil.copytree(PICKED["hello"], hello, ignore=shutil.ignore_patterns(".refined-cache"))
+    exe = os.path.join(hello, "program.exe")
+    built = _build(hello, exe)
+    assert built.returncode == 0 and "no C library" in built.stdout, built.stdout
+    assert_no_libc(exe)
+    if not WINDOWS:
+        assert elf_dynamic(exe) == []
+    obj = str(tmp_path / "runtime.o")
+    made = caselib.refined("build", RUNTIME, "--kind", "runtime", "--output", obj)
+    assert made.returncode == 0 and os.path.getsize(obj) > 0, made.stdout
+    with open(obj, "rb") as fh:
+        data = fh.read()
+    assert b"refined_entry" in data and b"refined_program_main" in data
 
 
 @needs_windows_cc
@@ -433,26 +447,25 @@ def test_executables_hold_only_what_they_use(tmp_path):
     assert ran == jit and os.path.getsize(os.path.join(project, "program.exe")) > small
 
 
-def test_runtime_host_targets_are_the_c_runtimes():
-    """D-130, D-136, D-137: the runtime in SemanticScript dispatches over every host target the C runtime
-    implements, and channels, secrets, crypto, and foreign libraries besides, each one host.py implements, with the
-    scoped parameter host.py checks (D-38); native.py reads the runtime's table to refuse any other (R901)."""
+def test_runtime_host_targets_cover_the_library():
+    """D-130, D-136, D-137, D-143: the runtime in SemanticScript dispatches over every host target host.py implements
+    but those of `net`, `http`, `json`, `random`, and `signal` (and on Linux `ffi`, D-140), with the scoped parameter
+    host.py checks (D-38); native.py reads the runtime's table to refuse any other (R901)."""
     import re
     from refined import host
-    from refined.native import native_targets, runtime_host_targets
-    ours, theirs = runtime_host_targets(), native_targets()
-    assert set(theirs) <= ours <= set(host.HANDLERS), (set(theirs) - ours, ours - set(host.HANDLERS))
-    extra = {f"channel.Channel.{n}" for n in ("new", "send", "receive", "close")}
-    extra |= {f"secret.{n}" for n in ("fromText", "fromEnvironment", "reveal", "matches", "length")}
-    extra |= {f"crypto.{n}" for n in ("sha256", "hmacSha256", "toHex", "constantTimeEquals")}
-    extra |= {"ffi.open", "ffi.close", "ffi.Function.bind"}
-    assert ours - set(theirs) == extra, ours - set(theirs)
+    from refined.native import runtime_host_targets
+    ours = runtime_host_targets()
+    assert ours <= set(host.HANDLERS), ours - set(host.HANDLERS)
+    missing = {name.split(".")[0] for name in set(host.HANDLERS) - ours}
+    assert missing == {"net", "http", "json", "random", "signal"}, missing
+    linux = runtime_host_targets("x86_64-unknown-linux-gnu")
+    assert ours - linux == {"ffi.open", "ffi.close", "ffi.Function.bind"}, ours - linux
     with open(os.path.join(RUNTIME, "host.sem"), encoding="utf-8") as fh:
         text = fh.read()
     for name in ours:
         row = re.search(rf'^hostTargets cell (\w+) name "{re.escape(name)}"$', text, re.M).group(1)
         scoped = int(re.search(rf"^hostTargets cell {row} scoped (-?\d+)$", text, re.M).group(1))
-        assert scoped == host.SCOPED.get(name, -1) == theirs.get(name, scoped), name
+        assert scoped == host.SCOPED.get(name, -1), name
 
 
 # ---------------------------------------------------------------- the runtime project

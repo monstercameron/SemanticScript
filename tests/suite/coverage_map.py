@@ -750,9 +750,10 @@ NOTES: dict[str, tuple[str | None, str, list[str]]] = {
     "16 Runtime performance": (None, "`refined bench` times repeated runs; the stress tests bound sizes.", []),
     "17 Sensitive data handling": (None, "`secret.Secret` has no conversion to text except `reveal`, which needs a capability "
                                   "for `read secret.values`; `matches` compares in constant time.", []),
-    "18 Static linking": (None, "`refined build --kind executable` links the program and a C runtime into a "
-                         "standalone executable; programs that call the host library trap there with "
-                         "the target's name.", []),
+    "18 Static linking": (None, "`refined build --kind executable` links the program and the runtime in "
+                         "SemanticScript into a standalone executable with no C library (Windows: KERNEL32.dll "
+                         "alone; Linux: static, no dynamic section); a program that needs a target the runtime "
+                         "lacks is refused when built (R901), naming it.", []),
     "18 WASM integration": (None, "`refined build --kind wasm` emits WebAssembly; tests/suite/wasm_host.mjs runs it in Node.", []),
     "19 Random number generation": (None, "`random.int64Between` from the operating system, and seeded generators.", []),
     "19 Cryptographic primitives": (None, "`crypto.sha256`, `hmacSha256`, `toHex`, and `constantTimeEquals`.", []),

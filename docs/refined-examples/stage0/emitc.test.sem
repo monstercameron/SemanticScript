@@ -64,7 +64,7 @@ emitTest let badSource String "# A stage0 sample: an arithmetic loop. It prints 
 emitTest let badExpected String "79:16: this call target is outside the stage0 subset (math.wrappingMultiplyInt64)" immutable
 emitTest let noEntryExpected String "5:1: the module has no main operation (squares)" immutable
 emitTest let refusedText String "the front end refused the source or a step failed" immutable
-emitTest let mainWrapper String "int main(int argc, char **argv) {\n  refined_start(argc, argv);\n  return o_squares_main();\n}\n" immutable
+emitTest let mainWrapper String "int32_t refined_program_main(void) {\n  return o_squares_main();\n}\n" immutable
 emitTest let signature String "static int o_squares_main(void) {\n" immutable
 emitTest let constantText String "static const int64_t k_squares_limit = 5;\n" immutable
 emitTest let constantRead String "  int64_t v_limit = k_squares_limit;\n" immutable

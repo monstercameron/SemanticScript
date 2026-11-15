@@ -2735,7 +2735,7 @@ op emitProgram "Check a modelled program and write it as one C file: the prelude
 :entryOperation
   readOwner: owner = subset.TargetInfo.owner(entryTarget)
   readEntryOp: entryOp = subset.Ops.getOrTrap(ops, owner)
-  @s mainStart "int main(int argc, char **argv) {\n  refined_start(argc, argv);\n  return "
+  @s mainStart "int32_t refined_program_main(void) {\n  return "
   putEntryName: putOpName(buffer, source, entryOp)
   @s mainEnd "();\n}\n"
   return

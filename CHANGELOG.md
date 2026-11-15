@@ -72,6 +72,29 @@ based on [Keep a Changelog](https://keepachangelog.com/).
 - New runtime modules `slots`, `wide`, `tasks`, `files`, `processes`, and
   `hashes`; a trap now also stops child processes the program started (D-51).
 
+### The runtime in SemanticScript, stage 5: the only runtime
+
+- Linux (D-138 to D-140): the runtime reaches the kernel through raw system
+  calls on x86_64 (`system.read`, `system.openat`, `system.mmap`,
+  `system.fork`, ...; `system.linux()` is a constant of the target), with
+  its own stacks (`machine.switchStack`, `startStack`, `runEntryOnStack`),
+  its own heap over mmap, and a `_start` that hands `refined_entry` the
+  kernel's stack. Executables are static, with no dynamic section and no C
+  library. A new runtime module, `kernel`, holds what the Windows and Linux
+  paths share.
+- `refined build --kind executable` links the runtime in SemanticScript on
+  Windows and Linux; it is the only runtime (D-141). `--runtime
+  semanticscript` is still accepted; `--runtime c` and
+  `semanticscript/compiler/refined/native_runtime.c` are gone. macOS is
+  refused with R901 (no system layer yet).
+- `refined build semanticscript/runtime --kind runtime --output runtime.o`
+  writes the runtime as an object; stage0's C defines `refined_program_main`,
+  calls no C library function, and links with it and no C library (D-142).
+  The bootstrap fixed point holds.
+- Tests that read the C runtime read the runtime's `hostTargets` table and
+  its error constants instead (D-143); every conformance program, the
+  cancellation check included, runs as an executable.
+
 ## 1.0.0 (2026-11-14)
 
 ### The language compiles its own compiler

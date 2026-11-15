@@ -6,8 +6,7 @@
     refined test    PATH [--json]
     refined bench   PATH [--runs N] [--json]
     refined emit-ir PATH [--test MODULE.TEST]
-    refined build   PATH --output FILE [--target TRIPLE] [--kind object|assembly|wasm|executable]
-                         [--runtime c|semanticscript]
+    refined build   PATH --output FILE [--target TRIPLE] [--kind object|assembly|wasm|executable|runtime]
     refined fmt     PATH... [--check]
     refined repl
     refined lsp
@@ -149,10 +148,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("path")
     p.add_argument("--output", required=True)
     p.add_argument("--target", default=None, help="an LLVM target triple; the host's when omitted")
-    p.add_argument("--kind", choices=("object", "assembly", "wasm", "executable"), default="object")
-    p.add_argument("--runtime", choices=("c", "semanticscript"), default="c",
-                   help="for an executable: the C runtime (native_runtime.c), or the runtime in SemanticScript linked "
-                        "with no C library (D-124)")
+    p.add_argument("--kind", choices=("object", "assembly", "wasm", "executable", "runtime"), default="object",
+                   help="`executable` links the program with the runtime in SemanticScript and no C library; `runtime` "
+                        "writes that runtime (the project at PATH, semanticscript/runtime) as an object for C to link")
+    p.add_argument("--runtime", choices=("semanticscript",), default="semanticscript",
+                   help="accepted for compatibility: the runtime in SemanticScript is the only runtime (D-141)")
     p = sub.add_parser("stale")
     p.add_argument("path")
     p.add_argument("--base", required=True)
@@ -281,6 +281,14 @@ def main(argv: list[str] | None = None) -> int:
     if res is None:
         return 1
 
+    if args.command == "build" and args.kind == "runtime":
+        from .native import RUNTIME_PROJECT, build
+        given = args.path[:-len("build.sem")] if args.path.endswith("build.sem") else args.path
+        if os.path.normcase(os.path.realpath(given)) != os.path.normcase(os.path.realpath(RUNTIME_PROJECT)):
+            sys.stdout.write(f"`--kind runtime` builds the runtime project, {RUNTIME_PROJECT}\n")
+            return 1
+        return build(None, args.output, args.target, "runtime")
+
     if args.command in ("emit-ir", "build"):
         if getattr(args, "test", None):
             roots = [tuple(args.test.split(".", 1))]
@@ -297,8 +305,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         from .native import build
         entry = res.project.value("entry")
-        return build(str(module), args.output, args.target, args.kind, None if entry == "none" else entry,
-                     getattr(args, "runtime", "c"))
+        return build(str(module), args.output, args.target, args.kind, None if entry == "none" else entry)
 
     if args.command == "run-one-test":
         mod, _dot, test = args.test.partition(".")

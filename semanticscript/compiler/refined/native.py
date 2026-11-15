@@ -1,27 +1,22 @@
-"""Ahead-of-time output: an object file, assembly, or a WebAssembly module, for any LLVM target.
+"""Ahead-of-time output: an object file, assembly, a WebAssembly module, a standalone executable, or the runtime.
 
-    refined build PATH --output FILE [--target TRIPLE] [--kind object|assembly|wasm]
+    refined build PATH --output FILE [--target TRIPLE] [--kind object|assembly|wasm|executable|runtime]
 
-The output is the program's compiled operations; the runtime it calls (output,
-regions, traps, the host library) is not part of it. `--kind wasm` targets
-`wasm32-unknown-unknown`: the module imports its linear memory, function table,
-stack pointer, and runtime functions from the `env` namespace, and a host
+The output of `object`, `assembly`, and `wasm` is the program's compiled operations; the runtime it calls (output,
+regions, traps, the host library) is not part of it. `--kind wasm` targets `wasm32-unknown-unknown`: the module
+imports its linear memory, function table, stack pointer, and runtime functions from the `env` namespace, and a host
 supplies them (tests/suite/wasm_host.mjs is a small one for Node).
 
-`--kind executable` links the object, the C runtime in native_runtime.c, and a
-generated `main(argc, argv)` into a standalone executable with the system C
-compiler (cc, gcc, or clang, or $REFINED_CC), statically when the C library
-allows. The C runtime implements most of the host library natively (D-80); a
-program that calls a target it does not implement is refused (R901, D-81).
+`--kind executable` links the program with the runtime written in SemanticScript (semanticscript/runtime, D-124),
+the two compiled into one LLVM module that keeps only what the entry reaches (D-135), and no C library: no CRT start
+files, no libc, the C compiler (cc, gcc, or clang, or $REFINED_CC) used only as the linker. On Windows the entry is
+`refined_entry` and the executable imports kernel32 alone (with the compiler's own support library for stack
+probes); on x86_64 Linux it is static, its entry the runtime's `_start`, and it reaches the kernel through system
+calls (D-138, D-139). macOS has no system layer and is refused (D-141). A program that needs a runtime function or
+host target the runtime does not provide is refused (R901) before anything is linked.
 
-`--kind executable --runtime semanticscript` (D-124) links the program instead
-with the runtime written in SemanticScript (semanticscript/runtime), linked with
-the program into one LLVM module that keeps only what the entry reaches (D-135),
-and no C library: no CRT start files, no libc, the entry point
-`refined_entry`, and only kernel32 (plus the compiler's own support library, for
-stack probes). It runs on Windows so far. A program that needs a runtime
-function or host target that runtime does not provide yet is refused (R901)
-before anything is linked.
+`--kind runtime`, for the runtime project, writes the runtime alone as an object for the C compiler's platform, every
+`abi c` operation an external symbol, to link with C that defines `refined_program_main` (stage0's, D-142).
 """
 from __future__ import annotations
 
@@ -70,39 +65,7 @@ def emit(ir_text: str, triple: str | None, kind: str) -> bytes:
     return tm.emit_object(mod)
 
 
-RUNTIME_C = os.path.join(os.path.dirname(os.path.abspath(__file__)), "native_runtime.c")
-STACK_BYTES = 256 * 1024 * 1024
-_TARGET_ROW = re.compile(r'^\s*\{"([A-Za-z0-9.]+)", (\w+), (-?\d+)\},$', re.M)
-
-
-def native_targets() -> dict[str, int]:
-    """D-80: the host targets the C runtime implements (its `TARGETS` table), each with the index of its scoped
-    parameter or -1. A program that calls any other host target is refused as an executable (R901, D-81)."""
-    with open(RUNTIME_C, encoding="utf-8") as fh:
-        return {m.group(1): int(m.group(3)) for m in _TARGET_ROW.finditer(fh.read())}
-
-
-def _runtime_object(cc: list[str], machine: str, folder: str) -> str:
-    """The C runtime compiled once per compiler and source text, kept in the temporary directory, so linking a
-    program compiles only its small `main`."""
-    import hashlib
-    with open(RUNTIME_C, "rb") as fh:
-        source = fh.read()
-    digest = hashlib.sha256(source + "\0".join(cc + [machine]).encode()).hexdigest()[:20]
-    cached = os.path.join(tempfile.gettempdir(), f"refined-runtime-{digest}.o")
-    if os.path.exists(cached):
-        return cached
-    fresh = os.path.join(folder, "runtime.o")
-    proc = subprocess.run(cc + ["-O2", "-c", "-o", fresh, RUNTIME_C], capture_output=True, text=True)
-    if proc.returncode != 0:
-        return RUNTIME_C  # let the link report the error
-    try:
-        partial = f"{cached}.{os.getpid()}"
-        shutil.copyfile(fresh, partial)
-        os.replace(partial, cached)
-        return cached
-    except OSError:
-        return fresh
+STACK_BYTES = 256 * 1024 * 1024  # the main thread's stack on Windows (Linux maps its own, D-139)
 
 
 def find_cc() -> list[str] | None:
@@ -119,72 +82,6 @@ def find_cc() -> list[str] | None:
         return [sys.executable, "-m", "ziglang", "cc"]
     except ImportError:
         return None
-
-
-def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
-    """Link the program's object, the C runtime (native_runtime.c), and a `main` into one executable."""
-    native = native_targets()
-    needs = sorted(set(re.findall(r'c"([a-zA-Z]+\.[A-Za-z0-9.]+)\|', ir_text)) - set(native))
-    if needs:
-        return False, ("R901 this program calls " + ", ".join(f"`{n}`" for n in needs) + ", which need the host "
-                       "library; standalone executables include the native part of it only (D-81), so run it with "
-                       "`refined run`")
-    cc = find_cc()
-    if cc is None:
-        return False, "no C compiler to link with: install one (cc, gcc, or clang) or set REFINED_CC"
-    machine = subprocess.run(cc + ["-dumpmachine"], capture_output=True, text=True).stdout.strip()
-    triple = machine or None
-    parts = machine.split("-")
-    if "mingw" in machine:
-        # gcc says `x86_64-w64-mingw32`; LLVM reads that OS as unknown and would emit ELF objects
-        triple = parts[0] + "-w64-windows-gnu"
-    elif len(parts) == 3 and parts[1] == "linux":
-        triple = f"{parts[0]}-unknown-linux-{parts[2]}"  # `x86_64-linux-gnu` names no vendor
-    windows = "mingw" in machine or "windows" in machine
-    apple = "apple" in machine or "darwin" in machine
-    # Windows links the main thread with STACK_BYTES; elsewhere the program runs on a thread made with that
-    # stack, so a deep recursion reaches the same maxRecursion it reaches under the JIT.
-    budget = STACK_BYTES - 8 * 1024 * 1024
-    with tempfile.TemporaryDirectory() as d:
-        obj = os.path.join(d, "program.o")
-        with open(obj, "wb") as fh:
-            fh.write(emit(ir_text, triple, "object"))
-        symbol = ("_" if apple else "") + entry
-        main_c = os.path.join(d, "main.c")
-        with open(main_c, "w", encoding="utf-8") as fh:
-            head = ("#include <stdint.h>\n"
-                    f'extern int32_t refined_entry(void) __asm__("{symbol}");\n'
-                    f'extern int64_t refined_stack_here(void) __asm__("{"_" if apple else ""}refined_stack_here");\n'
-                    "void refined_set_floor(int64_t floor);\n"
-                    "void refined_start(int argc, char **argv);\n")
-            if windows:
-                fh.write(head + "int main(int argc, char **argv) { refined_start(argc, argv); "
-                         f"refined_set_floor(refined_stack_here() - {budget}LL); "
-                         "return (int)refined_entry(); }\n")
-            else:
-                fh.write("#include <pthread.h>\n" + head +
-                         "static int32_t refined_result;\n"
-                         f"static int64_t refined_budget = {budget}LL;\n"
-                         "static void *refined_run(void *unused) { (void)unused; "
-                         "refined_set_floor(refined_stack_here() - refined_budget); "
-                         "refined_result = refined_entry(); return 0; }\n"
-                         "int main(int argc, char **argv) { refined_start(argc, argv); pthread_attr_t attr; "
-                         f"pthread_attr_init(&attr); pthread_attr_setstacksize(&attr, {STACK_BYTES}ULL); "
-                         "pthread_t thread; if (pthread_create(&thread, &attr, refined_run, 0) != 0) { "
-                         "refined_budget = 6LL * 1024 * 1024; refined_run(0); return (int)refined_result; } "
-                         "pthread_join(thread, 0); return (int)refined_result; }\n")
-        base = cc + ["-O2", "-o", output, obj, _runtime_object(cc, machine, d), main_c]
-        if windows:
-            base += [f"-Wl,--stack,{STACK_BYTES}", "-lshell32"]
-        else:
-            base += ["-pthread"]
-        last = None
-        for extra in (["-static"], []):  # static when the platform's C library allows it
-            proc = subprocess.run(base + extra, capture_output=True, text=True)
-            if proc.returncode == 0:
-                return True, f"linked {output} ({'static' if extra else 'dynamic C library'}, {machine})"
-            last = proc
-        return False, f"linking failed:\n{last.stdout}{last.stderr}"
 
 
 # ---------------------------------------------------------------- the runtime in SemanticScript (D-124)
@@ -365,8 +262,8 @@ def _link_command(cc: list[str], triple: str, output: str, objects: list[str]) -
                  "-s", "-o", output, *objects, "-lgcc"]
 
 
-def executable_semanticscript(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
-    """D-124: link the program's object and the runtime's object (from semanticscript/runtime) with no C library."""
+def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
+    """D-124, D-141: link the program and the runtime in SemanticScript (semanticscript/runtime) with no C library."""
     cc = find_cc()
     if cc is None:
         return False, "no C compiler to link with: install one (cc, gcc, or clang) or set REFINED_CC"
@@ -423,16 +320,16 @@ def runtime_object(output: str) -> tuple[bool, str]:
     return True, f"wrote {output} (the runtime in SemanticScript, {len(data)} bytes, {machine})"
 
 
-def build(ir_text: str, output: str, triple: str | None, kind: str, entry: str | None = None,
-          runtime: str = "c") -> int:
+def build(ir_text: str | None, output: str, triple: str | None, kind: str, entry: str | None = None) -> int:
+    if kind == "runtime":
+        ok, message = runtime_object(output)
+        sys.stdout.write(message + "\n")
+        return 0 if ok else 1
     if kind == "executable":
         if entry is None:
             sys.stdout.write("an executable needs a console project with an entry\n")
             return 1
-        if runtime == "semanticscript":
-            ok, message = executable_semanticscript(ir_text, entry, output)
-        else:
-            ok, message = executable(ir_text, entry, output)
+        ok, message = executable(ir_text, entry, output)
         sys.stdout.write(message + "\n")
         return 0 if ok else 1
     try:

@@ -1,8 +1,9 @@
 # The stage0 compiler's back end: a checked program written as one C file, to
-# be linked with the runtime of refined executables
-# (semanticscript/compiler/refined/native_runtime.c), which writes output,
-# traps with exit code 70, keeps regions, and runs the host library as
-# `refined build --kind executable` programs do. The file is:
+# be linked with the runtime of refined executables, the runtime in
+# SemanticScript as an object (`refined build semanticscript/runtime --kind
+# runtime`), which starts the process, writes output, traps with exit code 70,
+# keeps regions, and runs the host library as `refined build --kind
+# executable` programs do, with no C library (D-142). The file is:
 #
 # - a fixed prelude: declarations of the runtime functions it calls, text as a
 #   pointer and a length, the checked arithmetic, string.advancePosition, and
@@ -36,8 +37,8 @@
 #   library is one call of the runtime's `refined_host`, its arguments and
 #   result flattened to 64-bit slots as the LLVM backend flattens them, a
 #   scoped target's last argument the scope text (D-38);
-# - a C `main` that hands the command line to the runtime and returns the
-#   entry operation's ExitCode.
+# - `refined_program_main`, which the runtime's entry runs (it reads the
+#   command line itself), returning the entry operation's ExitCode.
 #
 # A jump to a bounded loop header counts the pass when it comes from inside
 # the loop (from the header or a block within it) and resets the count (and a
