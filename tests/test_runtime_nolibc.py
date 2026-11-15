@@ -52,7 +52,7 @@ def _platform() -> str:
     if cc is None:
         return ""
     _machine, triple, _problem = platform(cc)
-    if triple is None:
+    if triple is None or "apple" in triple:  # D-189: macOS is tests/test_macos_nolibc.py's
         return ""
     return "windows" if "windows" in triple else "linux"
 
@@ -60,7 +60,7 @@ def _platform() -> str:
 PLATFORM = _platform()
 WINDOWS = PLATFORM == "windows"
 needs_windows_cc = pytest.mark.skipif(not PLATFORM, reason="the runtime in SemanticScript links on Windows (MinGW) "
-                                      "and x86_64 Linux")
+                                      "and Linux here; macOS is tests/test_macos_nolibc.py's (D-189)")
 
 
 def _build(project: str, exe: str) -> subprocess.CompletedProcess:

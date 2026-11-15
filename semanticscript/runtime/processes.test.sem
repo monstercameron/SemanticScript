@@ -1561,7 +1561,7 @@ linuxEnvironment at done return ok none
 
 osCheck is call
 osCheck in linuxEnvironment
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -2998,7 +2998,7 @@ findPayload suppresses none
 
 osCheck is call
 osCheck in childTest
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

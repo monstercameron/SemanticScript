@@ -97,7 +97,7 @@ endProcess at windowsExit return ok none
 
 osCheck is call
 osCheck in endProcess
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -286,7 +286,7 @@ interruptHandler at done return ok handled
 
 osCheck is call
 osCheck in interruptHandler
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -390,7 +390,7 @@ storeGeneration suppresses none
 
 wakeCheck is call
 wakeCheck in interruptHandler
-wakeCheck invokes system.linux
+wakeCheck invokes system.posix
 wakeCheck argument none
 wakeCheck result onWindows Bool
 wakeCheck ownedBy none
@@ -509,7 +509,7 @@ findHandler suppresses none
 
 osCheck is call
 osCheck in installInterrupts
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

@@ -35,7 +35,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -76,7 +76,7 @@ op interruptHandler "What the operating system calls on an interrupt: CTRL_C_EVE
   let handled Int32 1
   let notHandled Int32 0
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux interrupt eventCheck
 :eventCheck
   ctrlCCheck: isCtrlC = compare.equalInt32(which, notHandled)
@@ -95,7 +95,7 @@ op interruptHandler "What the operating system calls on an interrupt: CTRL_C_EVE
   readGeneration: generation = stateWord(generationAt)
   moreGeneration: next = math.addInt64(generation, one)
   storeGeneration: setStateWord(generationAt, next)
-  wakeCheck: onWindows = system.linux()
+  wakeCheck: onWindows = system.posix()
   if onWindows done wake
 :wake
   findEvent: eventSlot = kernel.stateAt(eventAt)
@@ -116,7 +116,7 @@ op installInterrupts "Install the interrupt handler before the program's entry r
 :begin
   storeInstalled: setStateWord(installedAt, one=1)
   findHandler: handler = machine.interruptHandler()
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxInstall windowsInstall
 :windowsInstall
   nowhere: anywhere = machine.zero()
@@ -232,7 +232,7 @@ test signalTest "No interrupt has come in a test, so interrupted is false and a 
   waitIt: waitStatus = signalCall(two=2, shape, args, results, payload)
   widenWait: waitValue = convert.int32ToInt64(waitStatus)
   test.assertEqualInt64(one, waitValue)
-  onLinux: linux = system.linux()
+  onLinux: linux = system.posix()
   if linux done breakEvent
 :breakEvent
   leaveIt: left = interruptHandler(ctrlBreak=1)

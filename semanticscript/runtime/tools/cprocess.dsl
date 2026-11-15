@@ -25,7 +25,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   calc wideCode = convert.int32ToInt64(code)
@@ -138,7 +138,7 @@ op setHandler "signal: install a handler for a signal (SIG_DFL 0, SIG_IGN 1, or 
   clibrary.setErrno(invalidError)
   return refused
 :install
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :windows
   cell = handlerCell(signalNumber)
@@ -183,7 +183,7 @@ op raiseSignal "raise: send a signal to the process, so its handler runs before 
   clibrary.setErrno(invalidError)
   return failure
 :send
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   self = system.getpid()
@@ -224,7 +224,7 @@ op abortProcess "abort: raise SIGABRT, so a handler runs; if it returns, SIGABRT
   abi library "abort"
 :begin
   raiseSignal(6)
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   action = heap.take(32)
@@ -258,7 +258,7 @@ op runCommand "system: run a command with the system's shell and wait for it: /b
   let absent Int32 0
 :begin
   nowhere = machine.zero()
-  onLinux = system.linux()
+  onLinux = system.posix()
   when command == nowhere ask run
 :ask
   if onLinux askLinux hasShell

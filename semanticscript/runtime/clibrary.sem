@@ -559,7 +559,7 @@ endProcess at windowsExit return ok none
 
 osCheck is call
 osCheck in endProcess
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -1692,7 +1692,7 @@ checkC suppresses none
 
 osCheck is call
 osCheck in cLibraryName
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -14036,7 +14036,7 @@ emptyCheck suppresses none
 
 osCheck is call
 osCheck in environmentValue
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -14480,7 +14480,7 @@ abortProcess at windowsAbort return ok none
 
 osCheck is call
 osCheck in abortProcess
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

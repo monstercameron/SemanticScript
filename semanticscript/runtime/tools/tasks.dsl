@@ -159,7 +159,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -321,7 +321,7 @@ op now "Milliseconds since the system started (GetTickCount64): the clock deadli
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxClock windowsClock
 :linuxClock
   readMonotonic: milliseconds = kernel.monotonic()
@@ -542,7 +542,7 @@ op switchTo "Run another task: keep the running one's state, put the other's bac
   restore: loadFrom(next)
   storeCurrent: setStateLink(currentAt, next)
   readFiber: fiber = link(next, ofFiber)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxSwitch windowsSwitch
 :linuxSwitch
   readMine: mine = link(me, ofFiber)
@@ -627,7 +627,7 @@ op canGoOn "Whether a task can run: ready, or waiting while something changed, i
   noHandleCheck: noHandle = machine.equal(handle, anywhere)
   if noHandle cannot pollHandle
 :pollHandle
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux pollLinux pollWindows
 :pollLinux
   handleValue: plusOne = machine.toInt64(handle)
@@ -926,7 +926,7 @@ op idle "Sleep until the nearest deadline of a waiting task or a handle one wait
   stuckCheck: stuck = logic.and(noDeadline, noHandles)
   if stuck locked interruptCheck
 :interruptCheck
-  osInterrupt: onLinuxInterrupt = system.linux()
+  osInterrupt: onLinuxInterrupt = system.posix()
   if onLinuxInterrupt timing readInterrupt
 :readInterrupt
   findInterrupt: interruptSlot = kernel.stateAt(interruptEventAt)
@@ -948,7 +948,7 @@ op idle "Sleep until the nearest deadline of a waiting task or a handle one wait
 :timing
   if noDeadline foreverCheck countDown
 :foreverCheck
-  osCheckForever: onLinuxForever = system.linux()
+  osCheckForever: onLinuxForever = system.posix()
   if onLinuxForever sleepOrWait waitForHandles
 :countDown
   readNow: moment = now()
@@ -966,7 +966,7 @@ op idle "Sleep until the nearest deadline of a waiting task or a handle one wait
   set timeout most
   goto sleepOrWait
 :sleepOrWait
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxWait windowsWait
 :linuxWait
   set at zero
@@ -1159,7 +1159,7 @@ op spawn "Start a task on a fiber of its own and run it until it waits or ends; 
   if noFibers convert make
 :convert
   nowhere: anywhere = machine.zero()
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux convertLinux convertWindows
 :convertLinux
   takeMainFiber: linuxMainFiber = heap.take(fiberBytes)
@@ -1214,7 +1214,7 @@ op spawn "Start a task on a fiber of its own and run it until it waits or ends; 
   storeDepths: setLink(task, ofDepths, depths)
   storeInTask: setField(task, ofInTask, one)
   nothing: noFiber = machine.zero()
-  osFiberCheck: onLinuxFiber = system.linux()
+  osFiberCheck: onLinuxFiber = system.posix()
   if onLinuxFiber linuxFiber windowsFiber
 :linuxFiber
   mapTaskStack: stack = kernel.mapStack(stackReserve)
@@ -1323,7 +1323,7 @@ op dropTask "Give back an ended task: its fiber, its place in the list, its fram
   uses systemCalls
 :begin
   readFiber: fiber = link(task, ofFiber)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux dropLinux dropWindows
 :dropLinux
   readBase: base = link(fiber, eight=8)
@@ -1687,7 +1687,7 @@ op clockNow "clock.now: milliseconds since 1970 on the system's clock"
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxWall windowsWall
 :linuxWall
   readWall: wall = kernel.wallClock()

@@ -54,7 +54,7 @@ op cursorNew "A cursor over a va_list: the system's layout, and the va_list's ad
   let layout Int64 3 mut
 :begin
   cursor = heap.take(16)
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux store
 :linux
   set layout 1
@@ -2366,7 +2366,7 @@ op formatRealArgument "Write a floating conversion of an argument: a double, or 
   let mantissa UInt64 0 mut
   let power Int64 0 mut
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   calc longForm = length == 5 && onLinux
   if longForm longReal double
 :double
@@ -3452,7 +3452,7 @@ test formatTest "Integers, strings of digits, and floating values are written as
   nowhere = machine.zero()
   made = cursorNew(nowhere)
   layout = machine.loadInt64(made)
-  onLinux = system.linux()
+  onLinux = system.posix()
   onArm = system.aarch64()
   calc expectedLayout = layoutFor(onLinux, onArm)
   test.assertEqualInt64(expectedLayout, layout)

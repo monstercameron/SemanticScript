@@ -12,8 +12,9 @@ the two compiled into one LLVM module that keeps only what the entry reaches (D-
 files, no libc, the C compiler (cc, gcc, or clang, or $REFINED_CC) used only as the linker. On Windows the entry is
 `refined_entry` and the executable imports kernel32 alone (with the compiler's own support library for stack
 probes); on x86_64 Linux it is static, its entry the runtime's `_start`, and it reaches the kernel through system
-calls (D-138, D-139). macOS has no system layer and is refused (D-141). A program that needs a runtime function or
-host target the runtime does not provide is refused (R901) before anything is linked.
+calls (D-138, D-139); on arm64 macOS it names no dynamic library and reaches Darwin's kernel through its system calls
+(D-189). A program that needs a runtime function or host target the runtime does not provide is refused (R901) before
+anything is linked.
 
 `--kind runtime`, for the runtime project, writes the runtime alone as an object for the C compiler's platform, every
 `abi c` operation an external symbol, to link with C that defines `refined_program_main` (stage0's, D-142).
@@ -96,10 +97,13 @@ LINUX_REFUSED: tuple[str, ...] = ()
 SIGNAL_TARGETS = ("signal.interrupted|", "signal.waitForInterrupt|")
 
 
+DARWIN_TRIPLE = "arm64-apple-macosx11.0.0"  # D-189: macOS on Apple silicon, from macOS 11
+
+
 def platform(cc: list[str]) -> tuple[str, str | None, str]:
     """The C compiler's machine (`gcc -dumpmachine`), the LLVM triple an executable for it is compiled for, and a
-    problem (empty when it can be linked): Windows and Linux on x86_64 have the runtime's system layer (D-122,
-    D-138); macOS has none."""
+    problem (empty when it can be linked): Windows, Linux on x86_64 and AArch64, and macOS on arm64 have the
+    runtime's system layer (D-122, D-138, D-150, D-189)."""
     machine = subprocess.run(cc + ["-dumpmachine"], capture_output=True, text=True).stdout.strip()
     arch = machine.split("-")[0]
     if "mingw" in machine or "windows" in machine:
@@ -113,10 +117,10 @@ def platform(cc: list[str]) -> tuple[str, str | None, str]:
                                    f"system calls (D-138, D-150); `{machine}` is another architecture")
         return machine, "x86_64-unknown-linux-gnu", ""
     if "apple" in machine or "darwin" in machine:
-        return machine, None, (f"R901 standalone executables are built for Windows and Linux: macOS (`{machine}`) "
-                               "has no executable without a C library, since its kernel interface is private and every "
-                               "macOS executable links libSystem, which is the C library (D-145); run the program "
-                               "with `refined run`")
+        if arch in ("arm64", "aarch64", "arm64e"):
+            return machine, DARWIN_TRIPLE, ""  # D-189
+        return machine, None, (f"R901 the runtime in SemanticScript reaches macOS through arm64 system calls only "
+                               f"(D-189); `{machine}` is another architecture: run the program with `refined run`")
     return machine, None, f"R901 standalone executables are built for Windows and Linux, not `{machine}`"
 
 
@@ -256,6 +260,30 @@ def needed_runtime(ir_text: str) -> set[str]:
     return {name for name in _DECLARE.findall(ir_text) if name in CALLBACKS}
 
 
+DARWIN_LINK_MODES = ("static", "dyld")
+
+
+def darwin_link_mode() -> str:
+    """D-189: how a macOS executable is linked: `static` (LC_UNIXTHREAD, no dyld, the kernel starts `_start`) or
+    `dyld` (LC_MAIN and dyld, which loads nothing since the executable names no library). REFINED_DARWIN_LINK picks
+    one while the experiment finds which the kernel runs."""
+    mode = os.environ.get("REFINED_DARWIN_LINK", "static")
+    return mode if mode in DARWIN_LINK_MODES else "static"
+
+
+def darwin_link_flags(mode: str) -> list[str]:
+    """D-189: Apple's linker with no C library: no start files and no libSystem. `static` makes an executable the
+    kernel starts at `_start` with no loader; `dyld` one dyld starts at `_refined_dyld_start`, linked against
+    libSystem only to satisfy ld's rule for dynamic executables and then dropped (`-dead_strip_dylibs`), since nothing
+    in the object refers to it."""
+    if mode == "dyld":
+        return ["-arch", "arm64", "-nostdlib", "-nostartfiles", "-Wl,-e,_refined_dyld_start", "-Wl,-dead_strip",
+                "-lSystem", "-Wl,-dead_strip_dylibs"]
+    # the kernel refuses an arm64 executable whose first 4 GiB are not one unmapped __PAGEZERO segment
+    return ["-arch", "arm64", "-nostdlib", "-nostartfiles", "-static", "-Wl,-e,_start", "-Wl,-dead_strip",
+            "-Wl,-pagezero_size,0x100000000"]
+
+
 def _link_command(cc: list[str], triple: str, output: str, objects: list[str]) -> list[str]:
     """D-124, D-138: no CRT start files and no C library. Windows: the entry `refined_entry`, a main thread of
     STACK_BYTES, kernel32 and the compiler's support library (stack probes). Linux: static, the entry `_start` (the
@@ -264,6 +292,8 @@ def _link_command(cc: list[str], triple: str, output: str, objects: list[str]) -
     if target_os(triple) == "windows":
         return cc + ["-nostdlib", "-nostartfiles", "-Wl,-e,refined_entry", f"-Wl,--stack,{STACK_BYTES}",
                      "-Wl,--gc-sections", "-s", "-o", output, *objects, "-lkernel32", "-lws2_32", "-lbcrypt", "-lgcc"]
+    if target_os(triple) == "darwin":
+        return cc + darwin_link_flags(darwin_link_mode()) + ["-o", output, *objects]
     return cc + ["-nostdlib", "-nostartfiles", "-static", "-Wl,-e,_start", "-Wl,--gc-sections", "-Wl,--build-id=none",
                  "-s", "-o", output, *objects, "-lgcc"]
 
@@ -301,6 +331,11 @@ def executable(ir_text: str, entry: str, output: str) -> tuple[bool, str]:
         proc = subprocess.run(_link_command(cc, triple, output, [obj]), capture_output=True, text=True)
         if proc.returncode != 0:
             return False, f"linking failed:\n{proc.stdout}{proc.stderr}"
+        if target_os(triple) == "darwin":
+            # D-189: arm64 macOS runs only signed code; Apple's linker signs ad hoc, and this makes sure of it
+            signed = subprocess.run(["codesign", "--force", "--sign", "-", output], capture_output=True, text=True)
+            if signed.returncode != 0:
+                return False, f"signing failed:\n{signed.stdout}{signed.stderr}"
         return True, f"linked {output} (the runtime in SemanticScript, no C library, {machine})"
 
 

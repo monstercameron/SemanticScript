@@ -359,7 +359,7 @@ op programArguments "The words after the program's name on its command line, spl
   return list
 :split
   takeList: names = heap.take(twentyFour=24)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux splitLinux splitWindows
 :splitLinux
   addLinux: linuxArguments(names)
@@ -545,7 +545,7 @@ op environmentGet "environment.get: a variable's value, into a region; missing w
   hasNul: withNul = compare.greaterOrEqualInt64(nulAt, zero)
   if withNul refuse lookUp
 :lookUp
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux lookUpLinux lookUpWindows
 :lookUpLinux
   takeLength: linuxCell = heap.take(eight=8)
@@ -644,7 +644,7 @@ op stdinFill "Read what standard input has next into its builder; its end is not
   let ok Int64 0
 :begin
   readBuffer: buffer = stdinBuffer()
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux fillLinux fillWindows
 :fillLinux
   takeLinuxChunk: linuxBlock = heap.take(chunk)
@@ -714,7 +714,7 @@ op stdinWait "Wait until standard input has something to read or has ended, lett
   let late Int64 1
   let stopped Int64 2
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux waitLinux waitWindows
 :waitLinux
   linuxIt: linuxOutcome = stdinWaitLinux(deadline)
@@ -1215,7 +1215,7 @@ op runChild "Run a child to its end or stop it at the deadline or a cancel; with
   let ok Int32 0
   let childText String "a wait for a child process"
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux runLinux runWindows
 :runLinux
   linuxIt: linuxStatus = runChildLinux(program, programBytes, names, deadline, captured, input, inputBytes, out, errors, codeAt, payload)
@@ -2411,7 +2411,7 @@ op ffiOpen "ffi.open: the C library's name (`c`, and on Linux libc.so.6 and its 
   checkC: isC = clibrary.cLibraryName(name, bytes)
   if isC give other
 :other
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux loadLinux loadWindows
 :loadLinux
   loadLinuxIt: object = loader.openLibrary(name, bytes)
@@ -2731,7 +2731,7 @@ op linuxEnvironment "On Linux, where `refined test` starts no process stack, giv
   let programName String "program"
   let rootVariable String "SystemRoot=/linux"
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux make done
 :make
   findStack: stack = stateAt(fakeStackAt=63488)
@@ -2876,7 +2876,7 @@ test childTest "A child runs to its end with its exit code, and a captured child
   findArgs: args = argSlot(zero=0)
   findResults: results = stateAt(resultsOffset=62016)
   findPayload: payload = stateAt(payloadOffset=62080)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxChild windowsChild
 :linuxChild
   takeLinuxNames: linuxNames = heap.take(twentyFour=24)

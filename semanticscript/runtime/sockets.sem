@@ -188,7 +188,7 @@ endProcess at windowsExit return ok none
 
 osCheck is call
 osCheck in endProcess
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -1397,7 +1397,7 @@ closeSocket at done return ok none
 
 osCheck is call
 osCheck in closeSocket
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -1602,7 +1602,7 @@ waitFor at waitIt return ok outcome
 
 osCheck is call
 osCheck in waitFor
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -1788,7 +1788,7 @@ prepare at done return ok none
 
 osCheck is call
 osCheck in prepare
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -7488,7 +7488,7 @@ quadCheck suppresses none
 
 osCheck is call
 osCheck in bindAddress
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -8233,7 +8233,7 @@ failPort suppresses none
 
 osCheck is call
 osCheck in listenTarget
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -9193,7 +9193,7 @@ prepareIt suppresses none
 
 osCheck is call
 osCheck in acceptTarget
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -10425,7 +10425,7 @@ nowhere suppresses none
 
 osCheck is call
 osCheck in connectSocket
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -11579,7 +11579,7 @@ readPort suppresses none
 
 osCheck is call
 osCheck in connectTarget
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -12792,7 +12792,7 @@ prepareIt suppresses none
 
 osCheck is call
 osCheck in readTarget
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -13416,7 +13416,7 @@ leftOf suppresses none
 
 osCheck is call
 osCheck in writeTarget
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -13806,7 +13806,7 @@ dropIt suppresses none
 
 osCheck is call
 osCheck in closeTarget
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

@@ -37,7 +37,7 @@ systemCalls is capability
 systemCalls purpose "Authority to take memory from the operating system, give it back, read its clocks, and sleep"
 systemCalls grants use system.calls none
 
-# D-138: every module that reaches the operating system asks `system.linux()`, a constant of the target, and takes
+# D-138: every module that reaches the operating system asks `system.posix()`, a constant of the target, and takes
 # the Windows path (kernel32's functions) or the Linux path (system calls); the backend drops the other. The calls
 # many modules share are here. A Linux system call gives a negative errno when it fails (from -4095 to -1).
 # machine.state bytes 832 to 895 belong to this module: 832 the address the Linux process started with its stack
@@ -584,7 +584,7 @@ nowhere suppresses none
 
 osCheck is call
 osCheck in mapMemory
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -758,7 +758,7 @@ unmapMemory at windowsFree return ok none
 
 osCheck is call
 osCheck in unmapMemory
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

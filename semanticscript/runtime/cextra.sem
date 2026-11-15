@@ -4609,7 +4609,7 @@ findCheck31 suppresses none
 
 readOnLinux is call
 readOnLinux in alignedBlock
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -6151,7 +6151,7 @@ readNowhere suppresses none
 
 readOnLinux is call
 readOnLinux in addProgramName
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -7223,7 +7223,7 @@ readStatus suppresses none
 
 readOnLinux is call
 readOnLinux in assertionFailed
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none

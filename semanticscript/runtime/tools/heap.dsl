@@ -39,7 +39,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -100,7 +100,7 @@ op take "A zeroed block of memory of a number of bytes (at least one) from the p
   set size bytes
   goto allocate
 :allocate
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxTake windowsTake
 :linuxTake
   lockHeap()
@@ -143,7 +143,7 @@ op resize "A block of memory grown or shrunk to a number of bytes, its old bytes
   set size bytes
   goto reallocate
 :reallocate
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxResize windowsResize
 :linuxResize
   lockHeap()
@@ -173,7 +173,7 @@ op give "Give a block of memory back to the process heap; the address 0 is nothi
   emptyCheck: empty = machine.equal(block, anywhere)
   if empty done free
 :free
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxGive windowsGive
 :linuxGive
   lockHeap()

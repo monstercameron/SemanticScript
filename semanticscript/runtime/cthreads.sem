@@ -125,7 +125,7 @@ futexWait at windows return ok none
 
 readOnLinux is call
 readOnLinux in futexWait
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -218,7 +218,7 @@ futexWaitShared at windows return ok none
 
 readOnLinux is call
 readOnLinux in futexWaitShared
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -309,7 +309,7 @@ futexWake at done return ok none
 
 readOnLinux is call
 readOnLinux in futexWake
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -615,7 +615,7 @@ threadMain at run return ok none
 
 readOnLinux is call
 readOnLinux in threadMain
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1101,7 +1101,7 @@ doStoreAddress6 suppresses none
 
 readOnLinux is call
 readOnLinux in createThread
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1605,7 +1605,7 @@ joinThread at release return ok success
 
 readOnLinux is call
 readOnLinux in joinThread
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1917,7 +1917,7 @@ doRunDestructors suppresses none
 
 readOnLinux is call
 readOnLinux in exitThread
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -2097,7 +2097,7 @@ yieldThread at windows return ok none
 
 readOnLinux is call
 readOnLinux in yieldThread
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -2188,7 +2188,7 @@ sleepThread at slept return ok success
 
 readOnLinux is call
 readOnLinux in sleepThread
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -2356,7 +2356,7 @@ threadId at windows return ok wideId
 
 readOnLinux is call
 readOnLinux in threadId
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -3844,7 +3844,7 @@ deadlineWait at sleep return ok no
 
 readOnLinux is call
 readOnLinux in deadlineWait
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -4671,7 +4671,7 @@ readNowhere suppresses none
 
 readOnLinux is call
 readOnLinux in ownBlock
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none

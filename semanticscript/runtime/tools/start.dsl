@@ -29,7 +29,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -63,7 +63,7 @@ op entry "Start the process: set the stack floor, run the program's entry operat
   uses systemCalls
   abi c "refined_entry"
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxStart windowsStart
 :linuxStart
   keepStart: kernel.initialStack(stack)

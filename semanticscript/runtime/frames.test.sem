@@ -873,7 +873,7 @@ closeTestHandle at windowsClose return ok none
 
 osCheck is call
 osCheck in closeTestHandle
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -1037,7 +1037,7 @@ nowhere suppresses none
 
 osCheck is call
 osCheck in resourceTest
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

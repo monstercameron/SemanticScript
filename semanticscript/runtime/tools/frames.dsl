@@ -50,7 +50,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -541,7 +541,7 @@ op releaseHeld "Release every resource still held, as a trap does (D-51): close 
   findHandle: handleSlot = machine.offset(entry, eight=8)
   readHandle: handle = machine.loadAddress(handleSlot)
   childCheck: isChild = compare.equalInt64(kind, two=2)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxRelease windowsRelease
 :linuxRelease in=eachResource
   descriptorOf: value = machine.toInt64(handle)
@@ -779,7 +779,7 @@ op closeTestHandle "Close a handle a test made: CloseHandle, or close on Linux"
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxClose windowsClose
 :linuxClose
   descriptorOf: fd = machine.toInt64(handle)
@@ -802,7 +802,7 @@ test resourceTest "A held resource stays in the table until it is let go, and a 
   findEnds: ends = machine.offset(state, sixtyOneK=61440)
   findWriteEnd: writeEnd = machine.offset(ends, eight=8)
   nowhere: anywhere = machine.zero()
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxPipe windowsPipe
 :linuxPipe
   findFds: fds = machine.offset(ends, thirtyTwo=32)

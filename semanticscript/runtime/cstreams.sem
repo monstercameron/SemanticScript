@@ -824,7 +824,7 @@ findCheck11 suppresses none
 
 readOnLinux is call
 readOnLinux in rawWrite
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -940,7 +940,7 @@ rawRead at windowsRead return ok gotten
 
 readOnLinux is call
 readOnLinux in rawRead
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1248,7 +1248,7 @@ isTerminal at windows return ok character
 
 readOnLinux is call
 readOnLinux in isTerminal
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1387,7 +1387,7 @@ blockSize at windows return ok windowsSize
 
 readOnLinux is call
 readOnLinux in blockSize
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1568,7 +1568,7 @@ seekHandle at windowsDone return ok position
 
 readOnLinux is call
 readOnLinux in seekHandle
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1787,7 +1787,7 @@ closeHandle at closedOk return ok yes
 
 readOnLinux is call
 readOnLinux in closeHandle
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1908,7 +1908,7 @@ standardHandle at windows return ok value
 
 readOnLinux is call
 readOnLinux in standardHandle
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -2719,7 +2719,7 @@ readAppendMode suppresses none
 
 readOnLinux is call
 readOnLinux in flushPendingHeld
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -5386,7 +5386,7 @@ findWriteOnly1 suppresses none
 
 readOnLinux is call
 readOnLinux in openPath
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -10697,7 +10697,7 @@ removeFile at windowsDone return ok windowsStatus
 
 readOnLinux is call
 readOnLinux in removeFile
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -10910,7 +10910,7 @@ renameFile at windows return ok windowsStatus
 
 readOnLinux is call
 readOnLinux in renameFile
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -11109,7 +11109,7 @@ randomBytes at finish return ok none
 
 readOnLinux is call
 readOnLinux in randomBytes
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -11348,7 +11348,7 @@ freeName at windows return ok missing
 
 readOnLinux is call
 readOnLinux in freeName
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -11555,7 +11555,7 @@ makeName at giveUp return ok no
 
 readOnLinux is call
 readOnLinux in makeName
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -12058,7 +12058,7 @@ readName suppresses none
 
 readOnLinux is call
 readOnLinux in temporaryFile
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -12596,7 +12596,7 @@ endProcess at windowsExit return ok none
 
 readOnLinux is call
 readOnLinux in endProcess
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -12727,7 +12727,7 @@ listFor at windows return ok cell
 
 readOnLinux is call
 readOnLinux in listFor
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -12789,7 +12789,7 @@ releaseList at done return ok none
 
 readOnLinux is call
 readOnLinux in releaseList
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -18224,7 +18224,7 @@ doFill suppresses none
 
 readOnLinux is call
 readOnLinux in storeLongDouble
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -29594,7 +29594,7 @@ lockerId at windows return ok wideId
 
 readOnLinux is call
 readOnLinux in lockerId
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -29671,7 +29671,7 @@ waitOn at windows return ok none
 
 readOnLinux is call
 readOnLinux in waitOn
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -29751,7 +29751,7 @@ wakeOn at done return ok none
 
 readOnLinux is call
 readOnLinux in wakeOn
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none

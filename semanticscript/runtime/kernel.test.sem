@@ -640,7 +640,7 @@ giveIt suppresses none
 
 osCheck is call
 osCheck in memoryTest
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

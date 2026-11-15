@@ -29,7 +29,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -64,7 +64,7 @@ op secureBytes "Fill memory with bytes from the operating system's secure random
   let filled Int64 0 mut
   let forever Int64 9223372036854775807
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux eachRead windowsRead
 :windowsRead
   nowhere: anywhere = machine.zero()

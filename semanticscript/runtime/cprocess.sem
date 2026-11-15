@@ -81,7 +81,7 @@ endProcess at windowsExit return ok none
 
 readOnLinux is call
 readOnLinux in endProcess
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -606,7 +606,7 @@ doSetErrno suppresses none
 
 readOnLinux is call
 readOnLinux in setHandler
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -980,7 +980,7 @@ doSetErrno suppresses none
 
 readOnLinux is call
 readOnLinux in raiseSignal
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1237,7 +1237,7 @@ readUnusedRaiseSignal suppresses none
 
 readOnLinux is call
 readOnLinux in abortProcess
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -1513,7 +1513,7 @@ readNowhere suppresses none
 
 readOnLinux is call
 readOnLinux in runCommand
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none

@@ -562,6 +562,26 @@ AARCH64_NUMBERS: dict[str, int] = {
     "accept4": 242, "getrandom": 278, "renameat2": 276, "futex": 98, "gettid": 178, "schedYield": 124,
 }  # D-155: `archPrctl` has no AArch64 number (the thread pointer is a register there); the backend lowers it to a trap
 
+# D-189: macOS on arm64 (Darwin) is reached through the same rows, each keeping its Linux meaning (arguments, a
+# negative errno for a failure): the backend makes each one `svc #0x80` with the BSD number here in x16 and turns the
+# carry flag's errno into a negative result. Calls Darwin has under another shape are made what libSystem makes of
+# them: `newfstatat` is fstatat64, `fstat` fstat64, `getdents64` getdirentries64, `accept4` accept, `pipe2` pipe (two
+# descriptors in x0 and x1) and fcntl, `clockGettime` gettimeofday or the counter register, `nanosleep` select with
+# a timeout, `getcwd` fcntl(F_GETPATH) of ".", `getrandom` getentropy, `exitGroup` exit, `fork` fork (x1 is 1 in the
+# child), `schedYield` the Mach trap swtch_pri. Flags, AT_FDCWD, signal numbers, socket options, and the family of a
+# socket address are given in Linux's terms and made Darwin's. A row with no number here (pidfdOpen, futex, gettid,
+# archPrctl, exit) fails with Darwin's ENOSYS (78). Structures the kernel fills (struct stat, directory entries,
+# sigaction) and errno numbers are Darwin's own: the runtime asks `system.darwin()` where they differ from Linux's.
+DARWIN_NUMBERS: dict[str, int] = {
+    "read": 3, "write": 4, "close": 6, "fstat": 339, "poll": 230, "lseek": 199, "mmap": 197, "munmap": 73,
+    "rtSigaction": 46, "ioctl": 54, "dup2": 90, "nanosleep": 93, "getpid": 20, "fork": 2, "execve": 59,
+    "exitGroup": 1, "wait4": 7, "kill": 37, "fcntl": 92, "flock": 131, "ftruncate": 201, "getcwd": 92,
+    "getdents64": 344, "clockGettime": 116, "openat": 463, "mkdirat": 475, "newfstatat": 470, "unlinkat": 472,
+    "readlinkat": 473, "pipe2": 42, "socket": 97, "connect": 98, "sendto": 133, "recvfrom": 29, "shutdown": 134,
+    "bind": 104, "listen": 106, "setsockopt": 105, "getsockopt": 118, "accept4": 30, "getrandom": 500,
+    "renameat2": 465, "schedYield": 93,
+}
+
 LIBRARY: dict[str, dict] = {
     "machine": {
         # D-174: C's long double, which an `abi library` operation takes and gives as the C ABI passes it: x87's 80
@@ -578,7 +598,11 @@ LIBRARY: dict[str, dict] = {
                     # D-138: whether the program is compiled for Linux, a constant of the target
                     "linux": Sig((), "Bool", effects=_SYS),
                     # D-150: whether the program is compiled for AArch64, where some kernel structures differ
-                    "aarch64": Sig((), "Bool", effects=_SYS)},
+                    "aarch64": Sig((), "Bool", effects=_SYS),
+                    # D-189: whether the program reaches its kernel through system calls (Linux or Darwin), and
+                    # whether that kernel is Darwin's (macOS), whose structures, flags, and errnos differ
+                    "posix": Sig((), "Bool", effects=_SYS),
+                    "darwin": Sig((), "Bool", effects=_SYS)},
     },
     "console": {
         "types": {

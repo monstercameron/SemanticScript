@@ -101,7 +101,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -2056,7 +2056,7 @@ test scopeTest "A library's scope falls back to the runtime's C library only whe
   someWithC: foundWithC = logic.not(noneWithC)
   expectWithC: test.assertTrue(foundWithC)
   giveRecord: heap.give(object)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux openMissing done
 :openMissing
   findPath: missingAt = machine.addressOfString(missingPath)

@@ -92,7 +92,7 @@ endProcess at windowsExit return ok none
 
 osCheck is call
 osCheck in endProcess
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -270,7 +270,7 @@ secureBytes at done return ok none
 
 osCheck is call
 osCheck in secureBytes
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

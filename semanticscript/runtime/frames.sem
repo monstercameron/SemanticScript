@@ -147,7 +147,7 @@ endProcess at windowsExit return ok none
 
 osCheck is call
 osCheck in endProcess
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -3262,7 +3262,7 @@ childCheck suppresses none
 
 osCheck is call
 osCheck in releaseHeld
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

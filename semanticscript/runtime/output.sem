@@ -100,7 +100,7 @@ errorCheck suppresses none
 
 osCheck is call
 osCheck in standardHandle
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -247,7 +247,7 @@ writeAll at stalled return ok unknownStatus
 
 osCheck is call
 osCheck in writeAll
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

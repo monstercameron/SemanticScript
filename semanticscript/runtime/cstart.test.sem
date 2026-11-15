@@ -43,7 +43,7 @@ prepareTest at skip return ok none
 
 readOnLinux is call
 readOnLinux in prepareTest
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none

@@ -48,7 +48,7 @@ op futexWait "Wait while a 32-bit cell holds a value, or until woken (FUTEX_WAIT
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   nowhere = machine.zero()
@@ -67,7 +67,7 @@ op futexWaitShared "Wait while a 32-bit cell holds a value, or until woken, with
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   nowhere = machine.zero()
@@ -86,7 +86,7 @@ op futexWake "Wake up to a count of threads waiting on a cell (FUTEX_WAKE, priva
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux done
 :linux
   nowhere = machine.zero()
@@ -144,7 +144,7 @@ op threadMain "Where a new thread starts: on Windows its block goes in the threa
   uses systemCalls
   abi c "refined_c_thread_main"
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux run slot
 :slot
   slotCell = kernel.stateAt(29000)
@@ -192,7 +192,7 @@ op createThread "thrd_create: start a thread running func(arg) with a thread blo
   machine.storeAddress(functionAt, function)
   calc argumentAt = record + 56
   machine.storeAddress(argumentAt, argument)
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :windows
   slotCell = kernel.stateAt(29000)
@@ -260,7 +260,7 @@ op joinThread "thrd_join: wait for a thread to end (its id cleared on Linux, its
   uses systemCalls
   abi library "thrd_join"
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux waiting windows
 :windows
   calc handleAt = thread + 16
@@ -306,7 +306,7 @@ op exitThread "thrd_exit: run the running thread's thread-specific destructors a
   calc resultAt = record + 8
   machine.storeInt32(resultAt, result)
   runDestructors()
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   system.exit(0)
@@ -359,7 +359,7 @@ op yieldThread "thrd_yield: let another thread run (sched_yield, SwitchToThread)
   uses systemCalls
   abi library "thrd_yield"
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   system.schedYield()
@@ -380,7 +380,7 @@ op sleepThread "thrd_sleep: sleep for a timespec: 0, or -1 when interrupted (the
   let interrupted Int32 -1
   let other Int32 -2
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   result = system.nanosleep(duration, remaining)
@@ -408,7 +408,7 @@ op threadId "The running thread's id: gettid on Linux, GetCurrentThreadId on Win
   effect use system.calls
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   id = system.gettid()
@@ -634,7 +634,7 @@ op deadlineWait "Wait while a 32-bit cell holds a value, or until woken, but not
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   nowhere = machine.zero()
@@ -779,7 +779,7 @@ op ownBlock "The running thread's block, or the address 0 when there are none: o
   uses systemCalls
 :begin
   nowhere = machine.zero()
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   blockCell = kernel.stateAt(2352)
@@ -988,7 +988,7 @@ test threadTest "On Windows a thread runs a C function (strlen) on its argument 
   let strlenName String "strlen"
   let hello String "hello"
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux skip run
 :run
   nameAt = machine.addressOfString(strlenName)

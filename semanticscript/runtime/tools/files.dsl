@@ -115,7 +115,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -309,7 +309,7 @@ op closeFile "Close a file's handle: CloseHandle on Windows, close on Linux; non
   let worked Int32 1
   let refused Int32 0
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxClose windowsClose
 :linuxClose
   descriptorOf: fd = machine.toInt64(handle)
@@ -369,7 +369,7 @@ op winErrno "A Windows error code as the errno Python's winerror_to_errno makes 
   let enotempty Int64 41
 :begin
   widenCode: value = convert.int32ToInt64(code)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux giveErrno mapWindows
 :giveErrno
   return value
@@ -505,7 +505,7 @@ op lastFileError "The system's last error as fs.FileError"
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxError windowsError
 :linuxError
   findSlot: slot = stateAt(countedAt)
@@ -723,7 +723,7 @@ op resolve "A path as Python's os.path.normcase(os.path.realpath(path)) gives it
   set sourceBytes bytes
   goto full
 :full
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxResolve windowsResolve
 :linuxResolve
   linuxSource: linuxFrom = machine.fromInt64(sourceValue)
@@ -961,7 +961,7 @@ op pathSeparator "The path separator: `\\` on Windows, `/` on Linux"
   let slashByte Byte 47
   let backslashByte Byte 92
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux giveSlash giveBackslash
 :giveSlash
   return slashByte
@@ -976,7 +976,7 @@ op isSeparator "Whether a byte is a path separator: on Windows `/` or `\\`, on L
 :begin
   slashCheck: isSlash = compare.equalByte(byte, slash=47)
   backslashCheck: isBackslash = compare.equalByte(byte, backslash=92)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux giveSlash giveEither
 :giveSlash
   return isSlash
@@ -1787,7 +1787,7 @@ op identityKey "D-109: the file itself, `#<volume>:<index high>:<index low>`, in
   uses systemCalls
 :begin
   nowhere: anywhere = machine.zero()
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxIdentity windowsIdentity
 :linuxIdentity
   descriptorOf: fd = machine.toInt64(handle)
@@ -1866,7 +1866,7 @@ op isRegularFile "Whether a path names something that is not a directory (on Lin
   let no Bool false
   let yes Bool true
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxCheck windowsCheck
 :linuxCheck
   statIt: statResult = statPath(path, bytes, yes)
@@ -1923,7 +1923,7 @@ op readUpTo "Read up to a number of bytes from a handle, as a buffered read does
   set want chunk
   goto readSome
 :readSome in=eachRead
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux readLinux readWindows
 :readLinux in=eachRead
   descriptorOf: fd = machine.toInt64(handle)
@@ -1979,7 +1979,7 @@ op seekTo "Move a handle's position: method 0 from the start, 2 from the end; gi
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux seekLinux seekWindows
 :seekLinux
   descriptorOf: fd = machine.toInt64(handle)
@@ -2008,7 +2008,7 @@ op emptyFile "Empty an open file: its position to the start and its end there; g
   uses systemCalls
 :begin
   toStart: moved = seekTo(handle, zero=0, fromStart=0)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux truncateLinux windowsEmpty
 :truncateLinux
   descriptorOf: fd = machine.toInt64(handle)
@@ -2044,7 +2044,7 @@ op openPath "CreateFileW of a UTF-8 path with an access, a share mode, a disposi
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxOpen windowsOpen
 :linuxOpen
   linuxIt: linuxHandle = openPathLinux(path, bytes, access, disposition)
@@ -2125,7 +2125,7 @@ op keptCode "The error code openPath kept (on Linux, the errno)"
   uses systemCalls
 :begin
   findCounted: counted = stateAt(countedAt)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxCode windowsCode
 :linuxCode
   readErrno: errno = machine.loadInt64(counted)
@@ -2745,7 +2745,7 @@ op fsExists "fs.exists: whether a path names something, links followed; an empty
   storeNo: machine.storeInt64(results, zero)
   return
 :probe
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux probeLinux probeWindows
 :probeLinux
   statIt: statResult = statPath(path, bytes, yes)
@@ -2805,7 +2805,7 @@ op fsRemove "fs.remove: delete a file; busy while it is open under this or anoth
   busyStatus: status1 = slots.failWith(payload, busy, zero)
   return status1
 :probe
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux probeLinux probeWindows
 :probeLinux
   statIt: statResult = statPath(path, bytes, yes)
@@ -2839,7 +2839,7 @@ op fsRemove "fs.remove: delete a file; busy while it is open under this or anoth
   if isIdentHeld refuseBusy delete
 :delete
   giveCell: heap.give(cell)
-  osDeleteCheck: deleteOnLinux = system.linux()
+  osDeleteCheck: deleteOnLinux = system.posix()
   if deleteOnLinux deleteLinux deleteWindows
 :deleteLinux
   copyPath: linuxName = cPath(path, bytes)
@@ -2879,7 +2879,7 @@ op fsCreateDirectory "fs.createDirectory: make a directory"
 :begin
   readPath: path = textAt(shape, args, zero=0)
   readBytes: bytes = textBytes(shape, args, zero)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux makeLinux makeWindows
 :makeLinux
   copyPath: linuxName = cPath(path, bytes)
@@ -2920,7 +2920,7 @@ op fsRemoveDirectory "fs.removeDirectory: remove an empty directory"
 :begin
   readPath: path = textAt(shape, args, zero=0)
   readBytes: bytes = textBytes(shape, args, zero)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux removeLinux removeWindows
 :removeLinux
   copyPath: linuxName = cPath(path, bytes)
@@ -2969,7 +2969,7 @@ op fsLock "fs.lock: take an exclusive lock on a file, trying every 50 ms until t
   readDeadline: deadline = slots.argOf(shape, args, one=1)
   goto eachTry
 :eachTry loop=while max=forever
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux lockLinux lockWindows
 :lockLinux in=eachTry
   descriptorOf: fd = machine.toInt64(handle)
@@ -3032,7 +3032,7 @@ op fsUnlock "fs.unlock: give back a file's lock; one not held is denied, as the 
   readHandle: fileHandle = slots.argOf(shape, args, zero=0)
   findFile: file = handles.objectOf(fileHandle, kindFile)
   readOs: handle = link(file, zero)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux unlockLinux unlockWindows
 :unlockLinux
   descriptorOf: fd = machine.toInt64(handle)
@@ -3121,7 +3121,7 @@ op fsListDirectory "fs.listDirectory: the names in a directory, but `.` and `..`
 :begin
   readPath: path = textAt(shape, args, zero=0)
   readBytes: bytes = textBytes(shape, args, zero)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux listLinux listWindows
 :listLinux
   linuxIt: linuxStatus = listDirectoryLinux(path, bytes, shape, args, results, payload)
@@ -3584,7 +3584,7 @@ op cleanUp "Remove a file or an empty directory a test may have left, whatever i
 :begin
   findPath: pathAt = machine.addressOfString(path)
   pathLength: bytes = string.byteLength(path)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux cleanLinux cleanWindows
 :cleanLinux
   copyPath: linuxName = cPath(pathAt, bytes)
@@ -3695,7 +3695,7 @@ test fileTest "Files are made, written, read, appended, emptied, locked, listed 
   unlockIt: unlocked = fsUnlock(shape13, args, payload)
   expectUnlocked: expectStatus(zero, unlocked)
   unlockAgain: notLocked = fsUnlock(shape13, args, payload)
-  unlockOs: unlockOnLinux = system.linux()
+  unlockOs: unlockOnLinux = system.posix()
   if unlockOnLinux linuxUnlocked windowsUnlocked
 :linuxUnlocked
   expectLinuxUnlocked: expectStatus(zero32Status=0, notLocked)
@@ -3806,7 +3806,7 @@ test pathTest "Paths resolve as Python's normcase(realpath()) does, scopes take 
   plainAddress: plainAtValue = machine.toInt64(plainAt)
   set plainValue plainAtValue
   set plainLength plainBytes
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxPlain resolveIt
 :linuxPlain
   findLinuxPlain: linuxPlainAt = machine.addressOfString(plainLinux)

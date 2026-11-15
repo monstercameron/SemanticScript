@@ -1388,7 +1388,7 @@ pathLength suppresses none
 
 osCheck is call
 osCheck in cleanUp
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -2474,7 +2474,7 @@ unlockAgain suppresses none
 
 unlockOs is call
 unlockOs in fileTest
-unlockOs invokes system.linux
+unlockOs invokes system.posix
 unlockOs argument none
 unlockOs result unlockOnLinux Bool
 unlockOs ownedBy none
@@ -3540,7 +3540,7 @@ plainAddress suppresses none
 
 osCheck is call
 osCheck in pathTest
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

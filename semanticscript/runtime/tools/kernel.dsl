@@ -7,7 +7,7 @@ capability memoryAccess "Authority to keep what the process was started with in 
 
 capability systemCalls "Authority to take memory from the operating system, give it back, read its clocks, and sleep" use system.calls none
 
-## D-138: every module that reaches the operating system asks `system.linux()`, a constant of the target, and takes
+## D-138: every module that reaches the operating system asks `system.posix()`, a constant of the target, and takes
 ## the Windows path (kernel32's functions) or the Linux path (system calls); the backend drops the other. The calls
 ## many modules share are here. A Linux system call gives a negative errno when it fails (from -4095 to -1).
 ## machine.state bytes 832 to 895 belong to this module: 832 the address the Linux process started with its stack
@@ -124,7 +124,7 @@ op mapMemory "Zeroed memory of a number of bytes from the operating system, read
   uses systemCalls
 :begin
   nowhere: anywhere = machine.zero()
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxMap windowsMap
 :linuxMap
   mapIt: mapped = system.mmap(anywhere, bytes, readWrite=3, privateAnonymous=34, noFile=-1, zero=0)
@@ -165,7 +165,7 @@ op unmapMemory "Give memory back to the operating system: all VirtualAlloc gave 
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxUnmap windowsFree
 :linuxUnmap
   unmapIt: unmapped = system.munmap(address, bytes)
@@ -311,7 +311,7 @@ test memoryTest "Memory from the system is zeroed and writable, and goes back; o
   readAgain: again = machine.loadInt64(lastAt)
   expectWritten: test.assertEqualInt64(answer, again)
   giveIt: unmapMemory(block, sixtyFourK)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxOnly done
 :linuxOnly
   mapStackIt: stack = mapStack(sixtyFourK)

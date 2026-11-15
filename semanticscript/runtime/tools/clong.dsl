@@ -65,7 +65,7 @@ op format "The format of long double here: 0 a double (Windows), 1 x87's 80 bits
   let extended Int64 1
   let quad Int64 2
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :windows
   return double
@@ -2196,7 +2196,7 @@ test exactTest "The exact long double functions on this system's format: signs, 
   test.assertEqualInt64(0, mode)
   layout = format()
   precision = precisionOf(layout)
-  onLinux = system.linux()
+  onLinux = system.posix()
   onArm = system.aarch64()
   calc expectedPrecision = 53 + choose(onLinux, 11) + choose(onLinux && onArm, 49)
   test.assertEqualInt64(expectedPrecision, precision)

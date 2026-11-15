@@ -4265,7 +4265,7 @@ checkLibc suppresses none
 
 osCheck is call
 osCheck in lookupTest
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

@@ -751,7 +751,7 @@ op alignedBlock "A zeroed block of a size whose address is a multiple of a power
 :alignmentCheck
   when alignment > 1099511627776 refuse systemCheck
 :systemCheck
-  onLinux = system.linux()
+  onLinux = system.posix()
   when onLinux linuxLimit windowsLimit
 :linuxLimit
   when alignment <= 32 plain linuxSmall
@@ -949,7 +949,7 @@ op addProgramName "Add the program's short name, argv[0] after its last `/` (and
   let quoted Bool false mut
 :begin
   nowhere = machine.zero()
-  onLinux = system.linux()
+  onLinux = system.posix()
   when onLinux linuxName windowsName
 :linuxName
   count = kernel.argumentCount()
@@ -1115,7 +1115,7 @@ op assertionFailed "__assert_fail: write glibc's message to standard error, `<pr
   messageBytes = wide.builderLength(builder)
   handle = output.standardHandle(2)
   status = output.writeAll(handle, message, messageBytes)
-  onLinux = system.linux()
+  onLinux = system.posix()
   when onLinux linuxAbort windowsAbort
 :linuxAbort
   action = heap.take(32)

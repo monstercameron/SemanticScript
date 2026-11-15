@@ -264,7 +264,7 @@ doAssertEqualInt642 suppresses none
 
 onLinux is call
 onLinux in signalTest
-onLinux invokes system.linux
+onLinux invokes system.posix
 onLinux argument none
 onLinux result linux Bool
 onLinux ownedBy none

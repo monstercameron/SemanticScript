@@ -279,7 +279,7 @@ format at intel return ok extended
 
 readOnLinux is call
 readOnLinux in format
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none

@@ -27,7 +27,7 @@ op prepareProgram "Make the process ready for a C program's main: keep argc, arg
 :begin
   kernel.initialStack(stack)
   clibrary.prepare()
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux done
 :linux
   onArm = system.aarch64()
@@ -71,7 +71,7 @@ test prepareTest "Preparing for a C program keeps the stack's argc and argv and 
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux skip run
 :run
   stack = heap.take(64)

@@ -69,7 +69,7 @@ findOutput suppresses none
 
 osCheck is call
 osCheck in standardHandleTest
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -295,7 +295,7 @@ expectNothing suppresses none
 
 osCheck is call
 osCheck in writeAllTest
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

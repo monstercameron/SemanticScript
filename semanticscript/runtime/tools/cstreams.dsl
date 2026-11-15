@@ -192,7 +192,7 @@ op rawWrite "Write bytes to a handle, all of them; whether it worked (errno set 
 :wrote
   return true
 :failedWrite
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linuxCode windowsCode
 :linuxCode
   clibrary.setErrno(status)
@@ -214,7 +214,7 @@ op rawRead "Read up to a number of bytes from a handle: how many (0 at the end o
   let nothing Int64 0
   let failure Int64 -1
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   result = system.read(handle, buffer, bytes)
@@ -265,7 +265,7 @@ op isTerminal "Whether a handle is a terminal: TCGETS works on it on Linux, GetF
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   settings = heap.take(64)
@@ -289,7 +289,7 @@ op blockSize "The buffer a fully buffered stream gets: the file's st_blksize on 
   let fallback Int64 8192
   let windowsSize Int64 4096
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   status = heap.take(160)
@@ -317,7 +317,7 @@ op seekHandle "Move a handle's file position (whence 0 from the start, 1 from he
   uses systemCalls
   let failure Int64 -1
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   result = system.lseek(handle, offset, whence)
@@ -355,7 +355,7 @@ op closeHandle "Close a handle: whether it worked (errno set when not)"
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   result = system.close(handle)
@@ -381,7 +381,7 @@ op standardHandle "The handle of standard input (0), output (1), or error (2): t
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   return which
@@ -522,7 +522,7 @@ op flushPendingHeld "Write the bytes waiting in a stream's buffer: 0, or -1 when
 :write
   setField(stream, 48, 0)
   appendMode = hasFlag(stream, appending)
-  onLinux = system.linux()
+  onLinux = system.posix()
   calc seekFirst = appendMode && !onLinux
   handle = field(stream, 8)
   if seekFirst toEnd writeIt
@@ -862,7 +862,7 @@ op openPath "Open a file for a mode code: its handle, or -1 (errno set)"
 :begin
   calc both = (code & 3) == 3
   calc writeOnly = (code & 3) == 2
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   when both linuxBoth linuxOne
@@ -1738,7 +1738,7 @@ op removeFile "remove: delete a file, or an empty directory: 0, or -1 (errno set
   uses systemCalls
   abi library "remove"
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   result = system.unlinkat(-100, path, 0)
@@ -1775,7 +1775,7 @@ op renameFile "rename: give a file another name, replacing a file that had it: 0
   uses systemCalls
   abi library "rename"
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   result = system.renameat2(-100, oldPath, -100, newPath, 0)
@@ -1802,7 +1802,7 @@ op randomBytes "Fill bytes with random values: getrandom on Linux; on Windows a 
   let at Int64 0 mut
   let state UInt64 0 mut
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   system.getrandom(target, bytes, 0)
@@ -1835,7 +1835,7 @@ op freeName "Whether no file has a name: newfstatat says ENOENT on Linux, GetFil
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   status = heap.take(160)
@@ -1865,7 +1865,7 @@ op makeName "Write a name no file has into a buffer: `/tmp/file` and six letters
   let tries Int64 0 mut
   let at Int64 0 mut
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linuxName windowsName
 :linuxName
   linuxAt = machine.addressOfString(linuxPrefix)
@@ -1943,7 +1943,7 @@ op temporaryFile "tmpfile: a new file opened `w+b` that is removed when it is cl
   nowhere = machine.zero()
   calc code = readable | writable
   name = heap.take(64)
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   directoryAt = machine.addressOfString(tmpDirectory)
@@ -2030,7 +2030,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   calc wideCode = convert.int32ToInt64(code)
@@ -2063,7 +2063,7 @@ op listFor "The address of a va_list a v-function was handed: on Linux the argum
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   return list
@@ -2079,7 +2079,7 @@ op releaseList "Give back the cell listFor made on Windows"
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux done windows
 :windows
   heap.give(cell)
@@ -2800,7 +2800,7 @@ op storeLongDouble "Store a double as a long double where an argument points: x8
   let top UInt64 0 mut
 :begin
   machine.fill(target, 0, 16)
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :windows
   machine.storeFloat64(target, value)
@@ -4822,7 +4822,7 @@ op lockerId "The running thread's id: gettid on Linux, GetCurrentThreadId on Win
   effect use system.calls
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   id = system.gettid()
@@ -4839,7 +4839,7 @@ op waitOn "Wait on the lock's word: a futex wait while it holds 2 on Linux, a mi
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux windows
 :linux
   nowhere = machine.zero()
@@ -4856,7 +4856,7 @@ op wakeOn "Wake a waiter on the lock's word: a futex wake on Linux; on Windows t
   uses memoryAccess
   uses systemCalls
 :begin
-  onLinux = system.linux()
+  onLinux = system.posix()
   if onLinux linux done
 :linux
   nowhere = machine.zero()

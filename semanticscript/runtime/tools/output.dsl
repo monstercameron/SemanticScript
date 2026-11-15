@@ -23,7 +23,7 @@ op standardHandle "The operating system's handle of standard error for stream 2,
   uses systemCalls
 :begin
   errorCheck: isError = compare.equalInt32(stream, two=2)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxStream windowsStream
 :linuxStream
   if isError linuxError linuxOutput
@@ -59,7 +59,7 @@ op writeAll "Write a range of bytes to a handle, as many WriteFile calls as it t
   let okStatus Int32 0
   let unknownStatus Int32 1
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxWrite windowsWrite
 :linuxWrite
   linuxIt: linuxStatus = writeAllLinux(handle, text, bytes)
@@ -220,7 +220,7 @@ test standardHandleTest "Stream 2 is standard error and every other stream stand
 :begin
   findError: errorHandle = standardHandle(two=2)
   findOutput: outputHandle = standardHandle(one=1)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxHandles windowsHandles
 :linuxHandles
   errorDescriptor: errorFd = machine.toInt64(errorHandle)
@@ -252,7 +252,7 @@ test writeAllTest "Writing nothing succeeds; writing to no handle at all reports
   writeNothing: nothingStatus = writeAll(errorHandle, textAt, zero=0)
   nothingWide: nothingValue = convert.int32ToInt64(nothingStatus)
   expectNothing: test.assertEqualInt64(zero, nothingValue)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux noDescriptor writeNowhereStep
 :noDescriptor
   set nowhereValue minusOne

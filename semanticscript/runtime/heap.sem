@@ -121,7 +121,7 @@ endProcess at windowsExit return ok none
 
 osCheck is call
 osCheck in endProcess
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -411,7 +411,7 @@ bigCheck suppresses none
 
 osCheck is call
 osCheck in take
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -619,7 +619,7 @@ bigCheck suppresses none
 
 osCheck is call
 osCheck in resize
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -775,7 +775,7 @@ emptyCheck suppresses none
 
 osCheck is call
 osCheck in give
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

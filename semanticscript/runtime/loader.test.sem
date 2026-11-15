@@ -558,7 +558,7 @@ giveRecord suppresses none
 
 osCheck is call
 osCheck in scopeTest
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

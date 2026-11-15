@@ -191,7 +191,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -420,7 +420,7 @@ op cLibraryName "Whether a library name means the C library, which ffi.open bind
   checkC: isC = sameText(name, bytes, cText)
   if isC named linuxCheck
 :linuxCheck
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux checkM notNamed
 :checkM
   matchM: isM = sameText(name, bytes, mText)
@@ -2897,7 +2897,7 @@ op environmentValue "getenv: the address of a variable's value as a C string, or
   emptyCheck: emptyName = compare.equalInt64(bytes, zero=0)
   if emptyName absent systemCheck
 :systemCheck
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxLookUp windowsLookUp
 :linuxLookUp
   readVector: vector = kernel.environmentVector()
@@ -2967,7 +2967,7 @@ op abortProcess "abort: on Linux SIGABRT with its default action, so the process
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxAbort windowsAbort
 :linuxAbort
   takeAction: action = heap.take(thirtyTwo=32)
@@ -4151,7 +4151,7 @@ test lookupTest "The table finds abs and stdout, which holds 1; a name the libra
   findLibc: libcAt = machine.addressOfString(libcName)
   libcLength: libcBytes = string.byteLength(libcName)
   checkLibc: isLibc = cLibraryName(libcAt, libcBytes)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   sameAnswer: agrees = logic.xor(isLibc, onLinux)
   disagree: expected = logic.not(agrees)
   expectLibc: test.assertTrue(expected)

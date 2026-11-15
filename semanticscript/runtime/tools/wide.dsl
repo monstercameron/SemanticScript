@@ -131,7 +131,7 @@ op lowercase "Text in lower case as Python's normcase gives it on Windows (LCMap
   let slash Byte 47
   let backslash Byte 92
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux copyLinux lowerWindows
 :copyLinux
   withNul: room = math.addInt64(bytes, one=1)
@@ -334,7 +334,7 @@ test wideTest "Text goes to UTF-16 and back unchanged, lower case is the invaria
   findLength: lengthAt = machine.offset(state, scratchAt=61440)
   findMixed: mixedAt = machine.addressOfString(mixed)
   mixedLength: mixedBytes = string.byteLength(mixed)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxLower windowsWide
 :linuxLower
   copyIt: copied = lowercase(mixedAt, mixedBytes, lengthAt)

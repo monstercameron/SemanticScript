@@ -72,7 +72,7 @@ op endProcess "End the process with an exit code: ExitProcess on Windows, exit_g
   effect use system.calls
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExit windowsExit
 :linuxExit
   widenCode: wideCode = convert.int32ToInt64(code)
@@ -317,7 +317,7 @@ op closeSocket "Close a socket (closesocket, or close on Linux) and its Windows 
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux closeLinux closeWindows
 :closeLinux
   closeIt: closed = system.close(socket)
@@ -361,7 +361,7 @@ op waitFor "Wait through the scheduler for a socket to be ready: its event (Wind
   uses systemCalls
   let external machine.Address unset mut
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxExternal windowsExternal
 :windowsExternal
   readEvent: event = eventOf(object)
@@ -409,7 +409,7 @@ op prepare "Ready a socket for an attempt: reset its Windows event, so what the 
   uses memoryAccess
   uses systemCalls
 :begin
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux done reset
 :reset
   readEvent: event = eventOf(object)
@@ -1393,7 +1393,7 @@ op bindAddress "The address `net.listen` binds a host to, as Python's setipaddr 
   quadCheck: isQuad = compare.equalInt64(quad, one=1)
   if isQuad give named
 :named
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxName windowsName
 :linuxName
   resolveIt: outcome = resolve(host, hostBytes)
@@ -1491,7 +1491,7 @@ op listenTarget "net.listen: a TCP listener on the scope's host (127.0.0.1 when 
   failPort: failText(portText="`net.listen` failed inside the runtime: OverflowError('bind(): port must be 0-65535.')")
   return ok
 :socket
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxSocket windowsSocket
 :linuxSocket
   socketIt: fd = system.socket(two=2, stream, zero)
@@ -1626,7 +1626,7 @@ op acceptTarget "net.accept: the next connection to a listener, waiting through 
   if past giveTimedOut attempt
 :attempt in=eachTry
   prepareIt: prepare(object)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxAccept windowsAccept
 :linuxAccept in=eachTry
   acceptIt: fd = system.accept4(socket, anywhere, anywhere, acceptFlags)
@@ -1847,7 +1847,7 @@ op connectSocket "Connect a new non-blocking socket to an address and port, wait
   let done Int64 0
 :begin
   nowhere: anywhere = machine.zero()
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxSocket windowsSocket
 :linuxSocket
   socketIt: fd = system.socket(family, stream, zero=0)
@@ -2019,7 +2019,7 @@ op connectTarget "net.connect: a connection to `host:port` as host.py's create_c
 :resolveHost
   findPort: portSlot = kernel.stateAt(portAt=1416)
   readPort: port = machine.loadInt64(portSlot)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxResolve windowsResolve
 :linuxResolve
   resolveIt: outcome = resolve(text, hostBytes)
@@ -2201,7 +2201,7 @@ op readTarget "net.read: up to a number of bytes a connection has (at least one)
   if past giveTimedOut attempt
 :attempt in=eachTry
   prepareIt: prepare(object)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxRead windowsRead
 :linuxRead in=eachTry
   receiveIt: got = system.recvfrom(socket, buffer, size, zero, anywhere, anywhere)
@@ -2301,7 +2301,7 @@ op writeTarget "net.write: every byte to a connection, as sendall sends them wit
   prepareIt: prepare(object)
   findPlace: place = machine.offset(data, sent)
   leftOf: left = math.subtractInt64(bytes, sent)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxSend windowsSend
 :linuxSend in=eachSend
   sendIt: got = system.sendto(socket, place, left, noSignal, anywhere, zero)
@@ -2379,7 +2379,7 @@ op closeTarget "net.close: shut a connection down both ways (its failure ignored
   readSocket: socket = socketOf(object)
   readEvent: event = eventOf(object)
   dropIt: handles.drop(handle)
-  osCheck: onLinux = system.linux()
+  osCheck: onLinux = system.posix()
   if onLinux linuxShutdown windowsShutdown
 :linuxShutdown
   shutdownIt: shut = system.shutdown(socket, both=2)

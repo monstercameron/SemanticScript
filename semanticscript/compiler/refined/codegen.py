@@ -129,12 +129,63 @@ class _AsmModule(ir.Module):
 
 
 def target_os(triple: str) -> str:
-    """`windows`, `linux`, or `other`, from an LLVM target triple."""
+    """`windows`, `linux`, `darwin` (macOS, D-189), or `other`, from an LLVM target triple."""
     if "windows" in triple or "mingw" in triple or "win32" in triple:
         return "windows"
     if "linux" in triple:
         return "linux"
+    if "apple" in triple or "darwin" in triple or "macos" in triple:
+        return "darwin"
     return "other"
+
+
+def _macho(lines: list[str]) -> list[str]:
+    """D-189: module assembly written for ELF made Mach-O's: a C symbol's name takes a leading underscore
+    (`refined_entry` is `_refined_entry`), and there is no `.type` directive."""
+    import re as _re
+    return [_re.sub(r"\brefined_(\w+)", r"_refined_\1", line) for line in lines if not line.startswith(".type")]
+
+
+# D-189: the process entries of a macOS executable with no C library. `_start` is the entry of an executable the
+# kernel starts itself (LC_UNIXTHREAD): the stack holds argc, argv, envp, and the apple strings, as Linux's holds
+# argc, argv, and envp. `_refined_dyld_start` is the entry dyld calls (LC_MAIN) as main(argc, argv, envp, apple):
+# argv is still the kernel's, so the word before it is the stack's argc, and `refined_entry` is given that address.
+_DARWIN_START = [
+    ".text",
+    ".p2align 4",
+    ".globl _start",
+    "_start:",
+    "  mov x29, xzr",
+    "  mov x30, xzr",
+    "  mov x0, sp",
+    "  and x9, x0, #-16",
+    "  mov sp, x9",
+    "  bl _refined_entry",
+    "  brk #0",
+    ".p2align 4",
+    ".globl _refined_dyld_start",
+    "_refined_dyld_start:",
+    "  sub x9, x1, #8",
+    "  str x0, [x9]",
+    "  mov x0, x9",
+    "  mov x29, xzr",
+    "  mov x9, sp",
+    "  and x9, x9, #-16",
+    "  mov sp, x9",
+    "  bl _refined_entry",
+    "  brk #0",
+]
+# D-189: what LLVM's code may call on Darwin that the runtime does not define under that name: `bzero`, which LLVM
+# makes of a memset of zero there
+_DARWIN_SUPPORT = [
+    ".text",
+    ".p2align 4",
+    ".globl _bzero",
+    "_bzero:",
+    "  mov x2, x1",
+    "  mov w1, #0",
+    "  b _memset",
+]
 
 
 # D-139: the runtime's own stacks on Linux x86_64 (System V): the callee-saved registers go on the running stack,
@@ -612,6 +663,10 @@ class Backend:
         if self.options.get("runtime_object") and "refined_entry" in self.abi and self.linux_arch():
             # D-139: the process entry calls refined_entry
             self.module.asm_parts["start"] = _AARCH64_START if self.linux_arch() == "aarch64" else _X86_64_START
+        if self.options.get("runtime_object") and "refined_entry" in self.abi and self.darwin():
+            self.module.asm_parts["start"] = _DARWIN_START  # D-189
+            if "memset" in self.abi:
+                self.module.asm_parts["support"] = _DARWIN_SUPPORT
         return self.module
 
     # ------------------------------------------------------------ the operating system (D-122, D-138, D-139)
@@ -631,6 +686,286 @@ class Backend:
     def linux_x86_64(self) -> bool:
         return self.linux_arch() == "x86_64"
 
+    def darwin(self) -> bool:
+        """D-189: whether the module is for macOS on arm64, the one Darwin the runtime has system calls for."""
+        return self.os == "darwin" and self.module.triple.split("-")[0] in ("aarch64", "arm64")
+
+    def posix(self) -> bool:
+        """D-189: whether the module reaches its kernel through system calls: Linux (D-138) or Darwin."""
+        return self.os == "linux" or self.os == "darwin"
+
+    @staticmethod
+    def entry_alloca(b: ir.IRBuilder, t: ir.Type, name: str):
+        """An alloca in the function's entry block, so a call in a loop does not grow the stack."""
+        entry = b.function.entry_basic_block
+        eb = ir.IRBuilder(entry)
+        eb.position_at_start(entry)
+        return eb.alloca(t, name=name)
+
+    def darwin_svc(self, b: ir.IRBuilder, number: int, values: list, text: str = ""):
+        """D-189: one Darwin system call on arm64: the number in x16 (a BSD number, or a negative Mach trap's), the
+        arguments in x0 to x7, `svc #0x80`; a failure sets the carry flag with the errno in x0, which becomes the
+        negative result Linux's calls give. Gives (x0, x1): some calls give a second value in x1."""
+        regs = ["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"][:len(values)]
+        constraint = ",".join(["={x0}", "={x1}", "{x16}"] + [f"{{{r}}}" for r in regs] + ["~{memory}", "~{cc}"])
+        pair = ir.LiteralStructType([I64, I64])
+        fty = ir.FunctionType(pair, [I64] * (len(values) + 1))
+        out = b.asm(fty, text or "svc #0x80\ncneg x0, x0, cs", constraint, [I64(number)] + list(values),
+                    side_effect=True)
+        return b.extract_value(out, 0), b.extract_value(out, 1)
+
+    def darwin_syscall(self, b: ir.IRBuilder, values: list, name: str):
+        """D-189: a Linux `system` row on Darwin, with Linux's meaning: the arguments Linux takes (its flags, its
+        AT_FDCWD, its clock numbers, its socket address layout) made Darwin's, and the call made the one, or the few,
+        that do the same there (DARWIN_NUMBERS). The result is Linux's shape, a negative errno for a failure; the errno
+        is Darwin's own."""
+        from .library import DARWIN_NUMBERS
+        if name == "schedYield":  # swtch_pri(0), the Mach trap sched_yield calls
+            self.darwin_svc(b, -60, [I64(0)], "svc #0x80")
+            return I64(0)
+        if name not in DARWIN_NUMBERS:  # a call Darwin does not have (pidfd_open, futex, ...) fails with ENOSYS
+            return I64(-78)
+        number = DARWIN_NUMBERS[name]
+        v = list(values)
+
+        def at_fd(x):  # Linux's AT_FDCWD (-100) is Darwin's -2
+            return b.select(b.icmp_signed("==", x, I64(-100)), I64(-2), x)
+
+        def bits(x, table):  # Linux flag bits made Darwin's; bits not named are kept as they are
+            out = x
+            for linux, darwin in table:
+                out = b.and_(out, I64(~linux & 0xFFFFFFFFFFFFFFFF))
+            for linux, darwin in table:
+                has = b.icmp_unsigned("!=", b.and_(x, I64(linux)), I64(0))
+                out = b.or_(out, b.select(has, I64(darwin), I64(0)))
+            return out
+
+        def call(n, args):
+            return self.darwin_svc(b, n, args)[0]
+
+        def descriptor_flags(fd, linux_flags):
+            """SOCK_CLOEXEC or O_CLOEXEC (0x80000) and SOCK_NONBLOCK or O_NONBLOCK (0x800) set on a descriptor
+            with fcntl, where Linux takes them with the call that makes it."""
+            with b.if_then(b.icmp_unsigned("!=", b.and_(linux_flags, I64(0x80000)), I64(0))):
+                call(92, [fd, I64(2), I64(1)])  # F_SETFD FD_CLOEXEC
+            with b.if_then(b.icmp_unsigned("!=", b.and_(linux_flags, I64(0x800)), I64(0))):
+                old = call(92, [fd, I64(3), I64(0)])  # F_GETFL
+                call(92, [fd, I64(4), b.or_(old, I64(4))])  # F_SETFL O_NONBLOCK
+
+        def failed(x):
+            return b.icmp_signed("<", x, I64(0))
+
+        if name == "fork":  # x1 is 1 in the child, whose result is then 0
+            text = "svc #0x80\ncneg x0, x0, cs\nb.cs 1f\ncbz x1, 1f\nmov x0, xzr\n1:"
+            return self.darwin_svc(b, number, [], text)[0]
+        if name == "pipe2":  # pipe() gives the two descriptors in x0 and x1
+            fds = b.inttoptr(v[0], I32.as_pointer())
+            first, second = self.darwin_svc(b, number, [])
+            with b.if_then(b.not_(failed(first))):
+                b.store(b.trunc(first, I32), fds)
+                b.store(b.trunc(second, I32), b.gep(fds, [I32(1)]))
+                descriptor_flags(first, v[1])
+                descriptor_flags(second, v[1])
+            return b.select(failed(first), first, I64(0))
+        if name == "openat":
+            # O_APPEND, O_NONBLOCK, O_CREAT, O_TRUNC, O_EXCL, O_NOCTTY, O_DIRECTORY and O_NOFOLLOW (AArch64's
+            # generic values, as the runtime has them under system.aarch64()), O_CLOEXEC
+            table = [(0x400, 0x8), (0x800, 0x4), (0x40, 0x200), (0x200, 0x400), (0x80, 0x800), (0x100, 0x20000),
+                     (0x4000, 0x100000), (0x8000, 0x100), (0x80000, 0x1000000)]
+            return call(number, [at_fd(v[0]), v[1], bits(v[2], table), v[3]])
+        if name in ("mkdirat", "readlinkat"):
+            return call(number, [at_fd(v[0])] + v[1:])
+        if name == "unlinkat":  # AT_REMOVEDIR
+            return call(number, [at_fd(v[0]), v[1], bits(v[2], [(0x200, 0x80)])])
+        if name == "newfstatat":  # fstatat64; AT_SYMLINK_NOFOLLOW
+            return call(number, [at_fd(v[0]), v[1], v[2], bits(v[3], [(0x100, 0x20)])])
+        if name == "renameat2":  # renameat: no flags on Darwin (the runtime passes none)
+            return call(number, [at_fd(v[0]), v[1], at_fd(v[2]), v[3]])
+        if name == "mmap":  # MAP_ANONYMOUS; MAP_NORESERVE, MAP_STACK, and MAP_GROWSDOWN are dropped
+            flags = bits(v[3], [(0x20, 0x1000), (0x4000, 0), (0x20000, 0), (0x100, 0)])
+            return call(number, [v[0], v[1], v[2], flags, v[4], v[5]])
+        if name == "getdents64":  # getdirentries64(fd, buffer, bytes, &position)
+            position = self.entry_alloca(b, I64, name="direntposition")
+            return call(number, v + [b.ptrtoint(position, I64)])
+        if name == "clockGettime":
+            return self.darwin_clock(b, v[0], v[1])
+        if name == "nanosleep":  # select(0, NULL, NULL, NULL, &timeval)
+            spec = b.inttoptr(v[0], I64.as_pointer())
+            seconds, nanoseconds = b.load(spec), b.load(b.gep(spec, [I32(1)]))
+            timeval = self.entry_alloca(b, ir.ArrayType(I64, 2), name="sleepval")
+            b.store(seconds, b.gep(timeval, [I32(0), I32(0)]))
+            b.store(b.sdiv(b.add(nanoseconds, I64(999)), I64(1000)), b.gep(timeval, [I32(0), I32(1)]))
+            slept = call(number, [I64(0), I64(0), I64(0), I64(0), b.ptrtoint(timeval, I64)])
+            return b.select(failed(slept), slept, I64(0))
+        if name == "getcwd":
+            return self.darwin_getcwd(b, v[0], v[1])
+        if name == "poll":  # with no descriptors, a sleep: select(0, NULL, NULL, NULL, timeout or NULL)
+            result = self.entry_alloca(b, I64, name="pollresult")
+            with b.if_else(b.icmp_signed("==", v[1], I64(0))) as (sleep, descriptors):
+                with sleep:
+                    timeval = self.entry_alloca(b, ir.ArrayType(I64, 2), name="pollval")
+                    b.store(b.sdiv(v[2], I64(1000)), b.gep(timeval, [I32(0), I32(0)]))
+                    b.store(b.mul(b.srem(v[2], I64(1000)), I64(1000)), b.gep(timeval, [I32(0), I32(1)]))
+                    forever = b.icmp_signed("<", v[2], I64(0))
+                    limit = b.select(forever, I64(0), b.ptrtoint(timeval, I64))
+                    b.store(call(93, [I64(0), I64(0), I64(0), I64(0), limit]), result)
+                with descriptors:
+                    b.store(call(number, v), result)
+            return b.load(result)
+        if name == "getrandom":  # getentropy gives at most 256 bytes and gives 0
+            count = b.select(b.icmp_signed(">", v[1], I64(256)), I64(256), v[1])
+            got = call(number, [v[0], count])
+            return b.select(failed(got), got, count)
+        if name in ("kill", "rtSigaction"):  # signal numbers that differ (SIGBUS, SIGUSR1, SIGCHLD, ...)
+            signal = v[1] if name == "kill" else v[0]
+            for linux, darwin in ((7, 10), (10, 30), (12, 31), (17, 20), (18, 19), (19, 17), (20, 18), (23, 16),
+                                  (31, 12)):
+                signal = b.select(b.icmp_signed("==", signal, I64(linux)), I64(darwin), signal)
+            return call(number, [v[0], signal] if name == "kill" else [signal, v[1], v[2]])
+        if name == "fcntl":  # F_DUPFD_CLOEXEC; the status flags O_APPEND and O_NONBLOCK both ways
+            table = [(0x400, 0x8), (0x800, 0x4)]
+            command = b.select(b.icmp_signed("==", v[1], I64(1030)), I64(67), v[1])
+            argument = b.select(b.icmp_signed("==", v[1], I64(4)), bits(v[2], table), v[2])
+            got = call(number, [v[0], command, argument])
+            back = bits(got, [(darwin, linux) for linux, darwin in table])
+            return b.select(b.and_(b.icmp_signed("==", v[1], I64(3)), b.not_(failed(got))), back, got)
+        if name == "socket":  # SOCK_NONBLOCK and SOCK_CLOEXEC are set after
+            made = call(number, [v[0], b.and_(v[1], I64(0xFF)), v[2]])
+            with b.if_then(b.not_(failed(made))):
+                descriptor_flags(made, v[1])
+            return made
+        if name == "accept4":
+            accepted = call(number, [v[0], v[1], v[2]])
+            with b.if_then(b.not_(failed(accepted))):
+                descriptor_flags(accepted, v[3])
+                self.darwin_address_back(b, v[1])
+            return accepted
+        if name in ("connect", "bind"):
+            return call(number, [v[0], self.darwin_address(b, v[1], v[2]), v[2]])
+        if name == "sendto":  # MSG_NOSIGNAL is Linux's alone (SIGPIPE is ignored); MSG_DONTWAIT
+            flags = bits(v[3], [(0x4000, 0), (0x40, 0x80)])
+            return call(number, [v[0], v[1], v[2], flags, self.darwin_address(b, v[4], v[5]), v[5]])
+        if name == "recvfrom":
+            got = call(number, [v[0], v[1], v[2], bits(v[3], [(0x40, 0x80)]), v[4], v[5]])
+            self.darwin_address_back(b, v[4])
+            return got
+        if name in ("setsockopt", "getsockopt"):  # SOL_SOCKET and its options
+            socket_level = b.icmp_signed("==", v[1], I64(1))
+            option = v[2]
+            for linux, darwin in ((2, 0x4), (4, 0x1007), (9, 0x8), (7, 0x1001), (8, 0x1002), (13, 0x80)):
+                option = b.select(b.and_(socket_level, b.icmp_signed("==", v[2], I64(linux))), I64(darwin), option)
+            level = b.select(socket_level, I64(0xFFFF), v[1])
+            return call(number, [v[0], level, option, v[3], v[4]])
+        return call(number, v)
+
+    def darwin_address(self, b: ir.IRBuilder, address, size):
+        """D-189: a socket address as Linux lays it out (a 16-bit family first) copied as Darwin's (a length byte,
+        then a family byte); the address 0 stays 0."""
+        copy = self.entry_alloca(b, ir.ArrayType(I8, 128), name="sockaddr")
+        place = b.bitcast(copy, PTR)
+        given = b.inttoptr(address, PTR)
+        nowhere = b.icmp_unsigned("==", address, I64(0))
+        count = b.select(b.icmp_signed(">", size, I64(128)), I64(128), size)
+        with b.if_then(b.not_(nowhere)):
+            memcpy = self.module.declare_intrinsic("llvm.memcpy", [PTR, PTR, I64])
+            b.call(memcpy, [place, given, count, ir.Constant(I1, 0)])
+            family = b.load(given)
+            b.store(b.trunc(count, I8), place)
+            b.store(family, b.gep(place, [I32(1)]))
+        return b.select(nowhere, I64(0), b.ptrtoint(place, I64))
+
+    def darwin_address_back(self, b: ir.IRBuilder, address) -> None:
+        """D-189: a socket address Darwin filled in (a length byte, a family byte) made Linux's (a 16-bit family)."""
+        with b.if_then(b.icmp_unsigned("!=", address, I64(0))):
+            place = b.inttoptr(address, PTR)
+            family = b.load(b.gep(place, [I32(1)]))
+            b.store(family, place)
+            b.store(I8(0), b.gep(place, [I32(1)]))
+
+    def darwin_clock(self, b: ir.IRBuilder, clock, spec):
+        """D-189: clock_gettime, which Darwin has no system call for. CLOCK_REALTIME (0) is gettimeofday (which
+        gives the time in x0 and x1 when it does not write the timeval); CLOCK_MONOTONIC (1) and the rest read the
+        counter register libSystem's mach_absolute_time reads (CNTVCT_EL0, at CNTFRQ_EL0 ticks a second); the CPU
+        clocks (2 and 3) are getrusage's user and system times."""
+        out = b.inttoptr(spec, I64.as_pointer())
+        seconds_at, nanoseconds_at = out, b.gep(out, [I32(1)])
+        with b.if_else(b.icmp_signed("==", clock, I64(0))) as (realtime, other):
+            with realtime:
+                timeval = self.entry_alloca(b, ir.ArrayType(I64, 2), name="timeval")
+                b.store(I64(0), b.gep(timeval, [I32(0), I32(0)]))
+                b.store(I64(0), b.gep(timeval, [I32(0), I32(1)]))
+                first, second = self.darwin_svc(b, 116, [b.ptrtoint(timeval, I64), I64(0), I64(0)])
+                written = b.icmp_signed("==", first, I64(0))
+                secs = b.select(written, b.load(b.gep(timeval, [I32(0), I32(0)])), first)
+                micros = b.select(written, b.and_(b.load(b.gep(timeval, [I32(0), I32(1)])), I64(0xFFFFFFFF)), second)
+                b.store(secs, seconds_at)
+                b.store(b.mul(micros, I64(1000)), nanoseconds_at)
+            with other:
+                with b.if_else(b.icmp_signed(">=", clock, I64(2))) as (cpu, counter):
+                    with cpu:
+                        usage = self.entry_alloca(b, ir.ArrayType(I64, 18), name="rusage")
+                        self.darwin_svc(b, 117, [I64(0), b.ptrtoint(usage, I64)])
+                        words = [b.load(b.gep(usage, [I32(0), I32(i)])) for i in range(4)]
+                        micros = b.add(b.and_(words[1], I64(0xFFFFFFFF)), b.and_(words[3], I64(0xFFFFFFFF)))
+                        secs = b.add(b.add(words[0], words[2]), b.sdiv(micros, I64(1000000)))
+                        b.store(secs, seconds_at)
+                        b.store(b.mul(b.srem(micros, I64(1000000)), I64(1000)), nanoseconds_at)
+                    with counter:
+                        ticks = b.asm(ir.FunctionType(I64, []), "isb\nmrs $0, cntvct_el0", "=r", [], side_effect=True)
+                        rate = b.asm(ir.FunctionType(I64, []), "mrs $0, cntfrq_el0", "=r", [], side_effect=True)
+                        b.store(b.udiv(ticks, rate), seconds_at)
+                        b.store(b.udiv(b.mul(b.urem(ticks, rate), I64(1000000000)), rate), nanoseconds_at)
+        return I64(0)
+
+    def darwin_getcwd(self, b: ir.IRBuilder, buffer, size):
+        """D-189: getcwd, which Darwin has no system call for, as libSystem makes it: "." opened, its path read with
+        fcntl(F_GETPATH) into MAXPATHLEN bytes; the result is Linux's, the length with its 0 byte, or -ERANGE."""
+        name = self.module.globals.get("refined.darwin.dot")
+        if name is None:
+            name = ir.GlobalVariable(self.module, ir.ArrayType(I8, 2), name="refined.darwin.dot")
+            name.initializer = ir.Constant(ir.ArrayType(I8, 2), bytearray(b".\0"))
+            name.global_constant = True
+            name.linkage = "private"
+        path = self.entry_alloca(b, ir.ArrayType(I8, 1024), name="cwdpath")
+        fd = self.darwin_svc(b, 463, [I64(-2), b.ptrtoint(name, I64), I64(0x100000), I64(0)])[0]
+        result = self.entry_alloca(b, I64, name="cwdresult")
+        b.store(fd, result)
+        with b.if_then(b.icmp_signed(">=", fd, I64(0))):
+            got = self.darwin_svc(b, 92, [fd, I64(50), b.ptrtoint(path, I64)])[0]
+            self.darwin_svc(b, 6, [fd])
+            b.store(got, result)
+            with b.if_then(b.icmp_signed(">=", got, I64(0))):
+                start = b.bitcast(path, PTR)
+                strlen_fn = self.darwin_strlen()
+                length = b.add(b.call(strlen_fn, [start]), I64(1))
+                fits = b.icmp_signed("<=", length, size)
+                b.store(b.select(fits, length, I64(-34)), result)
+                with b.if_then(fits):
+                    memcpy = self.module.declare_intrinsic("llvm.memcpy", [PTR, PTR, I64])
+                    b.call(memcpy, [b.inttoptr(buffer, PTR), start, length, ir.Constant(I1, 0)])
+        return b.load(result)
+
+    def darwin_strlen(self) -> ir.Function:
+        """The length of a C string, for darwin_getcwd (a loop of its own: there is no strlen to call)."""
+        fn = self.module.globals.get("refined.darwin.strlen")
+        if fn is not None:
+            return fn
+        fn = ir.Function(self.module, ir.FunctionType(I64, [PTR]), name="refined.darwin.strlen")
+        fn.linkage = "internal"
+        entry, loop, done = fn.append_basic_block("entry"), fn.append_basic_block("loop"), fn.append_basic_block("done")
+        b = ir.IRBuilder(entry)
+        b.branch(loop)
+        b.position_at_end(loop)
+        count = b.phi(I64)
+        count.add_incoming(I64(0), entry)
+        byte = b.load(b.gep(fn.args[0], [count]))
+        following = b.add(count, I64(1))
+        count.add_incoming(following, loop)
+        b.cbranch(b.icmp_unsigned("==", byte, I8(0)), done, loop)
+        b.position_at_end(done)
+        b.ret(count)
+        return fn
+
     def off_target(self, b: ir.IRBuilder, out: Optional[ir.Type]):
         """A `system` target of another operating system than the module's: it is never reached (the runtime
         branches on `system.linux`), so it traps, and refers to nothing the linker would have to find."""
@@ -643,6 +978,8 @@ class Backend:
         rdi, rsi, rdx, r10, r8, r9, the result (a negative errno for a failure) in rax. D-150: on AArch64 `svc #0`,
         the number (the generic table's, AARCH64_NUMBERS) in x8, the arguments in x0 to x5, the result in x0; `poll`,
         `fork`, and `dup2`, which AArch64 does not have, become `ppoll`, `clone`, and `dup3`."""
+        if self.darwin():
+            return self.darwin_syscall(b, values, name)
         arch = self.linux_arch()
         if arch == "x86_64":
             regs = ["rdi", "rsi", "rdx", "r10", "r8", "r9"][:len(values)]
@@ -714,6 +1051,8 @@ class Backend:
         arch = self.module.triple.split("-")[0]
         if arch == "x86_64" and self.os == "linux":
             self.module.asm_parts["stacks"] = _X86_64_STACKS
+        elif self.darwin():
+            self.module.asm_parts["stacks"] = _macho(_AARCH64_STACKS)  # D-189
         elif arch in ("aarch64", "arm64"):
             self.module.asm_parts["stacks"] = _AARCH64_STACKS
         else:
@@ -1690,6 +2029,10 @@ class OpGen:
             return self.be.linux_syscall(b, number, values, name), None, None
         if mod == "system" and name == "linux":
             return I1(1 if self.be.os == "linux" else 0), None, None
+        if mod == "system" and name == "posix":
+            return I1(1 if self.be.posix() else 0), None, None
+        if mod == "system" and name == "darwin":
+            return I1(1 if self.be.os == "darwin" else 0), None, None
         if mod == "system" and name == "aarch64":
             return I1(1 if self.be.module.triple.split("-")[0] in ("aarch64", "arm64") else 0), None, None
 

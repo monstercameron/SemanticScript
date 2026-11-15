@@ -405,7 +405,7 @@ endProcess at windowsExit return ok none
 
 osCheck is call
 osCheck in endProcess
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -1145,7 +1145,7 @@ now at windowsClock return ok ticks
 
 osCheck is call
 osCheck in now
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -2367,7 +2367,7 @@ readFiber suppresses none
 
 osCheck is call
 osCheck in switchTo
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -2938,7 +2938,7 @@ noHandleCheck suppresses none
 
 osCheck is call
 osCheck in canGoOn
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -4616,7 +4616,7 @@ stuckCheck suppresses none
 
 osInterrupt is call
 osInterrupt in idle
-osInterrupt invokes system.linux
+osInterrupt invokes system.posix
 osInterrupt argument none
 osInterrupt result onLinuxInterrupt Bool
 osInterrupt ownedBy none
@@ -4744,7 +4744,7 @@ trapIt suppresses none
 
 osCheckForever is call
 osCheckForever in idle
-osCheckForever invokes system.linux
+osCheckForever invokes system.posix
 osCheckForever argument none
 osCheckForever result onLinuxForever Bool
 osCheckForever ownedBy none
@@ -4802,7 +4802,7 @@ tooLongCheck suppresses none
 
 osCheck is call
 osCheck in idle
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -5844,7 +5844,7 @@ nowhere suppresses none
 
 osCheck is call
 osCheck in spawn
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -6271,7 +6271,7 @@ nothing suppresses none
 
 osFiberCheck is call
 osFiberCheck in spawn
-osFiberCheck invokes system.linux
+osFiberCheck invokes system.posix
 osFiberCheck argument none
 osFiberCheck result onLinuxFiber Bool
 osFiberCheck ownedBy none
@@ -7012,7 +7012,7 @@ readFiber suppresses none
 
 osCheck is call
 osCheck in dropTask
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -8824,7 +8824,7 @@ clockNow at windowsWall return ok none
 
 osCheck is call
 osCheck in clockNow
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

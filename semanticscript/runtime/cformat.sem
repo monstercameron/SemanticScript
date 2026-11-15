@@ -154,7 +154,7 @@ readCursor suppresses none
 
 readOnLinux is call
 readOnLinux in cursorNew
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none
@@ -17685,7 +17685,7 @@ formatRealArgument at quadWrite return ok none
 
 readOnLinux is call
 readOnLinux in formatRealArgument
-readOnLinux invokes system.linux
+readOnLinux invokes system.posix
 readOnLinux argument none
 readOnLinux result onLinux Bool
 readOnLinux ownedBy none

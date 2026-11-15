@@ -687,7 +687,7 @@ lowercase at finish return ok result
 
 osCheck is call
 osCheck in lowercase
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

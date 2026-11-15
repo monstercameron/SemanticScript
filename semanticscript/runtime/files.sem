@@ -323,7 +323,7 @@ endProcess at windowsExit return ok none
 
 osCheck is call
 osCheck in endProcess
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -1076,7 +1076,7 @@ closeFile at windowsClose return ok closedHandle
 
 osCheck is call
 osCheck in closeFile
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -1433,7 +1433,7 @@ widenCode suppresses none
 
 osCheck is call
 osCheck in winErrno
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -2200,7 +2200,7 @@ lastFileError at windowsError return ok status
 
 osCheck is call
 osCheck in lastFileError
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -3618,7 +3618,7 @@ pathValue suppresses none
 
 osCheck is call
 osCheck in resolve
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -5371,7 +5371,7 @@ pathSeparator at giveBackslash return ok backslashByte
 
 osCheck is call
 osCheck in pathSeparator
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -5435,7 +5435,7 @@ backslashCheck suppresses none
 
 osCheck is call
 osCheck in isSeparator
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -10213,7 +10213,7 @@ nowhere suppresses none
 
 osCheck is call
 osCheck in identityKey
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -10761,7 +10761,7 @@ isRegularFile at windowsCheck return ok regular
 
 osCheck is call
 osCheck in isRegularFile
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -11130,7 +11130,7 @@ bigCheck suppresses none
 
 osCheck is call
 osCheck in readUpTo
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -11434,7 +11434,7 @@ seekTo at seekWindows return ok ok
 
 osCheck is call
 osCheck in seekTo
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -11612,7 +11612,7 @@ toStart suppresses none
 
 osCheck is call
 osCheck in emptyFile
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -11753,7 +11753,7 @@ openPath at windowsOpen return ok handle
 
 osCheck is call
 osCheck in openPath
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -12181,7 +12181,7 @@ findCounted suppresses none
 
 osCheck is call
 osCheck in keptCode
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -16057,7 +16057,7 @@ storeNo suppresses none
 
 osCheck is call
 osCheck in fsExists
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -16491,7 +16491,7 @@ busyStatus suppresses none
 
 osCheck is call
 osCheck in fsRemove
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -16726,7 +16726,7 @@ giveCell suppresses none
 
 osDeleteCheck is call
 osDeleteCheck in fsRemove
-osDeleteCheck invokes system.linux
+osDeleteCheck invokes system.posix
 osDeleteCheck argument none
 osDeleteCheck result deleteOnLinux Bool
 osDeleteCheck ownedBy none
@@ -16969,7 +16969,7 @@ readBytes suppresses none
 
 osCheck is call
 osCheck in fsCreateDirectory
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -17223,7 +17223,7 @@ readBytes suppresses none
 
 osCheck is call
 osCheck in fsRemoveDirectory
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -17547,7 +17547,7 @@ readDeadline suppresses none
 
 osCheck is call
 osCheck in fsLock
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -17878,7 +17878,7 @@ readOs suppresses none
 
 osCheck is call
 osCheck in fsUnlock
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -18434,7 +18434,7 @@ readBytes suppresses none
 
 osCheck is call
 osCheck in fsListDirectory
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none

@@ -1618,7 +1618,7 @@ takeList suppresses none
 
 osCheck is call
 osCheck in programArguments
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -2731,7 +2731,7 @@ hasNul suppresses none
 
 osCheck is call
 osCheck in environmentGet
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -3394,7 +3394,7 @@ readBuffer suppresses none
 
 osCheck is call
 osCheck in stdinFill
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -3895,7 +3895,7 @@ stdinWait at giveStopped return ok stopped
 
 osCheck is call
 osCheck in stdinWait
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -6943,7 +6943,7 @@ runChild at finished return ok ok
 
 osCheck is call
 osCheck in runChild
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
@@ -14472,7 +14472,7 @@ checkC suppresses none
 
 osCheck is call
 osCheck in ffiOpen
-osCheck invokes system.linux
+osCheck invokes system.posix
 osCheck argument none
 osCheck result onLinux Bool
 osCheck ownedBy none
