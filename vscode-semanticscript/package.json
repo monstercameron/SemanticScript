@@ -38,7 +38,7 @@
     "vscode:prepublish": "npm run check"
   },
   "devDependencies": {
-    "@vscode/vsce": "3.9.2"
+    "@vscode/vsce": "4.1.0"
   },
   "contributes": {
     "languages": [
